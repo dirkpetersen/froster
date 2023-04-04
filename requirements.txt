@@ -1,0 +1,5 @@
+duckdb<=0.8
+rclone<=0.5
+simple-slurm<=0.3
+textual<=0.20
+
