@@ -8,10 +8,12 @@ This problem may have been solved many times, but I have not found an easy OSS s
 ## Design 
 
 1. First we need to crawl the file system that likely has billions of files to find data that is actually worth archiving. For this we will use the the well known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all file metadata found. 
-1. We want to focus on archiving folders instead of individual files as data that resides in the same folder will typically belong together. For this we will filter pwalk's CSV file with [DuckDB](https://duckdb.org) and get a list (CSV) of the largest folders sorted by size. 
-1. We pass the CSV to an interactive tool such as [Textual](https://github.com/Textualize/textual/blob/main/tests/snapshot_tests/snapshot_apps/data_table_row_cursor.py) that can display a table and will allow you to pick a row that displays the folder you would like to archive (the code to return a row selection is missing in the example) 
+1. We want to focus on archiving folders instead of individual files as data that resides in the same folder will typically belong together. For this we will filter pwalk's CSV file with [DuckDB](https://duckdb.org) and get a new list (CSV) of the largest folders sorted by size. 
+1. We pass the new list (CSV) to an [interactive tool](https://github.com/dirkpetersen/froster/blob/main/table_example.py) based on [Textual](https://textual.textualize.io/) that displays a table with folders along with their total size in GiB and their average file sizes in MiB and allows you to pick the folder you would like to archive.  
+![image](https://user-images.githubusercontent.com/1427719/230137896-acaa50ba-f602-4a1a-8dac-c11ceea92cc0.png)
+1. If the average file size in the folder is small (size TBD) we will archive the folder (tar.gz) before uploading 
 1. Pass the folder to a tool like [Rclone](https://rclone.org) and execute a copy job in the background 
 1. Since many researchers have access to a Slurm cluster, the initial implmentation would just submit a job via sbatch instead of using a local message queue. Slurm can automatically resubmit jobs that failed and we can also save some comments with `scontrol update job <jobid> Comment="My status update"`
 1. Once the copy process is confirmed to have finished we put files with md5sums in the folders that have been archived. 
-1. At the very end we put an index.html file that describes where the data went into the source folder
-
+1. The user must evidence that all data was archived correctly (size and md5sum comparison) 
+1. At the end we put an index.html file in the source folder that describes where the data was archived to along with instructions how to get the data back
