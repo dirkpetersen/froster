@@ -4,9 +4,9 @@
 Froster (almost) automates the challening task of 
 archiving many Terabytes of data on HPC systems
 """
-import sys, os, argparse, json, configparser, requests
-import tarfile, subprocess, shutil, tempfile
-import duckdb, 
+import sys, os, stat, argparse, json, configparser, requests
+import tarfile, zipfile, subprocess, shutil, tempfile
+import duckdb, rclone, urllib3, glob
 
 __app__ = 'Froster command line archiving tool'
 __version__ = '0.1'
@@ -46,10 +46,14 @@ def main():
     if args.subcmd == 'config':
         print ("config")
         arch.config("one", "two")
-        print("downloading and compiling pwalk ...")
-        compile_github_repo('fizwit', 'filesystem-reporting-tools', 
+        print(" Installing pwalk ...")
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
                 'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                 'pwalk', cfg.homepaths[0])
+        print(" Installing rclone ... please wait ...")
+        rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+        copy_binary_from_zip_url(rclone_url, 'rclone', '/rclone-v*/',cfg.homepaths[0])
 
     elif args.subcmd == 'index':
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
@@ -254,10 +258,10 @@ class ConfigManager:
         os.rmdir(section_path)
 
 
-def compile_github_repo(user, repo, compilecmd, binary, targetfolder):
+def copy_compiled_binary_from_github(user, repo, compilecmd, binary, targetfolder):
     tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
 
-    response = requests.get(tarball_url, stream=True)
+    response = requests.get(tarball_url, stream=True, allow_redirects=True)
     response.raise_for_status()
 
     with tempfile.TemporaryDirectory() as tmpdirname:
@@ -270,8 +274,25 @@ def compile_github_repo(user, repo, compilecmd, binary, targetfolder):
             if result.returncode == 0:
                 print(f"Compilation successful: {compilecmd}")
                 shutil.copy2(binary, targetfolder, follow_symlinks=True)
+                if not os.path.exists(os.path.join(targetfolder, binary)):
+                    print(f'Failed copying {binary} to {targetfolder}')                
             else:
                 print(f"Compilation failed: {compilecmd}")
+
+def copy_binary_from_zip_url(zipurl,binary,subwildcard,targetfolder):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        zip_file = os.path.join(tmpdirname,  "download.zip")
+        response = requests.get(zipurl, verify=False, allow_redirects=True)
+        with open(zip_file, 'wb') as f:
+            f.write(response.content)
+        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+            zip_ref.extractall(tmpdirname)
+        binpath = glob.glob(f'{tmpdirname}{subwildcard}{binary}')[0]
+        shutil.copy2(binpath, targetfolder, follow_symlinks=True)
+        if os.path.exists(os.path.join(targetfolder, binary)):
+            os.chmod(os.path.join(targetfolder, binary), 0o775)
+        else:    
+            print(f'Failed copying {binary} to {targetfolder}')
 
 if __name__ == "__main__":
     if not sys.platform.startswith('linux'):
