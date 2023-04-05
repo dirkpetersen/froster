@@ -2,16 +2,19 @@
 
 """
 Froster (almost) automates the challening task of 
-archiving many Terabytes of data 
+archiving many Terabytes of data on HPC systems
 """
-
-import sys, os, argparse, json
+import sys, os, argparse, json, configparser, requests
+import tarfile, subprocess, shutil, tempfile
+import duckdb, 
 
 __app__ = 'Froster command line archiving tool'
+__version__ = '0.1'
 
 VAR = os.getenv('MYVAR', 'default value')
 HOMEDIR = os.path.expanduser("~")
 
+    
 def main():
 
     #test config manager 
@@ -31,6 +34,9 @@ def main():
     print(username)  # Output: JohnDoe
     print(cfg.read('general', 'mylist'))
     print(cfg.read('general', 'mydict'))
+
+    print("home paths:",cfg.homepaths)
+
     # Delete an entry
     #cfg.delete('application', 'username')
     # Delete a section
@@ -40,7 +46,11 @@ def main():
     if args.subcmd == 'config':
         print ("config")
         arch.config("one", "two")
-        print(args.folders)
+        print("downloading and compiling pwalk ...")
+        compile_github_repo('fizwit', 'filesystem-reporting-tools', 
+                'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
+                'pwalk', cfg.homepaths[0])
+
     elif args.subcmd == 'index':
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
         arch.index("one", "two")
@@ -140,8 +150,49 @@ class ConfigManager:
     # multi-line files and dictionaries which are written to json
 
     def __init__(self):
-        self.config_dir = os.path.expanduser('~/.config/froster')
+        self.home_dir = os.path.expanduser('~')
+        self.config_dir = os.path.join(self.home_dir, '.config', 'froster')
+        self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
+        self.homepaths = self._get_home_paths()
+        self._set_env_vars("default")
+        
+    def _set_env_vars(self, profile):
+        
+        # Read the credentials file
+        config = configparser.ConfigParser()
+        config.read(self.awscredsfile)
 
+        if not config.has_section(profile):
+            print (f'~/.aws/credentials has no section {profile}')
+            return
+        if not config.has_option(profile, 'aws_access_key_id'):
+            print (f'~/.aws/credentials has no entry aws_access_key_id in section {profile}')
+            return
+        
+        # Get the AWS access key and secret key from the specified profile
+        aws_access_key_id = config.get(profile, 'aws_access_key_id')
+        aws_secret_access_key = config.get(profile, 'aws_secret_access_key')
+
+        # Set the environment variables for creds 
+        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
+        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
+        os.environ['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
+        os.environ['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
+
+        # Set the environment variables for other defaults 
+        os.environ['RCLONE_S3_PROVIDER'] = 'AWS'
+        #os.environ['RCLONE_S3_STORAGE_CLASS'] = 'DEEP_ARCHIVE'
+        #os.environ['RCLONE_S3_LOCATION_CONSTRAINT'] = 'us-west-2'
+
+    def _get_home_paths(self):
+        path_dirs = os.environ['PATH'].split(os.pathsep)
+        # Filter the directories in the PATH that are inside the home directory
+        dirs_inside_home = {
+            directory for directory in path_dirs
+            if directory.startswith(self.home_dir) and os.path.isdir(directory)
+        }
+        return sorted(dirs_inside_home, key=len)
+        
     def _get_section_path(self, section):
         return os.path.join(self.config_dir, section)
 
@@ -202,7 +253,30 @@ class ConfigManager:
             os.remove(os.path.join(section_path, entry))
         os.rmdir(section_path)
 
+
+def compile_github_repo(user, repo, compilecmd, binary, targetfolder):
+    tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
+
+    response = requests.get(tarball_url, stream=True)
+    response.raise_for_status()
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        reposfolder=os.path.join(tmpdirname,  f"{repo}-main")
+        with tarfile.open(fileobj=response.raw, mode="r|gz") as tar:
+            tar.extractall(path=tmpdirname)
+            reposfolder=os.path.join(tmpdirname,  f"{repo}-main")
+            os.chdir(reposfolder)
+            result = subprocess.run(compilecmd, shell=True)
+            if result.returncode == 0:
+                print(f"Compilation successful: {compilecmd}")
+                shutil.copy2(binary, targetfolder, follow_symlinks=True)
+            else:
+                print(f"Compilation failed: {compilecmd}")
+
 if __name__ == "__main__":
+    if not sys.platform.startswith('linux'):
+        print('This software currently only runs on Linux x64')
+        sys.exit(1)
     try:
         args = parse_arguments()        
         main()
