@@ -65,6 +65,10 @@ def main():
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
         arch.index("one", "two")
 
+        if 
+
+        ~/temp/pwalk/home/pwalk/csv/big/mcweeney_lab-folders.csv
+
         daysaged=[30,90,365,1095,1825,3650,5475]
         #thresholdGB=10
         TiB=1099511627776
@@ -72,41 +76,32 @@ def main():
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
 
-        # Read the CSV file and filter the data using an SQL query
-        #sql_query = f"""SELECT * FROM read_csv_auto('{args.pwalkcsv}') 
-        #            WHERE pw_fcount > -1 AND pw_dirsum > 1073741824
-        #            """
         
-        sql_query = f"""SELECT filename, UID, GID, st_atime, st_mtime,
+        
+        #~/temp/pwalk/home/pwalk/csv/big/mcweeney_lab-folders.csv
+
+        with tempfile.TemporaryFile() as tmpfile:
+            mycmd = f'grep -v ",-1,0$" "{args.pwalkcsv}" > {tmpfile}'
+            result = subprocess.run(compilecmd, shell=True)
+            if result.returncode != 0:
+                print(f"Folder extraction failed: {mycmd}")
+        
+            sql_query = f"""SELECT filename, UID, GID, st_atime, st_mtime,
                             pw_fcount, pw_dirsum, 
                             pw_dirsum/1099511627776 as TiB,
                             pw_dirsum/1073741824 as GiB, 
                             pw_dirsum/1048576/pw_fcount as MiBAvg                         
-                        FROM read_csv_auto('{args.pwalkcsv}') 
+                        FROM read_csv_auto('{tmpfile}', ignore_errors=1)
                         WHERE pw_fcount > -1 AND pw_dirsum > 1073741824
                         ORDER BY pw_dirsum Desc
                     """
+            rows = con.execute(sql_query).fetchall()
 
-        rows = con.execute(sql_query).fetchall()
-
-        # Get the column names
-        fullheader = con.execute(sql_query).description
+            # Get the column names
+            fullheader = con.execute(sql_query).description
 
         # Write the result back to a new CSV file
         mycsv = 'hotspots.csv'
-
-        # with open(output_csv_file, 'w', newline='') as csvfile:
-        #     writer = csv.writer(csvfile)            
-        #     # Write the column names
-        #     writer.writerow([col[0] for col in header])            
-        #     # Write the filtered data
-        #     writer.writerows(rows)       
-        #     # Close the DuckDB connection
-        #     con.close()
-
-        #rows = c.execute(f"select * from hotspots where GiB >= {thresholdGB}")
-        # filename,UID,GID,st_atime,st_mtime,pw_fcount,pw_dirsum,TiB,GiB,MiBAvg
-        # header=[d[0] for d in c.description]
 
         header = [col[0] for col in fullheader]
 
