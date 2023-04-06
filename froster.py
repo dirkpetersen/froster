@@ -14,7 +14,6 @@ __version__ = '0.1'
 VAR = os.getenv('MYVAR', 'default value')
 HOMEDIR = os.path.expanduser("~")
 
-    
 def main():
 
     #test config manager 
@@ -46,14 +45,23 @@ def main():
     if args.subcmd == 'config':
         print ("config")
         arch.config("one", "two")
+
+        if len(cfg.homepaths) > 0:
+            cfg.write('general', 'binfolder', cfg.homepaths[0])
+
         print(" Installing pwalk ...")
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
                 'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                 'pwalk', cfg.homepaths[0])
+        
         print(" Installing rclone ... please wait ...")
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-        copy_binary_from_zip_url(rclone_url, 'rclone', '/rclone-v*/',cfg.homepaths[0])
+        copy_binary_from_zip_url(rclone_url, 'rclone', 
+                               '/rclone-v*/',cfg.homepaths[0])
+        
+        
+        
 
     elif args.subcmd == 'index':
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
