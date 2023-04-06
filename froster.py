@@ -6,7 +6,7 @@ archiving many Terabytes of data on HPC systems
 """
 import sys, os, stat, argparse, json, configparser, requests
 import tarfile, zipfile, subprocess, shutil, tempfile
-import duckdb, rclone, urllib3, glob
+import duckdb, csv, rclone, urllib3, glob, pwd, datetime
 
 __app__ = 'Froster command line archiving tool'
 __version__ = '0.1'
@@ -60,12 +60,90 @@ def main():
         copy_binary_from_zip_url(rclone_url, 'rclone', 
                                '/rclone-v*/',cfg.homepaths[0])
         
-        
-        
 
     elif args.subcmd == 'index':
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
         arch.index("one", "two")
+
+        daysaged=[30,90,365,1095,1825,3650,5475]
+        #thresholdGB=10
+        TiB=1099511627776
+
+        # Connect to an in-memory DuckDB instance
+        con = duckdb.connect(':memory:')
+
+        # Read the CSV file and filter the data using an SQL query
+        #sql_query = f"""SELECT * FROM read_csv_auto('{args.pwalkcsv}') 
+        #            WHERE pw_fcount > -1 AND pw_dirsum > 1073741824
+        #            """
+        
+        sql_query = f"""SELECT filename, UID, GID, st_atime, st_mtime,
+                            pw_fcount, pw_dirsum, 
+                            pw_dirsum/1099511627776 as TiB,
+                            pw_dirsum/1073741824 as GiB, 
+                            pw_dirsum/1048576/pw_fcount as MiBAvg                         
+                        FROM read_csv_auto('{args.pwalkcsv}') 
+                        WHERE pw_fcount > -1 AND pw_dirsum > 1073741824
+                        ORDER BY pw_dirsum Desc
+                    """
+
+        rows = con.execute(sql_query).fetchall()
+
+        # Get the column names
+        fullheader = con.execute(sql_query).description
+
+        # Write the result back to a new CSV file
+        mycsv = 'hotspots.csv'
+
+        # with open(output_csv_file, 'w', newline='') as csvfile:
+        #     writer = csv.writer(csvfile)            
+        #     # Write the column names
+        #     writer.writerow([col[0] for col in header])            
+        #     # Write the filtered data
+        #     writer.writerows(rows)       
+        #     # Close the DuckDB connection
+        #     con.close()
+
+        #rows = c.execute(f"select * from hotspots where GiB >= {thresholdGB}")
+        # filename,UID,GID,st_atime,st_mtime,pw_fcount,pw_dirsum,TiB,GiB,MiBAvg
+        # header=[d[0] for d in c.description]
+
+        header = [col[0] for col in fullheader]
+
+        header[0]="Folder"
+        header[1]="User"
+        header[2]="Group"
+        header[3]="NoAccDays"
+        header[4]="NoModDays"
+        header[5]="FileCount"
+        header[6]="DirSize"
+
+        totalbytes=0
+        agedbytes=[]
+        for i in daysaged:
+            agedbytes.append(0)
+        numhotspots=0
+
+        with open(mycsv, 'w') as f:
+            writer = csv.writer(f, dialect='excel')
+            writer.writerow(header)
+            for r in rows:
+                row = list(r)
+                row[1]=getusr(row[1])
+                row[2]=getgrp(row[2])
+                row[3]=days(row[3])
+                row[4]=days(row[4])
+                writer.writerow(row)
+                numhotspots+=1
+                totalbytes+=row[6]
+                for i in range(0,len(daysaged)):
+                    if row[3] > daysaged[i]:
+                        agedbytes[i]+=row[6]                            
+
+        print(f" Wrote {mycsv} with {numhotspots} hotspots containing {round(totalbytes/TiB,3)} TiB total")
+        for i in range(0,len(daysaged)):
+            print(f"  {round(agedbytes[i]/TiB,3)} TiB have not been accessed for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)")
+
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.noslurm, args.md5sum, args.folders)
     elif args.subcmd == 'restore':
@@ -75,6 +153,23 @@ def main():
 
     #if args:
     #   arch.queryByProject(args.projects)
+
+def getusr(uid):
+    try:
+        return pwd.getpwuid(uid)[0]
+    except:
+        return uid
+
+def getgrp(gid):
+    try:
+        return grp.getgrgid(gid)[0]
+    except:
+        return gid
+
+def days(unixtime):
+    diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
+    return diff.days
+
 
 class Archiver:
     def __init__(self, verbose, active):
