@@ -5,14 +5,13 @@ Froster (almost) automates the challening task of
 archiving many Terabytes of data on HPC systems
 """
 import sys, os, stat, argparse, json, configparser, requests
-import tarfile, zipfile, subprocess, shutil, tempfile
-import duckdb, csv, rclone, urllib3, glob, pwd, datetime
+import tarfile, zipfile, subprocess, shutil, tempfile, csv
+import duckdb, simple_slurm, rclone, urllib3, glob, pwd, datetime
 
 __app__ = 'Froster command line archiving tool'
 __version__ = '0.1'
 
 VAR = os.getenv('MYVAR', 'default value')
-HOMEDIR = os.path.expanduser("~")
 
 def main():
 
@@ -65,6 +64,25 @@ def main():
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
         arch.index("one", "two")
 
+        if os.getenv('SLURM_JOB_ID'):
+            print('Continue with indexing')
+            if args.pwalkcsv == '':
+                for folder in args.folders:
+                    pass # execute function 
+            else:
+                pass # execute function
+            
+        elif shutil.which('sbatch'):
+            print('Submit indexing job')
+            slurm = simple_slurm.Slurm(
+                cpus_per_task=args.cores,
+                job_name='job name',
+                output=f'froster-slurm.out',
+                time=datetime.timedelta(days=1),
+            )
+            fld = '" "'.join(args.folders)           
+            jobid=slurm.sbatch(f'froster.py index "{fld}"')
+
         daysaged=[5475,3650,1825,1095,730,365,90,30]
         thresholdGB=1
         TiB=1099511627776
@@ -72,24 +90,24 @@ def main():
 
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
-        con.execute("PRAGMA experimental_parallel_csv=TRUE;")
-        con.execute("PRAGMA threads=4;")
+        con.execute('PRAGMA experimental_parallel_csv=TRUE;')
+        con.execute(f'PRAGMA threads={args.cores};')
 
         with tempfile.NamedTemporaryFile() as tmpfile:
             with tempfile.NamedTemporaryFile() as tmpfile2:
-                # removing all files from pwalk output
+                # removing all files from pwalk output, keep only folders
                 mycmd = f'grep -v ",-1,0$" "{args.pwalkcsv}" > {tmpfile2.name}'
                 result = subprocess.run(mycmd, shell=True)
                 if result.returncode != 0:
                     print(f"Folder extraction failed: {mycmd}")
                 # Temp hack: e.g. Revista_Española_de_Quimioterapia in Spellman
+                # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
+                # pwalk does already output UTF-8, weird, probably duckdb error 
                 mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {tmpfile2.name} > {tmpfile.name}'
                 result = subprocess.run(mycmd, shell=True)
                 if result.returncode != 0:
                    print(f"File conversion failed: {mycmd}")
                 
-            # converting file from utf-8 to avoid DuckDB import error 
-
             sql_query = f"""SELECT UID as User, GID as Group, 
                             st_atime as NoAccDays, st_mtime as NoModDays,
                             pw_fcount as FileCount, pw_dirsum as DirSize, 
@@ -143,6 +161,8 @@ def main():
 
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.noslurm, args.md5sum, args.folders)
+        fld = '" "'.join(args.folders)
+        print (f'froster.py index "{fld}"')
     elif args.subcmd == 'restore':
         print ("restore:",args.cores, args.noslurm, args.folders)
     elif args.subcmd == 'delete':
