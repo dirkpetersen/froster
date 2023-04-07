@@ -110,11 +110,11 @@ def main():
             writer.writerow([col[0] for col in header])
             for r in rows:
                 row = list(r)
-                row[0]=getusr(row[0])
-                row[1]=getgrp(row[1])
                 row[2]=days(row[2])
-                row[3]=days(row[3])
                 if row[5] >= thresholdGB*GiB:
+                    row[0]=getusr(row[0])
+                    row[1]=getgrp(row[1])
+                    row[3]=days(row[3])
                     writer.writerow(row)
                     numhotspots+=1
                     totalbytes+=row[5]
@@ -122,13 +122,13 @@ def main():
                     if row[2] > daysaged[i]:
                         agedbytes[i]+=row[5]
 
-        print(f" Wrote {mycsv} with {numhotspots} hotspots >= {thresholdGB} GiB  with a total disk use of {round(totalbytes/TiB,3)} TiB")
+        print(f" \nWrote {mycsv} with {numhotspots} hotspots >= {thresholdGB} GiB with a total disk use of {round(totalbytes/TiB,3)} TiB")
         lastagedbytes=0
+        print(f' \nHistogram for {len(rows)} total folders processed:')
         for i in range(0,len(daysaged)):
             if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
                 print(f"  {round(agedbytes[i]/TiB,3)} TiB have not been accessed for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)")
             lastagedbytes=agedbytes[i]
-
 
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.noslurm, args.md5sum, args.folders)
