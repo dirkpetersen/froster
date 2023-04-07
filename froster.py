@@ -65,53 +65,39 @@ def main():
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
         arch.index("one", "two")
 
-        if 
-
-        ~/temp/pwalk/home/pwalk/csv/big/mcweeney_lab-folders.csv
-
-        daysaged=[30,90,365,1095,1825,3650,5475]
-        #thresholdGB=10
+        daysaged=[5475,3650,1825,1095,730,365,90,30]
+        thresholdGB=1
         TiB=1099511627776
+        GiB=1073741824
 
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
 
-        
-        
-        #~/temp/pwalk/home/pwalk/csv/big/mcweeney_lab-folders.csv
-
-        with tempfile.TemporaryFile() as tmpfile:
-            mycmd = f'grep -v ",-1,0$" "{args.pwalkcsv}" > {tmpfile}'
-            result = subprocess.run(compilecmd, shell=True)
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            # removing all files from pwalk output
+            mycmd = f'grep -v ",-1,0$" "{args.pwalkcsv}" > {tmpfile.name}'
+            result = subprocess.run(mycmd, shell=True)
             if result.returncode != 0:
                 print(f"Folder extraction failed: {mycmd}")
         
-            sql_query = f"""SELECT filename, UID, GID, st_atime, st_mtime,
-                            pw_fcount, pw_dirsum, 
+            sql_query = f"""SELECT UID as User, GID as Group, 
+                            st_atime as NoAccDays, st_mtime as NoModDays,
+                            pw_fcount as FileCount, pw_dirsum as DirSize, 
                             pw_dirsum/1099511627776 as TiB,
                             pw_dirsum/1073741824 as GiB, 
-                            pw_dirsum/1048576/pw_fcount as MiBAvg                         
-                        FROM read_csv_auto('{tmpfile}', ignore_errors=1)
-                        WHERE pw_fcount > -1 AND pw_dirsum > 1073741824
+                            pw_dirsum/1048576/pw_fcount as MiBAvg,
+                            filename as Folder
+                        FROM read_csv_auto('{tmpfile.name}', ignore_errors=1)
+                        WHERE pw_fcount > -1 AND pw_dirsum > 0
                         ORDER BY pw_dirsum Desc
-                    """
+                    """  # pw_dirsum > 1073741824
             rows = con.execute(sql_query).fetchall()
 
             # Get the column names
-            fullheader = con.execute(sql_query).description
+            header = con.execute(sql_query).description
 
         # Write the result back to a new CSV file
         mycsv = 'hotspots.csv'
-
-        header = [col[0] for col in fullheader]
-
-        header[0]="Folder"
-        header[1]="User"
-        header[2]="Group"
-        header[3]="NoAccDays"
-        header[4]="NoModDays"
-        header[5]="FileCount"
-        header[6]="DirSize"
 
         totalbytes=0
         agedbytes=[]
@@ -121,23 +107,28 @@ def main():
 
         with open(mycsv, 'w') as f:
             writer = csv.writer(f, dialect='excel')
-            writer.writerow(header)
+            writer.writerow([col[0] for col in header])
             for r in rows:
                 row = list(r)
-                row[1]=getusr(row[1])
-                row[2]=getgrp(row[2])
+                row[0]=getusr(row[0])
+                row[1]=getgrp(row[1])
+                row[2]=days(row[2])
                 row[3]=days(row[3])
-                row[4]=days(row[4])
-                writer.writerow(row)
-                numhotspots+=1
-                totalbytes+=row[6]
+                if row[5] >= thresholdGB*GiB:
+                    writer.writerow(row)
+                    numhotspots+=1
+                    totalbytes+=row[5]
                 for i in range(0,len(daysaged)):
-                    if row[3] > daysaged[i]:
-                        agedbytes[i]+=row[6]                            
+                    if row[2] > daysaged[i]:
+                        agedbytes[i]+=row[5]
 
-        print(f" Wrote {mycsv} with {numhotspots} hotspots containing {round(totalbytes/TiB,3)} TiB total")
+        print(f" Wrote {mycsv} with {numhotspots} hotspots >= {thresholdGB} GiB  with a total disk use of {round(totalbytes/TiB,3)} TiB")
+        lastagedbytes=0
         for i in range(0,len(daysaged)):
-            print(f"  {round(agedbytes[i]/TiB,3)} TiB have not been accessed for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)")
+            if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
+                print(f"  {round(agedbytes[i]/TiB,3)} TiB have not been accessed for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)")
+            lastagedbytes=agedbytes[i]
+
 
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.noslurm, args.md5sum, args.folders)
