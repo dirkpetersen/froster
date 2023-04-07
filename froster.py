@@ -54,12 +54,12 @@ def main():
         copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
                 'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                 'pwalk', cfg.homepaths[0])
-        
+
         print(" Installing rclone ... please wait ...")
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
         copy_binary_from_zip_url(rclone_url, 'rclone', 
                                '/rclone-v*/',cfg.homepaths[0])
-        
+
 
     elif args.subcmd == 'index':
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
@@ -72,14 +72,24 @@ def main():
 
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
+        con.execute("PRAGMA experimental_parallel_csv=TRUE;")
+        con.execute("PRAGMA threads=4;")
 
         with tempfile.NamedTemporaryFile() as tmpfile:
-            # removing all files from pwalk output
-            mycmd = f'grep -v ",-1,0$" "{args.pwalkcsv}" > {tmpfile.name}'
-            result = subprocess.run(mycmd, shell=True)
-            if result.returncode != 0:
-                print(f"Folder extraction failed: {mycmd}")
-        
+            with tempfile.NamedTemporaryFile() as tmpfile2:
+                # removing all files from pwalk output
+                mycmd = f'grep -v ",-1,0$" "{args.pwalkcsv}" > {tmpfile2.name}'
+                result = subprocess.run(mycmd, shell=True)
+                if result.returncode != 0:
+                    print(f"Folder extraction failed: {mycmd}")
+                # Temp hack: e.g. Revista_Española_de_Quimioterapia in Spellman
+                mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {tmpfile2.name} > {tmpfile.name}'
+                result = subprocess.run(mycmd, shell=True)
+                if result.returncode != 0:
+                   print(f"File conversion failed: {mycmd}")
+                
+            # converting file from utf-8 to avoid DuckDB import error 
+
             sql_query = f"""SELECT UID as User, GID as Group, 
                             st_atime as NoAccDays, st_mtime as NoModDays,
                             pw_fcount as FileCount, pw_dirsum as DirSize, 
@@ -87,7 +97,8 @@ def main():
                             pw_dirsum/1073741824 as GiB, 
                             pw_dirsum/1048576/pw_fcount as MiBAvg,
                             filename as Folder
-                        FROM read_csv_auto('{tmpfile.name}', ignore_errors=1)
+                        FROM read_csv_auto('{tmpfile.name}', 
+                                ignore_errors=1)
                         WHERE pw_fcount > -1 AND pw_dirsum > 0
                         ORDER BY pw_dirsum Desc
                     """  # pw_dirsum > 1073741824
