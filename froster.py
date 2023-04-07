@@ -4,9 +4,9 @@
 Froster (almost) automates the challening task of 
 archiving many Terabytes of data on HPC systems
 """
-import sys, os, stat, argparse, json, configparser, requests
-import tarfile, zipfile, subprocess, shutil, tempfile, csv
-import duckdb, simple_slurm, rclone, urllib3, glob, pwd, datetime
+import sys, os, argparse, json, configparser, csv, io, urllib3, datetime
+import tarfile, zipfile, subprocess, shutil, tempfile, glob, pwd
+import requests, duckdb, rclone, boto3
 
 __app__ = 'Froster command line archiving tool'
 __version__ = '0.1'
@@ -58,11 +58,21 @@ def main():
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
         copy_binary_from_zip_url(rclone_url, 'rclone', 
                                '/rclone-v*/',cfg.homepaths[0])
+        
+        # setup local scratch spaces, OHSU specific 
+        cfg.write('hpc', 'slurm_lscratch', '--gres disk:1024') # get 1TB scratch space
+        cfg.write('hpc', 'lscratch_mkdir', 'mkdir-scratch.sh') # optional
+        cfg.write('hpc', 'lscratch_rmdir', 'rmdir-scratch.sh') # optional
+        cfg.write('hpc', 'lscratch_root', '/mnt/scratch') # add slurm jobid at the end
 
+        # cloud setup 
+        cfg.write('general', 'aws_profile', 'default') # get 1TB scratch space
+        if not args.awsprofile:
+            args.awsprofile = cfg.read('general', 'aws_profile')
 
     elif args.subcmd == 'index':
         print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
-        arch.index("one", "two")
+        arch.index("one", "two")        
 
         if os.getenv('SLURM_JOB_ID'):
             print('Continue with indexing')
@@ -72,22 +82,28 @@ def main():
             else:
                 pass # execute function
             
-        elif shutil.which('sbatch'):
-            print('Submit indexing job')
-            slurm = simple_slurm.Slurm(
-                cpus_per_task=args.cores,
-                job_name='job name',
-                output=f'froster-slurm.out',
-                time=datetime.timedelta(days=1),
-            )
-            fld = '" "'.join(args.folders)           
-            jobid=slurm.sbatch(f'froster.py index "{fld}"')
+        elif shutil.which('sbatch') and not args.noslurm:
+            
+            se = SlurmEssentials()
+            myjobname="fun"
+            se.add_line(f'#SBATCH --job-name={myjobname}')
+            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+            se.add_line(f'#SBATCH --output=froster-slurm.out')
+            se.add_line(f'#SBATCH --time=1-0')
+            se.add_line(f'ml python')
+            fld = '" "'.join(args.folders)
+            se.add_line(f'python3 froster.py index "{fld}"')
+            jobid = se.sbatch()
+            print(f'Submit indexing job {jobid}')
 
+        # move down to class 
         daysaged=[5475,3650,1825,1095,730,365,90,30]
         thresholdGB=1
         TiB=1099511627776
         GiB=1073741824
 
+        pwalkfolder = args.folders[0]
+        
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
         con.execute('PRAGMA experimental_parallel_csv=TRUE;')
@@ -95,18 +111,31 @@ def main():
 
         with tempfile.NamedTemporaryFile() as tmpfile:
             with tempfile.NamedTemporaryFile() as tmpfile2:
-                # removing all files from pwalk output, keep only folders
-                mycmd = f'grep -v ",-1,0$" "{args.pwalkcsv}" > {tmpfile2.name}'
-                result = subprocess.run(mycmd, shell=True)
-                if result.returncode != 0:
-                    print(f"Folder extraction failed: {mycmd}")
-                # Temp hack: e.g. Revista_Española_de_Quimioterapia in Spellman
-                # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
-                # pwalk does already output UTF-8, weird, probably duckdb error 
-                mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {tmpfile2.name} > {tmpfile.name}'
-                result = subprocess.run(mycmd, shell=True)
-                if result.returncode != 0:
-                   print(f"File conversion failed: {mycmd}")
+                if not args.pwalkcsv:
+                    pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
+                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
+                    result = subprocess.run(mycmd, shell=True)
+                    if result.returncode != 0:
+                        print(f"pwalk run failed: {mycmd}")
+                        return False
+                    pwalkcsv = tmpfile2.name
+                else:
+                    pwalkcsv = args.pwalkcsv
+                with tempfile.NamedTemporaryFile() as tmpfile3:
+                    # removing all files from pwalk output, keep only folders
+                    mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {tmpfile3.name}'
+                    result = subprocess.run(mycmd, shell=True)
+                    if result.returncode != 0:
+                        print(f"Folder extraction failed: {mycmd}")
+                        return False
+                    # Temp hack: e.g. Revista_Española_de_Quimioterapia in Spellman
+                    # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
+                    # pwalk does already output UTF-8, weird, probably duckdb error 
+                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {tmpfile3.name} > {tmpfile.name}'
+                    result = subprocess.run(mycmd, shell=True)
+                    if result.returncode != 0:
+                        print(f"File conversion failed: {mycmd}")
+                        return False
                 
             sql_query = f"""SELECT UID as User, GID as Group, 
                             st_atime as NoAccDays, st_mtime as NoModDays,
@@ -160,7 +189,7 @@ def main():
             lastagedbytes=agedbytes[i]
 
     elif args.subcmd == 'archive':
-        print ("archive:",args.cores, args.noslurm, args.md5sum, args.folders)
+        print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
         fld = '" "'.join(args.folders)
         print (f'froster.py index "{fld}"')
     elif args.subcmd == 'restore':
@@ -205,6 +234,8 @@ class Archiver:
         return var1
 
 
+
+
 def parse_arguments():
     """
     Gather command-line arguments.
@@ -227,10 +258,9 @@ def parse_arguments():
     parser_index.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
         help='Number of cores to be allocated for the index. (default=4) ')
     parser_index.add_argument('--pwalk-csv', '-p', dest='pwalkcsv', action='store', default='', 
-        help='If someone else has already created csv files using pwalk ' +
-             'you can enter that folder here and do not require to run ' +
-             'the time consuming pwalk. \n' +
-             'You can also pass a specific CSV file instead of a folder' +
+        help='If someone else has already created CSV files using pwalk ' +
+             'you can enter a specific pwalk CSV file here and are not ' +
+             'required to run the time consuming pwalk.' +
              '')
     parser_index.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to index (separated by space), ' +
@@ -241,7 +271,9 @@ def parse_arguments():
     parser_archive.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute index directly")        
     parser_archive.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine.')                                
+        help='Number of cores to be allocated for the machine.')
+    parser_archive.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from ~/.aws/profiles should be used')
     parser_archive.add_argument( '--md5sum', '-m', dest='md5sum', action='store_true', default=False,
         help="show the technical contact / owner of the machine")
     parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
@@ -377,6 +409,135 @@ class ConfigManager:
             os.remove(os.path.join(section_path, entry))
         os.rmdir(section_path)
 
+class SlurmEssentials:
+    # submitted to https://github.com/amq92/simple_slurm/issues/18 for inclusion
+    def __init__(self, cfg=None):
+        self.script_lines = ["#!/bin/bash"]
+        self.cfg = cfg
+        self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
+        self.jobs = []
+        self.job_info = {}
+        self._add_lines_from_cfg()
+
+    def add_line(self, line):
+        if line:
+            self.script_lines.append(line)
+    
+    def _add_lines_from_cfg(self):
+        if not self.cfg:
+            return
+        slurm_lscratch = cfg.read('hpc','slurm_lscratch')
+        lscratch_mkdir = cfg.read('hpc','lscratch_mkdir')
+        lscratch_root  = cfg.read('hpc','lscratch_root')
+        if slurm_lscratch:
+            self.add_line(f'#SBATCH {slurm_lscratch}')
+        self.add_line(f'{lscratch_mkdir}')
+        if lscratch_root:
+            self.add_line('export TMPDIR=%s/${SLURM_JOB_ID}' % lscratch_root)
+
+        def _reorder_sbatch_lines(script_buffer):
+            # we need to make sure that all #BATCH are at the top
+            script_buffer.seek(0)
+            lines = script_buffer.readlines()
+            shebang_line = lines.pop(0)  # Remove the shebang line from the list of lines
+            sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
+            non_sbatch_lines = [line for line in lines if not line.startswith("#SBATCH")]
+            reordered_script = io.StringIO()
+            reordered_script.write(shebang_line)
+            for line in sbatch_lines:
+                reordered_script.write(line)
+            for line in non_sbatch_lines:
+                reordered_script.write(line)
+            # add a local scratch teardown, if configured
+            reordered_script.write(cfg.read('hpc','lscratch_rmdir'))
+            reordered_script.seek(0)
+            return reordered_script
+
+            # # Example usage:
+            # script_buffer = StringIO("""#!/bin/bash
+            # echo "Hello, SLURM!"
+            # #SBATCH --job-name=my_job
+            # #SBATCH --output=my_output.log
+            # echo "This is a test job."
+            # """.strip())
+            # reordered_script = reorder_sbatch_lines(script_buffer)
+            # print(reordered_script.getvalue())
+
+    def sbatch(self):
+        script = io.StringIO()
+        for line in self.script_lines:
+            script.write(line + "\n")
+        script.seek(0)
+        oscript = self._reorder_sbatch_lines(script)
+        output = subprocess.check_output('sbatch', shell=True, 
+                    text=True, input=oscript.read())
+        job_id = int(output.split()[-1])
+        return job_id
+
+    def squeue(self):
+        result = subprocess.run(["squeue", "--me", "-o", self.squeue_output_format],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Error running squeue: {result.stderr.strip()}")
+
+        self.jobs = self._parse_squeue_output(result.stdout.strip())
+
+    def _parse_squeue_output(self, output):
+        csv_file = io.StringIO(output)
+        reader = csv.DictReader(csv_file, delimiter=',', 
+                                quotechar='"', skipinitialspace=True)
+        jobs = [row for row in reader] 
+        return jobs
+
+    def print_jobs(self):
+        for job in self.jobs:
+            print(job)
+
+    def job_comment_read(self, job_id):
+        jobdict=self._scontrol_show_job(job_id)
+        return jobdict['Comment']
+
+    def job_comment_write(self, job_id, comment):
+        # a comment can be maximum 250 characters, will be chopped automatically 
+        args = ['update', f'JobId={str(job_id)}', f'Comment={comment}', str(job_id)]
+        result = subprocess.run(['scontrol'] + args, 
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Error running scontrol: {result.stderr.strip()}")
+
+    def _scontrol_show_job(self, job_id):
+        command = "scontrol"
+        args = ["--oneliner", "show", "job", str(job_id)]
+
+        result = subprocess.run(['scontrol'] + args, 
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Error running scontrol: {result.stderr.strip()}")
+
+        self.job_info = self._parse_scontrol_output(result.stdout)
+
+    def _parse_scontrol_output(self, output):
+        fields = output.strip().split()
+        job_info = {}
+        for field in fields:
+            key, value = field.split('=', 1)
+            job_info[key] = value
+        return job_info
+
+    def display_job_info(self):
+        print(self.job_info)
+
+#if __name__ == "__main__":
+#    se = SlurmEssentials()
+#    se.add_line('#SBATCH --job-name=my_job')
+#    se.add_line('sleep 600')
+#    jobid = se.sbatch()
+#    se.job_comment_write(jobid, "Lovely Comment") # 
+#    print('Job Comment:', se.job_comment_read(jobid))
+#    se.squeue()
+#    se.print_jobs()
 
 def copy_compiled_binary_from_github(user, repo, compilecmd, binary, targetfolder):
     tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
@@ -413,6 +574,7 @@ def copy_binary_from_zip_url(zipurl,binary,subwildcard,targetfolder):
             os.chmod(os.path.join(targetfolder, binary), 0o775)
         else:    
             print(f'Failed copying {binary} to {targetfolder}')
+
 
 if __name__ == "__main__":
     if not sys.platform.startswith('linux'):
