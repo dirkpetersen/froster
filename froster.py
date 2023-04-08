@@ -4,8 +4,11 @@
 Froster (almost) automates the challening task of 
 archiving many Terabytes of data on HPC systems
 """
-import sys, os, argparse, json, configparser, csv, io, urllib3, datetime
-import tarfile, zipfile, subprocess, shutil, tempfile, glob, pwd
+# internal modules
+import sys, os, argparse, json, configparser, csv, io
+import urllib3, datetime, tarfile, zipfile, subprocess
+import shutil, tempfile, glob, pwd, shlex, textwrap
+# stuff from pypi
 import requests, duckdb, rclone, boto3
 
 __app__ = 'Froster command line archiving tool'
@@ -18,29 +21,29 @@ def main():
     #test config manager 
     cfg = ConfigManager()
     # Write an entry
-    cfg.write('general', 'username', 'JohnDoe')
-    mylist = ['folder1', 'folder2', 'folder3']
-    mydict = {}
-    mydict['folder1']="43"
-    mydict['folder2']="42"
+    #cfg.write('general', 'username', 'JohnDoe')
+    #mylist = ['folder1', 'folder2', 'folder3']
+    #mydict = {}
+    #mydict['folder1']="43"
+    #mydict['folder2']="42"
 
-    cfg.write('general', 'mylist', mylist)
-    cfg.write('general', 'mydict', mydict)
+    #cfg.write('general', 'mylist', mylist)
+    #cfg.write('general', 'mydict', mydict)
 
     # Read an entry
-    username = cfg.read('general', 'username')
-    print(username)  # Output: JohnDoe
-    print(cfg.read('general', 'mylist'))
-    print(cfg.read('general', 'mydict'))
+    #username = cfg.read('general', 'username')
+    #print(username)  # Output: JohnDoe
+    #print(cfg.read('general', 'mylist'))
+    #print(cfg.read('general', 'mydict'))
 
-    print("home paths:",cfg.homepaths)
+    #print("home paths:",cfg.homepaths)
 
     # Delete an entry
     #cfg.delete('application', 'username')
     # Delete a section
     #config.delete_section('application')   
 
-    arch = Archiver(args.debug, "test")
+    arch = Archiver(args, cfg)
     if args.subcmd == 'config':
         print ("config")
         arch.config("one", "two")
@@ -71,18 +74,26 @@ def main():
             args.awsprofile = cfg.read('general', 'aws_profile')
 
     elif args.subcmd == 'index':
-        print ("index:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
-        arch.index("one", "two")        
+        if args.debug:
+            print ("Command line:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
 
-        if os.getenv('SLURM_JOB_ID'):
-            print('Continue with indexing')
-            if args.pwalkcsv == '':
-                for folder in args.folders:
-                    pass # execute function 
-            else:
-                pass # execute function
-            
+        if not args.folders:
+            print('you must point to at least one folder in your command line')
+            return False
+
+        for fld in args.folders:
+            if not os.path.isdir(fld):
+                print(f'The folder {fld} does not exist. Check your command line!')
+                return False
+    
+        if os.getenv('SLURM_JOB_ID') or args.noslurm:
+                for fld in args.folders:
+                    print (f'Indexing folder {fld} inside Slurm or --no-slurm=True')
+                    arch.index(fld)            
+
         elif shutil.which('sbatch') and not args.noslurm:
+
+            print (f'Sumitting Slurm job or --no-slurm=False')
             
             se = SlurmEssentials()
             myjobname="fun"
@@ -90,37 +101,80 @@ def main():
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
             se.add_line(f'#SBATCH --output=froster-slurm.out')
             se.add_line(f'#SBATCH --time=1-0')
-            se.add_line(f'ml python')
-            fld = '" "'.join(args.folders)
-            se.add_line(f'python3 froster.py index "{fld}"')
+            se.add_line(f'ml python')            
+            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            se.add_line(f"python3 {cmdline}")
             jobid = se.sbatch()
             print(f'Submit indexing job {jobid}')
+
+    elif args.subcmd == 'archive':
+        print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
+        fld = '" "'.join(args.folders)
+        print (f'froster.py index "{fld}"')
+    elif args.subcmd == 'restore':
+        print ("restore:",args.cores, args.noslurm, args.folders)
+    elif args.subcmd == 'delete':
+        print ("delete:",args.folders)
+
+
+def getusr(uid):
+    try:
+        return pwd.getpwuid(uid)[0]
+    except:
+        return uid
+
+def getgrp(gid):
+    try:
+        return grp.getgrgid(gid)[0]
+    except:
+        return gid
+
+def days(unixtime):
+    diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
+    return diff.days
+
+
+class Archiver:
+    def __init__(self, args, cfg):
+        self.args = args
+        self.cfg = cfg
+        self.url = 'https://api.reporter.nih.gov/v2/projects/search'
+        self.grants = []
+
+    def config(self, var1, var2):
+        return var1
+
+    def index(self, pwalkfolder):
 
         # move down to class 
         daysaged=[5475,3650,1825,1095,730,365,90,30]
         thresholdGB=1
         TiB=1099511627776
         GiB=1073741824
-
-        pwalkfolder = args.folders[0]
         
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
         con.execute('PRAGMA experimental_parallel_csv=TRUE;')
-        con.execute(f'PRAGMA threads={args.cores};')
+        con.execute(f'PRAGMA threads={self.args.cores};')
 
+        locked_dirs = ''
         with tempfile.NamedTemporaryFile() as tmpfile:
             with tempfile.NamedTemporaryFile() as tmpfile2:
-                if not args.pwalkcsv:
+                if not self.args.pwalkcsv:
+                    #if not pwalkfolder:
+                    #    print (" Error: Either pass a folder or a --pwalk-csv file on the command line.")
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
-                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
+                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name} 2> {tmpfile2.name}.err'
                     result = subprocess.run(mycmd, shell=True)
                     if result.returncode != 0:
                         print(f"pwalk run failed: {mycmd}")
                         return False
+                    grepper = f'grep "Locked Dir:" {tmpfile2.name}.err'
+                    locked_dirs = subprocess.check_output(grepper, shell=True)
+                    os.remove(f'{tmpfile2.name}.err')                    
                     pwalkcsv = tmpfile2.name
                 else:
-                    pwalkcsv = args.pwalkcsv
+                    pwalkcsv = self.args.pwalkcsv
                 with tempfile.NamedTemporaryFile() as tmpfile3:
                     # removing all files from pwalk output, keep only folders
                     mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {tmpfile3.name}'
@@ -142,7 +196,7 @@ def main():
                             pw_fcount as FileCount, pw_dirsum as DirSize, 
                             pw_dirsum/1099511627776 as TiB,
                             pw_dirsum/1073741824 as GiB, 
-                            pw_dirsum/1048576/pw_fcount as MiBAvg,
+                            pw_dirsum/1048576/pw_fcount as MiBAvg,                            
                             filename as Folder
                         FROM read_csv_auto('{tmpfile.name}', 
                                 ignore_errors=1)
@@ -150,12 +204,10 @@ def main():
                         ORDER BY pw_dirsum Desc
                     """  # pw_dirsum > 1073741824
             rows = con.execute(sql_query).fetchall()
-
+            # also query 'parent-inode' as pi,
+            
             # Get the column names
             header = con.execute(sql_query).description
-
-        # Write the result back to a new CSV file
-        mycsv = 'hotspots.csv'
 
         totalbytes=0
         agedbytes=[]
@@ -163,78 +215,104 @@ def main():
             agedbytes.append(0)
         numhotspots=0
 
-        with open(mycsv, 'w') as f:
-            writer = csv.writer(f, dialect='excel')
-            writer.writerow([col[0] for col in header])
-            for r in rows:
-                row = list(r)
-                row[2]=days(row[2])
-                if row[5] >= thresholdGB*GiB:
-                    row[0]=getusr(row[0])
-                    row[1]=getgrp(row[1])
-                    row[3]=days(row[3])
-                    writer.writerow(row)
-                    numhotspots+=1
-                    totalbytes+=row[5]
-                for i in range(0,len(daysaged)):
-                    if row[2] > daysaged[i]:
-                        agedbytes[i]+=row[5]
+        mycsv = self._get_hotspots_path(pwalkfolder)
+        with tempfile.NamedTemporaryFile() as tmpcsv:
+            with open(tmpcsv.name, 'w') as f:
+                writer = csv.writer(f, dialect='excel')
+                writer.writerow([col[0] for col in header])
+                for r in rows:
+                    row = list(r)
+                    row[2]=days(row[2])
+                    if row[5] >= thresholdGB*GiB:
+                        row[0]=getusr(row[0])
+                        row[1]=getgrp(row[1])
+                        row[3]=days(row[3])
+                        writer.writerow(row)
+                        numhotspots+=1
+                        totalbytes+=row[5]
+                    for i in range(0,len(daysaged)):
+                        if row[2] > daysaged[i]:
+                            agedbytes[i]+=row[5]
+            shutil.copy(tmpcsv.name,mycsv)
 
-        print(f" \nWrote {mycsv} with {numhotspots} hotspots >= {thresholdGB} GiB with a total disk use of {round(totalbytes/TiB,3)} TiB")
+        # dedented multi-line retaining \n
+        print(textwrap.dedent(f'''       
+            Wrote {os.path.basename(mycsv)}
+            with {numhotspots} hotspots >= {thresholdGB} GiB 
+            with a total disk use of {round(totalbytes/TiB,3)} TiB
+             '''))
         lastagedbytes=0
-        print(f' \nHistogram for {len(rows)} total folders processed:')
+        print(f'Histogram for {len(rows)} total folders processed:')
         for i in range(0,len(daysaged)):
             if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
-                print(f"  {round(agedbytes[i]/TiB,3)} TiB have not been accessed for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)")
+                # dedented multi-line removing \n
+                print(textwrap.dedent(f'''  
+                {round(agedbytes[i]/TiB,3)} TiB have not been accessed 
+                for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
+                ''').replace('\n', ''))
             lastagedbytes=agedbytes[i]
 
-    elif args.subcmd == 'archive':
-        print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
-        fld = '" "'.join(args.folders)
-        print (f'froster.py index "{fld}"')
-    elif args.subcmd == 'restore':
-        print ("restore:",args.cores, args.noslurm, args.folders)
-    elif args.subcmd == 'delete':
-        print ("delete:",args.folders)
+        if locked_dirs:
+            print('\nWARNING: You cannot access folder(s):\n',
+                   locked_dirs.decode("utf-8"))
 
-    #if args:
-    #   arch.queryByProject(args.projects)
+    def archive(self, var1, var2):
+        pass
 
-def getusr(uid):
-    try:
-        return pwd.getpwuid(uid)[0]
-    except:
-        return uid
-
-def getgrp(gid):
-    try:
-        return grp.getgrgid(gid)[0]
-    except:
-        return gid
-
-def days(unixtime):
-    diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
-    return diff.days
-
-
-class Archiver:
-    def __init__(self, verbose, active):
-        self.verbose = verbose
-        self.active = active
-        self.url = 'https://api.reporter.nih.gov/v2/projects/search'
-        self.grants = []
-
-    def config(self, var1, var2):
+    def something(self, var1, var2):
         return var1
+    
+    def _get_hotspots_path(self,folder):
+        # get a full path name of a new hotspots file
+        # based on a folder name that has been crawled
+        folder = folder.rstrip(os.path.sep)
+        hsfld = os.path.join(self.cfg.config_root, 'hotspots')
+        os.makedirs(hsfld,exist_ok=True)
+        mountlist = self._get_mount_info()
+        traildir = ''
+        hsfile = folder.replace('/','+') + '.csv'
+        for mnt in mountlist:
+            if folder.startswith(mnt['mount_point']):
+                traildir = self._get_last_directory(
+                    mnt['mount_point'])
+                hsfile = f'@{traildir}+{hsfile}'
+                if len(hsfile) > 255:
+                    hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
+        return os.path.join(hsfld,hsfile)
 
-    def index(self, var1, var2):    
-        return var1
+    def _get_last_directory(self, path):
+        # Remove any trailing slashes
+        path = path.rstrip(os.path.sep)
+        # Split the path by the separator
+        path_parts = path.split(os.path.sep)
+        # Return the last directory
+        return path_parts[-1]
 
-    def something(self, var1, var2):    
-        return var1
-
-
-
+    
+    def _get_mount_info(self,fs_types=None):
+        file_path='/proc/self/mountinfo'
+        if fs_types is None:
+            fs_types = {'nfs', 'nfs4', 'cifs', 'smb', 'afs', 'ncp', 
+                        'ncpfs', 'glusterfs', 'ceph', 'beegfs', 
+                        'lustre', 'orangefs', 'wekafs', 'gpfs'}
+        mountinfo_list = []
+        with open(file_path, 'r') as f:
+            for line in f:
+                fields = line.strip().split(' ')
+                _, _, _, _, mount_point, _ = fields[:6]
+                for field in fields[6:]:
+                    if field == '-':
+                        break
+                fs_type, mount_source, _ = fields[-3:]
+                mount_source_folder = mount_source.split(':')[-1] if ':' in mount_source else ''
+                if fs_type in fs_types:
+                    mountinfo_list.append({
+                        'mount_source_folder': mount_source_folder,
+                        'mount_point': mount_point,
+                        'fs_type': fs_type,
+                        'mount_source': mount_source,
+                    })
+        return mountinfo_list    
 
 def parse_arguments():
     """
@@ -307,9 +385,10 @@ class ConfigManager:
 
     def __init__(self):
         self.home_dir = os.path.expanduser('~')
-        self.config_dir = os.path.join(self.home_dir, '.config', 'froster')
-        self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
+        self.config_root = self._get_config_root()
         self.homepaths = self._get_home_paths()
+        self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
+        self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
         self._set_env_vars("default")
         
     def _set_env_vars(self, profile):
@@ -349,8 +428,18 @@ class ConfigManager:
         }
         return sorted(dirs_inside_home, key=len)
         
+    def _get_config_root(self):
+        theroot=os.path.join(self.home_dir, '.config', 'froster')
+        rootfile = os.path.join(theroot, 'config_root')
+        if os.path.exists(rootfile):
+            with open(rootfile, 'r') as myfile:
+                theroot = myfile.read()
+                if not os.path.isdir(theroot):
+                    raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
+        return theroot
+
     def _get_section_path(self, section):
-        return os.path.join(self.config_dir, section)
+        return os.path.join(self.config_root, section)
 
     def _get_entry_path(self, section, entry):
         section_path = self._get_section_path(section)
