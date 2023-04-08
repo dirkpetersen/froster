@@ -7,7 +7,7 @@ archiving many Terabytes of data on HPC systems
 # internal modules
 import sys, os, argparse, json, configparser, csv, io
 import urllib3, datetime, tarfile, zipfile, subprocess
-import shutil, tempfile, glob, pwd, shlex, textwrap
+import shutil, tempfile, glob, pwd, shlex, textwrap, getpass
 # stuff from pypi
 import requests, duckdb, rclone, boto3
 
@@ -87,29 +87,30 @@ def main():
             if not os.path.isdir(fld):
                 print(f'The folder {fld} does not exist. Check your command line!')
                 return False
-    
-        if os.getenv('SLURM_JOB_ID') or args.noslurm:
-                for fld in args.folders:
-                    fld = fld.rstrip(os.path.sep)
-                    print (f'Indexing folder {fld} inside Slurm or --no-slurm=True')
-                    arch.index(fld)            
-
-        elif shutil.which('sbatch') and not args.noslurm:
-
-            print (f'Sumitting Slurm job or --no-slurm=False')
             
+        if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+            for fld in args.folders:
+                fld = fld.rstrip(os.path.sep)
+                print (f'Indexing folder {fld} inside Slurm or --no-slurm=True')
+                arch.index(fld)            
+        else:             
             se = SlurmEssentials(args, cfg)
-            myjobname="fun"
+            label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
+            myjobname=f'froster:index:{label}'
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
             se.add_line(f'#SBATCH --mem=64G')
-            #se.add_line(f'#SBATCH --output=froster-slurm.out')
+            se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,END')
+            se.add_line(f'#SBATCH --mail-user={getpass.getuser()}')
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')            
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
             se.add_line(f"python3 {cmdline}")
             jobid = se.sbatch()
             print(f'Submitted froster indexing job: {jobid}')
+            print(f'Check Job Output:')
+            print(f' tail -f froster-index-{label}-{jobid}.out')
 
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
@@ -276,6 +277,11 @@ class Archiver:
         # based on a folder name that has been crawled
         hsfld = os.path.join(self.cfg.config_root, 'hotspots')
         os.makedirs(hsfld,exist_ok=True)
+        return os.path.join(hsfld,self._get_hotspots_file(folder))
+
+    def _get_hotspots_file(self,folder):
+        # get a full path name of a new hotspots file
+        # based on a folder name that has been crawled
         mountlist = self._get_mount_info()
         traildir = ''
         hsfile = folder.replace('/','+') + '.csv'
@@ -288,11 +294,8 @@ class Archiver:
                 hsfile = f'@{traildir}{hsfile}'
                 if len(hsfile) > 255:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
-        return os.path.join(hsfld,hsfile)
-
-
-
-
+        return hsfile
+    
     def _get_last_directory(self, path):
         # Remove any trailing slashes
         path = path.rstrip(os.path.sep)
