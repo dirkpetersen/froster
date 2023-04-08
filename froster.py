@@ -5,11 +5,13 @@ Froster (almost) automates the challening task of
 archiving many Terabytes of data on HPC systems
 """
 # internal modules
-import sys, os, argparse, json, configparser, csv, io
+import sys, os, argparse, json, configparser, csv, io, fnmatch
 import urllib3, datetime, tarfile, zipfile, subprocess
 import shutil, tempfile, glob, pwd, shlex, textwrap, getpass
 # stuff from pypi
 import requests, duckdb, rclone, boto3
+from textual.app import App, ComposeResult
+from textual.widgets import DataTable
 
 __app__ = 'Froster command line archiving tool'
 __version__ = '0.1'
@@ -115,7 +117,18 @@ def main():
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
         fld = '" "'.join(args.folders)
-        print (f'froster.py index "{fld}"')
+        print (f'froster.py archive "{fld}"')
+
+        hsfolder = os.path.join(cfg.config_root, 'hotspots')
+        csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+        # Sort the CSV files by their modification time in descending order (newest first)
+        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
+        # Open the newest CSV file
+        newest_csv_path = os.path.join(hsfolder, csv_files[0])
+        with open(newest_csv_path, 'r') as csvfile:
+            app = TableApp()
+            print(app.run())
+
     elif args.subcmd == 'restore':
         print ("restore:",args.cores, args.noslurm, args.folders)
     elif args.subcmd == 'delete':
@@ -138,6 +151,50 @@ def days(unixtime):
     diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
     return diff.days
 
+CSV = """id,GB,avg(MB),folder
+1,213,5,/home/groups/test/folder2/main
+2,180,140,/home/groups/test/folder1/temp
+3,140,190,/home/groups/test/folder5
+4,99,10003,/home/groups/test/folder3/other
+5,54,6,/home/groups/test/folder4/data
+"""
+
+class TableApp(App[list]):
+    #def __init__(self, filehandle):
+    #    self.filehandle = filehandle
+
+    def compose(self) -> ComposeResult:
+        table = DataTable()
+        table.focus()
+        table.cursor_type = "row"
+        #table.fixed_columns = 1
+        #table.fixed_rows = 1
+        yield table
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        rows = csv.reader(self.get_csv()) #or io.StringIO(CSV)
+        #rows = csv.reader(io.StringIO(CSV))
+        table.add_columns(*next(rows))
+        table.add_rows(rows)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.exit(self.query_one(DataTable).get_row(event.row_key))
+
+    def get_csv(self):
+        home_dir = os.path.expanduser('~')
+        hsfolder = os.path.join(home_dir,'.config','froster', 'hotspots')
+        csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+        # Sort the CSV files by their modification time in descending order (newest first)
+        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
+        # Open the newest CSV file
+        newest_csv_path = os.path.join(hsfolder, csv_files[0])
+        print(newest_csv_path)
+        return open(newest_csv_path, 'r')
+
+#if __name__ == "__main__":
+#    app = TableApp()
+#    print(app.run())
 
 class Archiver:
     def __init__(self, args, cfg):
