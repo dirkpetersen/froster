@@ -164,14 +164,14 @@ class Archiver:
                     #if not pwalkfolder:
                     #    print (" Error: Either pass a folder or a --pwalk-csv file on the command line.")
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
-                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name} 2> {tmpfile2.name}.err'
-                    result = subprocess.run(mycmd, shell=True)
-                    if result.returncode != 0:
-                        print(f"pwalk run failed: {mycmd}")
+                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
+                    ret = subprocess.run(mycmd, shell=True, 
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if ret.returncode != 0:
+                        print(f'pwalk run failed: {mycmd} Error:\n{ret.stderr}')
                         return False
-                    grepper = f'grep "Locked Dir:" {tmpfile2.name}.err'
-                    locked_dirs = subprocess.check_output(grepper, shell=True)
-                    os.remove(f'{tmpfile2.name}.err')                    
+                    locked_dirs = [l for l in ret.stderr.splitlines() if "Locked Dir:" in l]
+                    #os.remove(f'{tmpfile2.name}.err')                    
                     pwalkcsv = tmpfile2.name
                 else:
                     pwalkcsv = self.args.pwalkcsv
