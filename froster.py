@@ -63,6 +63,11 @@ def main():
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
         copy_binary_from_zip_url(rclone_url, 'rclone', 
                                '/rclone-v*/',cfg.homepaths[0])
+
+        # general setup 
+        cfg.write('general', 'domain', 'ohsu.edu')
+        domain = cfg.read('general', 'domain')
+        cfg.write('general', 'email', f'{getpass.getuser()}@{domain}')
         
         # setup local scratch spaces, OHSU specific 
         cfg.write('hpc', 'slurm_lscratch', '--gres disk:1024') # get 1TB scratch space
@@ -99,12 +104,13 @@ def main():
             se = SlurmEssentials(args, cfg)
             label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
             myjobname=f'froster:index:{label}'
+            email=cfg.read('general', 'email')
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
             se.add_line(f'#SBATCH --mem=64G')
             se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,END')
-            se.add_line(f'#SBATCH --mail-user={getpass.getuser()}')
+            se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+            se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')            
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
