@@ -70,8 +70,10 @@ def main():
 
         # cloud setup 
         cfg.write('general', 'aws_profile', 'default') # get 1TB scratch space
-        if not args.awsprofile:
-            args.awsprofile = cfg.read('general', 'aws_profile')
+        
+        # need to fix
+        #if not args.awsprofile:
+        #    args.awsprofile = cfg.read('general', 'aws_profile')
 
     elif args.subcmd == 'index':
         if args.debug:
@@ -95,7 +97,7 @@ def main():
 
             print (f'Sumitting Slurm job or --no-slurm=False')
             
-            se = SlurmEssentials()
+            se = SlurmEssentials(args, cfg)
             myjobname="fun"
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
@@ -105,7 +107,7 @@ def main():
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
             se.add_line(f"python3 {cmdline}")
             jobid = se.sbatch()
-            print(f'Submit indexing job {jobid}')
+            print(f'Submitted indexing job: {jobid}')
 
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
@@ -170,8 +172,8 @@ class Archiver:
                     if ret.returncode != 0:
                         print(f'pwalk run failed: {mycmd} Error:\n{ret.stderr}')
                         return False
-                    locked_dirs = [l for l in ret.stderr.splitlines() if "Locked Dir:" in l]
-                    #os.remove(f'{tmpfile2.name}.err')                    
+                    lines = ret.stderr.decode('utf-8').splitlines()
+                    locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l]) 
                     pwalkcsv = tmpfile2.name
                 else:
                     pwalkcsv = self.args.pwalkcsv
@@ -253,9 +255,14 @@ class Archiver:
             lastagedbytes=agedbytes[i]
 
         if locked_dirs:
-            print('\nWARNING: You cannot access folder(s):\n',
-                   locked_dirs.decode("utf-8"))
-
+            print('\n'+locked_dirs)
+            print(textwrap.dedent(f'''
+            \n   WARNING: You cannot access the locked folder(s) 
+            above, because you don't have permissions to see
+            their content. You will not be able to archive these
+            folders until you have the permissions granted.
+            '''))
+            
     def archive(self, var1, var2):
         pass
 
@@ -331,7 +338,7 @@ def parse_arguments():
     # ***
     parser_index = subparsers.add_parser('index', aliases=['idx'], 
         help='create a database of sub-folders to select from.')
-    parser_index.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=True,
+    parser_index.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute index directly")
     parser_index.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
         help='Number of cores to be allocated for the index. (default=4) ')
@@ -500,9 +507,10 @@ class ConfigManager:
 
 class SlurmEssentials:
     # submitted to https://github.com/amq92/simple_slurm/issues/18 for inclusion
-    def __init__(self, cfg=None):
+    def __init__(self, args, cfg):
         self.script_lines = ["#!/bin/bash"]
         self.cfg = cfg
+        self.args = args
         self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
         self.jobs = []
         self.job_info = {}
@@ -513,44 +521,42 @@ class SlurmEssentials:
             self.script_lines.append(line)
     
     def _add_lines_from_cfg(self):
-        if not self.cfg:
-            return
-        slurm_lscratch = cfg.read('hpc','slurm_lscratch')
-        lscratch_mkdir = cfg.read('hpc','lscratch_mkdir')
-        lscratch_root  = cfg.read('hpc','lscratch_root')
+        slurm_lscratch = self.cfg.read('hpc','slurm_lscratch')
+        lscratch_mkdir = self.cfg.read('hpc','lscratch_mkdir')
+        lscratch_root  = self.cfg.read('hpc','lscratch_root')
         if slurm_lscratch:
             self.add_line(f'#SBATCH {slurm_lscratch}')
         self.add_line(f'{lscratch_mkdir}')
         if lscratch_root:
             self.add_line('export TMPDIR=%s/${SLURM_JOB_ID}' % lscratch_root)
 
-        def _reorder_sbatch_lines(script_buffer):
-            # we need to make sure that all #BATCH are at the top
-            script_buffer.seek(0)
-            lines = script_buffer.readlines()
-            shebang_line = lines.pop(0)  # Remove the shebang line from the list of lines
-            sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
-            non_sbatch_lines = [line for line in lines if not line.startswith("#SBATCH")]
-            reordered_script = io.StringIO()
-            reordered_script.write(shebang_line)
-            for line in sbatch_lines:
-                reordered_script.write(line)
-            for line in non_sbatch_lines:
-                reordered_script.write(line)
-            # add a local scratch teardown, if configured
-            reordered_script.write(cfg.read('hpc','lscratch_rmdir'))
-            reordered_script.seek(0)
-            return reordered_script
+    def _reorder_sbatch_lines(self, script_buffer):
+        # we need to make sure that all #BATCH are at the top
+        script_buffer.seek(0)
+        lines = script_buffer.readlines()
+        shebang_line = lines.pop(0)  # Remove the shebang line from the list of lines
+        sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
+        non_sbatch_lines = [line for line in lines if not line.startswith("#SBATCH")]
+        reordered_script = io.StringIO()
+        reordered_script.write(shebang_line)
+        for line in sbatch_lines:
+            reordered_script.write(line)
+        for line in non_sbatch_lines:
+            reordered_script.write(line)
+        # add a local scratch teardown, if configured
+        reordered_script.write(self.cfg.read('hpc','lscratch_rmdir'))
+        reordered_script.seek(0)
+        return reordered_script
 
-            # # Example usage:
-            # script_buffer = StringIO("""#!/bin/bash
-            # echo "Hello, SLURM!"
-            # #SBATCH --job-name=my_job
-            # #SBATCH --output=my_output.log
-            # echo "This is a test job."
-            # """.strip())
-            # reordered_script = reorder_sbatch_lines(script_buffer)
-            # print(reordered_script.getvalue())
+        # # Example usage:
+        # script_buffer = StringIO("""#!/bin/bash
+        # echo "Hello, SLURM!"
+        # #SBATCH --job-name=my_job
+        # #SBATCH --output=my_output.log
+        # echo "This is a test job."
+        # """.strip())
+        # reordered_script = reorder_sbatch_lines(script_buffer)
+        # print(reordered_script.getvalue())
 
     def sbatch(self):
         script = io.StringIO()
@@ -561,6 +567,11 @@ class SlurmEssentials:
         output = subprocess.check_output('sbatch', shell=True, 
                     text=True, input=oscript.read())
         job_id = int(output.split()[-1])
+        if args.debug:
+            oscript.seek(0)
+            with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
+                file.write(oscript.read())
+                print(f'Debug script created: submitted-{job_id}.sh')
         return job_id
 
     def squeue(self):
