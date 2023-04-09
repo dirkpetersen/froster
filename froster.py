@@ -287,11 +287,11 @@ class Archiver:
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
                     row = list(r)
-                    row[1]=self.daysago(self._get_newest_file_atime(row[5],row[1]))
                     if row[9] >= thresholdGB*GiB:
-                        row[0]=self.uid2user(row[0])
-                        row[6]=self.gid2group(row[6])
+                        row[0]=self.uid2user(row[0])                        
+                        row[1]=self.daysago(self._get_newest_file_atime(row[5],row[1]))
                         row[2]=self.daysago(row[2])
+                        row[6]=self.gid2group(row[6])
                         writer.writerow(row)
                         numhotspots+=1
                         totalbytes+=row[9]
@@ -369,7 +369,7 @@ class Archiver:
         # Because the folder atime is reset when crawling we need
         # to lookup the atime of the last accessed file in this folder
         if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
-            if self.args.debug:
+            if self.args.debug and not self.args.pwalkcsv:
                 print(f" Invalid folder path: {folder_path}")
             return folder_atime
         last_accessed_time = None
