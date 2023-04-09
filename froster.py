@@ -90,6 +90,7 @@ def main():
     
         if os.getenv('SLURM_JOB_ID') or args.noslurm:
                 for fld in args.folders:
+                    fld = fld.rstrip(os.path.sep)
                     print (f'Indexing folder {fld} inside Slurm or --no-slurm=True')
                     arch.index(fld)            
 
@@ -101,13 +102,14 @@ def main():
             myjobname="fun"
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-            se.add_line(f'#SBATCH --output=froster-slurm.out')
+            se.add_line(f'#SBATCH --mem=64G')
+            #se.add_line(f'#SBATCH --output=froster-slurm.out')
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')            
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
             se.add_line(f"python3 {cmdline}")
             jobid = se.sbatch()
-            print(f'Submitted indexing job: {jobid}')
+            print(f'Submitted froster indexing job: {jobid}')
 
     elif args.subcmd == 'archive':
         print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
@@ -272,7 +274,6 @@ class Archiver:
     def _get_hotspots_path(self,folder):
         # get a full path name of a new hotspots file
         # based on a folder name that has been crawled
-        folder = folder.rstrip(os.path.sep)
         hsfld = os.path.join(self.cfg.config_root, 'hotspots')
         os.makedirs(hsfld,exist_ok=True)
         mountlist = self._get_mount_info()
@@ -282,10 +283,15 @@ class Archiver:
             if folder.startswith(mnt['mount_point']):
                 traildir = self._get_last_directory(
                     mnt['mount_point'])
-                hsfile = f'@{traildir}+{hsfile}'
+                hsfile = folder.replace(mnt['mount_point'],'')
+                hsfile = hsfile.replace('/','+') + '.csv'
+                hsfile = f'@{traildir}{hsfile}'
                 if len(hsfile) > 255:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
         return os.path.join(hsfld,hsfile)
+
+
+
 
     def _get_last_directory(self, path):
         # Remove any trailing slashes
@@ -294,8 +300,7 @@ class Archiver:
         path_parts = path.split(os.path.sep)
         # Return the last directory
         return path_parts[-1]
-
-    
+ 
     def _get_mount_info(self,fs_types=None):
         file_path='/proc/self/mountinfo'
         if fs_types is None:
