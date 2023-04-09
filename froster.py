@@ -218,6 +218,8 @@ class Archiver:
                     #    print (" Error: Either pass a folder or a --pwalk-csv file on the command line.")
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
                     mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
+                    if self.args.debug:
+                        print(f' Running {mycmd} ...', flush=True)
                     ret = subprocess.run(mycmd, shell=True, 
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if ret.returncode != 0:
@@ -231,6 +233,8 @@ class Archiver:
                 with tempfile.NamedTemporaryFile() as tmpfile3:
                     # removing all files from pwalk output, keep only folders
                     mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {tmpfile3.name}'
+                    if self.args.debug:
+                        print(f' Running {mycmd} ...', flush=True)
                     result = subprocess.run(mycmd, shell=True)
                     if result.returncode != 0:
                         print(f"Folder extraction failed: {mycmd}")
@@ -239,6 +243,8 @@ class Archiver:
                     # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
                     # pwalk does already output UTF-8, weird, probably duckdb error 
                     mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {tmpfile3.name} > {tmpfile.name}'
+                    if self.args.debug:
+                        print(f' Running {mycmd} ...', flush=True)
                     result = subprocess.run(mycmd, shell=True)
                     if result.returncode != 0:
                         print(f"File conversion failed: {mycmd}")
@@ -256,6 +262,8 @@ class Archiver:
                         WHERE pw_fcount > -1 AND pw_dirsum > 0
                         ORDER BY pw_dirsum Desc
                     """  # pw_dirsum > 1073741824
+            if self.args.debug:
+                print(f' Running SQL query on csv {tmpfile.name} ...', flush=True)
             rows = con.execute(sql_query).fetchall()
             # also query 'parent-inode' as pi,
             
@@ -269,11 +277,13 @@ class Archiver:
         numhotspots=0
 
         mycsv = self._get_hotspots_path(pwalkfolder)
+        if self.args.debug:
+            print(f' Filter temp CSV file and write results to {mycsv} ...', flush=True)
+
         with tempfile.NamedTemporaryFile() as tmpcsv:
             with open(tmpcsv.name, 'w') as f:
                 writer = csv.writer(f, dialect='excel')
                 writer.writerow([col[0] for col in header])
-
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
                     row = list(r)
