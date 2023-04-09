@@ -371,6 +371,7 @@ class Archiver:
         if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
             if self.args.debug:
                 print(f" Invalid folder path: {folder_path}")
+            return folder_atime
         last_accessed_time = None
         last_accessed_file = None
         for file_name in os.listdir(folder_path):
@@ -381,7 +382,7 @@ class Archiver:
                     last_accessed_time = accessed_time
                     last_accessed_file = file_path
         if last_accessed_time == None:
-            last_accessed_time =folder_atime
+            last_accessed_time = folder_atime
         return last_accessed_time
 
     def _get_hotspots_path(self,folder):
