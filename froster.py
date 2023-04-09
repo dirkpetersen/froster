@@ -307,30 +307,30 @@ class Archiver:
                 Wrote {os.path.basename(mycsv)}
                 with {numhotspots} hotspots >= {thresholdGB} GiB 
                 with a total disk use of {round(totalbytes/TiB,3)} TiB
-                '''))
+                '''), flush=True)
             lastagedbytes=0
-            print(f'Histogram for {len(rows)} total folders processed:')
+            print(f'Histogram for {len(rows)} total folders processed:', flush=True)
             for i in range(0,len(daysaged)):
                 if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
                     # dedented multi-line removing \n
                     print(textwrap.dedent(f'''  
                     {round(agedbytes[i]/TiB,3)} TiB have not been accessed 
                     for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
-                    ''').replace('\n', ''))
+                    ''').replace('\n', ''), flush=True)
                 lastagedbytes=agedbytes[i]
         else:
-            print(f'No folders larger than {thresholdGB} GiB found under {pwalkfolder}')                
+            print(f'No folders larger than {thresholdGB} GiB found under {pwalkfolder}', flush=True)                
 
         if locked_dirs:
-            print('\n'+locked_dirs)
+            print('\n'+locked_dirs, flush=True)
             print(textwrap.dedent(f'''
             \n   WARNING: You cannot access the locked folder(s) 
             above, because you don't have permissions to see
             their content. You will not be able to archive these
             folders until you have the permissions granted.
-            '''))
-
-
+            '''), flush=True)
+        if self.args.debug:
+            print(' Done indexing!', flush=True)
                 
     def archive(self, var1, var2):
         pass
