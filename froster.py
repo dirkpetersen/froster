@@ -84,7 +84,8 @@ def main():
 
     elif args.subcmd == 'index':
         if args.debug:
-            print ("Command line:",args.cores, args.noslurm, args.pwalkcsv, args.folders)
+            print ("Command line:",args.cores, args.noslurm, 
+                    args.pwalkcsv, args.folders,flush=True)
 
         if not args.folders:
             print('you must point to at least one folder in your command line')
@@ -98,7 +99,7 @@ def main():
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
-                print (f'Indexing folder {fld} inside Slurm or --no-slurm=True')
+                print (f'Indexing folder {fld}, please wait ...', flush=True)
                 arch.index(fld)            
         else:             
             se = SlurmEssentials(args, cfg)
@@ -360,7 +361,7 @@ class Archiver:
         if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
             if self.args.debug:
                 print(f"Invalid folder path: {folder_path}")
-        last_accessed_time = folder_atime
+        last_accessed_time = None
         last_accessed_file = None
         for file_name in os.listdir(folder_path):
             file_path = os.path.join(folder_path, file_name)
@@ -369,6 +370,8 @@ class Archiver:
                 if last_accessed_time is None or accessed_time > last_accessed_time:
                     last_accessed_time = accessed_time
                     last_accessed_file = file_path
+        if last_accessed_time == None:
+            last_accessed_time =folder_atime
         return last_accessed_time
 
     def _get_hotspots_path(self,folder):
