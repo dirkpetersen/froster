@@ -84,7 +84,7 @@ def main():
 
     elif args.subcmd == 'index':
         if args.debug:
-            print ("Command line:",args.cores, args.noslurm, 
+            print (" Command line:",args.cores, args.noslurm, 
                     args.pwalkcsv, args.folders,flush=True)
 
         if not args.folders:
@@ -263,7 +263,7 @@ class Archiver:
                         ORDER BY pw_dirsum Desc
                     """  # pw_dirsum > 1073741824
             if self.args.debug:
-                print(f' Running SQL query on csv {tmpfile.name} ...', flush=True)
+                print(f' Running SQL query on CSV file {tmpfile.name} ...', flush=True)
             rows = con.execute(sql_query).fetchall()
             # also query 'parent-inode' as pi,
             
@@ -278,7 +278,7 @@ class Archiver:
 
         mycsv = self._get_hotspots_path(pwalkfolder)
         if self.args.debug:
-            print(f' Filter temp CSV file and write results to {mycsv} ...', flush=True)
+            print(f' Running filter and write results to CSV file {mycsv} ...', flush=True)
 
         with tempfile.NamedTemporaryFile() as tmpcsv:
             with open(tmpcsv.name, 'w') as f:
@@ -353,14 +353,14 @@ class Archiver:
             return grp.getgrgid(gid)[0]
         except:
             if self.args.debug:
-                print(f'gid2group: Error converting gid {gid}')
+                print(f' gid2group: Error converting gid {gid}')
             return gid
 
     def daysago(self,unixtime):
         # how many days ago is this epoch time ?
         if not unixtime: 
             if self.args.debug:
-                print('daysago: an integer is required (got type NoneType)')
+                print(' daysago: an integer is required (got type NoneType)')
             return 0
         diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
         return diff.days
@@ -370,7 +370,7 @@ class Archiver:
         # to lookup the atime of the last accessed file in this folder
         if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
             if self.args.debug:
-                print(f"Invalid folder path: {folder_path}")
+                print(f" Invalid folder path: {folder_path}")
         last_accessed_time = None
         last_accessed_file = None
         for file_name in os.listdir(folder_path):
@@ -691,7 +691,7 @@ class SlurmEssentials:
             oscript.seek(0)
             with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
                 file.write(oscript.read())
-                print(f'Debug script created: submitted-{job_id}.sh')
+                print(f' Debug script created: submitted-{job_id}.sh')
         return job_id
 
     def squeue(self):
