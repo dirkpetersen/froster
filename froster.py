@@ -141,22 +141,6 @@ def main():
         print ("delete:",args.folders)
 
 
-def getusr(uid):
-    try:
-        return pwd.getpwuid(uid)[0]
-    except:
-        return uid
-
-def getgrp(gid):
-    try:
-        return grp.getgrgid(gid)[0]
-    except:
-        return gid
-
-def days(unixtime):
-    diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
-    return diff.days
-
 CSV = """id,GB,avg(MB),folder
 1,213,5,/home/groups/test/folder2/main
 2,180,140,/home/groups/test/folder1/temp
@@ -292,7 +276,7 @@ class Archiver:
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
                     row = list(r)
-                    row[1]=self.daysago(self._get_newest_file_atime(row[5]))
+                    row[1]=self.daysago(self._get_newest_file_atime(row[5],row[1]))
                     if row[9] >= thresholdGB*GiB:
                         row[0]=self.uid2user(row[0])
                         row[6]=self.gid2group(row[6])
@@ -303,24 +287,28 @@ class Archiver:
                     for i in range(0,len(daysaged)):
                         if row[1] > daysaged[i]:
                             agedbytes[i]+=row[9]
-            shutil.copyfile(tmpcsv.name,mycsv)
+            if numhotspots > 0:
+                shutil.copyfile(tmpcsv.name,mycsv)
 
-        # dedented multi-line retaining \n
-        print(textwrap.dedent(f'''       
-            Wrote {os.path.basename(mycsv)}
-            with {numhotspots} hotspots >= {thresholdGB} GiB 
-            with a total disk use of {round(totalbytes/TiB,3)} TiB
-             '''))
-        lastagedbytes=0
-        print(f'Histogram for {len(rows)} total folders processed:')
-        for i in range(0,len(daysaged)):
-            if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
-                # dedented multi-line removing \n
-                print(textwrap.dedent(f'''  
-                {round(agedbytes[i]/TiB,3)} TiB have not been accessed 
-                for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
-                ''').replace('\n', ''))
-            lastagedbytes=agedbytes[i]
+        if numhotspots > 0:
+            # dedented multi-line retaining \n
+            print(textwrap.dedent(f'''       
+                Wrote {os.path.basename(mycsv)}
+                with {numhotspots} hotspots >= {thresholdGB} GiB 
+                with a total disk use of {round(totalbytes/TiB,3)} TiB
+                '''))
+            lastagedbytes=0
+            print(f'Histogram for {len(rows)} total folders processed:')
+            for i in range(0,len(daysaged)):
+                if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
+                    # dedented multi-line removing \n
+                    print(textwrap.dedent(f'''  
+                    {round(agedbytes[i]/TiB,3)} TiB have not been accessed 
+                    for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
+                    ''').replace('\n', ''))
+                lastagedbytes=agedbytes[i]
+        else:
+            print(f'No folders larger than {thresholdGB} GiB found under {pwalkfolder}')                
 
         if locked_dirs:
             print('\n'+locked_dirs)
@@ -330,7 +318,9 @@ class Archiver:
             their content. You will not be able to archive these
             folders until you have the permissions granted.
             '''))
-            
+
+
+                
     def archive(self, var1, var2):
         pass
 
@@ -342,6 +332,8 @@ class Archiver:
         try:
             return pwd.getpwuid(uid)[0]
         except:
+            if self.args.debug:
+                print(f'uid2user: Error converting uid {uid}')
             return uid
 
     def gid2group(self,gid):
@@ -349,20 +341,26 @@ class Archiver:
         try:
             return grp.getgrgid(gid)[0]
         except:
+            if self.args.debug:
+                print(f'gid2group: Error converting gid {gid}')
             return gid
 
     def daysago(self,unixtime):
         # how many days ago is this epoch time ?
+        if not unixtime: 
+            if self.args.debug:
+                print('daysago: an integer is required (got type NoneType)')
+            return 0
         diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
         return diff.days
     
-    def _get_newest_file_atime(self, folder_path):
+    def _get_newest_file_atime(self, folder_path, folder_atime=None):
         # Because the folder atime is reset when crawling we need
         # to lookup the atime of the last accessed file in this folder
         if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
             if self.args.debug:
                 print(f"Invalid folder path: {folder_path}")
-        last_accessed_time = None
+        last_accessed_time = folder_atime
         last_accessed_file = None
         for file_name in os.listdir(folder_path):
             file_path = os.path.join(folder_path, file_name)
@@ -371,9 +369,6 @@ class Archiver:
                 if last_accessed_time is None or accessed_time > last_accessed_time:
                     last_accessed_time = accessed_time
                     last_accessed_file = file_path
-        if last_accessed_file is None:
-            if self.args.debug:
-                print(f"No files found in folder {folder_path}")
         return last_accessed_time
 
     def _get_hotspots_path(self,folder):
