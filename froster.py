@@ -6,7 +6,7 @@ archiving many Terabytes of data on HPC systems
 """
 # internal modules
 import sys, os, argparse, json, configparser, csv, io, fnmatch
-import urllib3, datetime, tarfile, zipfile, subprocess
+import urllib3, datetime, tarfile, zipfile, subprocess, grp
 import shutil, tempfile, glob, pwd, shlex, textwrap, getpass
 # stuff from pypi
 import requests, duckdb, rclone, boto3
@@ -292,18 +292,18 @@ class Archiver:
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
                     row = list(r)
-                    row[1]=days(row[1])
+                    row[1]=self.daysago(self._get_newest_file_atime(row[5]))
                     if row[9] >= thresholdGB*GiB:
-                        row[0]=getusr(row[0])
-                        row[6]=getgrp(row[6])
-                        row[2]=days(row[2])
+                        row[0]=self.uid2user(row[0])
+                        row[6]=self.gid2group(row[6])
+                        row[2]=self.daysago(row[2])
                         writer.writerow(row)
                         numhotspots+=1
                         totalbytes+=row[9]
                     for i in range(0,len(daysaged)):
                         if row[1] > daysaged[i]:
                             agedbytes[i]+=row[9]
-            shutil.copy(tmpcsv.name,mycsv)
+            shutil.copyfile(tmpcsv.name,mycsv)
 
         # dedented multi-line retaining \n
         print(textwrap.dedent(f'''       
@@ -337,6 +337,45 @@ class Archiver:
     def something(self, var1, var2):
         return var1
     
+    def uid2user(self,uid):
+        # try to convert uid to user name
+        try:
+            return pwd.getpwuid(uid)[0]
+        except:
+            return uid
+
+    def gid2group(self,gid):
+        # try to convert gid to group name
+        try:
+            return grp.getgrgid(gid)[0]
+        except:
+            return gid
+
+    def daysago(self,unixtime):
+        # how many days ago is this epoch time ?
+        diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
+        return diff.days
+    
+    def _get_newest_file_atime(self, folder_path):
+        # Because the folder atime is reset when crawling we need
+        # to lookup the atime of the last accessed file in this folder
+        if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
+            if self.args.debug:
+                print(f"Invalid folder path: {folder_path}")
+        last_accessed_time = None
+        last_accessed_file = None
+        for file_name in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(file_path):
+                accessed_time = os.path.getatime(file_path)
+                if last_accessed_time is None or accessed_time > last_accessed_time:
+                    last_accessed_time = accessed_time
+                    last_accessed_file = file_path
+        if last_accessed_file is None:
+            if self.args.debug:
+                print(f"No files found in folder {folder_path}")
+        return last_accessed_time
+
     def _get_hotspots_path(self,folder):
         # get a full path name of a new hotspots file
         # based on a folder name that has been crawled
