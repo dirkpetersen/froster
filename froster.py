@@ -250,11 +250,11 @@ class Archiver:
                         print(f"File conversion failed: {mycmd}")
                         return False
                 
-            sql_query = f"""SELECT UID as Usr,
+            sql_query = f"""SELECT UID as User,
                             st_atime as AccD, st_mtime as ModD,
                             pw_dirsum/1073741824 as GiB, 
                             pw_dirsum/1048576/pw_fcount as MiBAvg,                            
-                            filename as Folder, GID as Grp,
+                            filename as Folder, GID as Group,
                             pw_dirsum/1099511627776 as TiB,
                             pw_fcount as FileCount, pw_dirsum as DirSize
                         FROM read_csv_auto('{tmpfile.name}', 
@@ -572,6 +572,36 @@ class ConfigManager:
     def _get_entry_path(self, section, entry):
         section_path = self._get_section_path(section)
         return os.path.join(section_path, entry)
+    
+    def create_aws_configs(self,access_key=None, secret_key=None, region=None):
+
+        if not access_key: access_key = input("Enter your AWS access key ID: ")
+        if not secret_key: secret_key = input("Enter your AWS secret access key: ")
+        if not region: region = input("Enter your AWS region (e.g., us-west-2): ")
+
+        aws_dir = os.path.join(self.home_dir, ".aws")
+
+        if not os.path.exists(aws_dir):
+            os.makedirs(aws_dir)
+
+        with open(self.awsconfigfile, "w") as config_file:
+            config_file.write("[default]\n")
+            config_file.write(f"region = {region}\n")
+            config_file.write("\n")
+            config_file.write("[aws]\n")
+            config_file.write(f"region = {region}\n")
+
+        with open(self.awscredsfile, "w") as credentials_file:
+            credentials_file.write("[default]\n")
+            credentials_file.write(f"aws_access_key_id = {access_key}\n")
+            credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
+            credentials_file.write("\n")
+            credentials_file.write("[aws]\n")
+            credentials_file.write(f"aws_access_key_id = {access_key}\n")
+            credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
+        os.chmod(self.awscredsfile, 0o600)
+
+        print("AWS configuration files created successfully.")
 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
