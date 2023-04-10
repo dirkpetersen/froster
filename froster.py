@@ -259,13 +259,13 @@ class Archiver:
                         print(f"File conversion failed: {mycmd}")
                         return False
                 
-            sql_query = f"""SELECT UID as User, GID as Group, 
-                            st_atime as NoAccDays, st_mtime as NoModDays,
-                            pw_fcount as FileCount, pw_dirsum as DirSize, 
-                            pw_dirsum/1099511627776 as TiB,
+            sql_query = f"""SELECT UID as Usr,
+                            st_atime as AccD, st_mtime as ModD,
                             pw_dirsum/1073741824 as GiB, 
                             pw_dirsum/1048576/pw_fcount as MiBAvg,                            
-                            filename as Folder
+                            filename as Folder, GID as Grp,
+                            pw_dirsum/1099511627776 as TiB,
+                            pw_fcount as FileCount, pw_dirsum as DirSize
                         FROM read_csv_auto('{tmpfile.name}', 
                                 ignore_errors=1)
                         WHERE pw_fcount > -1 AND pw_dirsum > 0
@@ -288,19 +288,21 @@ class Archiver:
             with open(tmpcsv.name, 'w') as f:
                 writer = csv.writer(f, dialect='excel')
                 writer.writerow([col[0] for col in header])
+
+                # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
                     row = list(r)
-                    row[2]=days(row[2])
-                    if row[5] >= thresholdGB*GiB:
+                    row[1]=days(row[1])
+                    if row[9] >= thresholdGB*GiB:
                         row[0]=getusr(row[0])
-                        row[1]=getgrp(row[1])
-                        row[3]=days(row[3])
+                        row[6]=getgrp(row[6])
+                        row[2]=days(row[2])
                         writer.writerow(row)
                         numhotspots+=1
-                        totalbytes+=row[5]
+                        totalbytes+=row[9]
                     for i in range(0,len(daysaged)):
-                        if row[2] > daysaged[i]:
-                            agedbytes[i]+=row[5]
+                        if row[1] > daysaged[i]:
+                            agedbytes[i]+=row[9]
             shutil.copy(tmpcsv.name,mycsv)
 
         # dedented multi-line retaining \n
