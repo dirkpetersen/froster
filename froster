@@ -1,0 +1,11 @@
+#! /bin/bash
+
+PYTHON=/home/exacloud/software/spack/opt/spack/linux-centos7-ivybridge/gcc-8.3.1/python-3.10.8-lgmermnb2kmzendjw24fftlpxwpaokdm/bin/python3
+
+if [[ -e ${PYTHON} ]]; then
+  ${PYTHON} froster.py $@
+else
+  /usr/bin/python3 froster.py $@
+fi
+
+
