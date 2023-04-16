@@ -5,11 +5,14 @@ Froster (almost) automates the challening task of
 archiving many Terabytes of data on HPC systems
 """
 # internal modules
-import sys, os, argparse, json, configparser, csv, io, fnmatch
-import urllib3, datetime, tarfile, zipfile, subprocess, grp
-import shutil, tempfile, glob, pwd, shlex, textwrap, getpass
+import sys, os, argparse, json, configparser, csv
+import urllib3, datetime, tarfile, zipfile, textwrap
+import concurrent.futures, hashlib, fnmatch, io
+import shutil, tempfile, glob, shlex, subprocess
+if sys.platform.startswith('linux'):
+    import getpass, pwd, grp
 # stuff from pypi
-import requests, duckdb, rclone, boto3
+import requests, duckdb, boto3
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
@@ -126,15 +129,50 @@ def main():
         fld = '" "'.join(args.folders)
         print (f'froster.py archive "{fld}"')
 
-        hsfolder = os.path.join(cfg.config_root, 'hotspots')
-        csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
-        # Sort the CSV files by their modification time in descending order (newest first)
-        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
-        # Open the newest CSV file
-        newest_csv_path = os.path.join(hsfolder, csv_files[0])
-        with open(newest_csv_path, 'r') as csvfile:
-            app = TableApp()
-            print(app.run())
+        rclone = Rclone()
+
+        
+        if not args.folders():
+            hsfolder = os.path.join(cfg.config_root, 'hotspots')
+            csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+            # Sort the CSV files by their modification time in descending order (newest first)
+            # HERE we only allow to select the latest csv file 
+            csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
+            # Open the newest CSV file
+            newest_csv_path = os.path.join(hsfolder, csv_files[0])
+            retline=[]
+            with open(newest_csv_path, 'r') as csvfile:
+                app = TableApp()
+                retline=app.run()
+            if len(retline) < 6:
+                print('Error: Hotspots table did not return result')
+                return False
+            args.folders.append(retline[5])
+        
+        if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+            for fld in args.folders:
+                fld = fld.rstrip(os.path.sep)
+                print (f'Archiving folder {fld}, please wait ...', flush=True)
+                arch.archive(fld)
+        else:
+            se = SlurmEssentials(args, cfg)
+            label=args.folders[0]
+            myjobname=f'froster:archive:{label}'
+            email=cfg.read('general', 'email')
+            se.add_line(f'#SBATCH --job-name={myjobname}')
+            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+            se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+            se.add_line(f'#SBATCH --mail-user={email}')
+            se.add_line(f'#SBATCH --time=1-0')
+            se.add_line(f'ml python')      
+            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            se.add_line(f"python3 {cmdline}")
+            jobid = se.sbatch()
+            print(f'Submitted froster archiving job: {jobid}')
+            print(f'Check Job Output:')
+            print(f' tail -f froster-archive-{label}-{jobid}.out')
 
     elif args.subcmd == 'restore':
         print ("restore:",args.cores, args.noslurm, args.folders)
@@ -142,50 +180,83 @@ def main():
         print ("delete:",args.folders)
 
 
-CSV = """id,GB,avg(MB),folder
-1,213,5,/home/groups/test/folder2/main
-2,180,140,/home/groups/test/folder1/temp
-3,140,190,/home/groups/test/folder5
-4,99,10003,/home/groups/test/folder3/other
-5,54,6,/home/groups/test/folder4/data
-"""
+class Rclone:
+    def __init__(self, rclone_path='rclone'):
+        self.rclone_path = rclone_path
 
-class TableApp(App[list]):
-    #def __init__(self, filehandle):
-    #    self.filehandle = filehandle
+    # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
-    def compose(self) -> ComposeResult:
-        table = DataTable()
-        table.focus()
-        table.cursor_type = "row"
-        #table.fixed_columns = 1
-        #table.fixed_rows = 1
-        yield table
+    #backup: rclone --verbose --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
+    #restore: rclone --verbose --use-json-log copy --max-depth 1 :s3:posix-dp/tests4/ ./tests2
+    #rclone copy --verbose --use-json-log --max-depth 1 :s3:posix-dp/tests5/ ./tests5
+    #rclone --use-json-log checksum md5 ./tests/.froster.md5sum :s3:posix-dp/tests2/
+    # storage tier for each file 
+    #rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
+    # list without subdir 
+    #rclone lsjson --metadata --no-mimetype --no-modtime :s3:posix-dp/tests4
 
-    def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        rows = csv.reader(self.get_csv()) #or io.StringIO(CSV)
-        #rows = csv.reader(io.StringIO(CSV))
-        table.add_columns(*next(rows))
-        table.add_rows(rows)
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        self.exit(self.query_one(DataTable).get_row(event.row_key))
 
-    def get_csv(self):
-        home_dir = os.path.expanduser('~')
-        hsfolder = os.path.join(home_dir,'.config','froster', 'hotspots')
-        csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
-        # Sort the CSV files by their modification time in descending order (newest first)
-        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
-        # Open the newest CSV file
-        newest_csv_path = os.path.join(hsfolder, csv_files[0])
-        print(newest_csv_path)
-        return open(newest_csv_path, 'r')
+    def _run_command(self, command):
+        try:
+            ret = subprocess.run(command, stdout=subprocess.PIPE, 
+                            stderr=subprocess.PIPE, text=True)                    
+            if ret.returncode != 0:
+                print(f'Rclone return code > 0: {command} Error:\n{ret.stderr}')
+                # list of exit codes 
+                # 0 - success
+                # 1 - Syntax or usage error
+                # 2 - Error not otherwise categorised
+                # 3 - Directory not found
+                # 4 - File not found
+                # 5 - Temporary error (one that more retries might fix) (Retry errors)
+                # 6 - Less serious errors (like 461 errors from dropbox) (NoRetry errors)
+                # 7 - Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)
+                # 8 - Transfer exceeded - limit set by --max-transfer reached
+                # 9 - Operation successful, but no files transferred
+            
+            #lines = ret.stderr.decode('utf-8').splitlines()
+            #locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l]) 
+            return ret.stdout.strip(), ret.stderr.strip()
 
-#if __name__ == "__main__":
-#    app = TableApp()
-#    print(app.run())
+        except Exception as e:
+            print (f'Rclone Error: {str(e)}')
+            return None, str(e)
+
+    def about(self, remote):
+        command = [self.rclone_path, 'about', remote]
+        return self._run_command(command)
+
+    def authorize(self, remote):
+        command = [self.rclone_path, 'authorize', remote]
+        return self._run_command(command)
+
+    def backend(self, remote, subcommand, *args):
+        command = [self.rclone_path, 'backend', remote, subcommand] + list(args)
+        return self._run_command(command)
+
+    def bisync(self, src, dst, *flags):
+        command = [self.rclone_path, 'bisync', src, dst] + list(flags)
+        return self._run_command(command)
+
+    def cat(self, remote):
+        command = [self.rclone_path, 'cat', remote]
+        return self._run_command(command)
+
+    # ... implement other subcommands following the same pattern
+
+    def version(self):
+        command = [self.rclone_path, 'version']
+        return self._run_command(command)
+
+# # Usage example:
+# rclone = RcloneWrapper()
+# stdout, stderr = rclone.about('my_remote:')
+# if stderr:
+#     print(f'Error: {stderr}')
+# else:
+#     print(stdout)
+
 
 class Archiver:
     def __init__(self, args, cfg):
@@ -196,7 +267,46 @@ class Archiver:
 
     def config(self, var1, var2):
         return var1
+    
+    def md5sumex(self, file_path):
+        try:
+            cmd = f'md5sum {file_path}'
+            ret = subprocess.run(cmd, stdout=subprocess.PIPE, 
+                            stderr=subprocess.PIPE, Shell=True)                    
+            if ret.returncode != 0:
+                print(f'md5sum return code > 0: {cmd} Error:\n{ret.stderr}')
+            return ret.stdout.strip() #, ret.stderr.strip()
 
+        except Exception as e:
+            print (f'md5sum Error: {str(e)}')
+            return None, str(e)
+                             
+    def md5sum(self, file_path):
+        md5_hash = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+        return md5_hash.hexdigest()
+
+    def gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
+        for root, dirs, files in os.walk(directory):
+            if no_subdirs and root != directory:
+                break
+
+            with open(os.path.join(root, hash_file), "w") as out_f:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+                    tasks = {}
+                    for filen in files:
+                        file_path = os.path.join(root, filen)
+                        if os.path.isfile(file_path) and filen != os.path.basename(hash_file):
+                            task = executor.submit(self.md5sum, file_path)
+                            tasks[task] = file_path
+
+                    for future in concurrent.futures.as_completed(tasks):
+                        filen = os.path.basename(tasks[future])
+                        md5 = future.result()
+                        out_f.write(f"{md5}  {filen}\n")
+    
     def index(self, pwalkfolder):
 
         # move down to class 
@@ -442,23 +552,67 @@ class Archiver:
                     })
         return mountinfo_list    
 
+class TableApp(App[list]):
+
+    def compose(self) -> ComposeResult:
+        table = DataTable()
+        table.focus()
+        table.cursor_type = "row"
+        #table.fixed_columns = 1
+        #table.fixed_rows = 1
+        yield table
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        rows = csv.reader(self.get_csv()) #or io.StringIO(CSV)
+        #rows = csv.reader(io.StringIO(CSV))
+        table.add_columns(*next(rows))
+        table.add_rows(rows)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.exit(self.query_one(DataTable).get_row(event.row_key))
+
+    def get_csv(self):
+        home_dir = os.path.expanduser('~')
+        hsfolder = os.path.join(home_dir,'.config','froster', 'hotspots')
+        csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+        # Sort the CSV files by their modification time in descending order (newest first)
+        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
+        # Open the newest CSV file
+        newest_csv_path = os.path.join(hsfolder, csv_files[0])
+        print(newest_csv_path)
+        return open(newest_csv_path, 'r')
+
+#if __name__ == "__main__":
+#    app = TableApp()
+#    print(app.run())
+
+
 def parse_arguments():
     """
     Gather command-line arguments.
     """       
     parser = argparse.ArgumentParser(prog='froster ',
-        description='a tool for archiving large scale data ' + \
-                    'after finding it')
+        description='A (mostly) automated tool for archiving large scale data ' + \
+                    'after finding folders in the file system that are worth archiving.')
     parser.add_argument( '--debug', '-g', dest='debug', action='store_true', default=False,
         help="verbose output for all commands")
 
     subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
     # ***
     parser_config = subparsers.add_parser('config', aliases=['cnf'], 
-        help='edit configuration interactively')
+        help=textwrap.dedent(f'''
+            Bootstrap the configurtion, install dependencies and setup your environment.
+            You will need to answer a few questions about your cloud setup.
+        '''), formatter_class=argparse.RawTextHelpFormatter)
     # ***
     parser_index = subparsers.add_parser('index', aliases=['idx'], 
-        help='create a database of sub-folders to select from.')
+        help=textwrap.dedent(f'''
+            Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file 
+            that lists the largest folders. As this process is compute intensive the 
+            index job will be automatically submitted to Slurm if the Slurm tools are
+            found.
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
     parser_index.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute index directly")
     parser_index.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
@@ -473,34 +627,97 @@ def parse_arguments():
                 'using thepwalk file system crawler ')
     # ***
     parser_archive = subparsers.add_parser('archive', aliases=['arc'], 
-        help='archive folder to object store')
+        help=textwrap.dedent(f'''
+            Select from a list of large folders, that has been created by 'froster index', and 
+            archive a folder to S3/Glacier. Once you select a folder the archive job will be 
+            automatically submitted to Slurm. You can also automate this process 
+
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
     parser_archive.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute index directly")        
     parser_archive.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
         help='Number of cores to be allocated for the machine.')
     parser_archive.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
-    parser_archive.add_argument( '--md5sum', '-m', dest='md5sum', action='store_true', default=False,
+    parser_archive.add_argument( '--no-md5sum', '-m', dest='nomd5sum', action='store_true', default=False,
         help="show the technical contact / owner of the machine")
+    parser_archive.add_argument('--larger', '-l', dest='cores', action='store', default=0, 
+        help=textwrap.dedent(f'''
+            Archive folders larger than <GiB>. This option
+            works in conjunction with --age <days>. If both
+            options are set froster will automatically archive
+            all folder meeting these criteria, without prompting.
+        '''))
+    parser_archive.add_argument('--age', '-a', dest='cores', action='store', default=0, 
+         help=textwrap.dedent(f'''
+            Archive folders older than <days>. This option
+            works in conjunction with --larger <GiB>. If both
+            options are set froster will automatically archive
+            all folder meeting these criteria without prompting.
+        '''))
     parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to archive (separated by space), ' +
                 'the last folder in this list is the target   ')
     # ***
-    parser_restore = subparsers.add_parser('restore', aliases=['rst'], 
-        help='restore folder from object store')
+    parser_restore = subparsers.add_parser('restore', aliases=['rst'],
+        help=textwrap.dedent(f'''
+            This command restores data from AWS Glacier to AWS S3 One Zone-IA. You do not need
+            to download all data to local storage after the restore is complete. Just mount S3.
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
     parser_restore.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute index directly")        
     parser_restore.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine.')                                
+        help='Number of cores to be allocated for the machine.')
+    parser_restore.add_argument('--days', '-d', dest='cores', action='store', default=30,
+        help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
+    parser_restore.add_argument('--retrieve-opt', '-r', dest='retrieveopt', action='store', default='Bulk',
+        help=textwrap.dedent(f'''
+            Bulk (default): 
+                - 5-12 hours retrieval
+                - costs of $2.50 per TiB
+            Standard: 
+                - 3-5 hours retrieval 
+                - costs of $10 per TiB
+            Expedited: 
+                - 1-5 minutes retrieval 
+                - costs of $30 per TiB
+
+            In addition to the retrieval cost, AWS will charge you about $10/TiB/month for the
+            duration you keep the data in S3.
+
+            (costs from April 2023)
+            '''))
+    parser_restore.add_argument( '--download', '-l', dest='download', action='store_true', default=False,
+        help="download to local storage after retrieval")
     parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to to restore (separated by space), ' +
                 'the last folder in this list is the target  ')
     # ***
+    parser_download = subparsers.add_parser('download', aliases=['rst'],
+        help=textwrap.dedent(f'''
+            This command downloads data from a S3 compatible object store to your local filesystem. 
+            If you are downloading from a cloud to your local network, egress fees may apply. 
+        '''), formatter_class=argparse.RawTextHelpFormatter)        
+    parser_download.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
+        help="do not submit a Slurm job, execute index directly")        
+    parser_download.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
+        help='Number of cores to be allocated for the machine.')
+    parser_download.add_argument('folders', action='store', default=[],  nargs='*',
+        help='folders you would like to to restore (separated by space), ' +
+                'the last folder in this list is the target  ')
+    # ***
     parser_delete = subparsers.add_parser('delete', aliases=['del'],
-        help='Select folders to delete after they have been archived')
+        help=textwrap.dedent(f'''
+            This command removes data from a local filesystem folder that has been confirmed to 
+            be archived (through checksum verification). Use this instead of deleting manually
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
     parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to delete (separated by space), ' +
                'you can only delete folders that are archived')
+
+            # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
+            # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
+            # of up to 15%% of your AWS bill. (costs from April 2023)
 
     return parser.parse_args()
 
@@ -828,9 +1045,9 @@ def copy_binary_from_zip_url(zipurl,binary,subwildcard,targetfolder):
 
 
 if __name__ == "__main__":
-    if not sys.platform.startswith('linux'):
-        print('This software currently only runs on Linux x64')
-        sys.exit(1)
+    #if not sys.platform.startswith('linux'):
+    #    print('This software currently only runs on Linux x64')
+    #    sys.exit(1)
     try:
         args = parse_arguments()        
         main()

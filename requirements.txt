@@ -1,5 +1,4 @@
 duckdb<0.8
-rclone<0.5
 textual<0.20
 textual-select<0.4
 requests<2.30
