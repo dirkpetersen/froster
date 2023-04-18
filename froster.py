@@ -151,6 +151,9 @@ def main():
             with open(newest_csv_path, 'r') as csvfile:
                 app = TableApp()
                 retline=app.run()
+            if not retline:
+                print('Canceled')
+                return False 
             if len(retline) < 6:
                 print('Error: Hotspots table did not return result')
                 return False
