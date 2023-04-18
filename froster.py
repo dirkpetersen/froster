@@ -25,6 +25,7 @@ def main():
 
     #test config manager 
     cfg = ConfigManager()
+    arch = Archiver(args, cfg)
     # Write an entry
     #cfg.write('general', 'username', 'JohnDoe')
     #mylist = ['folder1', 'folder2', 'folder3']
@@ -48,7 +49,7 @@ def main():
     # Delete a section
     #config.delete_section('application')   
 
-    arch = Archiver(args, cfg)
+
     if args.subcmd == 'config':
         print ("config")
         arch.config("one", "two")
@@ -58,20 +59,19 @@ def main():
 
         print(" Installing pwalk ...")
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
-                'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
-                'pwalk', cfg.homepaths[0])
+        #copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
+        #        'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
+        #        'pwalk', cfg.homepaths[0])
 
         print(" Installing rclone ... please wait ...")
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-        copy_binary_from_zip_url(rclone_url, 'rclone', 
-                               '/rclone-v*/',cfg.homepaths[0])
+        #copy_binary_from_zip_url(rclone_url, 'rclone', 
+        #                       '/rclone-v*/',cfg.homepaths[0])
 
         # general setup 
-        cfg.write('general', 'domain', 'ohsu.edu')
-        domain = cfg.read('general', 'domain')
-        cfg.write('general', 'email', f'{getpass.getuser()}@{domain}')
-        
+        domain = cfg.prompt('Enter your domain name:','ohsu.edu|general|domain','string')
+        cfg.prompt('Enter your email address:',f'{getpass.getuser()}@{domain}|general|email','string')
+            
         # setup local scratch spaces, OHSU specific 
         cfg.write('hpc', 'slurm_lscratch', '--gres disk:1024') # get 1TB scratch space
         cfg.write('hpc', 'lscratch_mkdir', 'mkdir-scratch.sh') # optional
@@ -80,7 +80,10 @@ def main():
 
         # cloud setup 
         cfg.write('general', 'aws_profile', 'default') # get 1TB scratch space
-        
+
+        bucket = cfg.prompt('Please enter the S3 bucket to archive to','general|bucket','string')
+        archiveroot = cfg.prompt('Please enter the archive root path in your S3 bucket','archive|general|archiveroot','string')
+
         # need to fix
         #if not args.awsprofile:
         #    args.awsprofile = cfg.read('general', 'aws_profile')
@@ -104,7 +107,7 @@ def main():
                 fld = fld.rstrip(os.path.sep)
                 print (f'Indexing folder {fld}, please wait ...', flush=True)
                 arch.index(fld)            
-        else:             
+        else:
             se = SlurmEssentials(args, cfg)
             label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
             myjobname=f'froster:index:{label}'
@@ -125,16 +128,20 @@ def main():
             print(f' tail -f froster-index-{label}-{jobid}.out')
 
     elif args.subcmd == 'archive':
-        print ("archive:",args.cores, args.awsprofile, args.noslurm, args.md5sum, args.folders)
+        print ("archive:",args.cores, args.awsprofile, args.noslurm, args.nomd5sum, 
+               args.larger, args.age, args.agemtime, args.folders)
         fld = '" "'.join(args.folders)
-        print (f'froster.py archive "{fld}"')
+        print (f'default cmdline: froster.py archive "{fld}"')
 
-        rclone = Rclone()
+        rclone = Rclone(args,cfg)
 
-        
-        if not args.folders():
+        if not args.folders:
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
             csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+            if len(csv_files) == 0:
+                print("No folders to archive in arguments and no Hotspots CSV files found!")
+                return False
+
             # Sort the CSV files by their modification time in descending order (newest first)
             # HERE we only allow to select the latest csv file 
             csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
@@ -153,7 +160,26 @@ def main():
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
                 print (f'Archiving folder {fld}, please wait ...', flush=True)
-                arch.archive(fld)
+                #arch.archive(fld)
+                ret = rclone.copy(fld,f':s3:{cfg.archivepath}/tests10/','--max-depth', '1')
+                #print('rclone ret', ret)
+                print ('Message:', ret['msg'].replace('\n',';'))
+                if ret['stats']['errors'] > 0:
+                    print('Last Error:', ret['stats']['lastError'])
+                print('\n\n')
+                print('Speed:', ret['stats']['speed'])
+                print('Transfers:', ret['stats']['transfers'])
+                print('Tot Transfers:', ret['stats']['totalTransfers'])
+                print('Tot Bytes:', ret['stats']['totalBytes'])
+                print('Tot Checks:', ret['stats']['totalChecks'])
+
+                #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
+                #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
+                #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
+                #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}
+
+
+
         else:
             se = SlurmEssentials(args, cfg)
             label=args.folders[0]
@@ -181,8 +207,8 @@ def main():
 
 
 class Rclone:
-    def __init__(self, rclone_path='rclone'):
-        self.rclone_path = rclone_path
+    def __init__(self, args, cfg):
+        self.rc = 'rclone'
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -193,16 +219,16 @@ class Rclone:
     # storage tier for each file 
     #rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
     # list without subdir 
-    #rclone lsjson --metadata --no-mimetype --no-modtime :s3:posix-dp/tests4
+    #rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
 
 
-
-    def _run_command(self, command):
+    def _run_rc(self, command):
         try:
             ret = subprocess.run(command, stdout=subprocess.PIPE, 
                             stderr=subprocess.PIPE, text=True)                    
             if ret.returncode != 0:
-                print(f'Rclone return code > 0: {command} Error:\n{ret.stderr}')
+                pass
+                #sys.stderr.write(f'*** Error, Rclone return code > 0:\n {command} Error:\n{ret.stderr}')
                 # list of exit codes 
                 # 0 - success
                 # 1 - Syntax or usage error
@@ -222,40 +248,52 @@ class Rclone:
         except Exception as e:
             print (f'Rclone Error: {str(e)}')
             return None, str(e)
-
-    def about(self, remote):
-        command = [self.rclone_path, 'about', remote]
-        return self._run_command(command)
-
-    def authorize(self, remote):
-        command = [self.rclone_path, 'authorize', remote]
-        return self._run_command(command)
-
-    def backend(self, remote, subcommand, *args):
-        command = [self.rclone_path, 'backend', remote, subcommand] + list(args)
-        return self._run_command(command)
-
-    def bisync(self, src, dst, *flags):
-        command = [self.rclone_path, 'bisync', src, dst] + list(flags)
-        return self._run_command(command)
-
-    def cat(self, remote):
-        command = [self.rclone_path, 'cat', remote]
-        return self._run_command(command)
-
-    # ... implement other subcommands following the same pattern
+        
+    def copy(self, src, dst, *args):
+        command = [self.rc, 'copy'] + list(args)
+        command = self._add_opt(command, '--verbose')
+        command = self._add_opt(command, '--use-json-log')
+        command.append(src)
+        command.append(dst)
+        #print("Command:", command)
+        out, err = self._run_rc(command)
+        if out:
+            print(f'rclone copy ouput: {out}')
+        #print('ret', err)
+        stats, ops = self._parse_log(err) 
+        return stats[-1] # return the stats
+    
+        #b'{"level":"warning","msg":"Time may be set wrong - time from \\"posix-dp.s3.us-west-2.amazonaws.com\\" is -9m17.550965814s different from this computer","source":"fshttp/http.go:200","time":"2023-04-16T14:40:47.44907-07:00"}'    
 
     def version(self):
-        command = [self.rclone_path, 'version']
-        return self._run_command(command)
+        command = [self.rc, 'version']
+        return self._run_rc(command)
+    
+    def _add_opt(self, cmd, option, value=None):
+        if option in cmd:
+            return cmd
+        cmd.append(option)
+        if value:
+            cmd.append(value)
+        return cmd
+    
+    def _parse_log(self, strstderr):
+        lines=strstderr.split('\n')
+        data = [json.loads(line.rstrip()) for line in lines if line[0] == "{"]
+        stats = []
+        operations = []
+        for obj in data:
+            if 'accounting/stats' in obj['source']:
+                stats.append(obj)
+            elif 'operations/operations' in obj['source']:
+                operations.append(obj)
+        return stats, operations
 
-# # Usage example:
-# rclone = RcloneWrapper()
-# stdout, stderr = rclone.about('my_remote:')
-# if stderr:
-#     print(f'Error: {stderr}')
-# else:
-#     print(stdout)
+        # stats":{"bytes":0,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":4.121489785,"errors":12,"eta":null,"fatalError":false,
+        # "lastError":"failed to open source object: Object in GLACIER, restore first: bucket=\"posix-dp\", key=\"tests4/table_example.py\"",
+        # "renames":0,"retryError":true,"speed":0,"totalBytes":0,"totalChecks":0,"totalTransfers":0,"transferTime":0,"transfers":0},
+        # "time":"2023-04-16T10:18:46.121921-07:00"}
+
 
 
 class Archiver:
@@ -551,6 +589,39 @@ class Archiver:
                         'mount_source': mount_source,
                     })
         return mountinfo_list    
+    
+        def initiate_restore(self, bucket_name, object_key, rdays=30, retrieval_opt="Bulk"):
+            s3 = boto3.client('s3')
+            s3.restore_object(
+                Bucket=bucket_name,
+                Key=object_key,
+                RestoreRequest={
+                    'Days': rdays,
+                    'GlacierJobParameters': {
+                        'Tier': retrieval_opt
+                    }
+                }
+            )
+        #print(f'Restore request initiated for {object_key} using {retrieval_option} retrieval.')
+
+        def check_restore_status(self, bucket_name, object_key): #object key is tha the filename and path 
+            s3 = boto3.client('s3')
+            response = s3.head_object(Bucket=bucket_name, Key=object_key)
+            if 'Restore' in response:
+                return response['Restore'].find('ongoing-request="false"') > -1
+            return False
+
+        def download_restored_file(self, bucket_name, object_key, local_path):
+            s3 = boto3.resource('s3')
+            s3.Bucket(bucket_name).download_file(object_key, local_path)
+            print(f'Downloaded {object_key} to {local_path}.')
+
+
+        # initiate_restore(bucket_name, object_key, restore_days)    
+        # while not check_restore_status(bucket_name, object_key):
+        #     print('Waiting for restoration to complete...')
+        #     time.sleep(60)  # Wait 60 seconds before checking again
+        # download_restored_file(bucket_name, object_key, local_path)
 
 class TableApp(App[list]):
 
@@ -639,22 +710,24 @@ def parse_arguments():
         help='Number of cores to be allocated for the machine.')
     parser_archive.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
-    parser_archive.add_argument( '--no-md5sum', '-m', dest='nomd5sum', action='store_true', default=False,
+    parser_archive.add_argument( '--no-md5sum', '-s', dest='nomd5sum', action='store_true', default=False,
         help="show the technical contact / owner of the machine")
-    parser_archive.add_argument('--larger', '-l', dest='cores', action='store', default=0, 
+    parser_archive.add_argument('--larger', '-l', dest='larger', action='store', default=0, 
         help=textwrap.dedent(f'''
             Archive folders larger than <GiB>. This option
             works in conjunction with --age <days>. If both
             options are set froster will automatically archive
             all folder meeting these criteria, without prompting.
         '''))
-    parser_archive.add_argument('--age', '-a', dest='cores', action='store', default=0, 
+    parser_archive.add_argument('--age', '-a', dest='age', action='store', default=0, 
          help=textwrap.dedent(f'''
             Archive folders older than <days>. This option
             works in conjunction with --larger <GiB>. If both
             options are set froster will automatically archive
             all folder meeting these criteria without prompting.
         '''))
+    parser_archive.add_argument( '--age-mtime', '-m', dest='agemtime', action='store_true', default=False,
+        help="Use modified file time (mtime) instead of accessed time (atime)")
     parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to archive (separated by space), ' +
                 'the last folder in this list is the target   ')
@@ -734,6 +807,9 @@ class ConfigManager:
         self.homepaths = self._get_home_paths()
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
+        self.archivepath = os.path.join(
+             self.read('general','bucket'),
+             self.read('general','archiveroot'))
         self._set_env_vars("default")
         
     def _set_env_vars(self, profile):
@@ -789,6 +865,69 @@ class ConfigManager:
     def _get_entry_path(self, section, entry):
         section_path = self._get_section_path(section)
         return os.path.join(section_path, entry)
+
+    def prompt(self, question, defaults=None, type_check=None):
+        # Prompts for user input and writes it to config 
+        # defaults are up to 3 pipe separated strings: 
+        # if there is only one string this is the default 
+        # if there are 2 strings they represent section 
+        # and key name of the config entry and if there are 
+        # 3 strings the last 2 represent section 
+        # and key name of the config file and the first is
+        # the default if section and key name are empty
+        default=''
+        section=''
+        key=''
+        if not question.endswith(':'):
+            question += ':'
+        if defaults is not None:
+            deflist=defaults.split('|')
+            if len(deflist) == 3:
+                section=deflist[1]
+                key=deflist[2]
+                default = self.read(section, key)
+                if not default:
+                    default = deflist[0]
+            elif len(deflist) == 2:
+                section=deflist[0]
+                key=deflist[1]
+                default = self.read(section, key)                                
+            elif len(deflist) == 1:
+                default = deflist[0]
+            if default:
+                question += f"\n  [Default: {default}]"
+        while True:
+            user_input = input(f"\033[93m{question}\033[0m ")
+            if not user_input:
+                if default is not None:
+                    if section:
+                        self.write(section,key,default)                    
+                    return default
+                else:
+                    print("Please enter a value.")
+            else:
+                if type_check == 'number':
+                    try:
+                        if '.' in user_input:
+                            value = float(user_input)
+                        else:
+                            value = int(user_input)
+                        if section:
+                            self.write(section,key,value)
+                        return value
+                    except ValueError:
+                        print("Invalid input. Please enter a number.")
+                elif type_check == 'string':
+                    if not user_input.isnumeric():
+                        if section:
+                            self.write(section,key,user_input)
+                        return user_input
+                    else:
+                        print("Invalid input. Please enter a string not a number")
+                else:
+                    if section:
+                        self.write(section,key,user_input)
+                    return user_input
     
     def create_aws_configs(self,access_key=None, secret_key=None, region=None):
 
@@ -822,9 +961,12 @@ class ConfigManager:
 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
-
         os.makedirs(os.path.dirname(entry_path), exist_ok=True)
-        
+
+        if value == '""':
+            os.remove(entry_path)
+            return
+                
         with open(entry_path, 'w') as entry_file:
             if isinstance(value, list):
                 for item in value:
@@ -838,7 +980,8 @@ class ConfigManager:
         entry_path = self._get_entry_path(section, entry)
 
         if not os.path.exists(entry_path):
-            raise FileNotFoundError(f'Config entry "{entry}" in section "{section}" not found.')
+            return ""
+            #raise FileNotFoundError(f'Config entry "{entry}" in section "{section}" not found.')
  
         with open(entry_path, 'r') as entry_file:
             try:
@@ -1052,7 +1195,7 @@ if __name__ == "__main__":
         args = parse_arguments()        
         main()
     except KeyboardInterrupt:
-        print('Exit !')
+        print('\nExit !')
         try:
             sys.exit(0)
         except SystemExit:
