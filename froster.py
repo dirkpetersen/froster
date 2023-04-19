@@ -7,7 +7,7 @@ archiving many Terabytes of data on HPC systems
 # internal modules
 import sys, os, argparse, json, configparser, csv
 import urllib3, datetime, tarfile, zipfile, textwrap
-import concurrent.futures, hashlib, fnmatch, io
+import concurrent.futures, hashlib, fnmatch, io, math
 import shutil, tempfile, glob, shlex, subprocess
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
@@ -57,32 +57,46 @@ def main():
         if len(cfg.homepaths) > 0:
             cfg.write('general', 'binfolder', cfg.homepaths[0])
 
-        print(" Installing pwalk ...")
+        print(" Installing pwalk ...", flush=True)
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        #copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
-        #        'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
-        #        'pwalk', cfg.homepaths[0])
+        copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
+                'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
+                'pwalk', cfg.homepaths[0])
 
-        print(" Installing rclone ... please wait ...")
+        print(" Installing rclone ... please wait ... ", end='', flush=True)
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-        #copy_binary_from_zip_url(rclone_url, 'rclone', 
-        #                       '/rclone-v*/',cfg.homepaths[0])
+        copy_binary_from_zip_url(rclone_url, 'rclone', 
+                               '/rclone-v*/',cfg.homepaths[0])
+        print("Done!",flush=True)
 
+        print('\n*** Asking a few questions ***')
+        print('*** For most you can just hit <Enter> to accept the default. ***\n')
         # general setup 
-        domain = cfg.prompt('Enter your domain name:','ohsu.edu|general|domain','string')
-        cfg.prompt('Enter your email address:',f'{getpass.getuser()}@{domain}|general|email','string')
-            
-        # setup local scratch spaces, OHSU specific 
+        domain = cfg.prompt('Enter your domain name:',
+                            'ohsu.edu|general|domain','string')
+        emailad = cfg.prompt('Enter your email address:',
+                             f'{getpass.getuser()}@{domain}|general|email','string')
+
+        # cloud setup
+        s3_provider = cfg.prompt('Please enter your S3 storage provider',
+                                 'AWS|general|s3_provider','string')
+        bucket = cfg.prompt('Please enter the S3 bucket to archive to',
+                            'froster|general|bucket','string')
+        archiveroot = cfg.prompt('Please enter the archive root path in your S3 bucket',
+                                 'archive|general|archiveroot','string')
+        s3_storage_class =  cfg.prompt('Please enter the AWS S3 Storage class',
+                                    'DEEP_ARCHIVE|general|s3_storage_class','string')
+        aws_profile =  cfg.prompt('Please enter the AWS profile in ~/.aws',
+                                  'default|general|aws_profile','string')
+        aws_region =  cfg.prompt('Please enter your AWS region for S3',
+                                 'us-west-2|general|aws_region','string')
+        cfg.create_s3_bucket(bucket,aws_region)
+
+            # setup local scratch spaces, OHSU specific 
         cfg.write('hpc', 'slurm_lscratch', '--gres disk:1024') # get 1TB scratch space
         cfg.write('hpc', 'lscratch_mkdir', 'mkdir-scratch.sh') # optional
         cfg.write('hpc', 'lscratch_rmdir', 'rmdir-scratch.sh') # optional
         cfg.write('hpc', 'lscratch_root', '/mnt/scratch') # add slurm jobid at the end
-
-        # cloud setup 
-        cfg.write('general', 'aws_profile', 'default') # get 1TB scratch space
-
-        bucket = cfg.prompt('Please enter the S3 bucket to archive to','general|bucket','string')
-        archiveroot = cfg.prompt('Please enter the archive root path in your S3 bucket','archive|general|archiveroot','string')
 
         # need to fix
         #if not args.awsprofile:
@@ -128,12 +142,12 @@ def main():
             print(f' tail -f froster-index-{label}-{jobid}.out')
 
     elif args.subcmd == 'archive':
-        print ("archive:",args.cores, args.awsprofile, args.noslurm, args.nomd5sum, 
-               args.larger, args.age, args.agemtime, args.folders)
+        if args.debug:
+            print ("archive:",args.cores, args.awsprofile, args.noslurm, args.nomd5sum, 
+                   args.larger, args.age, args.agemtime, args.folders)
         fld = '" "'.join(args.folders)
-        print (f'default cmdline: froster.py archive "{fld}"')
-
-        rclone = Rclone(args,cfg)
+        if args.debug:
+            print (f'default cmdline: froster.py archive "{fld}"')
 
         if not args.folders:
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
@@ -149,11 +163,10 @@ def main():
             newest_csv_path = os.path.join(hsfolder, csv_files[0])
             retline=[]
             with open(newest_csv_path, 'r') as csvfile:
-                app = TableApp()
+                app = TableHotspots()
                 retline=app.run()
             if not retline:
-                print('Canceled')
-                return False 
+                return False
             if len(retline) < 6:
                 print('Error: Hotspots table did not return result')
                 return False
@@ -163,29 +176,10 @@ def main():
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
                 print (f'Archiving folder {fld}, please wait ...', flush=True)
-                #arch.archive(fld)
-                ret = rclone.copy(fld,f':s3:{cfg.archivepath}/tests10/','--max-depth', '1')
-                #print('rclone ret', ret)
-                print ('Message:', ret['msg'].replace('\n',';'))
-                if ret['stats']['errors'] > 0:
-                    print('Last Error:', ret['stats']['lastError'])
-                print('\n\n')
-                print('Speed:', ret['stats']['speed'])
-                print('Transfers:', ret['stats']['transfers'])
-                print('Tot Transfers:', ret['stats']['totalTransfers'])
-                print('Tot Bytes:', ret['stats']['totalBytes'])
-                print('Tot Checks:', ret['stats']['totalChecks'])
-
-                #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
-                #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
-                #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
-                #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}
-
-
-
+                arch.archive(fld)
         else:
             se = SlurmEssentials(args, cfg)
-            label=args.folders[0]
+            label=args.folders[0].replace('/','+')
             myjobname=f'froster:archive:{label}'
             email=cfg.read('general', 'email')
             se.add_line(f'#SBATCH --job-name={myjobname}')
@@ -204,34 +198,86 @@ def main():
             print(f' tail -f froster-archive-{label}-{jobid}.out')
 
     elif args.subcmd == 'restore':
-        print ("restore:",args.cores, args.noslurm, args.folders)
+        
+        if args.debug:
+            print ("restore:",args.cores, args.awsprofile, args.noslurm, 
+                   args.days, args.retrieveopt, args.download, args.folders)
+        fld = '" "'.join(args.folders)
+        if args.debug:
+            print (f'default cmdline: froster.py restore "{fld}"')
+
+        if not args.folders:
+            csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
+            with open(csvfile, 'r') as csvf:
+                app = TableRestore()
+                retline=app.run()
+            if not retline:
+                return False
+            if len(retline) < 2:
+                print('Error: froster-archives table did not return result')
+                return False
+            if args.debug:
+                print("dialog returns:",retline)
+            args.folders.append(retline[0])
+        
+        if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+            for fld in args.folders:
+                fld = fld.rstrip(os.path.sep)
+                print (f'Restoring folder {fld}, please wait ...', flush=True)
+                arch.restore(fld)
+        else:
+            se = SlurmEssentials(args, cfg)
+            label=args.folders[0].replace('/','+')
+            myjobname=f'froster:restore:{label}'
+            email=cfg.read('general', 'email')
+            se.add_line(f'#SBATCH --job-name={myjobname}')
+            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+            se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+            se.add_line(f'#SBATCH --mail-user={email}')
+            se.add_line(f'#SBATCH --time=1-0')
+            se.add_line(f'ml python')      
+            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            se.add_line(f"python3 {cmdline}")
+            jobid = se.sbatch()
+            print(f'Submitted froster restore job: {jobid}')
+            print(f'Check Job Output:')
+            print(f' tail -f froster-restore-{label}-{jobid}.out')
+
     elif args.subcmd == 'delete':
         print ("delete:",args.folders)
-
 
 class Rclone:
     def __init__(self, args, cfg):
         self.rc = 'rclone'
+        self.args = args
+        self.cfg = cfg
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
-    #backup: rclone --verbose --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
+    #backup: rclone --verbose --files-from tmpfile --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
     #restore: rclone --verbose --use-json-log copy --max-depth 1 :s3:posix-dp/tests4/ ./tests2
-    #rclone copy --verbose --use-json-log --max-depth 1 :s3:posix-dp/tests5/ ./tests5
+    #rclone copy --verbose --use-json-log --max-depth 1  :s3:posix-dp/tests5/ ./tests5
     #rclone --use-json-log checksum md5 ./tests/.froster.md5sum :s3:posix-dp/tests2/
     # storage tier for each file 
     #rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
     # list without subdir 
     #rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
-
+    #rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
 
     def _run_rc(self, command):
+
+        command = self._add_opt(command, '--verbose')
+        command = self._add_opt(command, '--use-json-log')
+        if self.args.debug:
+            print("Rclone command:", " ".join(command))
         try:
             ret = subprocess.run(command, stdout=subprocess.PIPE, 
-                            stderr=subprocess.PIPE, text=True)                    
+                    stderr=subprocess.PIPE, text=True, env=self.cfg.envrn)                    
             if ret.returncode != 0:
-                pass
-                #sys.stderr.write(f'*** Error, Rclone return code > 0:\n {command} Error:\n{ret.stderr}')
+                #pass
+                sys.stderr.write(f'*** Error, Rclone return code > 0:\n {command} Error:\n{ret.stderr}')
                 # list of exit codes 
                 # 0 - success
                 # 1 - Syntax or usage error
@@ -244,8 +290,10 @@ class Rclone:
                 # 8 - Transfer exceeded - limit set by --max-transfer reached
                 # 9 - Operation successful, but no files transferred
             
-            #lines = ret.stderr.decode('utf-8').splitlines()
+            #lines = ret.stderr.decode('utf-8').splitlines() #needed if you do not use ,text=True
             #locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l]) 
+            #print("   STDOUT:",ret.stdout)
+            #print("   STDERR:",ret.stderr)
             return ret.stdout.strip(), ret.stderr.strip()
 
         except Exception as e:
@@ -254,19 +302,36 @@ class Rclone:
         
     def copy(self, src, dst, *args):
         command = [self.rc, 'copy'] + list(args)
-        command = self._add_opt(command, '--verbose')
-        command = self._add_opt(command, '--use-json-log')
-        command.append(src)
+        command.append(src)  #command.append(f'{src}/')
+        command.append(dst)
+        out, err = self._run_rc(command)
+        if out:
+            print(f'rclone copy output: {out}')
+        #print('ret', err)
+        stats, ops = self._parse_log(err) 
+        if stats:
+            return stats[-1] # return the stats
+        else:
+            return []
+    
+        #b'{"level":"warning","msg":"Time may be set wrong - time from \\"posix-dp.s3.us-west-2.amazonaws.com\\" is -9m17.550965814s different from this computer","source":"fshttp/http.go:200","time":"2023-04-16T14:40:47.44907-07:00"}'    
+
+    def checksum(self, md5file, dst, *args):
+        #checksum md5 ./tests/.froster.md5sum
+        command = [self.rc, 'checksum'] + list(args)
+        command.append('md5')
+        command.append(md5file)
         command.append(dst)
         #print("Command:", command)
         out, err = self._run_rc(command)
         if out:
-            print(f'rclone copy ouput: {out}')
+            print(f'rclone checksum output: {out}')
         #print('ret', err)
         stats, ops = self._parse_log(err) 
-        return stats[-1] # return the stats
-    
-        #b'{"level":"warning","msg":"Time may be set wrong - time from \\"posix-dp.s3.us-west-2.amazonaws.com\\" is -9m17.550965814s different from this computer","source":"fshttp/http.go:200","time":"2023-04-16T14:40:47.44907-07:00"}'    
+        if stats:
+            return stats[-1] # return the stats
+        else:
+            return []
 
     def version(self):
         command = [self.rc, 'version']
@@ -298,7 +363,6 @@ class Rclone:
         # "time":"2023-04-16T10:18:46.121921-07:00"}
 
 
-
 class Archiver:
     def __init__(self, args, cfg):
         self.args = args
@@ -308,46 +372,78 @@ class Archiver:
 
     def config(self, var1, var2):
         return var1
-    
-    def md5sumex(self, file_path):
-        try:
-            cmd = f'md5sum {file_path}'
-            ret = subprocess.run(cmd, stdout=subprocess.PIPE, 
-                            stderr=subprocess.PIPE, Shell=True)                    
-            if ret.returncode != 0:
-                print(f'md5sum return code > 0: {cmd} Error:\n{ret.stderr}')
-            return ret.stdout.strip() #, ret.stderr.strip()
 
-        except Exception as e:
-            print (f'md5sum Error: {str(e)}')
-            return None, str(e)
-                             
-    def md5sum(self, file_path):
-        md5_hash = hashlib.md5()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                md5_hash.update(chunk)
-        return md5_hash.hexdigest()
+    def restore(self, folder):
 
-    def gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
-        for root, dirs, files in os.walk(directory):
-            if no_subdirs and root != directory:
-                break
+        # copied from archive
+        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
 
-            with open(os.path.join(root, hash_file), "w") as out_f:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
-                    tasks = {}
-                    for filen in files:
-                        file_path = os.path.join(root, filen)
-                        if os.path.isfile(file_path) and filen != os.path.basename(hash_file):
-                            task = executor.submit(self.md5sum, file_path)
-                            tasks[task] = file_path
+        rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
+        source = rowdict['archive_folder']
+        target = rowdict['local_folder']
+        s3_storage_class = rowdict['s3_storage_class']
 
-                    for future in concurrent.futures.as_completed(tasks):
-                        filen = os.path.basename(tasks[future])
-                        md5 = future.result()
-                        out_f.write(f"{md5}  {filen}\n")
-    
+        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING']:
+            sps = source.split('/', 1)
+            bk = sps[0].replace(':s3:','')
+            pr = f'{sps[1]}/' # trailing slash ensured 
+            print(bk,pr)
+            #return False
+            #obj_list = self.glacier_restore(bk, pr) #self.args.days
+            obj_list = self.glacier_restore('posix-dp','deep_archive/home/dp/gh/froster/tests/')                                                        
+            for obj in obj_list:
+                self.glacier_restore_status(bk,obj)
+            return True
+        
+        rclone = Rclone(self.args,self.cfg)
+            
+        print ('Copying files from archive ...')
+        ret = rclone.copy(source,target,'--max-depth', '1')
+            
+        if self.args.debug:
+            print('*** RCLONE copy ret ***:\n', ret, '\n')
+        #print ('Message:', ret['msg'].replace('\n',';'))
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Copying was not successful.')
+            return False
+            # lastError could contain: Object in GLACIER, restore first
+        
+        ttransfers=ret['stats']['totalTransfers']
+        tbytes=ret['stats']['totalBytes']
+        if self.args.debug:
+            print('\n')
+            print('Speed:', ret['stats']['speed'])
+            print('Transfers:', ret['stats']['transfers'])
+            print('Tot Transfers:', ret['stats']['totalTransfers'])
+            print('Tot Bytes:', ret['stats']['totalBytes'])
+            print('Tot Checks:', ret['stats']['totalChecks'])
+
+        #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
+        #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
+        #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
+        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
+
+        print ('Generating hashfile .froster.md5sum ...')
+        self.gen_md5sums(source,'.froster-restored.md5sum') 
+        hashfile = os.path.join(source,'.froster-restored.md5sum')
+
+        ret = rclone.checksum(hashfile,target)
+        if self.args.debug:
+            print('*** RCLONE checksum ret ***:\n', ret, '\n')
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Checksum test was not successful.')
+            return False
+
+        # If success, write folders to froster-archives.csv database
+        dictrow = {'local_folder': target, 'archive_folder': source}
+        
+        self._add_update_csv_row(mycsv,dictrow,'local_folder')
+        
+        total=self.convert_size(tbytes)
+        print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
+
     def index(self, pwalkfolder):
 
         # move down to class 
@@ -483,8 +579,110 @@ class Archiver:
         if self.args.debug:
             print(' Done indexing!', flush=True)
                 
-    def archive(self, var1, var2):
-        pass
+    def archive(self, folder):
+
+        source = os.path.abspath(folder)
+        target = os.path.join(f':s3:{self.cfg.archivepath}',
+                              source.lstrip(os.path.sep))
+        
+        print ('Generating hashfile .froster.md5sum ...')
+        self.gen_md5sums(source,'.froster.md5sum') 
+        hashfile = os.path.join(source,'.froster.md5sum')
+
+        rclone = Rclone(self.args,self.cfg)
+        #
+        # create a simple file list from a hash file #tempfile.NamedTemporaryFile('w') as outp
+        # weird: rclone does not copy with --files-from when executed from Python
+        #with open(hashfile, 'r') as inp, tempfile.NamedTemporaryFile('w') as outp:
+        #    for line in inp:
+        #        file_name = line.strip().split('  ', 1)[1]                
+        #        outp.write(f'{file_name}\n')
+        #    ret = rclone.copy(source, target,'--files-from', outp.name) 
+            
+        print ('Copying files to archive ...')
+        ret = rclone.copy(source,target,'--max-depth', '1', 
+                        '--exclude', '.froster.md5sum')
+            
+        if self.args.debug:
+            print('*** RCLONE copy ret ***:\n', ret, '\n')
+        #print ('Message:', ret['msg'].replace('\n',';'))
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Copying was not successful.')
+            return False
+        
+        ttransfers=ret['stats']['totalTransfers']
+        tbytes=ret['stats']['totalBytes']
+        if self.args.debug:
+            print('\n')
+            print('Speed:', ret['stats']['speed'])
+            print('Transfers:', ret['stats']['transfers'])
+            print('Tot Transfers:', ret['stats']['totalTransfers'])
+            print('Tot Bytes:', ret['stats']['totalBytes'])
+            print('Tot Checks:', ret['stats']['totalChecks'])
+
+        #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
+        #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
+        #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
+        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
+
+        ret = rclone.checksum(hashfile,target)
+        if self.args.debug:
+            print('*** RCLONE checksum ret ***:\n', ret, '\n')
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Checksum test was not successful.')
+            return False
+
+        # If success, write folders to froster-archives.csv database
+        s3_storage_class=self.cfg.read('general','s3_storage_class')
+        dictrow = {'local_folder': source, 'archive_folder': target,
+                   's3_storage_class': s3_storage_class}
+        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
+        self._add_update_csv_row(mycsv,dictrow,'local_folder')
+        
+        total=self.convert_size(tbytes)
+        print(f'Source and archive are identical. {ttransfers} files with {total} transferred.')
+
+    def gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
+        for root, dirs, files in os.walk(directory):
+            if no_subdirs and root != directory:
+                break
+
+            with open(os.path.join(root, hash_file), "w") as out_f:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+                    tasks = {}
+                    for filen in files:
+                        file_path = os.path.join(root, filen)
+                        if os.path.isfile(file_path) and filen != os.path.basename(hash_file):
+                            task = executor.submit(self.md5sum, file_path)
+                            tasks[task] = file_path
+
+                    for future in concurrent.futures.as_completed(tasks):
+                        filen = os.path.basename(tasks[future])
+                        md5 = future.result()
+                        out_f.write(f"{md5}  {filen}\n")
+
+    def md5sumex(self, file_path):
+        try:
+            cmd = f'md5sum {file_path}'
+            ret = subprocess.run(cmd, stdout=subprocess.PIPE, 
+                            stderr=subprocess.PIPE, Shell=True)                    
+            if ret.returncode != 0:
+                print(f'md5sum return code > 0: {cmd} Error:\n{ret.stderr}')
+            return ret.stdout.strip() #, ret.stderr.strip()
+
+        except Exception as e:
+            print (f'md5sum Error: {str(e)}')
+            return None, str(e)
+                             
+    def md5sum(self, file_path):
+        md5_hash = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+        return md5_hash.hexdigest()
+
 
     def something(self, var1, var2):
         return var1
@@ -516,6 +714,15 @@ class Archiver:
         diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
         return diff.days
     
+    def convert_size(self, size_bytes):
+        if size_bytes == 0:
+            return "0B"
+        size_name = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes/p, 3)
+        return f"{s} {size_name[i]}"
+    
     def _get_newest_file_atime(self, folder_path, folder_atime=None):
         # Because the folder atime is reset when crawling we need
         # to lookup the atime of the last accessed file in this folder
@@ -524,17 +731,58 @@ class Archiver:
                 print(f" Invalid folder path: {folder_path}")
             return folder_atime
         last_accessed_time = None
-        last_accessed_file = None
+        #last_accessed_file = None
         for file_name in os.listdir(folder_path):
             file_path = os.path.join(folder_path, file_name)
             if os.path.isfile(file_path):
                 accessed_time = os.path.getatime(file_path)
                 if last_accessed_time is None or accessed_time > last_accessed_time:
                     last_accessed_time = accessed_time
-                    last_accessed_file = file_path
+                    #last_accessed_file = file_path
         if last_accessed_time == None:
             last_accessed_time = folder_atime
         return last_accessed_time
+
+    def _get_row_from_csv(self, file_path, column_name, search_value):
+        with open(file_path, mode='r', newline='') as csvfile:
+            reader = csv.DictReader(csvfile)        
+            for row in reader:
+                if row[column_name] == search_value:
+                    return row       
+        return {}
+
+    def _add_update_csv_row(self, file_path, row_dict, primary_key):
+        updated_rows = []
+        row_found = False
+        fieldnames = list(row_dict.keys())
+
+        if os.path.exists(file_path):
+            with open(file_path, mode='r', newline='') as csvfile:
+                reader = csv.DictReader(csvfile)
+
+                if reader.fieldnames is not None:
+                    fieldnames = reader.fieldnames
+
+                for row in reader:
+                    if row[primary_key] == row_dict[primary_key]:
+                        updated_rows.append(row_dict)
+                        row_found = True
+                    else:
+                        updated_rows.append(row)
+
+        if not row_found:
+            updated_rows.append(row_dict)
+
+        with open(file_path, mode='w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, dialect='excel')
+            writer.writeheader()
+            writer.writerows(updated_rows)
+
+        # Example usage:
+        #row_data = {'Name': 'John', 'Age': 30, 'City': 'New York'}
+        #file_name = 'sample.csv'
+        #primary_key_column = 'Name'
+        #_add_update_csv_row(file_name, row_data, primary_key_column)
 
     def _get_hotspots_path(self,folder):
         # get a full path name of a new hotspots file
@@ -593,40 +841,96 @@ class Archiver:
                     })
         return mountinfo_list    
     
-        def initiate_restore(self, bucket_name, object_key, rdays=30, retrieval_opt="Bulk"):
-            s3 = boto3.client('s3')
-            s3.restore_object(
-                Bucket=bucket_name,
-                Key=object_key,
-                RestoreRequest={
-                    'Days': rdays,
-                    'GlacierJobParameters': {
-                        'Tier': retrieval_opt
+    def create_s3_bucket(self, bucket_name, region='us-west-2'):
+        s3_client = boto3.client('s3')
+        existing_buckets = s3_client.list_buckets()
+        for bucket in existing_buckets['Buckets']:
+            if bucket['Name'] == bucket_name:
+                print(f'S3 bucket {bucket_name} already exists')
+                return True            
+        response = s3_client.create_bucket(
+            Bucket=bucket_name,
+            CreateBucketConfiguration={'LocationConstraint': region}
+            )
+        
+        encryption_configuration = {
+            'Rules': [
+                {
+                    'ApplyServerSideEncryptionByDefault': {
+                        'SSEAlgorithm': 'AES256'
                     }
                 }
-            )
-        #print(f'Restore request initiated for {object_key} using {retrieval_option} retrieval.')
+            ]
+        }
+        response = s3_client.put_bucket_encryption(
+            Bucket=bucket_name,
+            ServerSideEncryptionConfiguration=encryption_configuration
+        )            
+        print('Created encrypted S3 Bucket {bucket_name}:',response)
+        return True
 
-        def check_restore_status(self, bucket_name, object_key): #object key is tha the filename and path 
-            s3 = boto3.client('s3')
-            response = s3.head_object(Bucket=bucket_name, Key=object_key)
-            if 'Restore' in response:
-                return response['Restore'].find('ongoing-request="false"') > -1
-            return False
+    def glacier_restore_1(self, bucket_name, object_key, rdays=30, retrieval_opt="Bulk"):
+        s3 = boto3.client('s3')
+        s3.restore_object(
+            Bucket=bucket_name,
+            Key=object_key,
+            RestoreRequest={
+                'Days': rdays,
+                'GlacierJobParameters': {
+                    'Tier': retrieval_opt
+                }
+            }
+        )
 
-        def download_restored_file(self, bucket_name, object_key, local_path):
-            s3 = boto3.resource('s3')
-            s3.Bucket(bucket_name).download_file(object_key, local_path)
-            print(f'Downloaded {object_key} to {local_path}.')
+    def glacier_restore(bucket_name, prefix, rdays=30, ropt="Bulk"):
+        # ensure that prefix has a trailing slash
+        s3 = boto3.client('s3')
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+        print('MOIN')
+        restore_keys=[]
+        for page in pages:
+            print('MOIN 2')
+            for obj in page['Contents']:
+                print('MOIN 3')
+                object_key = obj['Key']
+                # Check if there are additional slashes after the prefix,
+                # indicating that the object is in a subfolder.
+                remaining_path = object_key[len(prefix):]
+                if '/' not in remaining_path:
+                    s3.restore_object(
+                        Bucket=bucket_name,
+                        Key=object_key,
+                        RestoreRequest={
+                            'Days': rdays,
+                            'GlacierJobParameters': {
+                                'Tier': ropt
+                            }
+                        }
+                    )
+                    restore_keys.append(object_key)
+                    print(f'Restore request initiated for {object_key} using {retrieval_opt} retrieval.')
+        return restore_keys
 
+    def glacier_restore_status(self, bucket_name, object_key): #object key is tha the filename and path 
+        s3 = boto3.client('s3')
+        response = s3.head_object(Bucket=bucket_name, Key=object_key)
+        if 'Restore' in response:
+            return response['Restore'].find('ongoing-request="false"') > -1
+        return False
 
-        # initiate_restore(bucket_name, object_key, restore_days)    
-        # while not check_restore_status(bucket_name, object_key):
-        #     print('Waiting for restoration to complete...')
-        #     time.sleep(60)  # Wait 60 seconds before checking again
-        # download_restored_file(bucket_name, object_key, local_path)
+    def download_restored_file(self, bucket_name, object_key, local_path):
+        s3 = boto3.resource('s3')
+        s3.Bucket(bucket_name).download_file(object_key, local_path)
+        print(f'Downloaded {object_key} to {local_path}.')
 
-class TableApp(App[list]):
+    # initiate_restore(bucket_name, object_key, restore_days)    
+    # while not check_restore_status(bucket_name, object_key):
+    #     print('Waiting for restoration to complete...')
+    #     time.sleep(60)  # Wait 60 seconds before checking again
+    # download_restored_file(bucket_name, object_key, local_path)
+
+class TableHotspots(App[list]):
 
     def compose(self) -> ComposeResult:
         table = DataTable()
@@ -656,6 +960,32 @@ class TableApp(App[list]):
         newest_csv_path = os.path.join(hsfolder, csv_files[0])
         print(newest_csv_path)
         return open(newest_csv_path, 'r')
+
+class TableRestore(App[list]):
+
+    def compose(self) -> ComposeResult:
+        table = DataTable()
+        table.focus()
+        table.cursor_type = "row"
+        #table.fixed_columns = 1
+        #table.fixed_rows = 1
+        yield table
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        rows = csv.reader(self.get_csv()) #or io.StringIO(CSV)
+        #rows = csv.reader(io.StringIO(CSV))
+        table.add_columns(*next(rows))
+        table.add_rows(rows)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.exit(self.query_one(DataTable).get_row(event.row_key))
+
+    def get_csv(self):
+        home_dir = os.path.expanduser('~')
+        csvfile= os.path.join(home_dir,'.config','froster', 'froster-archives.csv')
+        return open(csvfile, 'r')
+
 
 #if __name__ == "__main__":
 #    app = TableApp()
@@ -744,7 +1074,9 @@ def parse_arguments():
         help="do not submit a Slurm job, execute index directly")        
     parser_restore.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
         help='Number of cores to be allocated for the machine.')
-    parser_restore.add_argument('--days', '-d', dest='cores', action='store', default=30,
+    parser_restore.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from ~/.aws/profiles should be used')    
+    parser_restore.add_argument('--days', '-d', dest='days', action='store', default=30,
         help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
     parser_restore.add_argument('--retrieve-opt', '-r', dest='retrieveopt', action='store', default='Bulk',
         help=textwrap.dedent(f'''
@@ -813,6 +1145,8 @@ class ConfigManager:
         self.archivepath = os.path.join(
              self.read('general','bucket'),
              self.read('general','archiveroot'))
+        self.aws_region = self.read('general','aws_region')
+        self.envrn = os.environ.copy()
         self._set_env_vars("default")
         
     def _set_env_vars(self, profile):
@@ -833,16 +1167,17 @@ class ConfigManager:
         aws_secret_access_key = config.get(profile, 'aws_secret_access_key')
 
         # Set the environment variables for creds 
-        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
-        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
-        os.environ['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
-        os.environ['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
+        self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
+        self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
+        self.envrn['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
+        self.envrn['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
 
         # Set the environment variables for other defaults 
-        os.environ['RCLONE_S3_PROVIDER'] = 'AWS'
-        #os.environ['RCLONE_S3_STORAGE_CLASS'] = 'DEEP_ARCHIVE'
-        #os.environ['RCLONE_S3_LOCATION_CONSTRAINT'] = 'us-west-2'
-
+        self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
+        self.envrn['RCLONE_S3_REGION'] = self.aws_region
+        self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
+        self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.read('general','s3_storage_class')
+        
     def _get_home_paths(self):
         path_dirs = os.environ['PATH'].split(os.pathsep)
         # Filter the directories in the PATH that are inside the home directory
@@ -961,6 +1296,40 @@ class ConfigManager:
         os.chmod(self.awscredsfile, 0o600)
 
         print("AWS configuration files created successfully.")
+
+    def create_s3_bucket(self, bucket_name, region='us-west-2'):
+        s3_client = boto3.client('s3')
+        existing_buckets = s3_client.list_buckets()
+        for bucket in existing_buckets['Buckets']:
+            if bucket['Name'] == bucket_name:
+                if self.args.debug:
+                    print(f'S3 bucket {bucket_name} exists')
+                return True            
+        response = s3_client.create_bucket(
+            Bucket=bucket_name,
+            CreateBucketConfiguration={'LocationConstraint': region}
+            )
+        print(f'Creating S3 Bucket {bucket_name}:',response)
+
+        encryption_configuration = {
+            'Rules': [
+                {
+                    'ApplyServerSideEncryptionByDefault': {
+                        'SSEAlgorithm': 'AES256'
+                    }
+                }
+            ]
+        }
+        try:
+            response = s3_client.put_bucket_encryption(
+                Bucket=bucket_name,
+                ServerSideEncryptionConfiguration=encryption_configuration
+            )            
+            print(f'Applied encryption to S3 Bucket {bucket_name}:',response)
+        except:
+            print(f'Could not apply encryption to S3 Bucket {bucket_name}:',response)
+
+        return True
 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
