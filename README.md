@@ -1,5 +1,5 @@
 # Froster - yet another archiving tool
-Froster is a tool that crawls your file system, suggests folders to archive and uploads your picks to Glacier, etc  
+Froster is a tool that crawls your file system, suggests folders to archive, uploads your picks to Glacier, and retrieves it back.
 
 ## Problem 
 
