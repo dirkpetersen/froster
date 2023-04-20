@@ -1,6 +1,15 @@
 # Froster - yet another archiving tool
 Froster is a tool that crawls your file system, suggests folders to archive, uploads your picks to Glacier, and retrieves it back.
 
+## Table of Contents
+* [Problem](#problem)
+* [Design](#design)
+* [Using Froster](#using-froster)
+  * [Configuring](#configuring)
+  * [Standard Usage](#standard-usage)
+  * [Large scale use on HPC](#large-scale-use-on-hpc)
+* [Command line help](#command-line-help)
+
 ## Problem 
 
 This problem may have been solved many times, but I have not found an easy open source solution for large scale archiving to free up disk space on a primary storage system. Researchers, who have hundreds of terabytes or petabytes of data, need to make a decison what to archive and where to archive it to. Archiving processes can run for days and they can fail easily. They need to resume automatically until completed and be validated (e.g. checksum comparison with the source) and finally there needs to be some metadata when it was archived, and where the data went and where the original location was. 
@@ -140,8 +149,11 @@ Target and archive are identical. 3 files with 836.45 KiB transferred.
 
 Note that if you restore from AWS S3 to on-premises, you may be subject to AWS data egress charges (up to $90 per TiB downloaded), unless your organization has negotiated an [AWS data egress waiver](https://aws.amazon.com/blogs/publicsector/data-egress-waiver-available-for-eligible-researchers-and-institutions/).
 
+### Large scale use on HPC
 
-### help 
+If you have hundreds of terabytes or even petabtyes of data in billions of files you may not be able to easily locate data that is worth archiving. Among hundreds of thousands of folders there are typically only a few hundred that make up most of your storage consumption. We call these folders 'Hotspots' and to find them you use the `froster index` command 
+
+## command line help 
 
 Each of the sub commands has a help option, for example `froster archive --help`
  
