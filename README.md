@@ -17,3 +17,103 @@ This problem may have been solved many times, but I have not found an easy OSS s
 1. Once the copy process is confirmed to have finished we put files with md5sums in the folders that have been archived. 
 1. The user must evidence that all data was archived correctly (size and md5sum comparison) 
 1. At the end we put an index.html file in the source folder that describes where the data was archived to along with instructions how to get the data back
+
+
+## using Froster 
+
+### configuring 
+
+The config is mostly automated but you need to answer a few questions for which you can accept defaults in most cases. 
+Sometimes the 'rclone' download times out, and you need to hit ctrl+c and start `froster config` again.
+
+```
+dp@grammy:~$ froster config
+config
+ Installing pwalk ...
+Compilation successful: gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk
+ Installing rclone ... please wait ... Done!
+
+*** Asking a few questions ***
+*** For most you can just hit <Enter> to accept the default. ***
+
+Enter your domain name: mydomain.edu
+  [Default: domain.edu]
+Enter your email address: first.last@domain.edu
+  [Default: username@domain.edu]
+Please enter your S3 storage provider:
+  [Default: AWS]
+Please enter the S3 bucket to archive to:
+  [Default: froster]
+Please enter the archive root path in your S3 bucket:
+  [Default: archive]
+Please enter the AWS S3 Storage class:
+  [Default: STANDARD]
+Please enter the AWS profile in ~/.aws:
+  [Default: default]
+Please enter your AWS region for S3:
+  [Default: us-west-2]
+```
+
+### Standard usage
+
+In its most simple form you can use froster to archive a specific folder and 
+
+for example we have 3 csv files in a folder
+
+```
+dp@grammy:~$ ls -la ~/csv
+
+total 840
+-rw-rw---- 1 dp dp 347712 Apr  4 06:08 myfile1.csv
+-rw-rw---- 1 dp dp 507443 Apr  4 06:08 myfile2.csv
+-rw-rw---- 1 dp dp   1370 Apr 19 17:10 myfile3.csv
+```
+
+now let's archive this folder 
+
+```
+dp@grammy:~$ froster archive ~/csv
+
+Archiving folder /home/dp/csv, please wait ...
+Generating hashfile .froster.md5sum ...
+Copying files to archive ...
+Source and archive are identical. 3 files with 836.45 KiB transferred.
+```
+
+
+
+
+
+
+### help 
+
+each of the sub commands has a help option, for example `froster archive --help`
+
+```
+dp@grammy:~$ froster
+usage: froster  [-h] [--debug] {config,cnf,index,idx,archive,arc,restore,rst,delete,del} ...
+
+A (mostly) automated tool for archiving large scale data after finding folders in the file system that are worth
+archiving.
+
+positional arguments:
+  {config,cnf,index,idx,archive,arc,restore,rst,delete,del}
+                        sub-command help
+    config (cnf)        Bootstrap the configurtion, install dependencies and setup your environment. You will need
+                        to answer a few questions about your cloud setup.
+    index (idx)         Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file that lists the
+                        largest folders. As this process is compute intensive the index job will be automatically
+                        submitted to Slurm if the Slurm tools are found.
+    archive (arc)       Select from a list of large folders, that has been created by 'froster index', and archive a
+                        folder to S3/Glacier. Once you select a folder the archive job will be automatically
+                        submitted to Slurm. You can also automate this process
+    restore (rst)       This command restores data from AWS Glacier to AWS S3 One Zone-IA. You do not need to
+                        download all data to local storage after the restore is complete. Just mount S3.
+    delete (del)        This command removes data from a local filesystem folder that has been confirmed to be
+                        archived (through checksum verification). Use this instead of deleting manually
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --debug, -g           verbose output for all commands
+```
+

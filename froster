@@ -2,10 +2,13 @@
 
 PYTHON=/home/exacloud/software/spack/opt/spack/linux-centos7-ivybridge/gcc-8.3.1/python-3.10.8-lgmermnb2kmzendjw24fftlpxwpaokdm/bin/python3
 
+script_path="$(readlink -f "$0")"
+script_dir="$(dirname "$script_path")"
+
 if [[ -e ${PYTHON} ]]; then
-  ${PYTHON} froster.py $@
+  ${PYTHON} ${script_dir}/froster.py $@
 else
-  /usr/bin/python3 froster.py $@
+  /usr/bin/python3 ${script_dir}/froster.py $@
 fi
 
 

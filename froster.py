@@ -12,43 +12,17 @@ import shutil, tempfile, glob, shlex, subprocess
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
-import requests, duckdb, boto3
+import requests, duckdb, boto3, botocore
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
-__app__ = 'Froster command line archiving tool'
+__app__ = 'Froster, a simple archiving tool'
 __version__ = '0.1'
 
-VAR = os.getenv('MYVAR', 'default value')
-
 def main():
-
-    #test config manager 
-    cfg = ConfigManager()
+    
+    cfg = ConfigManager(args)
     arch = Archiver(args, cfg)
-    # Write an entry
-    #cfg.write('general', 'username', 'JohnDoe')
-    #mylist = ['folder1', 'folder2', 'folder3']
-    #mydict = {}
-    #mydict['folder1']="43"
-    #mydict['folder2']="42"
-
-    #cfg.write('general', 'mylist', mylist)
-    #cfg.write('general', 'mydict', mydict)
-
-    # Read an entry
-    #username = cfg.read('general', 'username')
-    #print(username)  # Output: JohnDoe
-    #print(cfg.read('general', 'mylist'))
-    #print(cfg.read('general', 'mydict'))
-
-    #print("home paths:",cfg.homepaths)
-
-    # Delete an entry
-    #cfg.delete('application', 'username')
-    # Delete a section
-    #config.delete_section('application')   
-
 
     if args.subcmd == 'config':
         print ("config")
@@ -57,8 +31,8 @@ def main():
         if len(cfg.homepaths) > 0:
             cfg.write('general', 'binfolder', cfg.homepaths[0])
 
-        print(" Installing pwalk ...", flush=True)
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        print(" Installing pwalk ...", flush=True)        
         copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
                 'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                 'pwalk', cfg.homepaths[0])
@@ -201,7 +175,7 @@ def main():
         
         if args.debug:
             print ("restore:",args.cores, args.awsprofile, args.noslurm, 
-                   args.days, args.retrieveopt, args.download, args.folders)
+                   args.days, args.retrieveopt, args.nodownload, args.folders)
         fld = '" "'.join(args.folders)
         if args.debug:
             print (f'default cmdline: froster.py restore "{fld}"')
@@ -224,7 +198,36 @@ def main():
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
                 print (f'Restoring folder {fld}, please wait ...', flush=True)
-                arch.restore(fld)
+                # check if triggered a restore from glacier and other conditions 
+                if arch.restore(fld) > 0:                    
+                    if shutil.which('sbatch') and \
+                            args.noslurm == False and \
+                            args.nodownload == False:
+                        # start a future Slurm job just for the download
+                        se = SlurmEssentials(args, cfg)
+                        #get a job start time 12 hours from now
+                        fut_time = se.get_future_start_time(12)
+                        label=args.folders[0].replace('/','+')
+                        myjobname=f'froster:download:{label}'
+                        email=cfg.read('general', 'email')
+                        se.add_line(f'#SBATCH --job-name={myjobname}')
+                        se.add_line(f'#SBATCH --begin={fut_time}')
+                        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+                        se.add_line(f'#SBATCH --mem=64G')
+                        se.add_line(f'#SBATCH --output=froster-download-{label}-%J.out')
+                        se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+                        se.add_line(f'#SBATCH --mail-user={email}')
+                        se.add_line(f'#SBATCH --time=1-0')
+                        se.add_line(f'ml python')      
+                        cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+                        se.add_line(f"python3 {cmdline}")
+                        jobid = se.sbatch()
+                        print(f'Submitted froster download job to run in 12 hours: {jobid}')
+                        print(f'Check Job Output:')
+                        print(f' tail -f froster-download-{label}-{jobid}.out')
+                    else:
+                        print(f'\nGlacier retrievals pending, run this again in up to 12h\n')
+                                        
         else:
             se = SlurmEssentials(args, cfg)
             label=args.folders[0].replace('/','+')
@@ -246,7 +249,80 @@ def main():
             print(f' tail -f froster-restore-{label}-{jobid}.out')
 
     elif args.subcmd == 'delete':
-        print ("delete:",args.folders)
+    
+        if args.debug:
+            print ("delete:",args.awsprofile, args.folders)
+        fld = '" "'.join(args.folders)
+        if args.debug:
+            print (f'default cmdline: froster.py delete "{fld}"')
+
+        if not args.folders:
+            csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
+            with open(csvfile, 'r') as csvf:
+                app = TableRestore()
+                retline=app.run()
+            if not retline:
+                return False
+            if len(retline) < 2:
+                print('Error: froster-archives table did not return result')
+                return False
+            if args.debug:
+                print("dialog returns:",retline)
+            args.folders.append(retline[0])
+        
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            # get archive storage location
+            print (f'Deleting archived objects in {fld}, please wait ...', flush=True)
+            mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
+            rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
+            archive_folder = rowdict['archive_folder']
+
+            # compare archive hashes with local hashfile
+            rclone = Rclone(args,cfg)                
+            hashfile = os.path.join(fld,'.froster.md5sum')
+            if not os.path.exists(hashfile):
+                print(f'Hashfile {hashfile} does not exist. \nCannot delete files in {fld}')
+                continue
+            ret = rclone.checksum(hashfile,archive_folder)
+            if args.debug:
+                print('*** RCLONE checksum ret ***:\n', ret, '\n')
+            if ret['stats']['errors'] > 0:
+                print('Last Error:', ret['stats']['lastError'])
+                print('Checksum test was not successful.')
+                return False
+            
+            # delete files if confirmed that hashsums are identical
+            delete_files=[]
+            with open(hashfile, 'r') as inp:
+                for line in inp:
+                    fn = line.strip().split('  ', 1)[1]
+                    delete_files.append(fn)
+            deleted_files=[]
+            for dfile in delete_files:
+                dpath = os.path.join(fld,dfile)
+                if os.path.isfile(dpath):
+                    try:
+                        os.remove(dpath)
+                        deleted_files.append(dfile)
+                        if args.debug: print(f"File '{dpath}' deleted successfully.") 
+                    except OSError as e:
+                        print(f"Error deleting the file: {e}")
+            if len(deleted_files) > 0:
+                email = cfg.read('general', 'email')
+                readme = os.path.join(fld,'Where-did-the-files-go.txt')
+                with open(readme, 'w') as rme:
+                    rme.write(f'The files in this folder have been moved to an archive!\n')
+                    rme.write(f'\nArchive location: {archive_folder}\n')
+                    rme.write(f'Archiver: {email}\n')
+                    rme.write(f'Archive Tool: https://github.com/dirkpetersen/froster\n')
+                    rme.write(f'Deletion date: {datetime.datetime.now()}\n')
+                    rme.write(f'\nFiles deleted:\n')
+                    rme.write('\n'.join(deleted_files))
+                    rme.write(f'\n')
+                print(f'Deleted files and wrote manifest to {readme}')
+            else:
+                print(f'No files were deleted.')
 
 class Rclone:
     def __init__(self, args, cfg):
@@ -383,18 +459,22 @@ class Archiver:
         target = rowdict['local_folder']
         s3_storage_class = rowdict['s3_storage_class']
 
-        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING']:
+        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
             sps = source.split('/', 1)
             bk = sps[0].replace(':s3:','')
             pr = f'{sps[1]}/' # trailing slash ensured 
-            print(bk,pr)
-            #return False
-            #obj_list = self.glacier_restore(bk, pr) #self.args.days
-            obj_list = self.glacier_restore('posix-dp','deep_archive/home/dp/gh/froster/tests/')                                                        
-            for obj in obj_list:
-                self.glacier_restore_status(bk,obj)
-            return True
-        
+            trig, rest, done = self.glacier_restore(bk, pr, 
+                                    self.args.days, self.args.retrieveopt)
+            print ('Triggered Glacier retrievals:',len(trig))
+            print ('Currently retrieving from Glacier:',len(rest))
+            print ('Not in Glacier:',len(done))
+            if len(trig) > 0 or len(rest) > 0:
+                # glacier is still ongoing, return # of pending ops                
+                return len(trig)+len(rest)
+            
+        if self.args.nodownload:
+            return -1
+            
         rclone = Rclone(self.args,self.cfg)
             
         print ('Copying files from archive ...')
@@ -424,25 +504,21 @@ class Archiver:
         #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
         #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
 
-        print ('Generating hashfile .froster.md5sum ...')
-        self.gen_md5sums(source,'.froster-restored.md5sum') 
-        hashfile = os.path.join(source,'.froster-restored.md5sum')
+        print ('Generating hashfile .froster-restored.md5sum ...')
+        self.gen_md5sums(target,'.froster-restored.md5sum') 
+        hashfile = os.path.join(target,'.froster-restored.md5sum')
 
-        ret = rclone.checksum(hashfile,target)
+        ret = rclone.checksum(hashfile,source)
         if self.args.debug:
             print('*** RCLONE checksum ret ***:\n', ret, '\n')
         if ret['stats']['errors'] > 0:
             print('Last Error:', ret['stats']['lastError'])
             print('Checksum test was not successful.')
             return False
-
-        # If success, write folders to froster-archives.csv database
-        dictrow = {'local_folder': target, 'archive_folder': source}
-        
-        self._add_update_csv_row(mycsv,dictrow,'local_folder')
         
         total=self.convert_size(tbytes)
         print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
+        return -1
 
     def index(self, pwalkfolder):
 
@@ -601,8 +677,10 @@ class Archiver:
             
         print ('Copying files to archive ...')
         ret = rclone.copy(source,target,'--max-depth', '1', 
-                        '--exclude', '.froster.md5sum')
-            
+                        '--exclude', '.froster.md5sum', 
+                        '--exclude', '.froster-restored.md5sum', 
+                        '--exclude', 'Where-did-the-files-go.txt'
+                        )
         if self.args.debug:
             print('*** RCLONE copy ret ***:\n', ret, '\n')
         #print ('Message:', ret['msg'].replace('\n',';'))
@@ -654,7 +732,11 @@ class Archiver:
                     tasks = {}
                     for filen in files:
                         file_path = os.path.join(root, filen)
-                        if os.path.isfile(file_path) and filen != os.path.basename(hash_file):
+                        if os.path.isfile(file_path) and \
+                                filen != os.path.basename(hash_file) and \
+                                filen != "Where-did-the-files-go.txt" and \
+                                filen != ".froster.md5sum" and \
+                                filen != ".froster-restored.md5sum":
                             task = executor.submit(self.md5sum, file_path)
                             tasks[task] = file_path
 
@@ -868,53 +950,61 @@ class Archiver:
         )            
         print('Created encrypted S3 Bucket {bucket_name}:',response)
         return True
-
-    def glacier_restore_1(self, bucket_name, object_key, rdays=30, retrieval_opt="Bulk"):
-        s3 = boto3.client('s3')
-        s3.restore_object(
-            Bucket=bucket_name,
-            Key=object_key,
-            RestoreRequest={
-                'Days': rdays,
-                'GlacierJobParameters': {
-                    'Tier': retrieval_opt
-                }
-            }
-        )
-
-    def glacier_restore(bucket_name, prefix, rdays=30, ropt="Bulk"):
-        # ensure that prefix has a trailing slash
+    
+    def glacier_restore(self, bucket_name, prefix, keep_days=30, ret_opt="Bulk"):
+        glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
         s3 = boto3.client('s3')
         paginator = s3.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
-        print('MOIN')
-        restore_keys=[]
+        triggered_keys = []
+        restoring_keys = []
+        restored_keys = []
         for page in pages:
-            print('MOIN 2')
             for obj in page['Contents']:
-                print('MOIN 3')
                 object_key = obj['Key']
                 # Check if there are additional slashes after the prefix,
                 # indicating that the object is in a subfolder.
                 remaining_path = object_key[len(prefix):]
                 if '/' not in remaining_path:
-                    s3.restore_object(
-                        Bucket=bucket_name,
-                        Key=object_key,
-                        RestoreRequest={
-                            'Days': rdays,
-                            'GlacierJobParameters': {
-                                'Tier': ropt
+                    header = s3.head_object(Bucket=bucket_name, Key=object_key)
+                    if 'StorageClass' in header:
+                        if not header['StorageClass'] in glacier_classes:
+                            restored_keys.append(object_key)
+                            continue
+                    else:
+                        continue 
+                    if 'Restore' in header:
+                        if 'ongoing-request="true"' in header['Restore']:
+                            restoring_keys.append(object_key)
+                            continue
+                    try:
+                        s3.restore_object(
+                            Bucket=bucket_name,
+                            Key=object_key,
+                            RestoreRequest={
+                                'Days': keep_days,
+                                'GlacierJobParameters': {
+                                    'Tier': ret_opt
+                                }
                             }
-                        }
-                    )
-                    restore_keys.append(object_key)
-                    print(f'Restore request initiated for {object_key} using {retrieval_opt} retrieval.')
-        return restore_keys
+                        )
+                        triggered_keys.append(object_key)
+                        if self.args.debug:
+                            print(f'Restore request initiated for {object_key} using {ret_opt} retrieval.')
+                    except botocore.exceptions.ClientError as e:
+                        if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
+                            print(f'Restore is already in progress for {object_key}. Skipping...')
+                            restoring_keys.append(object_key)
+                        else:
+                            print(f'Error occurred for {object_key}: {e}')                    
+                    except:
+                        print(f'Restore request for {object_key} failed.')
+        return triggered_keys, restoring_keys, restored_keys
 
-    def glacier_restore_status(self, bucket_name, object_key): #object key is tha the filename and path 
+    def glacier_restore_status(self, bucket_name, object_key):
         s3 = boto3.client('s3')
         response = s3.head_object(Bucket=bucket_name, Key=object_key)
+        print('head response', response)
         if 'Restore' in response:
             return response['Restore'].find('ongoing-request="false"') > -1
         return False
@@ -1040,7 +1130,7 @@ def parse_arguments():
     parser_archive.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute index directly")        
     parser_archive.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine.')
+        help='Number of cores to be allocated for the machine. (default=4)')
     parser_archive.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
     parser_archive.add_argument( '--no-md5sum', '-s', dest='nomd5sum', action='store_true', default=False,
@@ -1073,7 +1163,7 @@ def parse_arguments():
     parser_restore.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute index directly")        
     parser_restore.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine.')
+        help='Number of cores to be allocated for the machine. (default=4)')
     parser_restore.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')    
     parser_restore.add_argument('--days', '-d', dest='days', action='store', default=30,
@@ -1095,30 +1185,32 @@ def parse_arguments():
 
             (costs from April 2023)
             '''))
-    parser_restore.add_argument( '--download', '-l', dest='download', action='store_true', default=False,
-        help="download to local storage after retrieval")
+    parser_restore.add_argument( '--no-download', '-l', dest='nodownload', action='store_true', default=False,
+        help="skip download to local storage after retrieval from Glacier")
     parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to to restore (separated by space), ' +
-                'the last folder in this list is the target  ')
+                '')
     # ***
-    parser_download = subparsers.add_parser('download', aliases=['rst'],
-        help=textwrap.dedent(f'''
-            This command downloads data from a S3 compatible object store to your local filesystem. 
-            If you are downloading from a cloud to your local network, egress fees may apply. 
-        '''), formatter_class=argparse.RawTextHelpFormatter)        
-    parser_download.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-        help="do not submit a Slurm job, execute index directly")        
-    parser_download.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine.')
-    parser_download.add_argument('folders', action='store', default=[],  nargs='*',
-        help='folders you would like to to restore (separated by space), ' +
-                'the last folder in this list is the target  ')
+    # parser_download = subparsers.add_parser('download', aliases=['rst'],
+    #     help=textwrap.dedent(f'''
+    #         This command downloads data from a S3 compatible object store to your local filesystem. 
+    #         If you are downloading from a cloud to your local network, egress fees may apply. 
+    #     '''), formatter_class=argparse.RawTextHelpFormatter)        
+    # parser_download.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
+    #     help="do not submit a Slurm job, execute index directly")        
+    # parser_download.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
+    #     help='Number of cores to be allocated for the machine. (default=4)')
+    # parser_download.add_argument('folders', action='store', default=[],  nargs='*',
+    #     help='folders you would like to to restore (separated by space), ' +
+    #             'the last folder in this list is the target  ')
     # ***
     parser_delete = subparsers.add_parser('delete', aliases=['del'],
         help=textwrap.dedent(f'''
             This command removes data from a local filesystem folder that has been confirmed to 
             be archived (through checksum verification). Use this instead of deleting manually
         '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_delete.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from ~/.aws/profiles should be used')
     parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to delete (separated by space), ' +
                'you can only delete folders that are archived')
@@ -1126,6 +1218,9 @@ def parse_arguments():
             # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
             # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
             # of up to 15%% of your AWS bill. (costs from April 2023)
+
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stdout)            
 
     return parser.parse_args()
 
@@ -1136,7 +1231,8 @@ class ConfigManager:
     # entries can be strings, lists that are written as 
     # multi-line files and dictionaries which are written to json
 
-    def __init__(self):
+    def __init__(self, args):
+        self.args = args
         self.home_dir = os.path.expanduser('~')
         self.config_root = self._get_config_root()
         self.homepaths = self._get_home_paths()
@@ -1146,8 +1242,9 @@ class ConfigManager:
              self.read('general','bucket'),
              self.read('general','archiveroot'))
         self.aws_region = self.read('general','aws_region')
+        self.awsprofile = self.read('general','aws_profile')
         self.envrn = os.environ.copy()
-        self._set_env_vars("default")
+        self._set_env_vars(self.awsprofile)
         
     def _set_env_vars(self, profile):
         
@@ -1402,6 +1499,11 @@ class SlurmEssentials:
     def add_line(self, line):
         if line:
             self.script_lines.append(line)
+
+    def get_future_start_time(self, add_hours):
+        now = datetime.datetime.now()        
+        future_time = now + datetime.timedelta(hours=add_hours)
+        return future_time.strftime("%Y-%m-%dT%H:%M")
     
     def _add_lines_from_cfg(self):
         slurm_lscratch = self.cfg.read('hpc','slurm_lscratch')
@@ -1563,8 +1665,8 @@ if __name__ == "__main__":
     #if not sys.platform.startswith('linux'):
     #    print('This software currently only runs on Linux x64')
     #    sys.exit(1)
-    try:
-        args = parse_arguments()        
+    try:        
+        args = parse_arguments()      
         main()
     except KeyboardInterrupt:
         print('\nExit !')
