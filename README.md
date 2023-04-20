@@ -83,7 +83,7 @@ Source and archive are identical. 3 files with 836.45 KiB transferred.
 
 Froster creates md5 checksums for the files in the local folder, uploads the files and then compares the checksums in the archive with the local ones.
 
-Now we delete the local data as we have evidence that the data is intact in the archive. We could execute `froster archive ~/csv` but, since the archiving process took a long time, we forgot which folder we needed to delete. We just run `froster delete` without the folder argument to see a list of archived folders and pick the one we want to delete.
+Now we delete the local data as we have evidence that the data is intact in the archive. We could execute `froster delete ~/csv` but, since the archiving process took a long time, we forgot which folder we needed to delete. We just run `froster delete` without the folder argument to see a list of archived folders and pick the one in which we want to delete files.
 
 ![image](https://user-images.githubusercontent.com/1427719/233254490-4f965142-f162-48ae-b235-0a9b12af3a09.png)
 
