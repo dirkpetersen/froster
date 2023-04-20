@@ -3,21 +3,20 @@ Froster is a tool that crawls your file system, suggests folders to archive and 
 
 ## Problem 
 
-This problem may have been solved many times, but I have not found an easy OSS solution for large scale archiving to free up disk space on a primary storage system. Researchers, who have hundreds of terabytes or petabytes of data, need to make a decison what to archive and where to archive it to. Archiving processes can run for days and they can fail easily. They need to resume automatically until completed and be validated (e.g. checksum comparison with the source) and finally there needs to be some metadata when it was archived, and where the data went and where the original location was.
+This problem may have been solved many times, but I have not found an easy open source solution for large scale archiving to free up disk space on a primary storage system. Researchers, who have hundreds of terabytes or petabytes of data, need to make a decison what to archive and where to archive it to. Archiving processes can run for days and they can fail easily. They need to resume automatically until completed and be validated (e.g. checksum comparison with the source) and finally there needs to be some metadata when it was archived, and where the data went and where the original location was.
 
 ## Design 
 
 1. First we need to crawl the file system that likely has billions of files to find data that is actually worth archiving. For this we will use the the well known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all file metadata found. 
 1. We want to focus on archiving folders instead of individual files as data that resides in the same folder will typically belong together. For this we will filter pwalk's CSV file with [DuckDB](https://duckdb.org) and get a new list (CSV) of the largest folders sorted by size. 
-1. We pass the new list (CSV) to an [interactive tool](https://github.com/dirkpetersen/froster/blob/main/froster.py#L153) based on [Textual](https://textual.textualize.io/) that displays a table with folders along with their total size in GiB and their average file sizes in MiB (MiBAvg) along with their age in days since last accessed (AccD) and modified (ModD). You can scroll down and right using your mouse and if you hit enter it will select that folder for archiving.
+1. We pass the new list (CSV) to an [interactive tool] based on [Textual](https://textual.textualize.io/) that displays a table with folders along with their total size in GiB and their average file sizes in MiB (MiBAvg) along with their age in days since last accessed (AccD) and modified (ModD). You can scroll down and right using your mouse and if you hit enter it will select that folder for archiving.
 ![image](https://user-images.githubusercontent.com/1427719/230824467-6a6e5873-5a48-4656-8d75-42133a60ba30.png)
-1. If the average file size in the folder is small (size TBD) we will archive the folder (tar.gz) before uploading 
-1. Pass the folder to a tool like [Rclone](https://rclone.org) and execute a copy job in the background 
-1. Since many researchers have access to a Slurm cluster, the initial implmentation would just submit a job via sbatch instead of using a local message queue. Slurm can automatically resubmit jobs that failed and we can also save some comments with `scontrol update job <jobid> Comment="My status update"` . You can also use the --no-slurm argument to execute the job in the foreground. This is the default if slurm is not installed on the current system. 
-1. Once the copy process is confirmed to have finished we put files with md5sums in the folders that have been archived. 
-1. The user must evidence that all data was archived correctly (size and md5sum comparison) 
-1. At the end we put an index.html file in the source folder that describes where the data was archived to along with instructions how to get the data back
-
+1. If the average file size in the folder is small (size TBD) we will archive the folder (tar.gz) before uploading (not yet implemented) 
+1. Pass the folder to a tool like [Rclone](https://rclone.org) and execute a copy job in the background. 
+1. Nowadays most researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long running data copy jobs as Slurm can automatically re-run copy jobs that failed. You can also use the `--no-slurm` option to execute the job in the foreground. This is the default, if slurm is not installed on your Linux machine. 
+1. Prior to copying, we put files with checksums (e.g. `.froster.md5sum`) in the folders that are to be archived to allow for an easy subsequent checksum comparison as the user must have evidence, that all data was archived correctly (size and md5sum comparison) 
+1. After files have been deleted from the source folder, we put a file `Where-did-the-files-go.txt` in the source folder that describes where the data was archived to, along with instructions how to get the data back. 
+1. WARNING: The current implementaton of Froster ignores sub-folders as only files that reside direcly in a chosen folder will be archived. There are two reasons for it: 1. If your goal is cost reduction rather than data management, most folders are small and are not worth archiving. We want to focus on the few large folders (Hotspots) that make a difference. 2. Many storage administrators are uncomfortable with users moving hundreds of terabytes. If an entire folder tree can be achived with a single command, it may create bottlenecks in the network or storage systems. 
 
 ## using Froster 
 
@@ -144,11 +143,14 @@ Note that if you restore from AWS S3 to on-premises, you may be subject to AWS d
 
 ### help 
 
-each of the sub commands has a help option, for example `froster archive --help`
+Each of the sub commands has a help option, for example `froster archive --help`
+ 
+#### froster --help
 
 ```
 dp@grammy:~$ froster
-usage: froster  [-h] [--debug] {config,cnf,index,idx,archive,arc,restore,rst,delete,del} ...
+
+ usage: froster  [-h] [--debug] {config,cnf,index,idx,archive,arc,restore,rst,delete,del} ...
 
 A (mostly) automated tool for archiving large scale data after finding folders in the file system that are worth
 archiving.
@@ -173,4 +175,109 @@ optional arguments:
   -h, --help            show this help message and exit
   --debug, -g           verbose output for all commands
 ```
+ 
+#### froster index --help
+ 
+```
+dp@grammy:~$ froster index --help
+ 
+usage: froster index [-h] [--no-slurm] [--cores CORES] [--pwalk-csv PWALKCSV] [folders ...]
 
+positional arguments:
+  folders               folders you would like to index (separated by space), using thepwalk file system crawler
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --no-slurm, -n        do not submit a Slurm job, execute index directly
+  --cores CORES, -c CORES
+                        Number of cores to be allocated for the index. (default=4)
+  --pwalk-csv PWALKCSV, -p PWALKCSV
+                        If someone else has already created CSV files using pwalk you can enter a specific pwalk CSV file here and are not required to run the time consuming pwalk.
+```
+ 
+#### froster archive --help
+
+```
+dp@grammy:~$ froster archive --help
+ 
+usage: froster archive [-h] [--no-slurm] [--cores CORES] [--aws-profile AWSPROFILE] [--larger LARGER] [--age AGE] [--age-mtime]
+                       [folders ...]
+
+positional arguments:
+  folders               folders you would like to archive (separated by space), the last folder in this list is the target
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --no-slurm, -n        do not submit a Slurm job, execute index directly
+  --cores CORES, -c CORES
+                        Number of cores to be allocated for the machine. (default=4)
+  --aws-profile AWSPROFILE, -p AWSPROFILE
+                        which AWS profile from ~/.aws/profiles should be used
+  --larger LARGER, -l LARGER
+
+                        Archive folders larger than <GiB>. This option
+                        works in conjunction with --age <days>. If both
+                        options are set froster will automatically archive
+                        all folder meeting these criteria, without prompting.
+  --age AGE, -a AGE
+                        Archive folders older than <days>. This option
+                        works in conjunction with --larger <GiB>. If both
+                        options are set froster will automatically archive
+                        all folder meeting these criteria without prompting.
+  --age-mtime, -m       Use modified file time (mtime) instead of accessed time (atime)
+```
+ 
+#### froster restore --help
+ 
+```
+dp@grammy:~$ froster restore --help
+ 
+usage: froster restore [-h] [--no-slurm] [--cores CORES] [--aws-profile AWSPROFILE] [--days DAYS] [--retrieve-opt RETRIEVEOPT]
+                       [--no-download]
+                       [folders ...]
+
+positional arguments:
+  folders               folders you would like to to restore (separated by space),
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --no-slurm, -n        do not submit a Slurm job, execute index directly
+  --cores CORES, -c CORES
+                        Number of cores to be allocated for the machine. (default=4)
+  --aws-profile AWSPROFILE, -p AWSPROFILE
+                        which AWS profile from ~/.aws/profiles should be used
+  --days DAYS, -d DAYS  Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)
+  --retrieve-opt RETRIEVEOPT, -r RETRIEVEOPT
+
+                        Bulk (default):
+                            - 5-12 hours retrieval
+                            - costs of $2.50 per TiB
+                        Standard:
+                            - 3-5 hours retrieval
+                            - costs of $10 per TiB
+                        Expedited:
+                            - 1-5 minutes retrieval
+                            - costs of $30 per TiB
+
+                        In addition to the retrieval cost, AWS will charge you about $10/TiB/month for the
+                        duration you keep the data in S3.
+
+                        (costs from April 2023)
+  --no-download, -l     skip download to local storage after retrieval from Glacier
+```
+ 
+#### froster delete --help
+ 
+```
+dp@grammy:~$ froster delete --help
+ 
+usage: froster delete [-h] [--aws-profile AWSPROFILE] [folders ...]
+
+positional arguments:
+  folders               folders (separated by space) from which you would like to delete files, you can only delete files that have been archived
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --aws-profile AWSPROFILE, -p AWSPROFILE
+                        which AWS profile from ~/.aws/profiles should be used
+```
