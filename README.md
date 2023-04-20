@@ -28,7 +28,7 @@ Sometimes the 'rclone' download times out, and you need to hit ctrl+c and start 
 
 ```
 dp@grammy:~$ froster config
-config
+
  Installing pwalk ...
 Compilation successful: gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk
  Installing rclone ... please wait ... Done!
@@ -46,13 +46,15 @@ Please enter the S3 bucket to archive to:
   [Default: froster]
 Please enter the archive root path in your S3 bucket:
   [Default: archive]
-Please enter the AWS S3 Storage class:
-  [Default: STANDARD]
+Please enter the AWS S3 storage class: 
+  [Default: DEEP_ARCHIVE]
 Please enter the AWS profile in ~/.aws:
   [Default: default]
 Please enter your AWS region for S3:
   [Default: us-west-2]
 ```
+
+When running `froster config` you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the lowest cost storage solution available and it takes only 12 hours to retrieve your data with the lowest cost retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool.
 
 ### Standard usage
 
@@ -90,11 +92,12 @@ after the deletion is completed, we see that a manifest file was created that gi
 
 ```
 dp@grammy:~$ froster delete
+
 Deleting archived objects in /home/dp/csv, please wait ...
 Deleted files and wrote manifest to /home/dp/csv/Where-did-the-files-go.txt
 ```
 
-The file has information that should allow other users to find out where the data went and who to contact to get it back
+The file has information that should allow other users to find out where the data went and who to contact to get it back. It is important to understand that before deletion, Froster will compare the checksums of each file that was archived with the file in the archive and will only delete local files that have an identical copy in the archive. The manifest file and the checksum comparison are good reasons why you should always let Froster handle the data deletion instead of deleting the source folder manually.
 
 ```
 dp@grammy:~$ cat /home/dp/csv/Where-did-the-files-go.txt
@@ -113,6 +116,20 @@ myfile2.csv
 ```
 
 After a while you may want to restore the data. Again, you forgot the actual folder location and invoke `froster restore` without the folder argument to see the same dialog with a list of achived folders. Select a folder and hit <Enter> to restore immediatelty.
+
+ 
+```
+dp@grammy:~$ froster restore
+ 
+Restoring folder /home/dp/csv, please wait ...
+Triggered Glacier retrievals: 3
+Currently retrieving from Glacier: 0
+Not in Glacier: 0
+
+Glacier retrievals pending, run this again in up to 12h
+```
+
+If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`. Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved, the restore to the original folder location will proceed. 
 
 ```
 dp@grammy:~$ froster restore
