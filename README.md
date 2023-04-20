@@ -56,9 +56,9 @@ Please enter your AWS region for S3:
 
 ### Standard usage
 
-In its most simple form you can use froster to archive a specific folder and 
+In its most simple form you can use Froster to archive a specific folder, delete the source and restore the data interactively on a standalone Linux machine. 
 
-for example we have 3 csv files in a folder
+For example we have 3 csv files in a folder
 
 ```
 dp@grammy:~$ ls -la ~/csv
@@ -69,7 +69,7 @@ total 840
 -rw-rw---- 1 dp dp   1370 Apr 19 17:10 myfile3.csv
 ```
 
-now let's archive this folder 
+Now let's archive this folder 
 
 ```
 dp@grammy:~$ froster archive ~/csv
@@ -80,9 +80,49 @@ Copying files to archive ...
 Source and archive are identical. 3 files with 836.45 KiB transferred.
 ```
 
+Froster creates md5 checksums for the files in the local folder, uploads the files and then compares the checksums in the archive with the local ones.
 
+Now we delete the local data as we have evidence that the data is intact in the archive. We could execute `froster archive ~/csv` but, since the archiving process took a long time, we forgot which folder we needed to delete. We just run `froster delete` without the folder argument to see a list of archived folders and pick the one we want to delete.
 
+![image](https://user-images.githubusercontent.com/1427719/233254490-4f965142-f162-48ae-b235-0a9b12af3a09.png)
 
+after the deletion is completed, we see that a manifest file was created that gives users some info.
+
+```
+dp@grammy:~$ froster delete
+Deleting archived objects in /home/dp/csv, please wait ...
+Deleted files and wrote manifest to /home/dp/csv/Where-did-the-files-go.txt
+```
+
+The file has information that should allow other users to find out where the data went and who to contact to get it back
+
+```
+dp@grammy:~$ cat /home/dp/csv/Where-did-the-files-go.txt
+
+The files in this folder have been moved to an archive!
+
+Archive location: :s3:froster/archive/home/dp/csv
+Archiver: username@domain.edu
+Archive Tool: https://github.com/dirkpetersen/froster
+Deletion date: 2023-04-19 20:55:15.701141
+
+Files deleted:
+myfile3.csv
+myfile1.csv
+myfile2.csv
+```
+
+After a while you may want to restore the data. Again, you forgot the actual folder location and invoke `froster restore` without the folder argument to see the same dialog with a list of achived folders. Select a folder and hit <Enter> to restore immediatelty.
+
+```
+dp@grammy:~$ froster restore
+Restoring folder /home/dp/csv, please wait ...
+Copying files from archive ...
+Generating hashfile .froster-restored.md5sum ...
+Target and archive are identical. 3 files with 836.45 KiB transferred.
+```
+
+Note that if you restore from AWS S3 to on-premises, you may be subject to AWS data egress charges (up to $90 per TiB downloaded), unless your organization has negotiated an [AWS data egress waiver](https://aws.amazon.com/blogs/publicsector/data-egress-waiver-available-for-eligible-researchers-and-institutions/).
 
 
 ### help 
