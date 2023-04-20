@@ -117,7 +117,7 @@ def main():
 
     elif args.subcmd == 'archive':
         if args.debug:
-            print ("archive:",args.cores, args.awsprofile, args.noslurm, args.nomd5sum, 
+            print ("archive:",args.cores, args.awsprofile, args.noslurm,
                    args.larger, args.age, args.agemtime, args.folders)
         fld = '" "'.join(args.folders)
         if args.debug:
@@ -1118,7 +1118,7 @@ def parse_arguments():
              '')
     parser_index.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to index (separated by space), ' +
-                'using thepwalk file system crawler ')
+                'using the pwalk file system crawler ')
     # ***
     parser_archive = subparsers.add_parser('archive', aliases=['arc'], 
         help=textwrap.dedent(f'''
@@ -1133,8 +1133,6 @@ def parse_arguments():
         help='Number of cores to be allocated for the machine. (default=4)')
     parser_archive.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
-    parser_archive.add_argument( '--no-md5sum', '-s', dest='nomd5sum', action='store_true', default=False,
-        help="show the technical contact / owner of the machine")
     parser_archive.add_argument('--larger', '-l', dest='larger', action='store', default=0, 
         help=textwrap.dedent(f'''
             Archive folders larger than <GiB>. This option
@@ -1212,8 +1210,8 @@ def parse_arguments():
     parser_delete.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
     parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
-        help='folders you would like to delete (separated by space), ' +
-               'you can only delete folders that are archived')
+        help='folders (separated by space) from which you would like to delete files, ' +
+               'you can only delete files that have been archived')
 
             # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
             # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
