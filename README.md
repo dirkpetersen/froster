@@ -151,7 +151,58 @@ Note that if you restore from AWS S3 to on-premises, you may be subject to AWS d
 
 ### Large scale use on HPC
 
-If you have hundreds of terabytes or even petabtyes of data in billions of files you may not be able to easily locate data that is worth archiving. Among hundreds of thousands of folders there are typically only a few hundred that make up most of your storage consumption. We call these folders 'Hotspots' and to find them you use the `froster index` command 
+If you have hundreds of terabytes or even petabtyes of data in billions of files you may not be able to easily locate data that is worth archiving. Among hundreds of thousands of folders there are typically only a few hundred that make up most of your storage consumption. We call these folders 'Hotspots' and to find them you use the `froster index` command and pass the root directory of your lab data. 
+
+```
+[user@login ~]$ froster index /home/exacloud/gscratch/dpcri
+Submitted froster indexing job: 22218558
+Check Job Output:
+ tail -f froster-index-@gscratch+dpcri-22218558.out
+```
+
+we can see the status of the job 
+
+```
+[peterdir@exahead1 ~]$ squeue --me
+             JOBID PART         NAME     USER ST       TIME  TIME_LEFT NOD CPU TRES_PER_ MIN_ NODELIST(REASON)
+          22218560 exac froster:inde peterdir  R       0:07   23:59:53   1   4 gres:disk  64G exanode-2-0
+```
+
+and then use the suggested tail command to see how the indexing is progressing, we can see that the job finished successfully  
+
+```
+[peterdir@exahead1 ~]$ tail -f froster-index-@gscratch+dpcri-22218558.out
+2023-04-20 08:28:22-07:00 mkdir-scratch.sh info: Preparing scratch space for job 22218558
+2023-04-20 08:28:22-07:00 mkdir-scratch.sh info: /mnt/scratch/22218558 has been created
+Indexing folder /home/exacloud/gscratch/dpcri, please wait ...
+
+Wrote @gscratch+dpcri.csv
+with 6 hotspots >= 1 GiB
+with a total disk use of 0.08 TiB
+
+Histogram for 37111 total folders processed:
+0.013 TiB have not been accessed for 5475 days (or 15.0 years)
+0.028 TiB have not been accessed for 30 days (or 0.1 years)
+2023-04-20 08:29:11-07:00 rmdir-scratch.sh info: Preparing to clean scratch space for job 22218558
+2023-04-20 08:29:11-07:00 rmdir-scratch.sh info: Deleting directory /mnt/scratch/22218558 for job 22218558
+```
+
+now we run the `froster archive` command without entering folder names on the command line. We created a csv folder for testing that contains 3 csv files with a total of about 1.1 GiB data. We pick this csv folder. It shows that it has been accessed 0 days ago because we just created it.  
+
+
+![image](https://user-images.githubusercontent.com/1427719/233419009-6a375fe4-541d-4ac6-9ba3-7916b89eabb1.png)
+
+
+```
+[peterdir@exahead1 ~]$ froster archive
+Submitted froster archiving job: 22218563
+Check Job Output:
+ tail -f froster-archive-+home+exacloud+gscratch+dpcri+csv-22218563.out
+[peterdir@exahead1 ~]$
+```
+
+
+
 
 ## command line help 
 
