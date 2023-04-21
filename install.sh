@@ -24,7 +24,7 @@ export VIRTUAL_ENV_DISABLE_PROMPT=1
 python3 -m venv ~/.local/share/froster
 source ~/.local/share/froster/bin/activate
 
-curl -L https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
+curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
         -o ~/.local/share/froster/requirements.txt \
       && python3 -m pip install -r ~/.local/share/froster/requirements.txt
 
