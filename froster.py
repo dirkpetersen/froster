@@ -236,9 +236,10 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
-            cfg.awsprofile = retline[3]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
+            if retline[3]: 
+                cfg.awsprofile = retline[3]
+                args.awsprofile = cfg.awsprofile
+                cfg._set_env_vars(cfg.awsprofile)
         
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
@@ -329,10 +330,10 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
-            cfg.awsprofile = retline[3]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
-        
+            if retline[3]: 
+                cfg.awsprofile = retline[3]
+                args.awsprofile = cfg.awsprofile
+                cfg._set_env_vars(cfg.awsprofile)        
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
             # get archive storage location
