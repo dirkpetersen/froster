@@ -1433,9 +1433,9 @@ class ConfigManager:
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
         config = configparser.ConfigParser()        
-        # Read the AWS config file
-        if os.path.exists(self.awsconfigfile):
-            config.read(self.awsconfigfile)        
+        # Read the AWS config file ---- optional, we only require a creds file
+        # if os.path.exists(self.awsconfigfile):
+        #     config.read(self.awsconfigfile)        
         # Read the AWS credentials file
         if os.path.exists(self.awscredsfile):
             config.read(self.awscredsfile)        
