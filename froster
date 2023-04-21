@@ -9,6 +9,7 @@ if [[ -d  ~/.local/share/froster/bin ]]; then
   export VIRTUAL_ENV_DISABLE_PROMPT=1
   source ~/.local/share/froster/bin/activate
   python3 ${script_dir}/froster.py $@
+  deactivate
 else
   if [[ -e ${PYTHON} ]]; then
     ${PYTHON} ${script_dir}/froster.py $@
@@ -16,5 +17,3 @@ else
     /usr/bin/python3 ${script_dir}/froster.py $@
   fi
 fi
-
-deactivate
