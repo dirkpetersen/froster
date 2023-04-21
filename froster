@@ -2,16 +2,19 @@
 
 PYTHON=/home/exacloud/software/spack/opt/spack/linux-centos7-ivybridge/gcc-8.3.1/python-3.10.8-lgmermnb2kmzendjw24fftlpxwpaokdm/bin/python3
 
-export VIRTUAL_ENV_DISABLE_PROMPT=1
-source ~/.local/share/froster/bin/activate
-
 script_path="$(readlink -f "$0")"
 script_dir="$(dirname "$script_path")"
 
-if [[ -e ${PYTHON} ]]; then
-  ${PYTHON} ${script_dir}/froster.py $@
+if [[ -d  ~/.local/share/froster/bin ]]; then
+  export VIRTUAL_ENV_DISABLE_PROMPT=1
+  source ~/.local/share/froster/bin/activate
+  python3 ${script_dir}/froster.py $@
 else
-  /usr/bin/python3 ${script_dir}/froster.py $@
+  if [[ -e ${PYTHON} ]]; then
+    ${PYTHON} ${script_dir}/froster.py $@
+  else
+    /usr/bin/python3 ${script_dir}/froster.py $@
+  fi
 fi
 
 deactivate

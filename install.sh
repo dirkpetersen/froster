@@ -2,6 +2,7 @@
 
 PMINOR="8" #Python3 minor version = 3.8)
 
+echo "Installing Froster, please wait ..."
 if [[ -n ${LMOD_ROOT} ]]; then 
   ml python
 fi
@@ -10,7 +11,7 @@ if [[ -z ${P3} ]]; then
   echo "python3 could not be found."
   exit
 fi
-V=$(${P3} -c 'import sys; print(sys.version[:3])')
+V=$(${P3} -c 'import sys; print(sys.version[:4])')
 MINOR=$(echo "$V" | cut -d'.' -f2)
 if [[ ${MINOR} -lt ${PMINOR} ]]; then
   echo "Python >= 3.${PMINOR} required and your default ${P3} is version ${V}"
