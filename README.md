@@ -5,6 +5,7 @@ Froster is a tool that crawls your file system, suggests folders to archive, upl
 * [Problem](#problem)
 * [Design](#design)
 * [Using Froster](#using-froster)
+  * [Installing](#installing)
   * [Configuring](#configuring)
   * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
@@ -28,6 +29,14 @@ This problem may have been solved many times, but I have not found an easy open 
 1. WARNING: The current implementaton of Froster ignores sub-folders as only files that reside direcly in a chosen folder will be archived. There are two reasons for it: 1. If your goal is cost reduction rather than data management, most folders are small and are not worth archiving. We want to focus on the few large folders (Hotspots) that make a difference. 2. Many storage administrators are uncomfortable with users moving hundreds of terabytes. If an entire folder tree can be achived with a single command, it may create bottlenecks in the network or storage systems. 
 
 ## using Froster 
+
+### Installing 
+
+Just pipe this curl command to bash: 
+
+```
+curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+```
 
 ### configuring 
 
