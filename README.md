@@ -122,6 +122,7 @@ dp@grammy:~$ cat /home/dp/csv/Where-did-the-files-go.txt
 The files in this folder have been moved to an archive!
 
 Archive location: :s3:froster/archive/home/dp/csv
+Archive profile (~/.aws): default
 Archiver: username@domain.edu
 Archive Tool: https://github.com/dirkpetersen/froster
 Deletion date: 2023-04-19 20:55:15.701141
