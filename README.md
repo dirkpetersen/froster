@@ -6,7 +6,7 @@ Froster is a tool that crawls your file system, suggests folders to archive, upl
 * [Design](#design)
 * [Using Froster](#using-froster)
   * [Configuring](#configuring)
-  * [Standard Usage](#standard-usage)
+  * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
 * [Command line help](#command-line-help)
 
@@ -48,8 +48,6 @@ Enter your domain name: mydomain.edu
   [Default: domain.edu]
 Enter your email address: first.last@domain.edu
   [Default: username@domain.edu]
-Please enter your S3 storage provider:
-  [Default: AWS]
 Please enter the S3 bucket to archive to:
   [Default: froster]
 Please enter the archive root path in your S3 bucket:
@@ -60,9 +58,20 @@ Please enter the AWS profile in ~/.aws:
   [Default: default]
 Please enter your AWS region for S3:
   [Default: us-west-2]
+  
+Found additional profiles in ~/.aws and need to ask a few more questions.
+
+S3 Provider for "myceph" (e.g Ceph, Wasabi, Minio, Other): Ceph
+  [Default: Other]
+S3 Endpoint for "myceph" (e.g https://s3.domain.com): https://myceph.mydomain.com
+S3 region for "myceph" (default=""):
+
+Done!    
 ```
 
-When running `froster config` you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the lowest cost storage solution available and it takes only 12 hours to retrieve your data with the lowest cost retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool.
+When running `froster config` you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the lowest cost storage solution available and it takes only 12 hours to retrieve your data with the lowest cost retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
+
+Please note that Froster expects a profile named 'default', 'aws' or 'AWS' in ~/.aws/credentials which will be used for the Amazon cloud. If Froster finds other profiles it will ask you questions about providers and endpoints. If you do not want to configure addional 3rd party storage providers you cna just hit <Enter> multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and end points.
 
 ### Standard usage
 
