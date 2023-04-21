@@ -36,7 +36,16 @@ curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
         -o ~/.local/bin/froster
 
 chmod +x ~/.local/bin/froster
-ln -s ~/.local/bin/froster ~/bin/froster
+
+DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
+
+if [[ -d ${DIR_IN_PATH} ]]; then
+  if [[ ~/.local/bin != ${DIR_IN_PATH} ]];
+    ln -s ~/.local/bin/froster ${DIR_IN_PATH}/froster
+  fi
+else
+  echo "No folders in path in your home folder. Please add ~/.local/bin to your PATH and try again."
+fi
 
 echo ""
 echo "Froster installed!. Run 'froster --help'"
