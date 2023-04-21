@@ -1991,9 +1991,9 @@ def copy_binary_from_zip_url(zipurl,binary,subwildcard,targetfolder):
 
 
 if __name__ == "__main__":
-    #if not sys.platform.startswith('linux'):
-    #    print('This software currently only runs on Linux x64')
-    #    sys.exit(1)
+    if not sys.platform.startswith('linux'):
+        print('This software currently only runs on Linux x64')
+        sys.exit(1)
     try:        
         args = parse_arguments()      
         main()
