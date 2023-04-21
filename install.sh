@@ -1,12 +1,12 @@
 #! /bin/bash
 
-PMINOR="8" #Python3 minor version = 3.8)
+PMINOR="9" #Python3 minor version = 3.8)
 
 echo ""
 echo "Installing Froster, please wait ..."
 if [[ -n ${LMOD_ROOT} ]]; then 
-  ml python 
-  ml Python
+  ml python > /dev/null 2>&1 
+  ml Python/3.10 > /dev/null 2>&1
 fi
 P3=$(which python3)
 if [[ -z ${P3} ]]; then
