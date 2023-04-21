@@ -68,7 +68,7 @@ def main():
                                  'us-west-2|general|aws_region','string')
         
         profs = cfg.get_aws_profiles()
-        
+    
         cfg.create_aws_configs(None, None, aws_region)
         cfg.create_s3_bucket(bucket,aws_region)
 
@@ -168,6 +168,9 @@ def main():
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():            
             return False
         
+        if not cfg.check_bucket_access(cfg.bucket):
+            return False
+        
         if not args.folders:
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
             csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
@@ -232,6 +235,10 @@ def main():
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
             return False
         
+        if not cfg.check_bucket_access(cfg.bucket):
+            return False
+
+
         if not args.folders:
             csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
             with open(csvfile, 'r') as csvf:
@@ -324,6 +331,9 @@ def main():
             print (f'default cmdline: froster.py delete "{fld}"')
 
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            return False
+        
+        if not cfg.check_bucket_access(cfg.bucket):
             return False
 
         if not args.folders:
@@ -661,9 +671,17 @@ class Archiver:
         source = os.path.abspath(folder)
         target = os.path.join(f':s3:{self.cfg.archivepath}',
                               source.lstrip(os.path.sep))
-        
+
+        if os.path.isfile(os.path.join(source,".froster.md5sum")):
+            print(f'The hashfile ".froster.md5sum" already exists in {source} from a previous archiving process.')
+            print('You need to manually rename the file before you can proceed.')
+            print('Without a valid ".froster.md5sum" in a folder you will not be able to use "froster" for restores')
+            return False
+
         print ('Generating hashfile .froster.md5sum ...')
-        self.gen_md5sums(source,'.froster.md5sum') 
+        if not self.gen_md5sums(source,'.froster.md5sum'):
+            print ('Could not create hashfile .froster.md5sum. Perhaps there are no files?')
+            return False
         hashfile = os.path.join(source,'.froster.md5sum')
 
         rclone = Rclone(self.args,self.cfg)
@@ -726,9 +744,9 @@ class Archiver:
     def gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in os.walk(directory):
             if no_subdirs and root != directory:
-                break
-
-            with open(os.path.join(root, hash_file), "w") as out_f:
+                break            
+            hashpath=os.path.join(root, hash_file)
+            with open(hashpath, "w") as out_f:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
                     tasks = {}
                     for filen in files:
@@ -740,12 +758,14 @@ class Archiver:
                                 filen != ".froster-restored.md5sum":
                             task = executor.submit(self.md5sum, file_path)
                             tasks[task] = file_path
-
                     for future in concurrent.futures.as_completed(tasks):
                         filen = os.path.basename(tasks[future])
                         md5 = future.result()
                         out_f.write(f"{md5}  {filen}\n")
-
+            if os.path.getsize(hashpath) == 0:
+                os.remove(hashpath)
+                return False
+        return True
 
     def restore(self, folder):
 
@@ -803,7 +823,7 @@ class Archiver:
         #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
 
         print ('Generating hashfile .froster-restored.md5sum ...')
-        self.gen_md5sums(target,'.froster-restored.md5sum') 
+        self.gen_md5sums(target,'.froster-restored.md5sum')
         hashfile = os.path.join(target,'.froster-restored.md5sum')
 
         ret = rclone.checksum(hashfile,source)
@@ -1401,8 +1421,9 @@ class ConfigManager:
         self.homepaths = self._get_home_paths()
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
+        self.bucket = self.read('general','bucket')
         self.archivepath = os.path.join(
-             self.read('general','bucket'),
+             self.bucket,
              self.read('general','archiveroot'))
         self.aws_region = self.read('general','aws_region')
         self.awsprofile = ''
@@ -1542,6 +1563,33 @@ class ConfigManager:
                     if section:
                         self.write(section,key,user_input)
                     return user_input
+                
+    def check_s3_credentials(self):
+        from botocore.exceptions import ClientError, NoCredentialsError
+        sts = boto3.client('sts')
+        try:
+            response = sts.get_caller_identity()
+            #print(f"Credentials are valid. User ARN: {response['Arn']}")
+            return True
+        except NoCredentialsError:
+            print("Error: No credentials found.")
+            print("run 'froster config' to generate credentials in ~/.aws/credentials")
+            return False
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'InvalidAccessKeyId':                
+                print(f"Error: Invalid AWS Access Key ID in profile {self.awsprofile}")
+            elif error_code == 'SignatureDoesNotMatch':
+                print(f"Error: Invalid AWS Secret Access Key in profile {self.awsprofile}")        
+            elif error_code == 'InvalidClientTokenId':
+                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
+            else:
+                print(f"Error validating credentials for profile {self.awsprofile}: {e}")
+            print(f"Fix your credentials in ~/.aws/credentials for profile {self.awsprofile}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred while validating credentials for profile {self.awsprofile}: {e}")
+            return False
 
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
@@ -1591,19 +1639,92 @@ class ConfigManager:
                 credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
             os.chmod(self.awscredsfile, 0o600)
 
+
+    def check_bucket_access(self, bucket_name):
+        from botocore.exceptions import ClientError
+
+        if not self.check_s3_credentials():
+            return False 
+    
+        s3 = boto3.client('s3')
+        
+        try:
+            # Check if bucket exists
+            s3.head_bucket(Bucket=bucket_name)
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '403':
+                print(f"Error: Access denied to bucket {bucket_name} for profile {self.awsprofile}. Check your permissions.")
+            elif error_code == '404':
+                print(f"Error: Bucket {bucket_name} does not exist in profile {self.awsprofile}.")
+                print("run 'froster config' to create this bucket.")
+            else:
+                print(f"Error accessing bucket {bucket_name} in profile {self.awsprofile}: {e}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred for profile {self.awsprofile}: {e}")
+            return False
+
+        # Test write access by uploading a small test file
+        try:
+            test_object_key = "test_write_access.txt"
+            s3.put_object(Bucket=bucket_name, Key=test_object_key, Body="Test write access")
+            #print(f"Successfully wrote to {bucket_name}")
+
+            # Clean up by deleting the test object
+            s3.delete_object(Bucket=bucket_name, Key=test_object_key)
+            #print(f"Successfully deleted test object from {bucket_name}")
+            return True
+        except ClientError as e:
+            print(f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
+            return False
+
     def create_s3_bucket(self, bucket_name, region='us-west-2'):
+        from botocore.exceptions import BotoCoreError, ClientError
+        if not self.check_s3_credentials():
+            print(f"Cannot create bucket '{bucket_name}' with these credentials")
+            return False 
         s3_client = boto3.client('s3')
         existing_buckets = s3_client.list_buckets()
         for bucket in existing_buckets['Buckets']:
             if bucket['Name'] == bucket_name:
                 if self.args.debug:
                     print(f'S3 bucket {bucket_name} exists')
-                return True            
-        response = s3_client.create_bucket(
-            Bucket=bucket_name,
-            CreateBucketConfiguration={'LocationConstraint': region}
-            )
-        print(f'Creating S3 Bucket {bucket_name}:',response)
+                return True
+        try:
+            response = s3_client.create_bucket(
+                Bucket=bucket_name,
+                CreateBucketConfiguration={'LocationConstraint': region}
+                )
+            print(f"Created S3 Bucket '{bucket_name}'")
+        except BotoCoreError as e:
+            print(f"BotoCoreError: {e}")
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'InvalidBucketName':
+                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
+            elif error_code == 'BucketAlreadyExists':
+                pass
+                #print(f"Error: Bucket '{bucket_name}' already exists.")
+            elif error_code == 'BucketAlreadyOwnedByYou':
+                pass
+                #print(f"Error: You already own a bucket named '{bucket_name}'.")
+            elif error_code == 'InvalidAccessKeyId':
+                pass
+                #print("Error: Invalid AWS Access Key ID.")
+            elif error_code == 'SignatureDoesNotMatch':
+                pass
+                #print("Error: Invalid AWS Secret Access Key.")
+            elif error_code == 'AccessDenied':
+                print("Error: Access denied. Check your account permissions for creating S3 buckets")
+            elif error_code == 'IllegalLocationConstraintException':
+                print(f"Error: The specified region '{region}' is not valid.")
+            else:
+                print(f"ClientError: {e}")
+            return False
+        except Exception as e:            
+            print(f"An unexpected error occurred: {e}")
+            return False
 
         encryption_configuration = {
             'Rules': [
@@ -1619,9 +1740,20 @@ class ConfigManager:
                 Bucket=bucket_name,
                 ServerSideEncryptionConfiguration=encryption_configuration
             )            
-            print(f'Applied encryption to S3 Bucket {bucket_name}:',response)
-        except:
-            print(f'Could not apply encryption to S3 Bucket {bucket_name}:',response)
+            print(f"Applied AES256 encryption to S3 bucket '{bucket_name}'")    
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'InvalidBucketName':
+                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
+            elif error_code == 'AccessDenied':
+                print("Error: Access denied. Check your account permissions for creating S3 buckets")
+            elif error_code == 'IllegalLocationConstraintException':
+                print(f"Error: The specified region '{region}' is not valid.")
+            else:
+                print(f"ClientError: {e}")                        
+        except Exception as e:            
+            print(f"An unexpected error occurred: {e}")
+            return False            
 
         return True
 
