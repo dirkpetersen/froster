@@ -236,8 +236,9 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
-            args.awsprofile = retline[3]
-            cfg._set_env_vars(args.awsprofile)
+            cfg.awsprofile = retline[3]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)
         
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
@@ -266,6 +267,8 @@ def main():
                         se.add_line(f'#SBATCH --time=1-0')
                         se.add_line(f'ml python')
                         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+                        if not "--profile" in cmdline and args.awsprofile:
+                            cmdline=f'{cmdline} --profile {args.awsprofile}'
                         if not fld in cmdline:
                             cmdline=f'{cmdline} "{fld}"'                        
                         se.add_line(f"python3 {cmdline}")
@@ -289,11 +292,13 @@ def main():
             se.add_line(f'#SBATCH --mail-type=FAIL,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
-            se.add_line(f'ml python')      
+            se.add_line(f'ml python')
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            if not "--profile" in cmdline and args.awsprofile:
+                cmdline=f'{cmdline} --profile {args.awsprofile}'
             if not args.folders[0] in cmdline:
                 folders = '" "'.join(args.folders)
-                cmdline=f'{cmdline} "{folders}"'            
+                cmdline=f'{cmdline} "{folders}"'
             se.add_line(f"python3 {cmdline}")
             jobid = se.sbatch()
             print(f'Submitted froster restore job: {jobid}')
@@ -324,8 +329,9 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
-            args.awsprofile = retline[3]
-            cfg._set_env_vars(args.awsprofile)
+            cfg.awsprofile = retline[3]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)
         
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
