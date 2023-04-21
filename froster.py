@@ -1292,7 +1292,9 @@ class ConfigManager:
              self.read('general','bucket'),
              self.read('general','archiveroot'))
         self.aws_region = self.read('general','aws_region')
-        self.awsprofile = self.args.awsprofile
+        self.awsprofile = ''
+        if hasattr(self.args, "awsprofile") and args.awsprofile:
+            self.awsprofile = self.args.awsprofile        
         if not self.awsprofile:
             self.awsprofile = self.read('general','aws_profile')
         self.envrn = os.environ.copy()
