@@ -100,12 +100,20 @@ def main():
             else:
                 print(f'\nConfig for AWS profile "{prof}" was not saved.')
 
-            # setup local scratch spaces, OHSU specific 
-        cfg.write('hpc', 'slurm_lscratch', '--gres disk:1024') # get 1TB scratch space
-        cfg.write('hpc', 'lscratch_mkdir', 'mkdir-scratch.sh') # optional
-        cfg.write('hpc', 'lscratch_rmdir', 'rmdir-scratch.sh') # optional
-        cfg.write('hpc', 'lscratch_root', '/mnt/scratch') # add slurm jobid at the end
 
+        print('\n*** And finally a few questions how your HPC uses local scratch space ***')
+        print('*** This is optional and you can hit ctrl+c any time ***\n')
+
+        # setup local scratch spaces, the defauls are OHSU specific 
+        x = cfg.prompt('How do you request local scratch from Slurm?',
+                            '--gres disk:1024|hpc|slurm_lscratch','string') # get 1TB scratch space
+        x = cfg.prompt('Is there a user script that provisions local scratch?',
+                            'mkdir-scratch.sh|hpc|lscratch_mkdir','string') # optional
+        x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
+                            'rmdir-scratch.sh|hpc|lscratch_rmdir','string') # optional
+        x = cfg.prompt('What is the local scratch root ?',
+                            '/mnt/scratch|hpc|lscratch_root','string') # add slurm jobid at the end
+        
         print('\nDone!\n')
 
     elif args.subcmd == 'index':
