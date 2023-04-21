@@ -56,16 +56,14 @@ def main():
                              f'{getpass.getuser()}@{domain}|general|email','string')
 
         # cloud setup
-        s3_provider = cfg.prompt('Please enter your default S3 storage provider',
-                                 'AWS|general|s3_provider','string')
         bucket = cfg.prompt('Please enter the S3 bucket to archive to',
                             'froster|general|bucket','string')
         archiveroot = cfg.prompt('Please enter the archive root path in your S3 bucket',
                                  'archive|general|archiveroot','string')
         s3_storage_class =  cfg.prompt('Please enter the AWS S3 Storage class',
                                     'DEEP_ARCHIVE|general|s3_storage_class','string')
-        aws_profile =  cfg.prompt('Please enter the AWS profile in ~/.aws',
-                                  'default|general|aws_profile','string')
+        #aws_profile =  cfg.prompt('Please enter the AWS profile in ~/.aws',
+        #                          'default|general|aws_profile','string')
         aws_region =  cfg.prompt('Please enter your AWS region for S3',
                                  'us-west-2|general|aws_region','string')
         
@@ -73,10 +71,15 @@ def main():
         
         cfg.create_aws_configs(None, None, aws_region)
         cfg.create_s3_bucket(bucket,aws_region)
-
+        allowed_aws_profiles = ['default', 'aws', 'AWS'] # for accessing glacier use one of these
         profmsg = 1
         for prof in profs:
-            if prof == 'default' or prof == 'AWS' or prof == 'aws': continue
+            if prof in allowed_aws_profiles:
+                if prof == 'AWS' or prof == 'aws':
+                    cfg.write('general', 'aws_profile', prof)
+                elif prof == 'default': 
+                    cfg.write('general', 'aws_profile', 'default')
+                continue
             if profmsg == 1:
                 print('\nFound additional profiles in ~/aws and need to ask a few more questions.\n')
                 profmsg = 0
