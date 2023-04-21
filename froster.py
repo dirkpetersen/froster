@@ -1565,22 +1565,30 @@ class ConfigManager:
                     return user_input
                 
     def check_s3_credentials(self):
+        # checks the credentials and returns the AWS ARN 
         from botocore.exceptions import ClientError, NoCredentialsError
         sts = boto3.client('sts')
         try:
-            response = sts.get_caller_identity()
-            #print(f"Credentials are valid. User ARN: {response['Arn']}")
-            return True
+            response = sts.get_caller_identity() 
+            if self.args.debug:
+                print (f"Authentication success: Your ARN is {response['Arn']}!")           
+            return response['Arn']
         except NoCredentialsError:
             print("Error: No credentials found.")
             print("run 'froster config' to generate credentials in ~/.aws/credentials")
             return False
         except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'InvalidAccessKeyId':                
-                print(f"Error: Invalid AWS Access Key ID in profile {self.awsprofile}")
-            elif error_code == 'SignatureDoesNotMatch':
-                print(f"Error: Invalid AWS Secret Access Key in profile {self.awsprofile}")        
+            error_code = e.response['Error']['Code']             
+            if error_code == 'RequestTimeTooSkewed':
+                print(f"The time difference between S3 storage and your computer is too high:\n{e}")
+            elif error_code == 'InvalidAccessKeyId':                
+                print(f"Error: Invalid AWS Access Key ID in profile {self.awsprofile}:\n{e}")
+            elif error_code == 'SignatureDoesNotMatch':                
+                if "Signature expired" in str(e): 
+                    print(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
+                    return False
+                else:
+                    print(f"Error: Invalid AWS Secret Access Key in profile {self.awsprofile}:\n{e}")         
             elif error_code == 'InvalidClientTokenId':
                 print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
             else:
