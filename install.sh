@@ -2,6 +2,7 @@
 
 PMINOR="8" #Python3 minor version = 3.8)
 
+echo ""
 echo "Installing Froster, please wait ..."
 if [[ -n ${LMOD_ROOT} ]]; then 
   ml python
@@ -35,6 +36,8 @@ curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
         -o ~/.local/bin/froster
 
 chmod +x ~/.local/bin/froster
+ln -s ~/.local/bin/froster ~/bin/froster
 
+echo ""
 echo "Froster installed!. Run 'froster --help'"
 
