@@ -371,10 +371,11 @@ def main():
                 with open(readme, 'w') as rme:
                     rme.write(f'The files in this folder have been moved to an archive!\n')
                     rme.write(f'\nArchive location: {archive_folder}\n')
+                    rme.write(f'Archive profile (~/.aws): {cfg.awsprofile}\n')
                     rme.write(f'Archiver: {email}\n')
-                    rme.write(f'Archive Tool: https://github.com/dirkpetersen/froster\n')
+                    rme.write(f'Archive tool: https://github.com/dirkpetersen/froster\n')
                     rme.write(f'Deletion date: {datetime.datetime.now()}\n')
-                    rme.write(f'\nFiles deleted:\n')
+                    rme.write(f'\nFiles archived:\n')
                     rme.write('\n'.join(deleted_files))
                     rme.write(f'\n')
                 print(f'Deleted files and wrote manifest to {readme}')
