@@ -19,11 +19,22 @@ if [[ ${MINOR} -lt ${PMINOR} ]]; then
 fi 
 
 mkdir -p ~/.local/share/froster
+mkdir -p ~/.local/bin
 export VIRTUAL_ENV_DISABLE_PROMPT=1
 python3 -m venv ~/.local/share/froster
 source ~/.local/share/froster/bin/activate
-mytemp=$(mktemp -d)
+
 curl -L https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
-        -o ${mytemp}/requirements.txt \
-      && python3 -m pip install -r ${mytemp}/requirements.txt && rm ${mytemp}/requirements.txt
+        -o ~/.local/share/froster/requirements.txt \
+      && python3 -m pip install -r ~/.local/share/froster/requirements.txt
+
+curl -L https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
+        -o ~/.local/bin/froster.py
+
+curl -L https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
+        -o ~/.local/bin/froster
+
+chmod + ~/.local/bin/froster
+chmod + ~/.local/bin/froster.py
+
 
