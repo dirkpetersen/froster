@@ -80,7 +80,7 @@ Done!
 
 When running `froster config` you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the lowest cost storage solution available and it takes only 12 hours to retrieve your data with the lowest cost retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
 
-Please note that Froster expects a profile named 'default', 'aws' or 'AWS' in ~/.aws/credentials which will be used for the Amazon cloud. If Froster finds other profiles it will ask you questions about providers and endpoints. If you do not want to configure addional 3rd party storage providers you cna just hit <Enter> multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and end points.
+Please note that Froster expects a profile named 'default', 'aws' or 'AWS' in ~/.aws/credentials which will be used for the Amazon cloud. If Froster finds other profiles it will ask you questions about providers and endpoints. If you do not want to configure addional 3rd party storage providers you can just hit "Enter" multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and end points.
 
 ### Standard usage
 
@@ -142,7 +142,7 @@ myfile1.csv
 myfile2.csv
 ```
 
-After a while you may want to restore the data. Again, you forgot the actual folder location and invoke `froster restore` without the folder argument to see the same dialog with a list of achived folders. Select a folder and hit <Enter> to restore immediatelty.
+After a while you may want to restore the data. Again, you forgot the actual folder location and invoke `froster restore` without the folder argument to see the same dialog with a list of achived folders. Select a folder and hit "Enter" to restore immediatelty.
 
  
 ```
