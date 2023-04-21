@@ -5,7 +5,8 @@ PMINOR="8" #Python3 minor version = 3.8)
 echo ""
 echo "Installing Froster, please wait ..."
 if [[ -n ${LMOD_ROOT} ]]; then 
-  ml python || ml Python
+  ml python 
+  ml Python
 fi
 P3=$(which python3)
 if [[ -z ${P3} ]]; then
