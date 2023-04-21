@@ -273,7 +273,7 @@ optional arguments:
 ```
 dp@grammy:~$ froster archive --help
  
-usage: froster archive [-h] [--no-slurm] [--cores CORES] [--aws-profile AWSPROFILE] [--larger LARGER] [--age AGE] [--age-mtime]
+usage: froster archive [-h] [--no-slurm] [--cores CORES] [--profile AWSPROFILE] [--larger LARGER] [--age AGE] [--age-mtime]
                        [folders ...]
 
 positional arguments:
@@ -284,7 +284,7 @@ optional arguments:
   --no-slurm, -n        do not submit a Slurm job, execute index directly
   --cores CORES, -c CORES
                         Number of cores to be allocated for the machine. (default=4)
-  --aws-profile AWSPROFILE, -p AWSPROFILE
+  --profile AWSPROFILE, -p AWSPROFILE
                         which AWS profile from ~/.aws/profiles should be used
   --larger LARGER, -l LARGER
 
@@ -305,7 +305,7 @@ optional arguments:
 ```
 dp@grammy:~$ froster restore --help
  
-usage: froster restore [-h] [--no-slurm] [--cores CORES] [--aws-profile AWSPROFILE] [--days DAYS] [--retrieve-opt RETRIEVEOPT]
+usage: froster restore [-h] [--no-slurm] [--cores CORES] [--profile AWSPROFILE] [--days DAYS] [--retrieve-opt RETRIEVEOPT]
                        [--no-download]
                        [folders ...]
 
@@ -317,7 +317,7 @@ optional arguments:
   --no-slurm, -n        do not submit a Slurm job, execute index directly
   --cores CORES, -c CORES
                         Number of cores to be allocated for the machine. (default=4)
-  --aws-profile AWSPROFILE, -p AWSPROFILE
+  --profile AWSPROFILE, -p AWSPROFILE
                         which AWS profile from ~/.aws/profiles should be used
   --days DAYS, -d DAYS  Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)
   --retrieve-opt RETRIEVEOPT, -r RETRIEVEOPT
@@ -344,13 +344,13 @@ optional arguments:
 ```
 dp@grammy:~$ froster delete --help
  
-usage: froster delete [-h] [--aws-profile AWSPROFILE] [folders ...]
+usage: froster delete [-h] [--profile AWSPROFILE] [folders ...]
 
 positional arguments:
   folders               folders (separated by space) from which you would like to delete files, you can only delete files that have been archived
 
 optional arguments:
   -h, --help            show this help message and exit
-  --aws-profile AWSPROFILE, -p AWSPROFILE
+  --profile AWSPROFILE, -p AWSPROFILE
                         which AWS profile from ~/.aws/profiles should be used
 ```
