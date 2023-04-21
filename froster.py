@@ -71,6 +71,7 @@ def main():
         
         cfg.create_aws_configs(None, None, aws_region)
         cfg.create_s3_bucket(bucket,aws_region)
+
         allowed_aws_profiles = ['default', 'aws', 'AWS'] # for accessing glacier use one of these
         profmsg = 1
         for prof in profs:
@@ -1067,8 +1068,19 @@ class Archiver:
         return mountinfo_list    
     
     def create_s3_bucket(self, bucket_name, region='us-west-2'):
-        s3_client = boto3.client('s3')
-        existing_buckets = s3_client.list_buckets()
+
+        try:
+            s3_client = boto3.client('s3')            
+            existing_buckets = s3_client.list_buckets()
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f"Access denied for bucket '{bucket_name}'")
+                print('Check your permissions and/or credentials.')
+            else:
+                print(f"An error occurred: {e}")
+            return False
+
         for bucket in existing_buckets['Buckets']:
             if bucket['Name'] == bucket_name:
                 print(f'S3 bucket {bucket_name} already exists')
@@ -1096,9 +1108,18 @@ class Archiver:
     
     def glacier_restore(self, bucket_name, prefix, keep_days=30, ret_opt="Bulk"):
         glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
-        s3 = boto3.client('s3')
-        paginator = s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+        try:
+            s3 = boto3.client('s3')
+            paginator = s3.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f"Access denied for bucket '{bucket_name}'")
+                print('Check your permissions and/or credentials.')
+            else:
+                print(f"An error occurred: {e}")
+            return [], [], []
         triggered_keys = []
         restoring_keys = []
         restored_keys = []
