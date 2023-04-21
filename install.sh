@@ -28,13 +28,13 @@ curl -L https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements
         -o ~/.local/share/froster/requirements.txt \
       && python3 -m pip install -r ~/.local/share/froster/requirements.txt
 
-curl -L https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
+curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
         -o ~/.local/bin/froster.py
 
-curl -L https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
+curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
         -o ~/.local/bin/froster
 
-chmod + ~/.local/bin/froster
-chmod + ~/.local/bin/froster.py
+chmod +x ~/.local/bin/froster
 
+echo "Froster installed!. Run 'froster --help'"
 
