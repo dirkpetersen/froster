@@ -236,6 +236,7 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
+            args.awsprofile = retline[3]
         
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
@@ -322,6 +323,7 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
+            args.awsprofile = retline[3]
         
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
@@ -769,7 +771,7 @@ class Archiver:
         # If success, write folders to froster-archives.csv database
         s3_storage_class=self.cfg.read('general','s3_storage_class')
         dictrow = {'local_folder': source, 'archive_folder': target,
-                   's3_storage_class': s3_storage_class}
+                   's3_storage_class': s3_storage_class, 'profile': self.cfg.awsprofile}
         mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
         self._add_update_csv_row(mycsv,dictrow,'local_folder')
         
