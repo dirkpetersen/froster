@@ -25,34 +25,38 @@ def main():
     arch = Archiver(args, cfg)
 
     if args.subcmd == 'config':
-        print ("config")
-        arch.config("one", "two")
 
-        if len(cfg.homepaths) > 0:
-            cfg.write('general', 'binfolder', cfg.homepaths[0])
+        binfolder = cfg.read('general', 'binfolder')
+        if not binfolder:
+            binfolder = f'{cfg.home_dir}/.local/bin'
+            if not os.path.exists(binfolder):
+                os.makedirs(binfolder, mode=0o775)
+            cfg.write('general', 'binfolder', binfolder)
 
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        print(" Installing pwalk ...", flush=True)        
-        copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
-                'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
-                'pwalk', cfg.homepaths[0])
+        if not os.path.exists(os.path.join(binfolder,'pwalk')):
+            print(" Installing pwalk ...", flush=True)        
+            copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
+                    'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
+                    'pwalk', binfolder)
 
-        print(" Installing rclone ... please wait ... ", end='', flush=True)
-        rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-        copy_binary_from_zip_url(rclone_url, 'rclone', 
-                               '/rclone-v*/',cfg.homepaths[0])
-        print("Done!",flush=True)
+        if not os.path.exists(os.path.join(binfolder,'rclone')):
+            print(" Installing rclone ... please wait ... ", end='', flush=True)
+            rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+            copy_binary_from_zip_url(rclone_url, 'rclone', 
+                                '/rclone-v*/',binfolder)
+            print("Done!",flush=True)
 
         print('\n*** Asking a few questions ***')
         print('*** For most you can just hit <Enter> to accept the default. ***\n')
         # general setup 
         domain = cfg.prompt('Enter your domain name:',
                             'ohsu.edu|general|domain','string')
-        emailad = cfg.prompt('Enter your email address:',
+        emailaddr = cfg.prompt('Enter your email address:',
                              f'{getpass.getuser()}@{domain}|general|email','string')
 
         # cloud setup
-        s3_provider = cfg.prompt('Please enter your S3 storage provider',
+        s3_provider = cfg.prompt('Please enter your default S3 storage provider',
                                  'AWS|general|s3_provider','string')
         bucket = cfg.prompt('Please enter the S3 bucket to archive to',
                             'froster|general|bucket','string')
@@ -64,7 +68,34 @@ def main():
                                   'default|general|aws_profile','string')
         aws_region =  cfg.prompt('Please enter your AWS region for S3',
                                  'us-west-2|general|aws_region','string')
+        
+        profs = cfg.get_aws_profiles()
+        
+        cfg.create_aws_configs(None, None, aws_region)
         cfg.create_s3_bucket(bucket,aws_region)
+
+        profmsg = 1
+        for prof in profs:
+            if prof == 'default' or prof == 'AWS' or prof == 'aws': continue
+            if profmsg == 1:
+                print('\nFound additional profiles in ~/aws and need to ask a few more questions.\n')
+                profmsg = 0
+            profile={'name': '', 'provider': '', 'endpoint': '', 'region': ''}
+            pr=cfg.read('profiles', prof)
+            if isinstance(pr, dict):
+                profile = cfg.read('profiles', prof)            
+            profile['name'] = prof
+            if not profile['provider']: profile['provider'] = 'Other'
+            profile['provider'] = \
+                cfg.prompt(f'S3 Provider for "{prof}" (e.g Ceph, Wasabi, Minio, Other)',profile['provider'])
+            profile['endpoint'] = \
+                cfg.prompt(f'S3 Endpoint for "{prof}" (e.g https://s3.domain.com)',profile['endpoint'])
+            profile['region'] = \
+                cfg.prompt(f'S3 region for "{prof}" (default="")','')            
+            if profile['endpoint'] and profile['provider']:
+                cfg.write('profiles', prof, profile) 
+            else:
+                print(f'\nConfig for AWS profile "{prof}" was not saved.')
 
             # setup local scratch spaces, OHSU specific 
         cfg.write('hpc', 'slurm_lscratch', '--gres disk:1024') # get 1TB scratch space
@@ -72,9 +103,7 @@ def main():
         cfg.write('hpc', 'lscratch_rmdir', 'rmdir-scratch.sh') # optional
         cfg.write('hpc', 'lscratch_root', '/mnt/scratch') # add slurm jobid at the end
 
-        # need to fix
-        #if not args.awsprofile:
-        #    args.awsprofile = cfg.read('general', 'aws_profile')
+        print('\nDone!\n')
 
     elif args.subcmd == 'index':
         if args.debug:
@@ -97,8 +126,9 @@ def main():
                 arch.index(fld)            
         else:
             se = SlurmEssentials(args, cfg)
-            label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
-            myjobname=f'froster:index:{label}'
+            label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')            
+            shortlabel=os.path.basename(args.folders[0])
+            myjobname=f'froster:index:{shortlabel}'            
             email=cfg.read('general', 'email')
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
@@ -123,6 +153,9 @@ def main():
         if args.debug:
             print (f'default cmdline: froster.py archive "{fld}"')
 
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():            
+            return False
+        
         if not args.folders:
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
             csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
@@ -154,7 +187,8 @@ def main():
         else:
             se = SlurmEssentials(args, cfg)
             label=args.folders[0].replace('/','+')
-            myjobname=f'froster:archive:{label}'
+            shortlabel=os.path.basename(args.folders[0])
+            myjobname=f'froster:archive:{shortlabel}'
             email=cfg.read('general', 'email')
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
@@ -165,6 +199,9 @@ def main():
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')      
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            if not args.folders[0] in cmdline:
+                folders = '" "'.join(args.folders)
+                cmdline=f'{cmdline} "{folders}"'
             se.add_line(f"python3 {cmdline}")
             jobid = se.sbatch()
             print(f'Submitted froster archiving job: {jobid}')
@@ -180,6 +217,9 @@ def main():
         if args.debug:
             print (f'default cmdline: froster.py restore "{fld}"')
 
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            return False
+        
         if not args.folders:
             csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
             with open(csvfile, 'r') as csvf:
@@ -207,8 +247,9 @@ def main():
                         se = SlurmEssentials(args, cfg)
                         #get a job start time 12 hours from now
                         fut_time = se.get_future_start_time(12)
-                        label=args.folders[0].replace('/','+')
-                        myjobname=f'froster:download:{label}'
+                        label=fld.replace('/','+')
+                        shortlabel=os.path.basename(fld)
+                        myjobname=f'froster:restore:{shortlabel}'                        
                         email=cfg.read('general', 'email')
                         se.add_line(f'#SBATCH --job-name={myjobname}')
                         se.add_line(f'#SBATCH --begin={fut_time}')
@@ -218,8 +259,10 @@ def main():
                         se.add_line(f'#SBATCH --mail-type=FAIL,END')           
                         se.add_line(f'#SBATCH --mail-user={email}')
                         se.add_line(f'#SBATCH --time=1-0')
-                        se.add_line(f'ml python')      
+                        se.add_line(f'ml python')
                         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+                        if not fld in cmdline:
+                            cmdline=f'{cmdline} "{fld}"'                        
                         se.add_line(f"python3 {cmdline}")
                         jobid = se.sbatch()
                         print(f'Submitted froster download job to run in 12 hours: {jobid}')
@@ -229,9 +272,10 @@ def main():
                         print(f'\nGlacier retrievals pending, run this again in up to 12h\n')
                                         
         else:
-            se = SlurmEssentials(args, cfg)
+            se = SlurmEssentials(args, cfg)            
             label=args.folders[0].replace('/','+')
-            myjobname=f'froster:restore:{label}'
+            shortlabel=os.path.basename(args.folders[0])
+            myjobname=f'froster:restore:{shortlabel}'
             email=cfg.read('general', 'email')
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
@@ -242,6 +286,9 @@ def main():
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')      
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            if not args.folders[0] in cmdline:
+                folders = '" "'.join(args.folders)
+                cmdline=f'{cmdline} "{folders}"'            
             se.add_line(f"python3 {cmdline}")
             jobid = se.sbatch()
             print(f'Submitted froster restore job: {jobid}')
@@ -255,6 +302,9 @@ def main():
         fld = '" "'.join(args.folders)
         if args.debug:
             print (f'default cmdline: froster.py delete "{fld}"')
+
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            return False
 
         if not args.folders:
             csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
@@ -326,9 +376,9 @@ def main():
 
 class Rclone:
     def __init__(self, args, cfg):
-        self.rc = 'rclone'
         self.args = args
         self.cfg = cfg
+        self.rc = f'{self.cfg.binfolder}/rclone'
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -540,7 +590,7 @@ class Archiver:
                     #if not pwalkfolder:
                     #    print (" Error: Either pass a folder or a --pwalk-csv file on the command line.")
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
-                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
+                    mycmd = f'{self.cfg.binfolder}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
                     if self.args.debug:
                         print(f' Running {mycmd} ...', flush=True)
                     ret = subprocess.run(mycmd, shell=True, 
@@ -641,6 +691,7 @@ class Archiver:
                     for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
                     ''').replace('\n', ''), flush=True)
                 lastagedbytes=agedbytes[i]
+            print('')
         else:
             print(f'No folders larger than {thresholdGB} GiB found under {pwalkfolder}', flush=True)                
 
@@ -654,7 +705,7 @@ class Archiver:
             '''), flush=True)
         if self.args.debug:
             print(' Done indexing!', flush=True)
-                
+
     def archive(self, folder):
 
         source = os.path.abspath(folder)
@@ -1131,7 +1182,7 @@ def parse_arguments():
         help="do not submit a Slurm job, execute index directly")        
     parser_archive.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
         help='Number of cores to be allocated for the machine. (default=4)')
-    parser_archive.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
+    parser_archive.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
     parser_archive.add_argument('--larger', '-l', dest='larger', action='store', default=0, 
         help=textwrap.dedent(f'''
@@ -1162,7 +1213,7 @@ def parse_arguments():
         help="do not submit a Slurm job, execute index directly")        
     parser_restore.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
         help='Number of cores to be allocated for the machine. (default=4)')
-    parser_restore.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
+    parser_restore.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')    
     parser_restore.add_argument('--days', '-d', dest='days', action='store', default=30,
         help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
@@ -1207,7 +1258,7 @@ def parse_arguments():
             This command removes data from a local filesystem folder that has been confirmed to 
             be archived (through checksum verification). Use this instead of deleting manually
         '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_delete.add_argument('--aws-profile', '-p', dest='awsprofile', action='store', default='', 
+    parser_delete.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
     parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders (separated by space) from which you would like to delete files, ' +
@@ -1233,6 +1284,7 @@ class ConfigManager:
         self.args = args
         self.home_dir = os.path.expanduser('~')
         self.config_root = self._get_config_root()
+        self.binfolder = self.read('general', 'binfolder')
         self.homepaths = self._get_home_paths()
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
@@ -1240,9 +1292,12 @@ class ConfigManager:
              self.read('general','bucket'),
              self.read('general','archiveroot'))
         self.aws_region = self.read('general','aws_region')
-        self.awsprofile = self.read('general','aws_profile')
+        self.awsprofile = self.args.awsprofile
+        if not self.awsprofile:
+            self.awsprofile = self.read('general','aws_profile')
         self.envrn = os.environ.copy()
-        self._set_env_vars(self.awsprofile)
+        if not self._set_env_vars(self.awsprofile):
+            self.awsprofile = ''
         
     def _set_env_vars(self, profile):
         
@@ -1251,11 +1306,11 @@ class ConfigManager:
         config.read(self.awscredsfile)
 
         if not config.has_section(profile):
-            print (f'~/.aws/credentials has no section {profile}')
-            return
+            print (f'~/.aws/credentials has no section for profile {profile}')
+            return False
         if not config.has_option(profile, 'aws_access_key_id'):
-            print (f'~/.aws/credentials has no entry aws_access_key_id in section {profile}')
-            return
+            print (f'~/.aws/credentials has no entry aws_access_key_id in section/profile {profile}')
+            return False
         
         # Get the AWS access key and secret key from the specified profile
         aws_access_key_id = config.get(profile, 'aws_access_key_id')
@@ -1267,12 +1322,23 @@ class ConfigManager:
         self.envrn['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
         self.envrn['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
 
-        # Set the environment variables for other defaults 
-        self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
-        self.envrn['RCLONE_S3_REGION'] = self.aws_region
-        self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
-        self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.read('general','s3_storage_class')
-        
+        if profile in ['default', 'AWS', 'aws']:
+            # Set the environment variables for AWS 
+            self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
+            self.envrn['RCLONE_S3_REGION'] = self.aws_region
+            self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
+            self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.read('general','s3_storage_class')
+        else:
+            prf=self.read('profiles',profile)
+            self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
+            self.envrn['RCLONE_S3_PROFILE'] = profile
+            if isinstance(prf,dict):  # profile={'name': '', 'provider': '', 'endpoint': '', 'region': ''}
+                self.envrn['RCLONE_S3_PROVIDER'] = prf['provider']
+                self.envrn['RCLONE_S3_ENDPOINT'] = prf['endpoint']
+                self.envrn['RCLONE_S3_REGION'] = prf['region']
+
+        return True
+
     def _get_home_paths(self):
         path_dirs = os.environ['PATH'].split(os.pathsep)
         # Filter the directories in the PATH that are inside the home directory
@@ -1361,36 +1427,54 @@ class ConfigManager:
                     if section:
                         self.write(section,key,user_input)
                     return user_input
-    
-    def create_aws_configs(self,access_key=None, secret_key=None, region=None):
 
-        if not access_key: access_key = input("Enter your AWS access key ID: ")
-        if not secret_key: secret_key = input("Enter your AWS secret access key: ")
-        if not region: region = input("Enter your AWS region (e.g., us-west-2): ")
+    def get_aws_profiles(self):
+        # get the full list of profiles from ~/.aws/ profile folder
+        config = configparser.ConfigParser()        
+        # Read the AWS config file
+        if os.path.exists(self.awsconfigfile):
+            config.read(self.awsconfigfile)        
+        # Read the AWS credentials file
+        if os.path.exists(self.awscredsfile):
+            config.read(self.awscredsfile)        
+        # Get the list of profiles
+        profiles = []
+        for section in config.sections():
+            profile_name = section.replace("profile ", "").replace("default", "default")
+            profiles.append(profile_name)        
+        return profiles
+
+
+    def create_aws_configs(self,access_key=None, secret_key=None, region=None):
 
         aws_dir = os.path.join(self.home_dir, ".aws")
 
         if not os.path.exists(aws_dir):
             os.makedirs(aws_dir)
 
-        with open(self.awsconfigfile, "w") as config_file:
-            config_file.write("[default]\n")
-            config_file.write(f"region = {region}\n")
-            config_file.write("\n")
-            config_file.write("[aws]\n")
-            config_file.write(f"region = {region}\n")
+        if not os.path.isfile(self.awsconfigfile):
+            print(f'\nAWS config file {self.awsconfigfile} does not exist, creating ...')
+            if not region: region = input("Enter your AWS region (e.g., us-west-2): ")
+            with open(self.awsconfigfile, "w") as config_file:
+                config_file.write("[default]\n")
+                config_file.write(f"region = {region}\n")
+                config_file.write("\n")
+                config_file.write("[aws]\n")
+                config_file.write(f"region = {region}\n")
 
-        with open(self.awscredsfile, "w") as credentials_file:
-            credentials_file.write("[default]\n")
-            credentials_file.write(f"aws_access_key_id = {access_key}\n")
-            credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
-            credentials_file.write("\n")
-            credentials_file.write("[aws]\n")
-            credentials_file.write(f"aws_access_key_id = {access_key}\n")
-            credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
-        os.chmod(self.awscredsfile, 0o600)
-
-        print("AWS configuration files created successfully.")
+        if not os.path.isfile(self.awscredsfile):
+            print(f'\nAWS credentials file {self.awscredsfile} does not exist, creating ...')
+            if not access_key: access_key = input("Enter your AWS access key ID: ")
+            if not secret_key: secret_key = input("Enter your AWS secret access key: ")            
+            with open(self.awscredsfile, "w") as credentials_file:
+                credentials_file.write("[default]\n")
+                credentials_file.write(f"aws_access_key_id = {access_key}\n")
+                credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
+                credentials_file.write("\n")
+                credentials_file.write("[aws]\n")
+                credentials_file.write(f"aws_access_key_id = {access_key}\n")
+                credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
+            os.chmod(self.awscredsfile, 0o600)
 
     def create_s3_bucket(self, bucket_name, region='us-west-2'):
         s3_client = boto3.client('s3')
