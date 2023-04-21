@@ -81,7 +81,7 @@ def main():
                     cfg.write('general', 'aws_profile', 'default')
                 continue
             if profmsg == 1:
-                print('\nFound additional profiles in ~/aws and need to ask a few more questions.\n')
+                print('\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
                 profmsg = 0
             profile={'name': '', 'provider': '', 'endpoint': '', 'region': ''}
             pr=cfg.read('profiles', prof)
@@ -237,6 +237,7 @@ def main():
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
             args.awsprofile = retline[3]
+            cfg._set_env_vars(args.awsprofile)
         
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
@@ -324,6 +325,7 @@ def main():
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
             args.awsprofile = retline[3]
+            cfg._set_env_vars(args.awsprofile)
         
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
@@ -500,80 +502,6 @@ class Archiver:
         self.cfg = cfg
         self.url = 'https://api.reporter.nih.gov/v2/projects/search'
         self.grants = []
-
-    def config(self, var1, var2):
-        return var1
-
-    def restore(self, folder):
-
-        # copied from archive
-        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
-
-        rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
-        source = rowdict['archive_folder']
-        target = rowdict['local_folder']
-        s3_storage_class = rowdict['s3_storage_class']
-
-        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
-            sps = source.split('/', 1)
-            bk = sps[0].replace(':s3:','')
-            pr = f'{sps[1]}/' # trailing slash ensured 
-            trig, rest, done = self.glacier_restore(bk, pr, 
-                                    self.args.days, self.args.retrieveopt)
-            print ('Triggered Glacier retrievals:',len(trig))
-            print ('Currently retrieving from Glacier:',len(rest))
-            print ('Not in Glacier:',len(done))
-            if len(trig) > 0 or len(rest) > 0:
-                # glacier is still ongoing, return # of pending ops                
-                return len(trig)+len(rest)
-            
-        if self.args.nodownload:
-            return -1
-            
-        rclone = Rclone(self.args,self.cfg)
-            
-        print ('Copying files from archive ...')
-        ret = rclone.copy(source,target,'--max-depth', '1')
-            
-        if self.args.debug:
-            print('*** RCLONE copy ret ***:\n', ret, '\n')
-        #print ('Message:', ret['msg'].replace('\n',';'))
-        if ret['stats']['errors'] > 0:
-            print('Last Error:', ret['stats']['lastError'])
-            print('Copying was not successful.')
-            return False
-            # lastError could contain: Object in GLACIER, restore first
-        
-        ttransfers=ret['stats']['totalTransfers']
-        tbytes=ret['stats']['totalBytes']
-        if self.args.debug:
-            print('\n')
-            print('Speed:', ret['stats']['speed'])
-            print('Transfers:', ret['stats']['transfers'])
-            print('Tot Transfers:', ret['stats']['totalTransfers'])
-            print('Tot Bytes:', ret['stats']['totalBytes'])
-            print('Tot Checks:', ret['stats']['totalChecks'])
-
-        #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
-        #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
-        #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
-        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
-
-        print ('Generating hashfile .froster-restored.md5sum ...')
-        self.gen_md5sums(target,'.froster-restored.md5sum') 
-        hashfile = os.path.join(target,'.froster-restored.md5sum')
-
-        ret = rclone.checksum(hashfile,source)
-        if self.args.debug:
-            print('*** RCLONE checksum ret ***:\n', ret, '\n')
-        if ret['stats']['errors'] > 0:
-            print('Last Error:', ret['stats']['lastError'])
-            print('Checksum test was not successful.')
-            return False
-        
-        total=self.convert_size(tbytes)
-        print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
-        return -1
 
     def index(self, pwalkfolder):
 
@@ -800,6 +728,149 @@ class Archiver:
                         filen = os.path.basename(tasks[future])
                         md5 = future.result()
                         out_f.write(f"{md5}  {filen}\n")
+
+
+    def restore(self, folder):
+
+        # copied from archive
+        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
+
+        rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
+        source = rowdict['archive_folder']
+        target = rowdict['local_folder']
+        s3_storage_class = rowdict['s3_storage_class']
+
+        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
+            sps = source.split('/', 1)
+            bk = sps[0].replace(':s3:','')
+            pr = f'{sps[1]}/' # trailing slash ensured 
+            trig, rest, done = self.glacier_restore(bk, pr, 
+                                    self.args.days, self.args.retrieveopt)
+            print ('Triggered Glacier retrievals:',len(trig))
+            print ('Currently retrieving from Glacier:',len(rest))
+            print ('Not in Glacier:',len(done))
+            if len(trig) > 0 or len(rest) > 0:
+                # glacier is still ongoing, return # of pending ops                
+                return len(trig)+len(rest)
+            
+        if self.args.nodownload:
+            return -1
+            
+        rclone = Rclone(self.args,self.cfg)
+            
+        print ('Copying files from archive ...')
+        ret = rclone.copy(source,target,'--max-depth', '1')
+            
+        if self.args.debug:
+            print('*** RCLONE copy ret ***:\n', ret, '\n')
+        #print ('Message:', ret['msg'].replace('\n',';'))
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Copying was not successful.')
+            return False
+            # lastError could contain: Object in GLACIER, restore first
+        
+        ttransfers=ret['stats']['totalTransfers']
+        tbytes=ret['stats']['totalBytes']
+        if self.args.debug:
+            print('\n')
+            print('Speed:', ret['stats']['speed'])
+            print('Transfers:', ret['stats']['transfers'])
+            print('Tot Transfers:', ret['stats']['totalTransfers'])
+            print('Tot Bytes:', ret['stats']['totalBytes'])
+            print('Tot Checks:', ret['stats']['totalChecks'])
+
+        #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
+        #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
+        #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
+        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
+
+        print ('Generating hashfile .froster-restored.md5sum ...')
+        self.gen_md5sums(target,'.froster-restored.md5sum') 
+        hashfile = os.path.join(target,'.froster-restored.md5sum')
+
+        ret = rclone.checksum(hashfile,source)
+        if self.args.debug:
+            print('*** RCLONE checksum ret ***:\n', ret, '\n')
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Checksum test was not successful.')
+            return False
+        
+        total=self.convert_size(tbytes)
+        print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
+        return -1
+    
+    def restore(self, folder):
+
+        # copied from archive
+        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
+
+        rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
+        source = rowdict['archive_folder']
+        target = rowdict['local_folder']
+        s3_storage_class = rowdict['s3_storage_class']
+
+        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
+            sps = source.split('/', 1)
+            bk = sps[0].replace(':s3:','')
+            pr = f'{sps[1]}/' # trailing slash ensured 
+            trig, rest, done = self.glacier_restore(bk, pr, 
+                                    self.args.days, self.args.retrieveopt)
+            print ('Triggered Glacier retrievals:',len(trig))
+            print ('Currently retrieving from Glacier:',len(rest))
+            print ('Not in Glacier:',len(done))
+            if len(trig) > 0 or len(rest) > 0:
+                # glacier is still ongoing, return # of pending ops                
+                return len(trig)+len(rest)
+            
+        if self.args.nodownload:
+            return -1
+            
+        rclone = Rclone(self.args,self.cfg)
+            
+        print ('Copying files from archive ...')
+        ret = rclone.copy(source,target,'--max-depth', '1')
+            
+        if self.args.debug:
+            print('*** RCLONE copy ret ***:\n', ret, '\n')
+        #print ('Message:', ret['msg'].replace('\n',';'))
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Copying was not successful.')
+            return False
+            # lastError could contain: Object in GLACIER, restore first
+        
+        ttransfers=ret['stats']['totalTransfers']
+        tbytes=ret['stats']['totalBytes']
+        if self.args.debug:
+            print('\n')
+            print('Speed:', ret['stats']['speed'])
+            print('Transfers:', ret['stats']['transfers'])
+            print('Tot Transfers:', ret['stats']['totalTransfers'])
+            print('Tot Bytes:', ret['stats']['totalBytes'])
+            print('Tot Checks:', ret['stats']['totalChecks'])
+
+        #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
+        #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
+        #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
+        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
+
+        print ('Generating hashfile .froster-restored.md5sum ...')
+        self.gen_md5sums(target,'.froster-restored.md5sum') 
+        hashfile = os.path.join(target,'.froster-restored.md5sum')
+
+        ret = rclone.checksum(hashfile,source)
+        if self.args.debug:
+            print('*** RCLONE checksum ret ***:\n', ret, '\n')
+        if ret['stats']['errors'] > 0:
+            print('Last Error:', ret['stats']['lastError'])
+            print('Checksum test was not successful.')
+            return False
+        
+        total=self.convert_size(tbytes)
+        print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
+        return -1
 
     def md5sumex(self, file_path):
         try:
