@@ -24,6 +24,17 @@ def main():
     cfg = ConfigManager(args)
     arch = Archiver(args, cfg)
 
+    if args.subcmd in ['archive','delete','restore']:
+        errfld=[]
+        for fld in args.folders:            
+            ret = arch.test_write(fld)
+            if ret==13:
+                errfld.append(fld)
+        if errfld:
+            errflds='" "'.join(errfld)
+            print(f'You need write access to folder(s) "{errflds}" for this operation.')
+            return False
+
     if args.subcmd == 'config':
 
         binfolder = cfg.read('general', 'binfolder')
@@ -237,8 +248,7 @@ def main():
         
         if not cfg.check_bucket_access(cfg.bucket):
             return False
-
-
+        
         if not args.folders:
             csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
             with open(csvfile, 'r') as csvf:
@@ -679,7 +689,10 @@ class Archiver:
             return False
 
         print ('Generating hashfile .froster.md5sum ...')
-        if not self.gen_md5sums(source,'.froster.md5sum'):
+        ret = self.gen_md5sums(source,'.froster.md5sum')
+        if ret == 13: # cannot write to folder 
+            return False
+        elif not ret:
             print ('Could not create hashfile .froster.md5sum. Perhaps there are no files?')
             return False
         hashfile = os.path.join(source,'.froster.md5sum')
@@ -741,31 +754,60 @@ class Archiver:
         total=self.convert_size(tbytes)
         print(f'Source and archive are identical. {ttransfers} files with {total} transferred.')
 
+    def test_write(self, directory):
+        testpath=os.path.join(directory,'.froster.test')
+        try:
+            with open(testpath, "w") as f:
+                f.write('just a test')
+            os.remove(testpath)
+            return True
+        except PermissionError as e:
+            if e.errno == 13:  # Check if error number is 13 (Permission denied)
+                #print("Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
+                return 13
+            else:
+                print(f"An unexpected PermissionError occurred in {directory}:\n{e}")            
+                return False
+        except Exception as e:
+            print(f"An unexpected error occurred in {directory}:\n{e}")
+            return False
+
     def gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in os.walk(directory):
             if no_subdirs and root != directory:
                 break            
             hashpath=os.path.join(root, hash_file)
-            with open(hashpath, "w") as out_f:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
-                    tasks = {}
-                    for filen in files:
-                        file_path = os.path.join(root, filen)
-                        if os.path.isfile(file_path) and \
-                                filen != os.path.basename(hash_file) and \
-                                filen != "Where-did-the-files-go.txt" and \
-                                filen != ".froster.md5sum" and \
-                                filen != ".froster-restored.md5sum":
-                            task = executor.submit(self.md5sum, file_path)
-                            tasks[task] = file_path
-                    for future in concurrent.futures.as_completed(tasks):
-                        filen = os.path.basename(tasks[future])
-                        md5 = future.result()
-                        out_f.write(f"{md5}  {filen}\n")
-            if os.path.getsize(hashpath) == 0:
-                os.remove(hashpath)
+            try:
+                with open(hashpath, "w") as out_f:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+                        tasks = {}
+                        for filen in files:
+                            file_path = os.path.join(root, filen)
+                            if os.path.isfile(file_path) and \
+                                    filen != os.path.basename(hash_file) and \
+                                    filen != "Where-did-the-files-go.txt" and \
+                                    filen != ".froster.md5sum" and \
+                                    filen != ".froster-restored.md5sum":
+                                task = executor.submit(self.md5sum, file_path)
+                                tasks[task] = file_path
+                        for future in concurrent.futures.as_completed(tasks):
+                            filen = os.path.basename(tasks[future])
+                            md5 = future.result()
+                            out_f.write(f"{md5}  {filen}\n")
+                if os.path.getsize(hashpath) == 0:
+                    os.remove(hashpath)
+                    return False
+            except PermissionError as e:
+                if e.errno == 13:  # Check if error number is 13 (Permission denied)
+                    print("Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
+                    return 13
+                else:
+                    print(f"An unexpected PermissionError occurred:\n{e}")            
+                    return False
+            except Exception as e:
+                print(f"An unexpected error occurred:\n{e}")
                 return False
-        return True
+            return True
 
     def restore(self, folder):
 
@@ -823,7 +865,10 @@ class Archiver:
         #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
 
         print ('Generating hashfile .froster-restored.md5sum ...')
-        self.gen_md5sums(target,'.froster-restored.md5sum')
+        ret = self.gen_md5sums(target,'.froster-restored.md5sum')
+        if ret == 13: # cannot write to folder 
+            return False
+
         hashfile = os.path.join(target,'.froster-restored.md5sum')
 
         ret = rclone.checksum(hashfile,source)
@@ -838,77 +883,6 @@ class Archiver:
         print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
         return -1
     
-    def restore(self, folder):
-
-        # copied from archive
-        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
-
-        rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
-        source = rowdict['archive_folder']
-        target = rowdict['local_folder']
-        s3_storage_class = rowdict['s3_storage_class']
-
-        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
-            sps = source.split('/', 1)
-            bk = sps[0].replace(':s3:','')
-            pr = f'{sps[1]}/' # trailing slash ensured 
-            trig, rest, done = self.glacier_restore(bk, pr, 
-                                    self.args.days, self.args.retrieveopt)
-            print ('Triggered Glacier retrievals:',len(trig))
-            print ('Currently retrieving from Glacier:',len(rest))
-            print ('Not in Glacier:',len(done))
-            if len(trig) > 0 or len(rest) > 0:
-                # glacier is still ongoing, return # of pending ops                
-                return len(trig)+len(rest)
-            
-        if self.args.nodownload:
-            return -1
-            
-        rclone = Rclone(self.args,self.cfg)
-            
-        print ('Copying files from archive ...')
-        ret = rclone.copy(source,target,'--max-depth', '1')
-            
-        if self.args.debug:
-            print('*** RCLONE copy ret ***:\n', ret, '\n')
-        #print ('Message:', ret['msg'].replace('\n',';'))
-        if ret['stats']['errors'] > 0:
-            print('Last Error:', ret['stats']['lastError'])
-            print('Copying was not successful.')
-            return False
-            # lastError could contain: Object in GLACIER, restore first
-        
-        ttransfers=ret['stats']['totalTransfers']
-        tbytes=ret['stats']['totalBytes']
-        if self.args.debug:
-            print('\n')
-            print('Speed:', ret['stats']['speed'])
-            print('Transfers:', ret['stats']['transfers'])
-            print('Tot Transfers:', ret['stats']['totalTransfers'])
-            print('Tot Bytes:', ret['stats']['totalBytes'])
-            print('Tot Checks:', ret['stats']['totalChecks'])
-
-        #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
-        #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
-        #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
-        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
-
-        print ('Generating hashfile .froster-restored.md5sum ...')
-        self.gen_md5sums(target,'.froster-restored.md5sum') 
-        hashfile = os.path.join(target,'.froster-restored.md5sum')
-
-        ret = rclone.checksum(hashfile,source)
-        if self.args.debug:
-            print('*** RCLONE checksum ret ***:\n', ret, '\n')
-        if ret['stats']['errors'] > 0:
-            print('Last Error:', ret['stats']['lastError'])
-            print('Checksum test was not successful.')
-            return False
-        
-        total=self.convert_size(tbytes)
-        print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
-        return -1
-
     def md5sumex(self, file_path):
         try:
             cmd = f'md5sum {file_path}'
@@ -989,36 +963,48 @@ class Archiver:
             last_accessed_time = folder_atime
         return last_accessed_time
 
+    def _remove_column_from_csv(input_file, output_file, column_to_remove):
+        with open(input_file, 'r', newline='') as infile:
+            reader = csv.reader(infile)
+            header = next(reader)  # Store header (column names) in a separate variable
+            # Find the index of the column to remove
+            col_index = header.index(column_to_remove)
+            # Remove the target column from the header
+            header.pop(col_index)
+            # Write the modified data to the output file
+            with open(output_file, 'w', newline='', dialect='excel') as outfile:
+                writer = csv.writer(outfile)
+                writer.writerow(header)  # Write the modified header
+                # Write the rows excluding the target column
+                for row in reader:
+                    row.pop(col_index)
+                    writer.writerow(row)
+
     def _get_row_from_csv(self, file_path, column_name, search_value):
         with open(file_path, mode='r', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)        
+            reader = csv.DictReader(csvfile)
             for row in reader:
                 if row[column_name] == search_value:
-                    return row       
+                    return row
         return {}
 
     def _add_update_csv_row(self, file_path, row_dict, primary_key):
         updated_rows = []
         row_found = False
         fieldnames = list(row_dict.keys())
-
         if os.path.exists(file_path):
             with open(file_path, mode='r', newline='') as csvfile:
                 reader = csv.DictReader(csvfile)
-
                 if reader.fieldnames is not None:
                     fieldnames = reader.fieldnames
-
                 for row in reader:
                     if row[primary_key] == row_dict[primary_key]:
                         updated_rows.append(row_dict)
                         row_found = True
                     else:
                         updated_rows.append(row)
-
         if not row_found:
             updated_rows.append(row_dict)
-
         with open(file_path, mode='w', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames, dialect='excel')
             writer.writeheader()
@@ -1088,7 +1074,6 @@ class Archiver:
         return mountinfo_list    
     
     def create_s3_bucket(self, bucket_name, region='us-west-2'):
-
         try:
             s3_client = boto3.client('s3')            
             existing_buckets = s3_client.list_buckets()
@@ -1100,7 +1085,6 @@ class Archiver:
             else:
                 print(f"An error occurred: {e}")
             return False
-
         for bucket in existing_buckets['Buckets']:
             if bucket['Name'] == bucket_name:
                 print(f'S3 bucket {bucket_name} already exists')
@@ -1108,8 +1092,7 @@ class Archiver:
         response = s3_client.create_bucket(
             Bucket=bucket_name,
             CreateBucketConfiguration={'LocationConstraint': region}
-            )
-        
+            )        
         encryption_configuration = {
             'Rules': [
                 {
@@ -1422,7 +1405,7 @@ class ConfigManager:
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
         self.bucket = self.read('general','bucket')
-        self.archivepath = os.path.join(
+        self.archivepath = os.path.join( 
              self.bucket,
              self.read('general','archiveroot'))
         self.aws_region = self.read('general','aws_region')
