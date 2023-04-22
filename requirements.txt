@@ -1,5 +1,5 @@
 duckdb<0.8
-textual<0.20
+textual<0.30
 textual-select<0.4
 requests<2.30
 boto3<1.30

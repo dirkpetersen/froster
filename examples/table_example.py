@@ -14,18 +14,24 @@ CSV = """id,GB,avg(MB),folder
 5,54,6,/home/groups/test/folder4/data
 """
 
+CSV2 = """id,GB,avg(MB),folder
+1,213,5,/home/groups/test/folder2/main
+2,180,140,/home/groups/test/folder1/temp
+"""
+
+
 class TableApp(App[list]):
     def compose(self) -> ComposeResult:
         table = DataTable()
         table.focus()
         table.cursor_type = "row"
         #table.fixed_columns = 1
-        #table.fixed_rows = 1
+        table.fixed_rows = 1
         yield table
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        rows = csv.reader(io.StringIO(CSV))
+        rows = csv.reader(io.StringIO(CSV2))
         table.add_columns(*next(rows))
         table.add_rows(rows)
 

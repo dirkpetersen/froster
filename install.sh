@@ -28,7 +28,7 @@ source ~/.local/share/froster/bin/activate
 
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
         -o ~/.local/share/froster/requirements.txt \
-      && python3 -m pip install -r ~/.local/share/froster/requirements.txt
+      && python3 -m pip install --upgrade -r ~/.local/share/froster/requirements.txt
 
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
         -o ~/.local/bin/froster.py
