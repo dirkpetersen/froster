@@ -463,7 +463,6 @@ def main():
             if not rc_mounts: rc_mounts={}
             if args.unmount or args.subcmd == 'umount':
                 if isinstance(rc_mounts, dict) and f'{hostname}:{fld}' in rc_mounts:
-                    print('isinstance')
                     pid = rc_mounts[f'{hostname}:{fld}']
                     if pid in rclone.get_pids():
                         print (f'Unmounting folder {fld}, please wait ...', flush=True)
@@ -475,7 +474,7 @@ def main():
             else:
                 if args.mountpoint and os.path.isdir(args.mountpoint):
                     fld=args.mountpoint 
-                print (f'Mounting archive folder at {fld}, please wait ...', flush=True)    
+                print (f'Mounting archive folder at {fld}', flush=True)    
                 pid = rclone.mount(archive_folder,fld)
                 if pid:
                     rc_mounts[f'{hostname}:{fld}']=pid
