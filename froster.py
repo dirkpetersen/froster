@@ -1223,10 +1223,10 @@ class Rclone:
         if self.args.debug:
             print("Rclone command:", " ".join(command))
         try:
-            ret = subprocess.Popen(command, preexec_fn=os.setsid, stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, text=True, env=self.cfg.envrn)
-            if ret.stderr:
-                sys.stderr.write(f'*** Error in command {command}:\n {ret.stderr} ')
+            ret = subprocess.Popen(command, preexec_fn=os.setsid, text=True, env=self.cfg.envrn)
+            _, stderr = ret.communicate()            
+            if stderr:
+                sys.stderr.write(f'*** Error in command {" ".join(command)}:\n {stderr} ')
             return ret.pid
         except Exception as e:
             print (f'Rclone Error: {str(e)}')
