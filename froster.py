@@ -1268,6 +1268,9 @@ class Rclone:
     def mount(self, url, mountpoint, *args):
         if not url.endswith('/'): url+'/'
         command = [self.rc, 'mount'] + list(args)
+        # use older rclone for now, as fuse3 is not installed
+        if os.path.isfile('/usr/bin/rclone'):
+            command = ['/usr/bin/rclone', 'mount'] + list(args)            
         #command.append('--daemon') # not reliable, just starting background process
         command.append('--allow-non-empty')
         command.append('--read-only')
