@@ -1293,7 +1293,7 @@ class Rclone:
                 except Exception as e:
                     print(f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}') 
         else:
-            print(f'Folder {mountpoint} is currently not used as a mountpoint by rclone.')
+            print(f'\nError: Folder {mountpoint} is currently not used as a mountpoint by rclone.')
                 
     def version(self):
         command = [self.rc, 'version']
