@@ -221,8 +221,6 @@ Check Job Output:
 ```
 
 
-
-
 ## command line help 
 
 Each of the sub commands has a help option, for example `froster archive --help`
@@ -232,26 +230,27 @@ Each of the sub commands has a help option, for example `froster archive --help`
 ```
 dp@grammy:~$ froster
 
- usage: froster  [-h] [--debug] {config,cnf,index,idx,archive,arc,restore,rst,delete,del} ...
+usage: froster  [-h] [--debug] {config,cnf,index,idx,archive,arc,restore,rst,delete,del,mount,umount} ...
 
-A (mostly) automated tool for archiving large scale data after finding folders in the file system that are worth
-archiving.
+A (mostly) automated tool for archiving large scale data after finding folders in the file system that are worth archiving.
 
 positional arguments:
-  {config,cnf,index,idx,archive,arc,restore,rst,delete,del}
+  {config,cnf,index,idx,archive,arc,restore,rst,delete,del,mount,umount}
                         sub-command help
-    config (cnf)        Bootstrap the configurtion, install dependencies and setup your environment. You will need
-                        to answer a few questions about your cloud setup.
-    index (idx)         Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file that lists the
-                        largest folders. As this process is compute intensive the index job will be automatically
-                        submitted to Slurm if the Slurm tools are found.
-    archive (arc)       Select from a list of large folders, that has been created by 'froster index', and archive a
-                        folder to S3/Glacier. Once you select a folder the archive job will be automatically
-                        submitted to Slurm. You can also automate this process
-    restore (rst)       This command restores data from AWS Glacier to AWS S3 One Zone-IA. You do not need to
-                        download all data to local storage after the restore is complete. Just mount S3.
-    delete (del)        This command removes data from a local filesystem folder that has been confirmed to be
-                        archived (through checksum verification). Use this instead of deleting manually
+    config (cnf)        Bootstrap the configurtion, install dependencies and setup your environment. You will need to answer a
+                        few questions about your cloud setup.
+    index (idx)         Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file that lists the largest
+                        folders. As this process is compute intensive the index job will be automatically submitted to Slurm if
+                        the Slurm tools are found.
+    archive (arc)       Select from a list of large folders, that has been created by 'froster index', and archive a folder to
+                        S3/Glacier. Once you select a folder the archive job will be automatically submitted to Slurm. You can
+                        also automate this process
+    restore (rst)       Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need to download all data to local
+                        storage after the restore is complete. Just use the mount sub command.
+    delete (del)        Remove data from a local filesystem folder that has been confirmed to be archived (through checksum
+                        verification). Use this instead of deleting manually
+    mount (umount)      Mount or unmount the remote S3 or Glacier storage in your local file system at the location of the
+                        original folder.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -362,4 +361,22 @@ optional arguments:
   -h, --help            show this help message and exit
   --profile AWSPROFILE, -p AWSPROFILE
                         which AWS profile from ~/.aws/profiles should be used
+```
+
+#### froster mount --help
+
+```
+dp@grammy:~$ froster mount --help
+usage: froster mount [-h] [--profile AWSPROFILE] [--mount-point MOUNTPOINT] [--unmount] [folders ...]
+
+positional arguments:
+  folders               archived folders (separated by space) which you would like to mount.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --profile AWSPROFILE, -p AWSPROFILE
+                        which AWS profile from ~/.aws/profiles should be used
+  --mount-point MOUNTPOINT, -m MOUNTPOINT
+                        pick a custom mount point, this only works if you select a single folder.
+  --unmount, -u         unmount instead of mount, you can also use the umount sub command instead.
 ```

@@ -2057,8 +2057,8 @@ def parse_arguments():
     parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
         help="unmount instead of mount, you can also use the umount sub command instead.")
     parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
-        help='archived folders (separated by space) which you would like to mount, ' +
-               'you can only delete files that have been archived')
+        help='archived folders (separated by space) which you would like to mount.' +
+               '')
 
             # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
             # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
