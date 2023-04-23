@@ -1191,7 +1191,6 @@ class Rclone:
         try:
             ret = subprocess.run(command, stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE, text=True, env=self.cfg.envrn)
-            print('PID', ret.pid)
             if ret.returncode != 0:
                 #pass
                 sys.stderr.write(f'*** Error, Rclone return code > 0:\n {command} Error:\n{ret.stderr}')
@@ -1212,7 +1211,7 @@ class Rclone:
             #print("   STDOUT:",ret.stdout)
             #print("   STDERR:",ret.stderr)
             #rclone mount --daemon
-            return ret.stdout.strip(), ret.stderr.strip(), ret.pid
+            return ret.stdout.strip(), ret.stderr.strip()
 
         except Exception as e:
             print (f'Rclone Error: {str(e)}')
@@ -1224,9 +1223,10 @@ class Rclone:
         if self.args.debug:
             print("Rclone command:", " ".join(command))
         try:
-            ret = subprocess.Popen(command, preexec_fn=os.setsid, text=True, env=self.cfg.envrn)
-            if ret.returncode != 0:
-                sys.stderr.write(f'*** Error, Rclone return code {ret.returncode}:\n {command} ')
+            ret = subprocess.Popen(command, preexec_fn=os.setsid, stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, text=True, env=self.cfg.envrn)
+            if ret.stderr:
+                sys.stderr.write(f'*** Error in command {command}:\n {ret.stderr} ')
             return ret.pid
         except Exception as e:
             print (f'Rclone Error: {str(e)}')
