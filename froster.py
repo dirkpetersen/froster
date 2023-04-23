@@ -1189,8 +1189,7 @@ class Rclone:
         if self.args.debug:
             print("Rclone command:", " ".join(command))
         try:
-            ret = subprocess.run(command, stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, text=True, env=self.cfg.envrn)
+            ret = subprocess.run(command, capture_output=True, text=True, env=self.cfg.envrn)
             if ret.returncode != 0:
                 #pass
                 sys.stderr.write(f'*** Error, Rclone return code > 0:\n {command} Error:\n{ret.stderr}')
@@ -1218,8 +1217,8 @@ class Rclone:
             return None, str(e)
 
     def _run_bk(self, command):
-        command = self._add_opt(command, '--verbose')
-        command = self._add_opt(command, '--use-json-log')
+        #command = self._add_opt(command, '--verbose')
+        #command = self._add_opt(command, '--use-json-log')
         if self.args.debug:
             print("Rclone command:", " ".join(command))
         try:
