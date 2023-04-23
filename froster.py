@@ -2045,17 +2045,17 @@ def parse_arguments():
             # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
             # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
             # of up to 15%% of your AWS bill. (costs from April 2023)
-    parser_mount = subparsers.add_parser('mount', aliases=['mnt', 'umount'],
+    parser_mount = subparsers.add_parser('mount', aliases=['umount'],
         help=textwrap.dedent(f'''
-            Mount the remote S3 or Glacier storage in your local file system at the location
-            of the original folder.
+            Mount or unmount the remote S3 or Glacier storage in your local file system 
+            at the location of the original folder.
         '''), formatter_class=argparse.RawTextHelpFormatter) 
     parser_mount.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from ~/.aws/profiles should be used')
     parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='', 
         help='pick a custom mount point, this only works if you select a single folder.')
     parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
-        help="unmount instead of mount")
+        help="unmount instead of mount, you can also use the umount sub command instead.")
     parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
         help='archived folders (separated by space) which you would like to mount, ' +
                'you can only delete files that have been archived')
