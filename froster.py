@@ -432,7 +432,9 @@ def main():
         if not cfg.check_bucket_access(cfg.bucket):
             return False
 
+        interactive=False
         if not args.folders:
+            interactive=True
             csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
             with open(csvfile, 'r') as csvf:
                 app = TableRestore()
@@ -469,13 +471,14 @@ def main():
                 print (f'Mounting archive folder at {fld} ... ', flush=True, end="")
                 pid = rclone.mount(archive_folder,fld)
                 print('Done!', flush=True)
-                print(textwrap.dedent(f'''\n
-                    Note that this mount point will only work on the current machine, 
-                    if you would like to have this work in a batch job you need to enter 
-                    these commands in the beginning and the end of a batch script\n:
-                    froster mount {fld}
-                    froster umount {fld}
-                    '''))                
+                if interactive:
+                    print(textwrap.dedent(f'''
+                        Note that this mount point will only work on the current machine, 
+                        if you would like to have this work in a batch job you need to enter 
+                        these commands in the beginning and the end of a batch script:
+                        froster mount {fld}
+                        froster umount {fld}
+                        '''))                
             if args.mountpoint:
                 # we can only mount a single folder if mountpoint is set 
                 break
