@@ -1308,7 +1308,7 @@ class Rclone:
         folder = folder.rstrip(os.path.sep)
         if full:
             command = ['pgrep', '-f', process]
-        else
+        else:
             command = ['pgrep', process]
         try:
             output = subprocess.check_output(command)
