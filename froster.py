@@ -459,28 +459,31 @@ def main():
             archive_folder = rowdict['archive_folder']
 
             rclone = Rclone(args,cfg)
-            rc_mounts = cfg.read('general', 'rclone_mounts')
-            if not rc_mounts: rc_mounts={}
+            if args.mountpoint and os.path.isdir(args.mountpoint):
+                fld=args.mountpoint 
+
+            #rc_mounts = cfg.read('general', 'rclone_mounts')
+            #if not rc_mounts: rc_mounts={}
             if args.unmount or args.subcmd == 'umount':
-                if isinstance(rc_mounts, dict) and f'{hostname}:{fld}' in rc_mounts:
-                    pid = rc_mounts[f'{hostname}:{fld}']
-                    if pid in rclone.get_pids():
-                        print (f'Unmounting folder {fld}, please wait ...', flush=True)
-                        rclone.unmount(pid)
-                        del rc_mounts[f'{hostname}:{fld}']
-                    else:
-                        print (f'No process id (pid) found for folder {fld}')
-                print (f'Folder {fld} mount not tracked.')
+                #if isinstance(rc_mounts, dict) and f'{hostname}:{fld}' in rc_mounts:
+                #    pid = rc_mounts[f'{hostname}:{fld}']
+                #    if pid in rclone.get_pids():
+                print (f'Unmounting folder {fld}, please wait ...', flush=True)
+                rclone.unmount(fld)
+                        #del rc_mounts[f'{hostname}:{fld}']
+                    #else:
+                    #    print (f'No process id (pid) found for folder {fld}')
+                #print (f'Folder {fld} mount not tracked.')
             else:
-                if args.mountpoint and os.path.isdir(args.mountpoint):
-                    fld=args.mountpoint 
-                print (f'Mounting archive folder at {fld}', flush=True)    
+                #if args.mountpoint and os.path.isdir(args.mountpoint):
+                #    fld=args.mountpoint 
+                print (f'Mounting archive folder at {fld}', flush=True)
                 pid = rclone.mount(archive_folder,fld)
-                if pid:
-                    rc_mounts[f'{hostname}:{fld}']=pid
-                if args.debug:
-                    print('*** RCLONE mount pid ***:', pid, '\n')
-            cfg.write('general', 'rclone_mounts', rc_mounts)
+                #if pid:
+                #    rc_mounts[f'{hostname}:{fld}']=pid
+                #if args.debug:
+                #    print('*** RCLONE mount pid ***:', pid, '\n')
+            #cfg.write('general', 'rclone_mounts', rc_mounts)
             if args.mountpoint:
                 # we can only mount a single folder if mountpoint is set 
                 break
@@ -1267,6 +1270,7 @@ class Rclone:
 
     def mount(self, url, mountpoint, *args):
         if not url.endswith('/'): url+'/'
+        mountpoint = mountpoint.rstrip(os.path.sep)
         command = [self.rc, 'mount'] + list(args)
         # use older rclone for now, as fuse3 is not installed
         if os.path.isfile('/usr/bin/rclone'):
@@ -1280,24 +1284,49 @@ class Rclone:
         pid = self._run_bk(command)
         return pid
 
-    def unmount(self, pid, wait=False):
-        os.kill(int(pid), signal.SIGTERM)
-        if wait:
-            _, _ = os.waitpid(int(pid), 0)
+    def unmount(self, mountpoint, wait=False):
+        mountpoint = mountpoint.rstrip(os.path.sep)
+        if self._is_fuse_mounted(mountpoint):
+            rclone_pids = self._get_pids('rclone')
+            fld_pids = self._get_pids(mountpoint, True)
+            common_pids = [value for value in rclone_pids if value in fld_pids]
+        for pid in common_pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                if wait:
+                    _, _ = os.waitpid(int(pid), 0)
+            except PermissionError:
+                print(f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
+            except Exception as e:
+                print(f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}')            
 
     def version(self):
         command = [self.rc, 'version']
         return self._run_rc(command)
     
-    def get_pids(self):
+    def _get_pids(self, process, full=False):
+        folder = folder.rstrip(os.path.sep)
+        if full:
+            command = ['pgrep', '-f', process]
+        else
+            command = ['pgrep', process]
         try:
-            output = subprocess.check_output(['pgrep', 'rclone'])
+            output = subprocess.check_output(command)
             pids = [int(pid) for pid in output.decode().split('\n') if pid]
             return pids
         except subprocess.CalledProcessError:
             # No rclone processes found
             return []
-    
+
+    def _is_fuse_mounted(self, folder_path):
+        folder_path = os.path.realpath(folder_path)  # Resolve any symbolic links
+        with open('/proc/mounts', 'r') as f:
+            for line in f:
+                parts = line.split()
+                mount_point, fs_type = parts[1], parts[2]
+                if mount_point == folder_path and fs_type.startswith('fuse.rclone'):
+                    return True
+
     def _add_opt(self, cmd, option, value=None):
         if option in cmd:
             return cmd
