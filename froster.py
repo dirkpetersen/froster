@@ -5,10 +5,10 @@ Froster (almost) automates the challening task of
 archiving many Terabytes of data on HPC systems
 """
 # internal modules
-import sys, os, argparse, json, configparser, csv
+import sys, os, argparse, json, configparser, csv, platform
 import urllib3, datetime, tarfile, zipfile, textwrap
 import concurrent.futures, hashlib, fnmatch, io, math
-import shutil, tempfile, glob, shlex, subprocess
+import shutil, tempfile, glob, shlex, subprocess, signal
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
@@ -17,7 +17,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
 __app__ = 'Froster, a simple archiving tool'
-__version__ = '0.1'
+__version__ = '0.2'
 
 def main():
     
@@ -32,10 +32,10 @@ def main():
                 errfld.append(fld)
         if errfld:
             errflds='" "'.join(errfld)
-            print(f'You need write access to folder(s) "{errflds}" for this operation.')
+            print(f'Error: You need write access to folder(s) "{errflds}" for this operation.')
             return False
 
-    if args.subcmd == 'config':
+    if args.subcmd in ['config', 'cnf']:
 
         binfolder = cfg.read('general', 'binfolder')
         if not binfolder:
@@ -47,14 +47,14 @@ def main():
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         if not os.path.exists(os.path.join(binfolder,'pwalk')):
             print(" Installing pwalk ...", flush=True)        
-            copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
+            cfg.copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
                     'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                     'pwalk', binfolder)
 
         if not os.path.exists(os.path.join(binfolder,'rclone')):
             print(" Installing rclone ... please wait ... ", end='', flush=True)
             rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-            copy_binary_from_zip_url(rclone_url, 'rclone', 
+            cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
                                 '/rclone-v*/',binfolder)
             print("Done!",flush=True)
 
@@ -112,9 +112,9 @@ def main():
             else:
                 print(f'\nConfig for AWS profile "{prof}" was not saved.')
 
-
         print('\n*** And finally a few questions how your HPC uses local scratch space ***')
-        print('*** This is optional and you can hit ctrl+c any time ***\n')
+        print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
+        print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
 
         # setup local scratch spaces, the defauls are OHSU specific 
         x = cfg.prompt('How do you request local scratch from Slurm?',
@@ -128,7 +128,7 @@ def main():
         
         print('\nDone!\n')
 
-    elif args.subcmd == 'index':
+    elif args.subcmd in ['index', 'ind']:
         if args.debug:
             print (" Command line:",args.cores, args.noslurm, 
                     args.pwalkcsv, args.folders,flush=True)
@@ -168,7 +168,7 @@ def main():
             print(f'Check Job Output:')
             print(f' tail -f froster-index-{label}-{jobid}.out')
 
-    elif args.subcmd == 'archive':
+    elif args.subcmd in ['archive', 'arc']:
         if args.debug:
             print ("archive:",args.cores, args.awsprofile, args.noslurm,
                    args.larger, args.age, args.agemtime, args.folders)
@@ -234,7 +234,7 @@ def main():
             print(f'Check Job Output:')
             print(f' tail -f froster-archive-{label}-{jobid}.out')
 
-    elif args.subcmd == 'restore':
+    elif args.subcmd in ['restore', 'rst']:
         
         if args.debug:
             print ("restore:",args.cores, args.awsprofile, args.noslurm, 
@@ -307,7 +307,7 @@ def main():
                         print(f'\nGlacier retrievals pending, run this again in up to 12h\n')
                                         
         else:
-            se = SlurmEssentials(args, cfg)            
+            se = SlurmEssentials(args, cfg)
             label=args.folders[0].replace('/','+')
             shortlabel=os.path.basename(args.folders[0])
             myjobname=f'froster:restore:{shortlabel}'
@@ -332,7 +332,7 @@ def main():
             print(f'Check Job Output:')
             print(f' tail -f froster-restore-{label}-{jobid}.out')
 
-    elif args.subcmd == 'delete':
+    elif args.subcmd in ['delete', 'del']:
     
         if args.debug:
             print ("delete:",args.awsprofile, args.folders)
@@ -418,120 +418,73 @@ def main():
             else:
                 print(f'No files were deleted.')
 
-class Rclone:
-    def __init__(self, args, cfg):
-        self.args = args
-        self.cfg = cfg
-        self.rc = f'{self.cfg.binfolder}/rclone'
+    if args.subcmd in ['mount', 'mnt', 'unmount']:
+        if args.debug:
+            print ("delete:",args.awsprofile, args.mountpoint, args.folders)
+        fld = '" "'.join(args.folders)
 
-    # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
+        if args.debug:
+            print (f'default cmdline: froster.py mount "{fld}"')
 
-    #backup: rclone --verbose --files-from tmpfile --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
-    #restore: rclone --verbose --use-json-log copy --max-depth 1 :s3:posix-dp/tests4/ ./tests2
-    #rclone copy --verbose --use-json-log --max-depth 1  :s3:posix-dp/tests5/ ./tests5
-    #rclone --use-json-log checksum md5 ./tests/.froster.md5sum :s3:posix-dp/tests2/
-    # storage tier for each file 
-    #rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
-    # list without subdir 
-    #rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
-    #rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
-
-    def _run_rc(self, command):
-
-        command = self._add_opt(command, '--verbose')
-        command = self._add_opt(command, '--use-json-log')
-        if self.args.debug:
-            print("Rclone command:", " ".join(command))
-        try:
-            ret = subprocess.run(command, stdout=subprocess.PIPE, 
-                    stderr=subprocess.PIPE, text=True, env=self.cfg.envrn)                    
-            if ret.returncode != 0:
-                #pass
-                sys.stderr.write(f'*** Error, Rclone return code > 0:\n {command} Error:\n{ret.stderr}')
-                # list of exit codes 
-                # 0 - success
-                # 1 - Syntax or usage error
-                # 2 - Error not otherwise categorised
-                # 3 - Directory not found
-                # 4 - File not found
-                # 5 - Temporary error (one that more retries might fix) (Retry errors)
-                # 6 - Less serious errors (like 461 errors from dropbox) (NoRetry errors)
-                # 7 - Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)
-                # 8 - Transfer exceeded - limit set by --max-transfer reached
-                # 9 - Operation successful, but no files transferred
-            
-            #lines = ret.stderr.decode('utf-8').splitlines() #needed if you do not use ,text=True
-            #locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l]) 
-            #print("   STDOUT:",ret.stdout)
-            #print("   STDERR:",ret.stderr)
-            return ret.stdout.strip(), ret.stderr.strip()
-
-        except Exception as e:
-            print (f'Rclone Error: {str(e)}')
-            return None, str(e)
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            return False
         
-    def copy(self, src, dst, *args):
-        command = [self.rc, 'copy'] + list(args)
-        command.append(src)  #command.append(f'{src}/')
-        command.append(dst)
-        out, err = self._run_rc(command)
-        if out:
-            print(f'rclone copy output: {out}')
-        #print('ret', err)
-        stats, ops = self._parse_log(err) 
-        if stats:
-            return stats[-1] # return the stats
-        else:
-            return []
-    
-        #b'{"level":"warning","msg":"Time may be set wrong - time from \\"posix-dp.s3.us-west-2.amazonaws.com\\" is -9m17.550965814s different from this computer","source":"fshttp/http.go:200","time":"2023-04-16T14:40:47.44907-07:00"}'    
+        if not cfg.check_bucket_access(cfg.bucket):
+            return False
 
-    def checksum(self, md5file, dst, *args):
-        #checksum md5 ./tests/.froster.md5sum
-        command = [self.rc, 'checksum'] + list(args)
-        command.append('md5')
-        command.append(md5file)
-        command.append(dst)
-        #print("Command:", command)
-        out, err = self._run_rc(command)
-        if out:
-            print(f'rclone checksum output: {out}')
-        #print('ret', err)
-        stats, ops = self._parse_log(err) 
-        if stats:
-            return stats[-1] # return the stats
-        else:
-            return []
+        if not args.folders:
+            csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
+            with open(csvfile, 'r') as csvf:
+                app = TableRestore()
+                retline=app.run()
+            if not retline:
+                return False
+            if len(retline) < 2:
+                print('Error: froster-archives table did not return result')
+                return False
+            if args.debug:
+                print("dialog returns:",retline)
+            args.folders.append(retline[0])
+            if retline[3]: 
+                cfg.awsprofile = retline[3]
+                args.awsprofile = cfg.awsprofile
+                cfg._set_env_vars(cfg.awsprofile)        
 
-    def version(self):
-        command = [self.rc, 'version']
-        return self._run_rc(command)
-    
-    def _add_opt(self, cmd, option, value=None):
-        if option in cmd:
-            return cmd
-        cmd.append(option)
-        if value:
-            cmd.append(value)
-        return cmd
-    
-    def _parse_log(self, strstderr):
-        lines=strstderr.split('\n')
-        data = [json.loads(line.rstrip()) for line in lines if line[0] == "{"]
-        stats = []
-        operations = []
-        for obj in data:
-            if 'accounting/stats' in obj['source']:
-                stats.append(obj)
-            elif 'operations/operations' in obj['source']:
-                operations.append(obj)
-        return stats, operations
+        hostname = platform.node()
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            # get archive storage location
+            mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
+            rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
+            archive_folder = rowdict['archive_folder']
 
-        # stats":{"bytes":0,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":4.121489785,"errors":12,"eta":null,"fatalError":false,
-        # "lastError":"failed to open source object: Object in GLACIER, restore first: bucket=\"posix-dp\", key=\"tests4/table_example.py\"",
-        # "renames":0,"retryError":true,"speed":0,"totalBytes":0,"totalChecks":0,"totalTransfers":0,"transferTime":0,"transfers":0},
-        # "time":"2023-04-16T10:18:46.121921-07:00"}
-
+            rclone = Rclone(args,cfg)
+            rc_mounts = cfg.read('general', 'rclone_mounts')
+            if not rc_mounts: rc_mounts={}
+            if args.unmount or args.subcmd == 'unmount':
+                if isinstance(rc_mounts, dict) and f'{hostname}:{fld}' in rc_mounts:
+                    print('isinstance')
+                    pid = rc_mounts[f'{hostname}:{fld}']
+                    if pid in rclone.get_pids():
+                        print (f'Unmounting folder {fld}, please wait ...', flush=True)
+                        rclone.unmount(pid)
+                        del rc_mounts[f'{hostname}:{fld}']
+                    else:
+                        print (f'No process id (pid) found for folder {fld}')
+                print (f'Folder {fld} mount not tracked.')
+            else:
+                if args.mountpoint and os.path.isdir(args.mountpoint):
+                    fld=args.mountpoint 
+                print (f'Mounting archive folder at {fld}, please wait ...', flush=True)    
+                pid = rclone.mount(archive_folder,fld)
+                if pid:
+                    rc_mounts[f'{hostname}:{fld}']=pid
+                if args.debug:
+                    print('*** RCLONE mount pid ***:', pid, '\n')
+            cfg.write('general', 'rclone_mounts', rc_mounts)
+            if args.mountpoint:
+                # we can only mount a single folder if mountpoint is set 
+                break
 
 class Archiver:
     def __init__(self, args, cfg):
@@ -1072,43 +1025,7 @@ class Archiver:
                         'mount_source': mount_source,
                     })
         return mountinfo_list    
-    
-    def create_s3_bucket(self, bucket_name, region='us-west-2'):
-        try:
-            s3_client = boto3.client('s3')            
-            existing_buckets = s3_client.list_buckets()
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'AccessDenied':
-                print(f"Access denied for bucket '{bucket_name}'")
-                print('Check your permissions and/or credentials.')
-            else:
-                print(f"An error occurred: {e}")
-            return False
-        for bucket in existing_buckets['Buckets']:
-            if bucket['Name'] == bucket_name:
-                print(f'S3 bucket {bucket_name} already exists')
-                return True            
-        response = s3_client.create_bucket(
-            Bucket=bucket_name,
-            CreateBucketConfiguration={'LocationConstraint': region}
-            )        
-        encryption_configuration = {
-            'Rules': [
-                {
-                    'ApplyServerSideEncryptionByDefault': {
-                        'SSEAlgorithm': 'AES256'
-                    }
-                }
-            ]
-        }
-        response = s3_client.put_bucket_encryption(
-            Bucket=bucket_name,
-            ServerSideEncryptionConfiguration=encryption_configuration
-        )            
-        print('Created encrypted S3 Bucket {bucket_name}:',response)
-        return True
-    
+        
     def glacier_restore(self, bucket_name, prefix, keep_days=30, ret_opt="Bulk"):
         glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
         try:
@@ -1194,7 +1111,7 @@ class TableHotspots(App[list]):
         table.focus()
         table.cursor_type = "row"
         #table.fixed_columns = 1
-        #table.fixed_rows = 1
+        table.fixed_rows = 1
         yield table
 
     def on_mount(self) -> None:
@@ -1225,7 +1142,7 @@ class TableRestore(App[list]):
         table.focus()
         table.cursor_type = "row"
         #table.fixed_columns = 1
-        #table.fixed_rows = 1
+        table.fixed_rows = 1
         yield table
 
     def on_mount(self) -> None:
@@ -1243,151 +1160,288 @@ class TableRestore(App[list]):
         csvfile= os.path.join(home_dir,'.config','froster', 'froster-archives.csv')
         return open(csvfile, 'r')
 
-
 #if __name__ == "__main__":
 #    app = TableApp()
 #    print(app.run())
 
+class Rclone:
+    def __init__(self, args, cfg):
+        self.args = args
+        self.cfg = cfg
+        self.rc = f'{self.cfg.binfolder}/rclone'
 
-def parse_arguments():
-    """
-    Gather command-line arguments.
-    """       
-    parser = argparse.ArgumentParser(prog='froster ',
-        description='A (mostly) automated tool for archiving large scale data ' + \
-                    'after finding folders in the file system that are worth archiving.')
-    parser.add_argument( '--debug', '-g', dest='debug', action='store_true', default=False,
-        help="verbose output for all commands")
+    # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
-    subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
-    # ***
-    parser_config = subparsers.add_parser('config', aliases=['cnf'], 
-        help=textwrap.dedent(f'''
-            Bootstrap the configurtion, install dependencies and setup your environment.
-            You will need to answer a few questions about your cloud setup.
-        '''), formatter_class=argparse.RawTextHelpFormatter)
-    # ***
-    parser_index = subparsers.add_parser('index', aliases=['idx'], 
-        help=textwrap.dedent(f'''
-            Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file 
-            that lists the largest folders. As this process is compute intensive the 
-            index job will be automatically submitted to Slurm if the Slurm tools are
-            found.
-        '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_index.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-        help="do not submit a Slurm job, execute index directly")
-    parser_index.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the index. (default=4) ')
-    parser_index.add_argument('--pwalk-csv', '-p', dest='pwalkcsv', action='store', default='', 
-        help='If someone else has already created CSV files using pwalk ' +
-             'you can enter a specific pwalk CSV file here and are not ' +
-             'required to run the time consuming pwalk.' +
-             '')
-    parser_index.add_argument('folders', action='store', default=[],  nargs='*',
-        help='folders you would like to index (separated by space), ' +
-                'using the pwalk file system crawler ')
-    # ***
-    parser_archive = subparsers.add_parser('archive', aliases=['arc'], 
-        help=textwrap.dedent(f'''
-            Select from a list of large folders, that has been created by 'froster index', and 
-            archive a folder to S3/Glacier. Once you select a folder the archive job will be 
-            automatically submitted to Slurm. You can also automate this process 
+    #backup: rclone --verbose --files-from tmpfile --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
+    #restore: rclone --verbose --use-json-log copy --max-depth 1 :s3:posix-dp/tests4/ ./tests2
+    #rclone copy --verbose --use-json-log --max-depth 1  :s3:posix-dp/tests5/ ./tests5
+    #rclone --use-json-log checksum md5 ./tests/.froster.md5sum :s3:posix-dp/tests2/
+    # storage tier for each file 
+    #rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
+    # list without subdir 
+    #rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
+    #rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
 
-        '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_archive.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-        help="do not submit a Slurm job, execute index directly")        
-    parser_archive.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine. (default=4)')
-    parser_archive.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from ~/.aws/profiles should be used')
-    parser_archive.add_argument('--larger', '-l', dest='larger', action='store', default=0, 
-        help=textwrap.dedent(f'''
-            Archive folders larger than <GiB>. This option
-            works in conjunction with --age <days>. If both
-            options are set froster will automatically archive
-            all folder meeting these criteria, without prompting.
-        '''))
-    parser_archive.add_argument('--age', '-a', dest='age', action='store', default=0, 
-         help=textwrap.dedent(f'''
-            Archive folders older than <days>. This option
-            works in conjunction with --larger <GiB>. If both
-            options are set froster will automatically archive
-            all folder meeting these criteria without prompting.
-        '''))
-    parser_archive.add_argument( '--age-mtime', '-m', dest='agemtime', action='store_true', default=False,
-        help="Use modified file time (mtime) instead of accessed time (atime)")
-    parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
-        help='folders you would like to archive (separated by space), ' +
-                'the last folder in this list is the target   ')
-    # ***
-    parser_restore = subparsers.add_parser('restore', aliases=['rst'],
-        help=textwrap.dedent(f'''
-            This command restores data from AWS Glacier to AWS S3 One Zone-IA. You do not need
-            to download all data to local storage after the restore is complete. Just mount S3.
-        '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_restore.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-        help="do not submit a Slurm job, execute index directly")        
-    parser_restore.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine. (default=4)')
-    parser_restore.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from ~/.aws/profiles should be used')    
-    parser_restore.add_argument('--days', '-d', dest='days', action='store', default=30,
-        help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
-    parser_restore.add_argument('--retrieve-opt', '-r', dest='retrieveopt', action='store', default='Bulk',
-        help=textwrap.dedent(f'''
-            Bulk (default): 
-                - 5-12 hours retrieval
-                - costs of $2.50 per TiB
-            Standard: 
-                - 3-5 hours retrieval 
-                - costs of $10 per TiB
-            Expedited: 
-                - 1-5 minutes retrieval 
-                - costs of $30 per TiB
+    def _run_rc(self, command):
 
-            In addition to the retrieval cost, AWS will charge you about $10/TiB/month for the
-            duration you keep the data in S3.
+        command = self._add_opt(command, '--verbose')
+        command = self._add_opt(command, '--use-json-log')
+        if self.args.debug:
+            print("Rclone command:", " ".join(command))
+        try:
+            ret = subprocess.run(command, stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, text=True, env=self.cfg.envrn)
+            print('PID', ret.pid)
+            if ret.returncode != 0:
+                #pass
+                sys.stderr.write(f'*** Error, Rclone return code > 0:\n {command} Error:\n{ret.stderr}')
+                # list of exit codes 
+                # 0 - success
+                # 1 - Syntax or usage error
+                # 2 - Error not otherwise categorised
+                # 3 - Directory not found
+                # 4 - File not found
+                # 5 - Temporary error (one that more retries might fix) (Retry errors)
+                # 6 - Less serious errors (like 461 errors from dropbox) (NoRetry errors)
+                # 7 - Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)
+                # 8 - Transfer exceeded - limit set by --max-transfer reached
+                # 9 - Operation successful, but no files transferred
+            
+            #lines = ret.stderr.decode('utf-8').splitlines() #needed if you do not use ,text=True
+            #locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l]) 
+            #print("   STDOUT:",ret.stdout)
+            #print("   STDERR:",ret.stderr)
+            #rclone mount --daemon
+            return ret.stdout.strip(), ret.stderr.strip(), ret.pid
 
-            (costs from April 2023)
-            '''))
-    parser_restore.add_argument( '--no-download', '-l', dest='nodownload', action='store_true', default=False,
-        help="skip download to local storage after retrieval from Glacier")
-    parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
-        help='folders you would like to to restore (separated by space), ' +
-                '')
-    # ***
-    # parser_download = subparsers.add_parser('download', aliases=['rst'],
-    #     help=textwrap.dedent(f'''
-    #         This command downloads data from a S3 compatible object store to your local filesystem. 
-    #         If you are downloading from a cloud to your local network, egress fees may apply. 
-    #     '''), formatter_class=argparse.RawTextHelpFormatter)        
-    # parser_download.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-    #     help="do not submit a Slurm job, execute index directly")        
-    # parser_download.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-    #     help='Number of cores to be allocated for the machine. (default=4)')
-    # parser_download.add_argument('folders', action='store', default=[],  nargs='*',
-    #     help='folders you would like to to restore (separated by space), ' +
-    #             'the last folder in this list is the target  ')
-    # ***
-    parser_delete = subparsers.add_parser('delete', aliases=['del'],
-        help=textwrap.dedent(f'''
-            This command removes data from a local filesystem folder that has been confirmed to 
-            be archived (through checksum verification). Use this instead of deleting manually
-        '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_delete.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from ~/.aws/profiles should be used')
-    parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
-        help='folders (separated by space) from which you would like to delete files, ' +
-               'you can only delete files that have been archived')
+        except Exception as e:
+            print (f'Rclone Error: {str(e)}')
+            return None, str(e)
 
-            # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
-            # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
-            # of up to 15%% of your AWS bill. (costs from April 2023)
+    def _run_bk(self, command):
+        command = self._add_opt(command, '--verbose')
+        command = self._add_opt(command, '--use-json-log')
+        if self.args.debug:
+            print("Rclone command:", " ".join(command))
+        try:
+            ret = subprocess.Popen(command, preexec_fn=os.setsid, text=True, env=self.cfg.envrn)
+            if ret.returncode != 0:
+                sys.stderr.write(f'*** Error, Rclone return code {ret.returncode}:\n {command} ')
+            return ret.pid
+        except Exception as e:
+            print (f'Rclone Error: {str(e)}')
+            return None
 
-    if len(sys.argv) == 1:
-        parser.print_help(sys.stdout)            
+    def copy(self, src, dst, *args):
+        command = [self.rc, 'copy'] + list(args)
+        command.append(src)  #command.append(f'{src}/')
+        command.append(dst)
+        out, err, pid = self._run_rc(command)
+        if out:
+            print(f'rclone copy output: {out}')
+        #print('ret', err)
+        stats, ops = self._parse_log(err) 
+        if stats:
+            return stats[-1] # return the stats
+        else:
+            return []
+    
+        #b'{"level":"warning","msg":"Time may be set wrong - time from \\"posix-dp.s3.us-west-2.amazonaws.com\\" is -9m17.550965814s different from this computer","source":"fshttp/http.go:200","time":"2023-04-16T14:40:47.44907-07:00"}'    
 
-    return parser.parse_args()
+    def checksum(self, md5file, dst, *args):
+        #checksum md5 ./tests/.froster.md5sum
+        command = [self.rc, 'checksum'] + list(args)
+        command.append('md5')
+        command.append(md5file)
+        command.append(dst)
+        #print("Command:", command)
+        out, err, pid = self._run_rc(command)
+        if out:
+            print(f'rclone checksum output: {out}')
+        #print('ret', err)
+        stats, ops = self._parse_log(err) 
+        if stats:
+            return stats[-1] # return the stats
+        else:
+            return []
+
+    def mount(self, url, mountpoint, *args):
+        if not url.endswith('/'): url+'/'
+        command = [self.rc, 'mount'] + list(args)
+        #command.append('--daemon') # not reliable, just starting background process
+        command.append('--allow-non-empty')
+        command.append('--read-only')
+        command.append('--no-checksum')
+        command.append(url)
+        command.append(mountpoint)
+        pid = self._run_bk(command)
+        return pid
+
+    def unmount(self, pid, wait=False):
+        os.kill(int(pid), signal.SIGTERM)
+        if wait:
+            _, _ = os.waitpid(int(pid), 0)
+
+    def version(self):
+        command = [self.rc, 'version']
+        return self._run_rc(command)
+    
+    def get_pids(self):
+        try:
+            output = subprocess.check_output(['pgrep', 'rclone'])
+            pids = [int(pid) for pid in output.decode().split('\n') if pid]
+            return pids
+        except subprocess.CalledProcessError:
+            # No rclone processes found
+            return []
+    
+    def _add_opt(self, cmd, option, value=None):
+        if option in cmd:
+            return cmd
+        cmd.append(option)
+        if value:
+            cmd.append(value)
+        return cmd
+    
+    def _parse_log(self, strstderr):
+        lines=strstderr.split('\n')
+        data = [json.loads(line.rstrip()) for line in lines if line[0] == "{"]
+        stats = []
+        operations = []
+        for obj in data:
+            if 'accounting/stats' in obj['source']:
+                stats.append(obj)
+            elif 'operations/operations' in obj['source']:
+                operations.append(obj)
+        return stats, operations
+
+        # stats":{"bytes":0,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":4.121489785,"errors":12,"eta":null,"fatalError":false,
+        # "lastError":"failed to open source object: Object in GLACIER, restore first: bucket=\"posix-dp\", key=\"tests4/table_example.py\"",
+        # "renames":0,"retryError":true,"speed":0,"totalBytes":0,"totalChecks":0,"totalTransfers":0,"transferTime":0,"transfers":0},
+        # "time":"2023-04-16T10:18:46.121921-07:00"}
+
+class SlurmEssentials:
+    # submitted to https://github.com/amq92/simple_slurm/issues/18 for inclusion
+    def __init__(self, args, cfg):
+        self.script_lines = ["#!/bin/bash"]
+        self.cfg = cfg
+        self.args = args
+        self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
+        self.jobs = []
+        self.job_info = {}
+        self._add_lines_from_cfg()
+
+    def add_line(self, line):
+        if line:
+            self.script_lines.append(line)
+
+    def get_future_start_time(self, add_hours):
+        now = datetime.datetime.now()        
+        future_time = now + datetime.timedelta(hours=add_hours)
+        return future_time.strftime("%Y-%m-%dT%H:%M")
+    
+    def _add_lines_from_cfg(self):
+        slurm_lscratch = self.cfg.read('hpc','slurm_lscratch')
+        lscratch_mkdir = self.cfg.read('hpc','lscratch_mkdir')
+        lscratch_root  = self.cfg.read('hpc','lscratch_root')
+        if slurm_lscratch:
+            self.add_line(f'#SBATCH {slurm_lscratch}')
+        self.add_line(f'{lscratch_mkdir}')
+        if lscratch_root:
+            self.add_line('export TMPDIR=%s/${SLURM_JOB_ID}' % lscratch_root)
+
+    def _reorder_sbatch_lines(self, script_buffer):
+        # we need to make sure that all #BATCH are at the top
+        script_buffer.seek(0)
+        lines = script_buffer.readlines()
+        shebang_line = lines.pop(0)  # Remove the shebang line from the list of lines
+        sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
+        non_sbatch_lines = [line for line in lines if not line.startswith("#SBATCH")]
+        reordered_script = io.StringIO()
+        reordered_script.write(shebang_line)
+        for line in sbatch_lines:
+            reordered_script.write(line)
+        for line in non_sbatch_lines:
+            reordered_script.write(line)
+        # add a local scratch teardown, if configured
+        reordered_script.write(self.cfg.read('hpc','lscratch_rmdir'))
+        reordered_script.seek(0)
+        return reordered_script
+
+        # # Example usage:
+        # script_buffer = StringIO("""#!/bin/bash
+        # echo "Hello, SLURM!"
+        # #SBATCH --job-name=my_job
+        # #SBATCH --output=my_output.log
+        # echo "This is a test job."
+        # """.strip())
+        # reordered_script = reorder_sbatch_lines(script_buffer)
+        # print(reordered_script.getvalue())
+
+    def sbatch(self):
+        script = io.StringIO()
+        for line in self.script_lines:
+            script.write(line + "\n")
+        script.seek(0)
+        oscript = self._reorder_sbatch_lines(script)
+        output = subprocess.check_output('sbatch', shell=True, 
+                    text=True, input=oscript.read())
+        job_id = int(output.split()[-1])
+        if args.debug:
+            oscript.seek(0)
+            with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
+                file.write(oscript.read())
+                print(f' Debug script created: submitted-{job_id}.sh')
+        return job_id
+
+    def squeue(self):
+        result = subprocess.run(["squeue", "--me", "-o", self.squeue_output_format],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Error running squeue: {result.stderr.strip()}")
+        self.jobs = self._parse_squeue_output(result.stdout.strip())
+
+    def _parse_squeue_output(self, output):
+        csv_file = io.StringIO(output)
+        reader = csv.DictReader(csv_file, delimiter=',', 
+                                quotechar='"', skipinitialspace=True)
+        jobs = [row for row in reader] 
+        return jobs
+
+    def print_jobs(self):
+        for job in self.jobs:
+            print(job)
+
+    def job_comment_read(self, job_id):
+        jobdict=self._scontrol_show_job(job_id)
+        return jobdict['Comment']
+
+    def job_comment_write(self, job_id, comment):
+        # a comment can be maximum 250 characters, will be chopped automatically 
+        args = ['update', f'JobId={str(job_id)}', f'Comment={comment}', str(job_id)]
+        result = subprocess.run(['scontrol'] + args, 
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Error running scontrol: {result.stderr.strip()}")
+
+    def _scontrol_show_job(self, job_id):
+        args = ["--oneliner", "show", "job", str(job_id)]
+        result = subprocess.run(['scontrol'] + args, 
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Error running scontrol: {result.stderr.strip()}")
+        self.job_info = self._parse_scontrol_output(result.stdout)
+
+    def _parse_scontrol_output(self, output):
+        fields = output.strip().split()
+        job_info = {}
+        for field in fields:
+            key, value = field.split('=', 1)
+            job_info[key] = value
+        return job_info
+
+    def display_job_info(self):
+        print(self.job_info)
 
 class ConfigManager:
     # we write all config entries as files to '~/.config'
@@ -1598,7 +1652,6 @@ class ConfigManager:
             profiles.append(profile_name)        
         return profiles
 
-
     def create_aws_configs(self,access_key=None, secret_key=None, region=None):
 
         aws_dir = os.path.join(self.home_dir, ".aws")
@@ -1716,7 +1769,6 @@ class ConfigManager:
         except Exception as e:            
             print(f"An unexpected error occurred: {e}")
             return False
-
         encryption_configuration = {
             'Rules': [
                 {
@@ -1745,17 +1797,14 @@ class ConfigManager:
         except Exception as e:            
             print(f"An unexpected error occurred: {e}")
             return False            
-
         return True
 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
         os.makedirs(os.path.dirname(entry_path), exist_ok=True)
-
         if value == '""':
             os.remove(entry_path)
             return
-                
         with open(entry_path, 'w') as entry_file:
             if isinstance(value, list):
                 for item in value:
@@ -1767,11 +1816,9 @@ class ConfigManager:
 
     def read(self, section, entry):
         entry_path = self._get_entry_path(section, entry)
-
         if not os.path.exists(entry_path):
             return ""
             #raise FileNotFoundError(f'Config entry "{entry}" in section "{section}" not found.')
- 
         with open(entry_path, 'r') as entry_file:
             try:
                 return json.load(entry_file)                
@@ -1779,7 +1826,6 @@ class ConfigManager:
                 pass
             except:
                 print('Error in ConfigManager.read()')
-
         with open(entry_path, 'r') as entry_file:
                 content = entry_file.read().splitlines()
                 if len(content) == 1:
@@ -1789,197 +1835,210 @@ class ConfigManager:
 
     def delete(self, section, entry):
         entry_path = self._get_entry_path(section, entry)
-
         if not os.path.exists(entry_path):
             raise FileNotFoundError(f'Config entry "{entry}" in section "{section}" not found.')
-
         os.remove(entry_path)
 
     def delete_section(self, section):
         section_path = self._get_section_path(section)
-
         if not os.path.exists(section_path):
             raise FileNotFoundError(f'Config section "{section}" not found.')
-
         for entry in os.listdir(section_path):
             os.remove(os.path.join(section_path, entry))
         os.rmdir(section_path)
 
-class SlurmEssentials:
-    # submitted to https://github.com/amq92/simple_slurm/issues/18 for inclusion
-    def __init__(self, args, cfg):
-        self.script_lines = ["#!/bin/bash"]
-        self.cfg = cfg
-        self.args = args
-        self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
-        self.jobs = []
-        self.job_info = {}
-        self._add_lines_from_cfg()
-
-    def add_line(self, line):
-        if line:
-            self.script_lines.append(line)
-
-    def get_future_start_time(self, add_hours):
-        now = datetime.datetime.now()        
-        future_time = now + datetime.timedelta(hours=add_hours)
-        return future_time.strftime("%Y-%m-%dT%H:%M")
-    
-    def _add_lines_from_cfg(self):
-        slurm_lscratch = self.cfg.read('hpc','slurm_lscratch')
-        lscratch_mkdir = self.cfg.read('hpc','lscratch_mkdir')
-        lscratch_root  = self.cfg.read('hpc','lscratch_root')
-        if slurm_lscratch:
-            self.add_line(f'#SBATCH {slurm_lscratch}')
-        self.add_line(f'{lscratch_mkdir}')
-        if lscratch_root:
-            self.add_line('export TMPDIR=%s/${SLURM_JOB_ID}' % lscratch_root)
-
-    def _reorder_sbatch_lines(self, script_buffer):
-        # we need to make sure that all #BATCH are at the top
-        script_buffer.seek(0)
-        lines = script_buffer.readlines()
-        shebang_line = lines.pop(0)  # Remove the shebang line from the list of lines
-        sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
-        non_sbatch_lines = [line for line in lines if not line.startswith("#SBATCH")]
-        reordered_script = io.StringIO()
-        reordered_script.write(shebang_line)
-        for line in sbatch_lines:
-            reordered_script.write(line)
-        for line in non_sbatch_lines:
-            reordered_script.write(line)
-        # add a local scratch teardown, if configured
-        reordered_script.write(self.cfg.read('hpc','lscratch_rmdir'))
-        reordered_script.seek(0)
-        return reordered_script
-
-        # # Example usage:
-        # script_buffer = StringIO("""#!/bin/bash
-        # echo "Hello, SLURM!"
-        # #SBATCH --job-name=my_job
-        # #SBATCH --output=my_output.log
-        # echo "This is a test job."
-        # """.strip())
-        # reordered_script = reorder_sbatch_lines(script_buffer)
-        # print(reordered_script.getvalue())
-
-    def sbatch(self):
-        script = io.StringIO()
-        for line in self.script_lines:
-            script.write(line + "\n")
-        script.seek(0)
-        oscript = self._reorder_sbatch_lines(script)
-        output = subprocess.check_output('sbatch', shell=True, 
-                    text=True, input=oscript.read())
-        job_id = int(output.split()[-1])
-        if args.debug:
-            oscript.seek(0)
-            with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
-                file.write(oscript.read())
-                print(f' Debug script created: submitted-{job_id}.sh')
-        return job_id
-
-    def squeue(self):
-        result = subprocess.run(["squeue", "--me", "-o", self.squeue_output_format],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Error running squeue: {result.stderr.strip()}")
-
-        self.jobs = self._parse_squeue_output(result.stdout.strip())
-
-    def _parse_squeue_output(self, output):
-        csv_file = io.StringIO(output)
-        reader = csv.DictReader(csv_file, delimiter=',', 
-                                quotechar='"', skipinitialspace=True)
-        jobs = [row for row in reader] 
-        return jobs
-
-    def print_jobs(self):
-        for job in self.jobs:
-            print(job)
-
-    def job_comment_read(self, job_id):
-        jobdict=self._scontrol_show_job(job_id)
-        return jobdict['Comment']
-
-    def job_comment_write(self, job_id, comment):
-        # a comment can be maximum 250 characters, will be chopped automatically 
-        args = ['update', f'JobId={str(job_id)}', f'Comment={comment}', str(job_id)]
-        result = subprocess.run(['scontrol'] + args, 
-                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Error running scontrol: {result.stderr.strip()}")
-
-    def _scontrol_show_job(self, job_id):
-        command = "scontrol"
-        args = ["--oneliner", "show", "job", str(job_id)]
-
-        result = subprocess.run(['scontrol'] + args, 
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Error running scontrol: {result.stderr.strip()}")
-
-        self.job_info = self._parse_scontrol_output(result.stdout)
-
-    def _parse_scontrol_output(self, output):
-        fields = output.strip().split()
-        job_info = {}
-        for field in fields:
-            key, value = field.split('=', 1)
-            job_info[key] = value
-        return job_info
-
-    def display_job_info(self):
-        print(self.job_info)
-
-#if __name__ == "__main__":
-#    se = SlurmEssentials()
-#    se.add_line('#SBATCH --job-name=my_job')
-#    se.add_line('sleep 600')
-#    jobid = se.sbatch()
-#    se.job_comment_write(jobid, "Lovely Comment") # 
-#    print('Job Comment:', se.job_comment_read(jobid))
-#    se.squeue()
-#    se.print_jobs()
-
-def copy_compiled_binary_from_github(user, repo, compilecmd, binary, targetfolder):
-    tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
-
-    response = requests.get(tarball_url, stream=True, allow_redirects=True)
-    response.raise_for_status()
-
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        reposfolder=os.path.join(tmpdirname,  f"{repo}-main")
-        with tarfile.open(fileobj=response.raw, mode="r|gz") as tar:
-            tar.extractall(path=tmpdirname)
+    def copy_compiled_binary_from_github(self,user,repo,compilecmd,binary,targetfolder):
+        tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
+        response = requests.get(tarball_url, stream=True, allow_redirects=True)
+        response.raise_for_status()
+        with tempfile.TemporaryDirectory() as tmpdirname:
             reposfolder=os.path.join(tmpdirname,  f"{repo}-main")
-            os.chdir(reposfolder)
-            result = subprocess.run(compilecmd, shell=True)
-            if result.returncode == 0:
-                print(f"Compilation successful: {compilecmd}")
-                shutil.copy2(binary, targetfolder, follow_symlinks=True)
-                if not os.path.exists(os.path.join(targetfolder, binary)):
-                    print(f'Failed copying {binary} to {targetfolder}')                
-            else:
-                print(f"Compilation failed: {compilecmd}")
+            with tarfile.open(fileobj=response.raw, mode="r|gz") as tar:
+                tar.extractall(path=tmpdirname)
+                reposfolder=os.path.join(tmpdirname,  f"{repo}-main")
+                os.chdir(reposfolder)
+                result = subprocess.run(compilecmd, shell=True)
+                if result.returncode == 0:
+                    print(f"Compilation successful: {compilecmd}")
+                    shutil.copy2(binary, targetfolder, follow_symlinks=True)
+                    if not os.path.exists(os.path.join(targetfolder, binary)):
+                        print(f'Failed copying {binary} to {targetfolder}')                
+                else:
+                    print(f"Compilation failed: {compilecmd}")
 
-def copy_binary_from_zip_url(zipurl,binary,subwildcard,targetfolder):
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        zip_file = os.path.join(tmpdirname,  "download.zip")
-        response = requests.get(zipurl, verify=False, allow_redirects=True)
-        with open(zip_file, 'wb') as f:
-            f.write(response.content)
-        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-            zip_ref.extractall(tmpdirname)
-        binpath = glob.glob(f'{tmpdirname}{subwildcard}{binary}')[0]
-        shutil.copy2(binpath, targetfolder, follow_symlinks=True)
-        if os.path.exists(os.path.join(targetfolder, binary)):
-            os.chmod(os.path.join(targetfolder, binary), 0o775)
-        else:    
-            print(f'Failed copying {binary} to {targetfolder}')
+    def copy_binary_from_zip_url(self,zipurl,binary,subwildcard,targetfolder):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            zip_file = os.path.join(tmpdirname,  "download.zip")
+            response = requests.get(zipurl, verify=False, allow_redirects=True)
+            with open(zip_file, 'wb') as f:
+                f.write(response.content)
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                zip_ref.extractall(tmpdirname)
+            binpath = glob.glob(f'{tmpdirname}{subwildcard}{binary}')[0]
+            shutil.copy2(binpath, targetfolder, follow_symlinks=True)
+            if os.path.exists(os.path.join(targetfolder, binary)):
+                os.chmod(os.path.join(targetfolder, binary), 0o775)
+            else:    
+                print(f'Failed copying {binary} to {targetfolder}')
 
+def parse_arguments():
+    """
+    Gather command-line arguments.
+    """       
+    parser = argparse.ArgumentParser(prog='froster ',
+        description='A (mostly) automated tool for archiving large scale data ' + \
+                    'after finding folders in the file system that are worth archiving.')
+    parser.add_argument( '--debug', '-g', dest='debug', action='store_true', default=False,
+        help="verbose output for all commands")
+
+    subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
+    # ***
+    parser_config = subparsers.add_parser('config', aliases=['cnf'], 
+        help=textwrap.dedent(f'''
+            Bootstrap the configurtion, install dependencies and setup your environment.
+            You will need to answer a few questions about your cloud setup.
+        '''), formatter_class=argparse.RawTextHelpFormatter)
+    # ***
+    parser_index = subparsers.add_parser('index', aliases=['idx'], 
+        help=textwrap.dedent(f'''
+            Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file 
+            that lists the largest folders. As this process is compute intensive the 
+            index job will be automatically submitted to Slurm if the Slurm tools are
+            found.
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_index.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
+        help="do not submit a Slurm job, execute index directly")
+    parser_index.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
+        help='Number of cores to be allocated for the index. (default=4) ')
+    parser_index.add_argument('--pwalk-csv', '-p', dest='pwalkcsv', action='store', default='', 
+        help='If someone else has already created CSV files using pwalk ' +
+             'you can enter a specific pwalk CSV file here and are not ' +
+             'required to run the time consuming pwalk.' +
+             '')
+    parser_index.add_argument('folders', action='store', default=[],  nargs='*',
+        help='folders you would like to index (separated by space), ' +
+                'using the pwalk file system crawler ')
+    # ***
+    parser_archive = subparsers.add_parser('archive', aliases=['arc'], 
+        help=textwrap.dedent(f'''
+            Select from a list of large folders, that has been created by 'froster index', and 
+            archive a folder to S3/Glacier. Once you select a folder the archive job will be 
+            automatically submitted to Slurm. You can also automate this process 
+
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_archive.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
+        help="do not submit a Slurm job, execute index directly")        
+    parser_archive.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
+        help='Number of cores to be allocated for the machine. (default=4)')
+    parser_archive.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from ~/.aws/profiles should be used')
+    parser_archive.add_argument('--larger', '-l', dest='larger', action='store', default=0, 
+        help=textwrap.dedent(f'''
+            Archive folders larger than <GiB>. This option
+            works in conjunction with --age <days>. If both
+            options are set froster will automatically archive
+            all folder meeting these criteria, without prompting.
+        '''))
+    parser_archive.add_argument('--age', '-a', dest='age', action='store', default=0, 
+         help=textwrap.dedent(f'''
+            Archive folders older than <days>. This option
+            works in conjunction with --larger <GiB>. If both
+            options are set froster will automatically archive
+            all folder meeting these criteria without prompting.
+        '''))
+    parser_archive.add_argument( '--age-mtime', '-m', dest='agemtime', action='store_true', default=False,
+        help="Use modified file time (mtime) instead of accessed time (atime)")
+    parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
+        help='folders you would like to archive (separated by space), ' +
+                'the last folder in this list is the target   ')
+    # ***
+    parser_restore = subparsers.add_parser('restore', aliases=['rst'],
+        help=textwrap.dedent(f'''
+            Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need
+            to download all data to local storage after the restore is complete. 
+            Just use the mount sub command. 
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_restore.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
+        help="do not submit a Slurm job, execute index directly")        
+    parser_restore.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
+        help='Number of cores to be allocated for the machine. (default=4)')
+    parser_restore.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from ~/.aws/profiles should be used')    
+    parser_restore.add_argument('--days', '-d', dest='days', action='store', default=30,
+        help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
+    parser_restore.add_argument('--retrieve-opt', '-r', dest='retrieveopt', action='store', default='Bulk',
+        help=textwrap.dedent(f'''
+            Bulk (default): 
+                - 5-12 hours retrieval
+                - costs of $2.50 per TiB
+            Standard: 
+                - 3-5 hours retrieval 
+                - costs of $10 per TiB
+            Expedited: 
+                - 1-5 minutes retrieval 
+                - costs of $30 per TiB
+
+            In addition to the retrieval cost, AWS will charge you about $10/TiB/month for the
+            duration you keep the data in S3.
+
+            (costs from April 2023)
+            '''))
+    parser_restore.add_argument( '--no-download', '-l', dest='nodownload', action='store_true', default=False,
+        help="skip download to local storage after retrieval from Glacier")
+    parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
+        help='folders you would like to to restore (separated by space), ' +
+                '')
+    # ***
+    # parser_download = subparsers.add_parser('download', aliases=['rst'],
+    #     help=textwrap.dedent(f'''
+    #         This command downloads data from a S3 compatible object store to your local filesystem. 
+    #         If you are downloading from a cloud to your local network, egress fees may apply. 
+    #     '''), formatter_class=argparse.RawTextHelpFormatter)        
+    # parser_download.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
+    #     help="do not submit a Slurm job, execute index directly")        
+    # parser_download.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
+    #     help='Number of cores to be allocated for the machine. (default=4)')
+    # parser_download.add_argument('folders', action='store', default=[],  nargs='*',
+    #     help='folders you would like to to restore (separated by space), ' +
+    #             'the last folder in this list is the target  ')
+    # ***
+    parser_delete = subparsers.add_parser('delete', aliases=['del'],
+        help=textwrap.dedent(f'''
+            Remove data from a local filesystem folder that has been confirmed to 
+            be archived (through checksum verification). Use this instead of deleting manually
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_delete.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from ~/.aws/profiles should be used')
+    parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
+        help='folders (separated by space) from which you would like to delete files, ' +
+               'you can only delete files that have been archived')
+            # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
+            # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
+            # of up to 15%% of your AWS bill. (costs from April 2023)
+    parser_mount = subparsers.add_parser('mount', aliases=['mnt', 'unmount'],
+        help=textwrap.dedent(f'''
+            Mount the remote S3 or Glacier storage in your local file system at the location
+            of the original folder.
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_mount.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from ~/.aws/profiles should be used')
+    parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='', 
+        help='pick a custom mount point, this only works if you select a single folder.')
+    parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
+        help="unmount instead of mount")
+    parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
+        help='archived folders (separated by space) which you would like to mount, ' +
+               'you can only delete files that have been archived')
+
+            # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
+            # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
+            # of up to 15%% of your AWS bill. (costs from April 2023)
+
+
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stdout)            
+
+    return parser.parse_args()
 
 if __name__ == "__main__":
     if not sys.platform.startswith('linux'):
@@ -1987,7 +2046,10 @@ if __name__ == "__main__":
         sys.exit(1)
     try:        
         args = parse_arguments()      
-        main()
+        if main():
+            sys.exit(0)
+        else:
+            sys.exit(1)
     except KeyboardInterrupt:
         print('\nExit !')
         try:
