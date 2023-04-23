@@ -1222,8 +1222,9 @@ class Rclone:
         if self.args.debug:
             print("Rclone command:", " ".join(command))
         try:
-            ret = subprocess.Popen(command, preexec_fn=os.setsid, text=True, env=self.cfg.envrn)
-            _, stderr = ret.communicate()            
+            ret = subprocess.Popen(command, preexec_fn=os.setsid, stdin=subprocess.PIPE, 
+                        stdout=subprocess.PIPE, text=True, env=self.cfg.envrn)
+            _, stderr = ret.communicate(timeout=3)            
             if stderr:
                 sys.stderr.write(f'*** Error in command {" ".join(command)}:\n {stderr} ')
             return ret.pid
