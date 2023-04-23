@@ -1305,7 +1305,7 @@ class Rclone:
         return self._run_rc(command)
     
     def _get_pids(self, process, full=False):
-        folder = folder.rstrip(os.path.sep)
+        process = process.rstrip(os.path.sep)
         if full:
             command = ['pgrep', '-f', process]
         else:
