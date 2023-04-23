@@ -418,7 +418,7 @@ def main():
             else:
                 print(f'No files were deleted.')
 
-    if args.subcmd in ['mount', 'mnt', 'unmount']:
+    if args.subcmd in ['mount', 'mnt', 'umount']:
         if args.debug:
             print ("delete:",args.awsprofile, args.mountpoint, args.folders)
         fld = '" "'.join(args.folders)
@@ -461,7 +461,7 @@ def main():
             rclone = Rclone(args,cfg)
             rc_mounts = cfg.read('general', 'rclone_mounts')
             if not rc_mounts: rc_mounts={}
-            if args.unmount or args.subcmd == 'unmount':
+            if args.unmount or args.subcmd == 'umount':
                 if isinstance(rc_mounts, dict) and f'{hostname}:{fld}' in rc_mounts:
                     print('isinstance')
                     pid = rc_mounts[f'{hostname}:{fld}']
@@ -1219,14 +1219,15 @@ class Rclone:
     def _run_bk(self, command):
         #command = self._add_opt(command, '--verbose')
         #command = self._add_opt(command, '--use-json-log')
+        cmdline=" ".join(command)
         if self.args.debug:
-            print("Rclone command:", " ".join(command))
+            print(f'Rclone command: "{cmdline}"')
         try:
             ret = subprocess.Popen(command, preexec_fn=os.setsid, stdin=subprocess.PIPE, 
                         stdout=subprocess.PIPE, text=True, env=self.cfg.envrn)
-            _, stderr = ret.communicate(timeout=3)            
-            if stderr:
-                sys.stderr.write(f'*** Error in command {" ".join(command)}:\n {stderr} ')
+            #_, stderr = ret.communicate(timeout=3)  # This does not work with rclone
+            if ret.stderr:
+                sys.stderr.write(f'*** Error in command "{cmdline}":\n {ret.stderr} ')
             return ret.pid
         except Exception as e:
             print (f'Rclone Error: {str(e)}')
