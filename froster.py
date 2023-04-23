@@ -1236,7 +1236,7 @@ class Rclone:
         command = [self.rc, 'copy'] + list(args)
         command.append(src)  #command.append(f'{src}/')
         command.append(dst)
-        out, err, pid = self._run_rc(command)
+        out, err = self._run_rc(command)
         if out:
             print(f'rclone copy output: {out}')
         #print('ret', err)
@@ -1255,7 +1255,7 @@ class Rclone:
         command.append(md5file)
         command.append(dst)
         #print("Command:", command)
-        out, err, pid = self._run_rc(command)
+        out, err = self._run_rc(command)
         if out:
             print(f'rclone checksum output: {out}')
         #print('ret', err)
@@ -2015,7 +2015,7 @@ def parse_arguments():
             # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
             # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
             # of up to 15%% of your AWS bill. (costs from April 2023)
-    parser_mount = subparsers.add_parser('mount', aliases=['mnt', 'unmount'],
+    parser_mount = subparsers.add_parser('mount', aliases=['mnt', 'umount'],
         help=textwrap.dedent(f'''
             Mount the remote S3 or Glacier storage in your local file system at the location
             of the original folder.
