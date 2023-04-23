@@ -1278,20 +1278,23 @@ class Rclone:
 
     def unmount(self, mountpoint, wait=False):
         mountpoint = mountpoint.rstrip(os.path.sep)
-        if self._is_fuse_mounted(mountpoint):
+        if self._is_mounted(mountpoint):
             rclone_pids = self._get_pids('rclone')
             fld_pids = self._get_pids(mountpoint, True)
             common_pids = [value for value in rclone_pids if value in fld_pids]
-        for pid in common_pids:
-            try:
-                os.kill(pid, signal.SIGTERM)
-                if wait:
-                    _, _ = os.waitpid(int(pid), 0)
-            except PermissionError:
-                print(f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
-            except Exception as e:
-                print(f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}')            
-
+            for pid in common_pids:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    if wait:
+                        _, _ = os.waitpid(int(pid), 0)
+                    return True
+                except PermissionError:
+                    print(f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
+                except Exception as e:
+                    print(f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}') 
+        else:
+            print(f'Folder {mountpoint} is currently not used as a mountpoint by rclone.')
+                
     def version(self):
         command = [self.rc, 'version']
         return self._run_rc(command)
@@ -1310,7 +1313,7 @@ class Rclone:
             # No rclone processes found
             return []
 
-    def _is_fuse_mounted(self, folder_path):
+    def _is_mounted(self, folder_path):
         folder_path = os.path.realpath(folder_path)  # Resolve any symbolic links
         with open('/proc/mounts', 'r') as f:
             for line in f:
