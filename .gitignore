@@ -2,7 +2,7 @@
 csv/
 
 # examples
-333examples/
+examples/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
