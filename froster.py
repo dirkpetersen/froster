@@ -461,29 +461,21 @@ def main():
             rclone = Rclone(args,cfg)
             if args.mountpoint and os.path.isdir(args.mountpoint):
                 fld=args.mountpoint 
-
-            #rc_mounts = cfg.read('general', 'rclone_mounts')
-            #if not rc_mounts: rc_mounts={}
             if args.unmount or args.subcmd == 'umount':
-                #if isinstance(rc_mounts, dict) and f'{hostname}:{fld}' in rc_mounts:
-                #    pid = rc_mounts[f'{hostname}:{fld}']
-                #    if pid in rclone.get_pids():
-                print (f'Unmounting folder {fld}, please wait ...', flush=True)
+                print (f'Unmounting folder {fld} ... ', flush=True, end="")
                 rclone.unmount(fld)
-                        #del rc_mounts[f'{hostname}:{fld}']
-                    #else:
-                    #    print (f'No process id (pid) found for folder {fld}')
-                #print (f'Folder {fld} mount not tracked.')
+                print('Done!', flush=True)
             else:
-                #if args.mountpoint and os.path.isdir(args.mountpoint):
-                #    fld=args.mountpoint 
-                print (f'Mounting archive folder at {fld}', flush=True)
+                print (f'Mounting archive folder at {fld} ... ', flush=True, end="")
                 pid = rclone.mount(archive_folder,fld)
-                #if pid:
-                #    rc_mounts[f'{hostname}:{fld}']=pid
-                #if args.debug:
-                #    print('*** RCLONE mount pid ***:', pid, '\n')
-            #cfg.write('general', 'rclone_mounts', rc_mounts)
+                print('Done!', flush=True)
+                print(textwrap.dedent(f'''\n
+                    Note that this mount point will only work on the current machine, 
+                    if you would like to have this work in a batch job you need to enter 
+                    these commands in the beginning and the end of a batch script\n:
+                    froster mount {fld}
+                    froster umount {fld}
+                    '''))                
             if args.mountpoint:
                 # we can only mount a single folder if mountpoint is set 
                 break
