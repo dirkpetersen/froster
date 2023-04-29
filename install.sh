@@ -1,6 +1,6 @@
 #! /bin/bash
 
-PMIN="8" #Python3 minor version = 3.8)
+PMIN="8" # python3 minor version = 3.8)
 
 echo ""
 echo "Installing Froster, please wait ..."
@@ -12,16 +12,20 @@ fi
 if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
   echo "Python >= 3.${PMIN} required and your default ${P3} is too old."
   if [[ -n ${LMOD_ROOT} ]]; then
-    printf "Lmod detected, trying to load Python ... "
+    printf "Lmod detected, trying to load the default Lmod Python ... "
     ml python > /dev/null 2>&1
-    ml Python/3.8 > /dev/null 2>&1
+    ml Python > /dev/null 2>&1
     echo "Done!"
     if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-      echo "Python >= 3.${PMIN} required but the active python3 is too old."
-      exit
+      printf "Python >= 3.${PMIN} required but the default Lmod Python is too old. Trying Python/3.${PMIN} ... "
+      ml python/3.${PMIN} > /dev/null 2>&1
+      ml Python/3.${PMIN} > /dev/null 2>&1
+      echo "Done!"
+      if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
+        echo "Failed to load Python 3.${PMIN}. Please load a Python module >= 3.${PMIN} manually."
+        exit
+      fi
     fi
-  elif [[ -n ${SPACK_ROOT} ]]; then
-    printf "Spack detected, you can run 'spack load python'"
   else
     echo "please load a diffent Python >= 3.${PMIN} and try again"
     if [[ -n ${SPACK_ROOT} ]]; then
