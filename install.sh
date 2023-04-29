@@ -14,7 +14,11 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
   if [[ -n ${LMOD_ROOT} ]]; then
     echo "LMOD detected, trying to load Python..."
     ml python > /dev/null 2>&1
-    ml Python/3.8 > /dev/null 2>&1
+    ml Python/3.7 > /dev/null 2>&1
+    if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
+      echo "Python >= 3.${PMIN} required but the active python3 is too old."
+      exit
+    fi 
     printf "Done!"
   else
     echo "please load a diffent Python >= 3.${PMIN} and try again"
@@ -22,6 +26,8 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
   fi
 fi
 echo "Install virtual environment ~/.local/share/froster ... "
+rm -rf ~/.local/share/froster.bak
+mv ~/.local/share/froster ~/.local/share/froster.bak
 mkdir -p ~/.local/share/froster
 mkdir -p ~/.local/bin
 export VIRTUAL_ENV_DISABLE_PROMPT=1
