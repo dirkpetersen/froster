@@ -4,6 +4,7 @@ PMIN="8" # python3 minor version = 3.8)
 
 echo ""
 echo "Installing Froster, please wait ..."
+### checking for correct Python verion 
 P3=$(which python3)
 if [[ -z ${P3} ]]; then
   echo "python3 could not be found, please install Python >= 3.${PMIN} first"
@@ -17,7 +18,7 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
     ml Python > /dev/null 2>&1
     echo "Done!"
     if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-      printf "Python >= 3.${PMIN} required but the default Lmod Python is too old. Trying Python/3.${PMIN} ... "
+      printf "The default Lmod Python is older than 3.${PMIN}. Trying Python/3.${PMIN} ... "
       ml python/3.${PMIN} > /dev/null 2>&1
       ml Python/3.${PMIN} > /dev/null 2>&1
       echo "Done!"
@@ -34,9 +35,13 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
     exit
   fi
 fi
-printf "Install virtual environment ~/.local/share/froster ... "
-rm -rf ~/.local/share/froster.bak
-mv ~/.local/share/froster ~/.local/share/froster.bak
+### Installing froster in a Virtual Envionment. 
+printf "Installing virtual environment ~/.local/share/froster ... "
+if [[ -d ~/.local/share/froster ]]; then
+  rm -rf ~/.local/share/froster.bak
+  echo "Renaming existing froster install to ~/.local/share/froster.bak "
+  mv ~/.local/share/froster ~/.local/share/froster.bak
+fi
 mkdir -p ~/.local/share/froster
 mkdir -p ~/.local/bin
 export VIRTUAL_ENV_DISABLE_PROMPT=1
@@ -44,10 +49,10 @@ python3 -m venv ~/.local/share/froster
 source ~/.local/share/froster/bin/activate
 echo "Done!"
 printf "Installing packages ... "
-python3 -m pip install --upgrade pip
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
         -o ~/.local/share/froster/requirements.txt \
-      && python3 -m pip install --upgrade -r ~/.local/share/froster/requirements.txt
+      && python3 -m pip --disable-pip-version-check \
+         install --upgrade -r ~/.local/share/froster/requirements.txt
 Echo "Done!"
 
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
@@ -68,7 +73,9 @@ if [[ -d ${DIR_IN_PATH} ]]; then
 else
   echo "No folders in PATH in your home folder. Please add ~/.local/bin to your PATH and try again."
 fi
-
-echo ""
-echo "Froster installed! Run 'froster --help'"
+froster --help
+echo -e "\n\n\nFroster installed! Run one the these commands:"
+echo "froster --help"
+echo "froster index /your/folder"
+echo "froster archive"
 
