@@ -80,8 +80,8 @@ else
   echo "No folders in PATH in your home folder. Please add ~/.local/bin to your PATH and try again."
 fi
 froster --help
-echo -e "\n\n\nFroster installed! Run one the these commands:"
-echo "froster --help"
-echo "froster index /your/folder"
-echo "froster archive"
+echo -e "\n\n  Froster installed! Run 'froster --help' or this order of commands:\n"
+echo "  froster config"
+echo "  froster index /your/folder"
+echo "  froster archive"
 
