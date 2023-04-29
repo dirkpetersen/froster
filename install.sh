@@ -37,7 +37,7 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
 fi
 ### Fixing a potentially broken LD_LIBRARY_PATH
 P3=$(which python3)
-P3=$(readlink -f ${PYWHICH})
+P3=$(readlink -f ${P3})
 unset LIBRARY_PATH PYTHONPATH
 export LD_LIBRARY_PATH=${P3%/bin/python3*}/lib:${LD_LIBRARY_PATH}
 LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
@@ -59,7 +59,7 @@ curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirement
         -o ~/.local/share/froster/requirements.txt \
       && python3 -m pip --disable-pip-version-check \
          install --upgrade -r ~/.local/share/froster/requirements.txt
-Echo "Done!"
+echo "Done!"
 
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
         -o ~/.local/bin/froster.py
