@@ -42,12 +42,12 @@ unset LIBRARY_PATH PYTHONPATH
 export LD_LIBRARY_PATH=${P3%/bin/python3*}/lib:${LD_LIBRARY_PATH}
 LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
 ### Installing froster in a Virtual Envionment. 
-printf "Installing virtual environment ~/.local/share/froster ... "
 if [[ -d ~/.local/share/froster ]]; then
   rm -rf ~/.local/share/froster.bak
   echo "Renaming existing froster install to ~/.local/share/froster.bak "
   mv ~/.local/share/froster ~/.local/share/froster.bak
 fi
+printf "Installing virtual environment ~/.local/share/froster ... "
 mkdir -p ~/.local/share/froster
 mkdir -p ~/.local/bin
 export VIRTUAL_ENV_DISABLE_PROMPT=1
