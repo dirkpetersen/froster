@@ -14,7 +14,7 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
   if [[ -n ${LMOD_ROOT} ]]; then
     echo "LMOD detected, trying to load Python..."
     ml python > /dev/null 2>&1
-    ml Python/3.7 > /dev/null 2>&1
+    ml Python/3.8 > /dev/null 2>&1
     if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
       echo "Python >= 3.${PMIN} required but the active python3 is too old."
       exit
