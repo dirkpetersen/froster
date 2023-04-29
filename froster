@@ -5,15 +5,26 @@ PYTHON=/home/exacloud/software/spack/opt/spack/linux-centos7-ivybridge/gcc-8.3.1
 script_path="$(readlink -f "$0")"
 script_dir="$(dirname "$script_path")"
 
-if [[ -d  ~/.local/share/froster/bin ]]; then
+if [[ -d ~/.local/share/froster/bin ]]; then
   export VIRTUAL_ENV_DISABLE_PROMPT=1
   source ~/.local/share/froster/bin/activate
+  PYWHICH=$(which python3)
+  PYWHICH=$(readlink -f ${PYWHICH})
+  unset LIBRARY_PATH PYTHONPATH
+  export LD_LIBRARY_PATH=${PYWHICH%/bin/python3*}/lib:${LD_LIBRARY_PATH}
+  LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
   python3 ${script_dir}/froster.py $@
   deactivate
 else
   if [[ -e ${PYTHON} ]]; then
     ${PYTHON} ${script_dir}/froster.py $@
   else
-    /usr/bin/python3 ${script_dir}/froster.py $@
+    # Check if we have at least python 3.7
+    if [[ $(/usr/bin/python3 -c 'import sys; print(sys.version_info >= (3,7))') == "True" ]]; then
+      /usr/bin/python3 ${script_dir}/froster.py $@
+    else
+      echo "Python version must be greater than or equal to 3.7"
+    fi
   fi
 fi
+

@@ -1,24 +1,26 @@
 #! /bin/bash
 
-PMINOR="9" #Python3 minor version = 3.8)
+PMIN="7" #Python3 minor version = 3.7)
 
 echo ""
 echo "Installing Froster, please wait ..."
-if [[ -n ${LMOD_ROOT} ]]; then 
-  ml python > /dev/null 2>&1 
-  ml Python/3.10 > /dev/null 2>&1
-fi
 P3=$(which python3)
 if [[ -z ${P3} ]]; then
-  echo "python3 could not be found."
+  echo "python3 could not be found, please install first"
   exit
 fi
-V=$(${P3} -c 'import sys; print(sys.version[:4])')
-MINOR=$(echo "$V" | cut -d'.' -f2)
-if [[ ${MINOR} -lt ${PMINOR} ]]; then
-  echo "Python >= 3.${PMINOR} required and your default ${P3} is version ${V}"
-  exit
-fi 
+if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
+  echo "Python >= 3.${PMIN} required and your default ${P3} does not meet that."
+  if [[ -n ${LMOD_ROOT} ]]; then
+    echo "LMOD detected, trying to load Python..."
+    ml python > /dev/null 2>&1
+    ml Python > /dev/null 2>&1
+    printf "Done!"
+  else
+    echo "please load a diffent Python >= 3.7 and try again"
+    exit
+  fi
+fi
 
 mkdir -p ~/.local/share/froster
 mkdir -p ~/.local/bin
