@@ -54,7 +54,7 @@ export VIRTUAL_ENV_DISABLE_PROMPT=1
 python3 -m venv ~/.local/share/froster
 source ~/.local/share/froster/bin/activate
 echo "Done!"
-printf "Installing packages ... "
+echo "Installing packages required by Froster ... "
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
         -o ~/.local/share/froster/requirements.txt \
       && python3 -m pip --disable-pip-version-check \
@@ -68,7 +68,6 @@ curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
         -o ~/.local/bin/froster
 
 chmod +x ~/.local/bin/froster
-
 
 DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
 
