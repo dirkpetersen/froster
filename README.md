@@ -230,50 +230,72 @@ Each of the sub commands has a help option, for example `froster archive --help`
 ```
 dp@grammy:~$ froster
 
-usage: froster  [-h] [--debug] {config,cnf,index,idx,archive,arc,restore,rst,delete,del,mount,umount} ...
+usage: froster  [-h] [--debug] [--no-slurm] [--cores CORES] [--profile AWSPROFILE]
+                {config,cnf,index,idx,archive,arc,restore,rst,delete,del,mount,umount} ...
 
-A (mostly) automated tool for archiving large scale data after finding folders in the file system that are worth archiving.
+A (mostly) automated tool for archiving large scale data after finding folders in the file
+system that are worth archiving.
 
 positional arguments:
   {config,cnf,index,idx,archive,arc,restore,rst,delete,del,mount,umount}
                         sub-command help
-    config (cnf)        Bootstrap the configurtion, install dependencies and setup your environment. You will need to answer a
-                        few questions about your cloud setup.
-    index (idx)         Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file that lists the largest
-                        folders. As this process is compute intensive the index job will be automatically submitted to Slurm if
+    config (cnf)        Bootstrap the configurtion, install dependencies and setup your
+                        environment. You will need to answer a few questions about your cloud
+                        setup.
+    index (idx)         Scan a file system folder tree using 'pwalk' and generate a hotspots
+                        CSV file that lists the largest folders. As this process is compute
+                        intensive the index job will be automatically submitted to Slurm if
                         the Slurm tools are found.
-    archive (arc)       Select from a list of large folders, that has been created by 'froster index', and archive a folder to
-                        S3/Glacier. Once you select a folder the archive job will be automatically submitted to Slurm. You can
-                        also automate this process
-    restore (rst)       Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need to download all data to local
-                        storage after the restore is complete. Just use the mount sub command.
-    delete (del)        Remove data from a local filesystem folder that has been confirmed to be archived (through checksum
-                        verification). Use this instead of deleting manually
-    mount (umount)      Mount or unmount the remote S3 or Glacier storage in your local file system at the location of the
-                        original folder.
+    archive (arc)       Select from a list of large folders, that has been created by
+                        'froster index', and archive a folder to S3/Glacier. Once you select
+                        a folder the archive job will be automatically submitted to Slurm.
+                        You can also automate this process
+    restore (rst)       Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need
+                        to download all data to local storage after the restore is complete.
+                        Just use the mount sub command.
+    delete (del)        Remove data from a local filesystem folder that has been confirmed to
+                        be archived (through checksum verification). Use this instead of
+                        deleting manually
+    mount (umount)      Mount or unmount the remote S3 or Glacier storage in your local file
+                        system at the location of the original folder.
 
 optional arguments:
   -h, --help            show this help message and exit
   --debug, -g           verbose output for all commands
+  --no-slurm, -n        do not submit a Slurm job, execute in the foreground.
+  --cores CORES, -c CORES
+                        Number of cores to be allocated for the machine. (default=4)
+  --profile AWSPROFILE, -p AWSPROFILE
+                        which AWS profile from "profiles" or "credentials" in ~/.aws/ should
+                        be used
 ```
+
+#### froster config --help
  
+```
+dp@grammy:~$ froster config --help
+
+./froster config --help
+usage: froster config [-h]
+
+optional arguments:
+  -h, --help  show this help message and exit
+```
+
 #### froster index --help
  
 ```
 dp@grammy:~$ froster index --help
  
-usage: froster index [-h] [--no-slurm] [--cores CORES] [--pwalk-csv PWALKCSV] [folders ...]
+usage: froster index [-h] [--pwalk-csv PWALKCSV] [folders ...]
 
 positional arguments:
-  folders               folders you would like to index (separated by space), using thepwalk file system crawler
+  folders               folders you would like to index (separated by space), using the pwalk file system crawler
 
 optional arguments:
   -h, --help            show this help message and exit
-  --no-slurm, -n        do not submit a Slurm job, execute index directly
-  --cores CORES, -c CORES
-                        Number of cores to be allocated for the index. (default=4)
   --pwalk-csv PWALKCSV, -p PWALKCSV
-                        If someone else has already created CSV files using pwalk you can enter a specific pwalk CSV file here and are not required to run the time consuming pwalk.
+                        If someone else has already created CSV files using pwalk you can enter a specific pwalk CSV file here and are not required to run the time consuming pwalk
 ```
  
 #### froster archive --help
@@ -281,19 +303,13 @@ optional arguments:
 ```
 dp@grammy:~$ froster archive --help
  
-usage: froster archive [-h] [--no-slurm] [--cores CORES] [--profile AWSPROFILE] [--larger LARGER] [--age AGE] [--age-mtime]
-                       [folders ...]
+uusage: froster archive [-h] [--larger LARGER] [--age AGE] [--age-mtime] [folders ...]
 
 positional arguments:
   folders               folders you would like to archive (separated by space), the last folder in this list is the target
 
 optional arguments:
   -h, --help            show this help message and exit
-  --no-slurm, -n        do not submit a Slurm job, execute index directly
-  --cores CORES, -c CORES
-                        Number of cores to be allocated for the machine. (default=4)
-  --profile AWSPROFILE, -p AWSPROFILE
-                        which AWS profile from ~/.aws/profiles should be used
   --larger LARGER, -l LARGER
 
                         Archive folders larger than <GiB>. This option
@@ -307,14 +323,42 @@ optional arguments:
                         all folder meeting these criteria without prompting.
   --age-mtime, -m       Use modified file time (mtime) instead of accessed time (atime)
 ```
+
+#### froster delete --help
  
+```
+usage: froster delete [-h] [folders ...]
+
+positional arguments:
+  folders     folders (separated by space) from which you would like to delete files, you can only delete files that have been archived
+
+optional arguments:
+  -h, --help  show this help message and exit
+```
+
+#### froster mount --help
+
+```
+dp@grammy:~$ froster mount --help
+
+usage: froster mount [-h] [--mount-point MOUNTPOINT] [--unmount] [folders ...]
+
+positional arguments:
+  folders               archived folders (separated by space) which you would like to mount.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --mount-point MOUNTPOINT, -m MOUNTPOINT
+                        pick a custom mount point, this only works if you select a single folder.
+  --unmount, -u         unmount instead of mount, you can also use the umount sub command instead.
+```
+
 #### froster restore --help
  
 ```
 dp@grammy:~$ froster restore --help
  
-usage: froster restore [-h] [--no-slurm] [--cores CORES] [--profile AWSPROFILE] [--days DAYS] [--retrieve-opt RETRIEVEOPT]
-                       [--no-download]
+usage: froster restore [-h] [--days DAYS] [--retrieve-opt RETRIEVEOPT] [--no-download]
                        [folders ...]
 
 positional arguments:
@@ -322,11 +366,6 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  --no-slurm, -n        do not submit a Slurm job, execute index directly
-  --cores CORES, -c CORES
-                        Number of cores to be allocated for the machine. (default=4)
-  --profile AWSPROFILE, -p AWSPROFILE
-                        which AWS profile from ~/.aws/profiles should be used
   --days DAYS, -d DAYS  Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)
   --retrieve-opt RETRIEVEOPT, -r RETRIEVEOPT
 
@@ -345,38 +384,4 @@ optional arguments:
 
                         (costs from April 2023)
   --no-download, -l     skip download to local storage after retrieval from Glacier
-```
- 
-#### froster delete --help
- 
-```
-dp@grammy:~$ froster delete --help
- 
-usage: froster delete [-h] [--profile AWSPROFILE] [folders ...]
-
-positional arguments:
-  folders               folders (separated by space) from which you would like to delete files, you can only delete files that have been archived
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --profile AWSPROFILE, -p AWSPROFILE
-                        which AWS profile from ~/.aws/profiles should be used
-```
-
-#### froster mount --help
-
-```
-dp@grammy:~$ froster mount --help
-usage: froster mount [-h] [--profile AWSPROFILE] [--mount-point MOUNTPOINT] [--unmount] [folders ...]
-
-positional arguments:
-  folders               archived folders (separated by space) which you would like to mount.
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --profile AWSPROFILE, -p AWSPROFILE
-                        which AWS profile from ~/.aws/profiles should be used
-  --mount-point MOUNTPOINT, -m MOUNTPOINT
-                        pick a custom mount point, this only works if you select a single folder.
-  --unmount, -u         unmount instead of mount, you can also use the umount sub command instead.
 ```

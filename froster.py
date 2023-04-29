@@ -17,7 +17,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
 __app__ = 'Froster, a simple archiving tool'
-__version__ = '0.2'
+__version__ = '0.3'
 
 def main():
     
@@ -155,9 +155,9 @@ def main():
             email=cfg.read('general', 'email')
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-            se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --mem=64G')            
             se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')            
@@ -219,8 +219,9 @@ def main():
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
             se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --requeue')
             se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')      
@@ -288,8 +289,9 @@ def main():
                         se.add_line(f'#SBATCH --begin={fut_time}')
                         se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
                         se.add_line(f'#SBATCH --mem=64G')
+                        se.add_line(f'#SBATCH --requeue')
                         se.add_line(f'#SBATCH --output=froster-download-{label}-%J.out')
-                        se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+                        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
                         se.add_line(f'#SBATCH --mail-user={email}')
                         se.add_line(f'#SBATCH --time=1-0')
                         se.add_line(f'ml python')
@@ -315,8 +317,9 @@ def main():
             se.add_line(f'#SBATCH --job-name={myjobname}')
             se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
             se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --requeue')
             se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,END')           
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
             se.add_line(f'ml python')
@@ -1351,7 +1354,7 @@ class Rclone:
         # "time":"2023-04-16T10:18:46.121921-07:00"}
 
 class SlurmEssentials:
-    # submitted to https://github.com/amq92/simple_slurm/issues/18 for inclusion
+    # exit code 64 causes Slurm to --requeue, e.g. sys.exit(64)
     def __init__(self, args, cfg):
         self.script_lines = ["#!/bin/bash"]
         self.cfg = cfg
@@ -1920,7 +1923,13 @@ def parse_arguments():
                     'after finding folders in the file system that are worth archiving.')
     parser.add_argument( '--debug', '-g', dest='debug', action='store_true', default=False,
         help="verbose output for all commands")
-
+    parser.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
+        help="do not submit a Slurm job, execute in the foreground. ")        
+    parser.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
+        help='Number of cores to be allocated for the machine. (default=4)')
+    parser.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
+        help='which AWS profile from "profiles" or "credentials" in ~/.aws/ should be used')
+    
     subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
     # ***
     parser_config = subparsers.add_parser('config', aliases=['cnf'], 
@@ -1936,10 +1945,6 @@ def parse_arguments():
             index job will be automatically submitted to Slurm if the Slurm tools are
             found.
         '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_index.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-        help="do not submit a Slurm job, execute index directly")
-    parser_index.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the index. (default=4) ')
     parser_index.add_argument('--pwalk-csv', '-p', dest='pwalkcsv', action='store', default='', 
         help='If someone else has already created CSV files using pwalk ' +
              'you can enter a specific pwalk CSV file here and are not ' +
@@ -1956,12 +1961,6 @@ def parse_arguments():
             automatically submitted to Slurm. You can also automate this process 
 
         '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_archive.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-        help="do not submit a Slurm job, execute index directly")        
-    parser_archive.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine. (default=4)')
-    parser_archive.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from ~/.aws/profiles should be used')
     parser_archive.add_argument('--larger', '-l', dest='larger', action='store', default=0, 
         help=textwrap.dedent(f'''
             Archive folders larger than <GiB>. This option
@@ -1988,12 +1987,6 @@ def parse_arguments():
             to download all data to local storage after the restore is complete. 
             Just use the mount sub command. 
         '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_restore.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-        help="do not submit a Slurm job, execute index directly")        
-    parser_restore.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-        help='Number of cores to be allocated for the machine. (default=4)')
-    parser_restore.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from ~/.aws/profiles should be used')    
     parser_restore.add_argument('--days', '-d', dest='days', action='store', default=30,
         help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
     parser_restore.add_argument('--retrieve-opt', '-r', dest='retrieveopt', action='store', default='Bulk',
@@ -2037,8 +2030,6 @@ def parse_arguments():
             Remove data from a local filesystem folder that has been confirmed to 
             be archived (through checksum verification). Use this instead of deleting manually
         '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_delete.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from ~/.aws/profiles should be used')
     parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders (separated by space) from which you would like to delete files, ' +
                'you can only delete files that have been archived')
@@ -2050,8 +2041,6 @@ def parse_arguments():
             Mount or unmount the remote S3 or Glacier storage in your local file system 
             at the location of the original folder.
         '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_mount.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from ~/.aws/profiles should be used')
     parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='', 
         help='pick a custom mount point, this only works if you select a single folder.')
     parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
@@ -2063,7 +2052,6 @@ def parse_arguments():
             # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
             # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
             # of up to 15%% of your AWS bill. (costs from April 2023)
-
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stdout)            
