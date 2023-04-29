@@ -33,7 +33,7 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
       printf "Spack detected, you can also run 'spack load python'"
     fi
     exit
-  fi
+  fi  
 fi
 ### Fixing a potentially broken LD_LIBRARY_PATH
 P3=$(which python3)
