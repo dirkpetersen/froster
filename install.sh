@@ -1,6 +1,6 @@
 #! /bin/bash
 
-PMIN="7" #Python3 minor version = 3.7)
+PMIN="8" #Python3 minor version = 3.8)
 
 echo ""
 echo "Installing Froster, please wait ..."
@@ -10,27 +10,29 @@ if [[ -z ${P3} ]]; then
   exit
 fi
 if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-  echo "Python >= 3.${PMIN} required and your default ${P3} does not meet that."
+  echo "Python >= 3.${PMIN} required and your default ${P3} is too old."
   if [[ -n ${LMOD_ROOT} ]]; then
     echo "LMOD detected, trying to load Python..."
     ml python > /dev/null 2>&1
-    ml Python > /dev/null 2>&1
+    ml Python/3.8 > /dev/null 2>&1
     printf "Done!"
   else
-    echo "please load a diffent Python >= 3.7 and try again"
+    echo "please load a diffent Python >= 3.${PMIN} and try again"
     exit
   fi
 fi
-
+echo "Install virtual environment ~/.local/share/froster ... "
 mkdir -p ~/.local/share/froster
 mkdir -p ~/.local/bin
 export VIRTUAL_ENV_DISABLE_PROMPT=1
 python3 -m venv ~/.local/share/froster
 source ~/.local/share/froster/bin/activate
-
+printf "Done!"
+echo "Installing packages ... "
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
         -o ~/.local/share/froster/requirements.txt \
       && python3 -m pip install --upgrade -r ~/.local/share/froster/requirements.txt
+printf "Done!"
 
 curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
         -o ~/.local/bin/froster.py
@@ -39,6 +41,7 @@ curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
         -o ~/.local/bin/froster
 
 chmod +x ~/.local/bin/froster
+
 
 DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
 
