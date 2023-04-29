@@ -35,6 +35,12 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
     exit
   fi
 fi
+### Fixing a potentially broken LD_LIBRARY_PATH
+P3=$(which python3)
+P3=$(readlink -f ${PYWHICH})
+unset LIBRARY_PATH PYTHONPATH
+export LD_LIBRARY_PATH=${P3%/bin/python3*}/lib:${LD_LIBRARY_PATH}
+LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
 ### Installing froster in a Virtual Envionment. 
 printf "Installing virtual environment ~/.local/share/froster ... "
 if [[ -d ~/.local/share/froster ]]; then
