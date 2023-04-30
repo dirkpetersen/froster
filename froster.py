@@ -316,7 +316,8 @@ def main():
                         se.add_line(f'ml python')
                         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
                         if not "--profile" in cmdline and args.awsprofile:
-                            cmdline=f'{cmdline} --profile {args.awsprofile}'
+                            #cmdline=f'{cmdline} --profile {args.awsprofile}'
+                            cmdline.replace(' restore ',f' --profile {args.awsprofile} restore ')
                         if not fld in cmdline:
                             cmdline=f'{cmdline} "{fld}"'                        
                         se.add_line(f"python3 {cmdline}")
@@ -344,7 +345,8 @@ def main():
             se.add_line(f'ml python')
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
             if not "--profile" in cmdline and args.awsprofile:
-                cmdline=f'{cmdline} --profile {args.awsprofile}'
+                #cmdline=f'{cmdline} --profile {args.awsprofile}'
+                cmdline.replace(' restore ',f' --profile {args.awsprofile} restore ')
             if not args.folders[0] in cmdline:
                 folders = '" "'.join(args.folders)
                 cmdline=f'{cmdline} "{folders}"'
