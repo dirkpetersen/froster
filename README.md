@@ -7,6 +7,7 @@ Froster is a tool that crawls your file system, suggests folders to archive, upl
 * [Using Froster](#using-froster)
   * [Installing](#installing)
   * [Configuring](#configuring)
+    * [Changing defaults with aliases](#changing-defaults-with-aliases)
   * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
 * [Command line help](#command-line-help)
@@ -81,6 +82,22 @@ Done!
 When running `froster config` you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the lowest cost storage solution available and it takes only 12 hours to retrieve your data with the lowest cost retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
 
 Please note that Froster expects a profile named 'default', 'aws' or 'AWS' in ~/.aws/credentials which will be used for the Amazon cloud. If Froster finds other profiles it will ask you questions about providers and endpoints. If you do not want to configure addional 3rd party storage providers you can just hit "Enter" multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and end points.
+
+#### Changing defaults with aliases
+
+Froster has a number of global options that you may prefer but you don't like to type them all the time. We have `--no-slurm` (don't submit batch jobs even if Slurm is found), `--cores` (use a number of CPU cores that is different from the default 4) and `--profile` (use a different ~/.aws profile for example if you have your own S3 storage). You can create a command alias that uses these settings by default. For example, if you think that typing froster is too long and would like to rather type `fro` and use 8 cpu cores in the foreground with a custom profile named `myceph` you can simply enter this command in bash:
+
+```
+alias fro="froster --no-slurm --cores=8 --profile=myceph"
+```
+
+If you would like to keep this past the next login you can add this alias to the bottom of ~/.bashrc:
+
+```
+echo 'alias fro="froster --no-slurm --cores=8 --profile=myceph"' >> ~/.bashrc
+```
+
+
 
 ### Standard usage
 
@@ -166,7 +183,7 @@ Generating hashfile .froster-restored.md5sum ...
 Target and archive are identical. 3 files with 836.45 KiB transferred.
 ```
 
-Note that if you restore from AWS S3 to on-premises, you may be subject to AWS data egress charges (up to $90 per TiB downloaded), unless your organization has negotiated an [AWS data egress waiver](https://aws.amazon.com/blogs/publicsector/data-egress-waiver-available-for-eligible-researchers-and-institutions/).
+Note that if you restore from AWS S3 to on-premises, you may be subject to AWS data egress charges (up to $90 per TiB downloaded, or $20 per TiB with AWS DirectConnect), unless your organization has negotiated an [AWS data egress waiver](https://aws.amazon.com/blogs/publicsector/data-egress-waiver-available-for-eligible-researchers-and-institutions/).
 
 ### Large scale use on HPC
 
@@ -221,7 +238,7 @@ Check Job Output:
 ```
 
 
-## command line help 
+## Command line help 
 
 Each of the sub commands has a help option, for example `froster archive --help`
  
