@@ -23,6 +23,11 @@ def main():
     
     cfg = ConfigManager(args)
     arch = Archiver(args, cfg)
+    
+    if args.version:
+        print(f'Froster version: {__version__}')
+        print(f'Python version:\n{sys.version}')
+        return True
 
     if args.subcmd in ['archive','delete','restore']:
         errfld=[]
@@ -1929,6 +1934,8 @@ def parse_arguments():
         help='Number of cores to be allocated for the machine. (default=4)')
     parser.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile from "profiles" or "credentials" in ~/.aws/ should be used')
+    parser.add_argument('--version', '-v', dest='version', action='store_true', default=False, 
+        help='print Froster and Python version info')
     
     subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
     # ***
