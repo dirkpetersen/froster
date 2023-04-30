@@ -17,13 +17,36 @@ from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
 __app__ = 'Froster, a simple archiving tool'
-__version__ = '0.3'
+__version__ = '0.4'
+TABLECSV = '' # CSV string for DataTable
 
 def main():
     
     cfg = ConfigManager(args)
     arch = Archiver(args, cfg)
-    
+    global TABLECSV
+
+    #if args.debug:
+
+        # row_dict = {
+        #     'local_folder': '',
+        #     'archive_folder': ':s3:froster/archive/home/dp/csv',
+        #     's3_storage_class': 'STANDARD',
+        #     'profile': 'default',
+        #     'timestamp': datetime.datetime.now().isoformat(),
+        #     'user': getpass.getuser()
+        # }
+
+        # print (row_dict)
+
+        # arch._archive_json_put_row('/home/dp/csv/', row_dict)
+        # ROW = arch._archive_json_get_row('/home/dp/csv/')
+        # CSV = arch.archive_json_get_csv(['local_folder', 'profile'])
+
+        # print('ROW', ROW)
+        # print('CSV', CSV)
+        # return 
+
     if args.version:
         print(f'Froster version: {__version__}')
         print(f'Python version:\n{sys.version}')
@@ -256,10 +279,11 @@ def main():
             return False
         
         if not args.folders:
-            csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
-            with open(csvfile, 'r') as csvf:
-                app = TableRestore()
-                retline=app.run()
+            #csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
+            #arch._archive_json_get_csv            
+            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])            
+            app = TableArchive()
+            retline=app.run()
             if not retline:
                 return False
             if len(retline) < 2:
@@ -268,8 +292,8 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
-            if retline[3]: 
-                cfg.awsprofile = retline[3]
+            if retline[2]: 
+                cfg.awsprofile = retline[2]
                 args.awsprofile = cfg.awsprofile
                 cfg._set_env_vars(cfg.awsprofile)
         
@@ -355,10 +379,9 @@ def main():
             return False
 
         if not args.folders:
-            csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
-            with open(csvfile, 'r') as csvf:
-                app = TableRestore()
-                retline=app.run()
+            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])            
+            app = TableArchive()
+            retline=app.run()
             if not retline:
                 return False
             if len(retline) < 2:
@@ -367,16 +390,18 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
-            if retline[3]: 
-                cfg.awsprofile = retline[3]
+            if retline[2]: 
+                cfg.awsprofile = retline[2]
                 args.awsprofile = cfg.awsprofile
-                cfg._set_env_vars(cfg.awsprofile)        
+                cfg._set_env_vars(cfg.awsprofile)
+
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
             # get archive storage location
             print (f'Deleting archived objects in {fld}, please wait ...', flush=True)
-            mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
-            rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
+            #mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
+            #rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
+            rowdict = arch.archive_json_get_row(fld)
             archive_folder = rowdict['archive_folder']
 
             # compare archive hashes with local hashfile
@@ -443,10 +468,9 @@ def main():
         interactive=False
         if not args.folders:
             interactive=True
-            csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
-            with open(csvfile, 'r') as csvf:
-                app = TableRestore()
-                retline=app.run()
+            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])            
+            app = TableArchive()
+            retline=app.run()
             if not retline:
                 return False
             if len(retline) < 2:
@@ -455,17 +479,18 @@ def main():
             if args.debug:
                 print("dialog returns:",retline)
             args.folders.append(retline[0])
-            if retline[3]: 
-                cfg.awsprofile = retline[3]
+            if retline[2]: 
+                cfg.awsprofile = retline[2]
                 args.awsprofile = cfg.awsprofile
-                cfg._set_env_vars(cfg.awsprofile)        
+                cfg._set_env_vars(cfg.awsprofile)      
 
         hostname = platform.node()
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
             # get archive storage location
-            mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
-            rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
+            #mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
+            #rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
+            rowdict = arch.archive_json_get_row(fld)
             archive_folder = rowdict['archive_folder']
 
             rclone = Rclone(args,cfg)
@@ -491,10 +516,67 @@ def main():
                 # we can only mount a single folder if mountpoint is set 
                 break
 
+
+class Archiver_legacy:
+
+    def _remove_column_from_csv(input_file, output_file, column_to_remove):
+        with open(input_file, 'r', newline='') as infile:
+            reader = csv.reader(infile)
+            header = next(reader)  # Store header (column names) in a separate variable
+            # Find the index of the column to remove
+            col_index = header.index(column_to_remove)
+            # Remove the target column from the header
+            header.pop(col_index)
+            # Write the modified data to the output file
+            with open(output_file, 'w', newline='', dialect='excel') as outfile:
+                writer = csv.writer(outfile)
+                writer.writerow(header)  # Write the modified header
+                # Write the rows excluding the target column
+                for row in reader:
+                    row.pop(col_index)
+                    writer.writerow(row)
+
+    def _get_row_from_csv(self, file_path, column_name, search_value):
+        with open(file_path, mode='r', newline='') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if row[column_name] == search_value:
+                    return row
+        return {}
+
+    def _add_update_csv_row(self, file_path, row_dict, primary_key):
+        updated_rows = []
+        row_found = False
+        fieldnames = list(row_dict.keys())
+        if os.path.exists(file_path):
+            with open(file_path, mode='r', newline='') as csvfile:
+                reader = csv.DictReader(csvfile)
+                if reader.fieldnames is not None:
+                    fieldnames = reader.fieldnames
+                for row in reader:
+                    if row[primary_key] == row_dict[primary_key]:
+                        updated_rows.append(row_dict)
+                        row_found = True
+                    else:
+                        updated_rows.append(row)
+        if not row_found:
+            updated_rows.append(row_dict)
+        with open(file_path, mode='w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, dialect='excel')
+            writer.writeheader()
+            writer.writerows(updated_rows)
+
+        # Example usage:
+        #row_data = {'Name': 'John', 'Age': 30, 'City': 'New York'}
+        #file_name = 'sample.csv'
+        #primary_key_column = 'Name'
+        #_add_update_csv_row(file_name, row_data, primary_key_column)
+
 class Archiver:
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
+        self.archive_json = os.path.join(cfg.config_root, 'froster-archives.json')
         self.url = 'https://api.reporter.nih.gov/v2/projects/search'
         self.grants = []
 
@@ -702,13 +784,15 @@ class Archiver:
             print('Checksum test was not successful.')
             return False
 
-        # If success, write folders to froster-archives.csv database
+        # If success, write metadata to froster-archives.json database
         s3_storage_class=self.cfg.read('general','s3_storage_class')
+        timestamp=datetime.datetime.now().isoformat()
         dictrow = {'local_folder': source, 'archive_folder': target,
-                   's3_storage_class': s3_storage_class, 'profile': self.cfg.awsprofile}
-        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
-        self._add_update_csv_row(mycsv,dictrow,'local_folder')
-        
+                   's3_storage_class': s3_storage_class, 'profile': self.cfg.awsprofile, 
+                   'timestamp': timestamp, 'timestamp_archive': timestamp, 
+                   'user': getpass.getuser()
+                   }
+        self.archive_json_put_row(source, dictrow)        
         total=self.convert_size(tbytes)
         print(f'Source and archive are identical. {ttransfers} files with {total} transferred.')
 
@@ -770,9 +854,10 @@ class Archiver:
     def restore(self, folder):
 
         # copied from archive
-        mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
+        #mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
+        #rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
+        rowdict = self.archive_json_get_row(folder)
 
-        rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
         source = rowdict['archive_folder']
         target = rowdict['local_folder']
         s3_storage_class = rowdict['s3_storage_class']
@@ -901,6 +986,66 @@ class Archiver:
         s = round(size_bytes/p, 3)
         return f"{s} {size_name[i]}"
     
+    def archive_json_put_row(self, path_name, row_dict):
+        data = {}
+        if os.path.exists(self.archive_json):
+            with open(self.archive_json, 'r') as file:
+                try:
+                    data = json.load(file)
+                #except json.JSONDecodeError:             
+                except:
+                    print('Error in Archiver._archive_json_put_row():')
+                    print(f'Cannot read {self.archive_json}, file corrupt?')
+                    return None
+        path_name = path_name.rstrip(os.path.sep) # remove trailing slash
+        row_dict['local_folder'] = path_name #this is a key that can be changed
+        data[path_name] = row_dict
+        with open(self.archive_json, 'w') as file:
+            json.dump(data, file, indent=4)
+
+    def archive_json_get_row(self, path_name):
+        if not os.path.exists(self.archive_json):
+            return None        
+        with open(self.archive_json, 'r') as file:            
+            try:
+                data = json.load(file)
+            #except json.JSONDecodeError:             
+            except:
+                print('Error in Archiver._archive_json_get_row():')
+                print(f'Cannot read {self.archive_json}, file corrupt?')
+                return None
+        path_name = path_name.rstrip(os.path.sep) # remove trailing slash
+        if path_name in data:
+            return data[path_name]
+        else:
+            return None
+
+    def archive_json_get_csv(self, columns):
+        if not os.path.exists(self.archive_json):
+            return None    
+        with open(self.archive_json, 'r') as file:
+                try:
+                    data = json.load(file)
+                #except json.JSONDecodeError:             
+                except:
+                    print('Error in Archiver._archive_json_get_csv():')
+                    print(f'Cannot read {self.archive_json}, file corrupt?')
+                    return None
+        # Sort data by timestamp in reverse order
+        sorted_data = sorted(data.items(), key=lambda x: x[1]['timestamp'], reverse=True)
+        # Prepare CSV data
+        csv_data = [columns]
+        for path_name, row_data in sorted_data:
+            csv_row = [row_data[col] for col in columns if col in row_data]
+            csv_data.append(csv_row)
+        # Convert CSV data to a CSV string
+        output = io.StringIO()
+        writer = csv.writer(output, dialect='excel')
+        writer.writerows(csv_data)
+        csv_string = output.getvalue()
+        output.close()
+        return csv_string
+    
     def _get_newest_file_atime(self, folder_path, folder_atime=None):
         # Because the folder atime is reset when crawling we need
         # to lookup the atime of the last accessed file in this folder
@@ -920,59 +1065,6 @@ class Archiver:
         if last_accessed_time == None:
             last_accessed_time = folder_atime
         return last_accessed_time
-
-    def _remove_column_from_csv(input_file, output_file, column_to_remove):
-        with open(input_file, 'r', newline='') as infile:
-            reader = csv.reader(infile)
-            header = next(reader)  # Store header (column names) in a separate variable
-            # Find the index of the column to remove
-            col_index = header.index(column_to_remove)
-            # Remove the target column from the header
-            header.pop(col_index)
-            # Write the modified data to the output file
-            with open(output_file, 'w', newline='', dialect='excel') as outfile:
-                writer = csv.writer(outfile)
-                writer.writerow(header)  # Write the modified header
-                # Write the rows excluding the target column
-                for row in reader:
-                    row.pop(col_index)
-                    writer.writerow(row)
-
-    def _get_row_from_csv(self, file_path, column_name, search_value):
-        with open(file_path, mode='r', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                if row[column_name] == search_value:
-                    return row
-        return {}
-
-    def _add_update_csv_row(self, file_path, row_dict, primary_key):
-        updated_rows = []
-        row_found = False
-        fieldnames = list(row_dict.keys())
-        if os.path.exists(file_path):
-            with open(file_path, mode='r', newline='') as csvfile:
-                reader = csv.DictReader(csvfile)
-                if reader.fieldnames is not None:
-                    fieldnames = reader.fieldnames
-                for row in reader:
-                    if row[primary_key] == row_dict[primary_key]:
-                        updated_rows.append(row_dict)
-                        row_found = True
-                    else:
-                        updated_rows.append(row)
-        if not row_found:
-            updated_rows.append(row_dict)
-        with open(file_path, mode='w', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, dialect='excel')
-            writer.writeheader()
-            writer.writerows(updated_rows)
-
-        # Example usage:
-        #row_data = {'Name': 'John', 'Age': 30, 'City': 'New York'}
-        #file_name = 'sample.csv'
-        #primary_key_column = 'Name'
-        #_add_update_csv_row(file_name, row_data, primary_key_column)
 
     def _get_hotspots_path(self,folder):
         # get a full path name of a new hotspots file
@@ -1140,7 +1232,8 @@ class TableHotspots(App[list]):
         print(newest_csv_path)
         return open(newest_csv_path, 'r')
 
-class TableRestore(App[list]):
+
+class TableArchive(App[list]):
 
     def compose(self) -> ComposeResult:
         table = DataTable()
@@ -1151,19 +1244,14 @@ class TableRestore(App[list]):
         yield table
 
     def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        rows = csv.reader(self.get_csv()) #or io.StringIO(CSV)
-        #rows = csv.reader(io.StringIO(CSV))
+        table = self.query_one(DataTable)        
+        rows = csv.reader(io.StringIO(TABLECSV))
         table.add_columns(*next(rows))
         table.add_rows(rows)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.exit(self.query_one(DataTable).get_row(event.row_key))
 
-    def get_csv(self):
-        home_dir = os.path.expanduser('~')
-        csvfile= os.path.join(home_dir,'.config','froster', 'froster-archives.csv')
-        return open(csvfile, 'r')
 
 #if __name__ == "__main__":
 #    app = TableApp()
