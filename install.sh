@@ -12,28 +12,20 @@ if [[ -z ${P3} ]]; then
 fi
 if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
   echo "Python >= 3.${PMIN} required and your default ${P3} is too old."
-  if [[ -n ${LMOD_ROOT} ]]; then
-    printf "Lmod detected, trying to load the default Lmod Python ... "
-    ml python > /dev/null 2>&1
-    ml Python > /dev/null 2>&1
+  printf "Trying to load Python through the modules system ... "
+  module load python > /dev/null 2>&1
+  module load Python > /dev/null 2>&1
+  echo "Done!"
+  if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
+    printf "The default Lmod Python is older than 3.${PMIN}. Trying Python/3.${PMIN} ... "
+    ml python/3.${PMIN} > /dev/null 2>&1
+    ml Python/3.${PMIN} > /dev/null 2>&1
     echo "Done!"
     if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-      printf "The default Lmod Python is older than 3.${PMIN}. Trying Python/3.${PMIN} ... "
-      ml python/3.${PMIN} > /dev/null 2>&1
-      ml Python/3.${PMIN} > /dev/null 2>&1
-      echo "Done!"
-      if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-        echo "Failed to load Python 3.${PMIN}. Please load a Python module >= 3.${PMIN} manually."
-        exit
-      fi
+      echo "Failed to load Python 3.${PMIN}. Please load a Python module >= 3.${PMIN} manually."
+      exit
     fi
-  else
-    echo "please load a diffent Python >= 3.${PMIN} and try again"
-    if [[ -n ${SPACK_ROOT} ]]; then
-      printf "Spack detected, you can also run 'spack load python'"
-    fi
-    exit
-  fi  
+  fi
 fi
 ### Fixing a potentially broken LD_LIBRARY_PATH
 P3=$(which python3)
