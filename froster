@@ -1,6 +1,7 @@
 #! /bin/bash
 
-PYTHON=/home/exacloud/software/spack/opt/spack/linux-centos7-ivybridge/gcc-8.3.1/python-3.10.8-lgmermnb2kmzendjw24fftlpxwpaokdm/bin/python3
+ALTPYTHON=/home/exacloud/software/spack/opt/spack/linux-centos7-ivybridge/gcc-8.3.1/python-3.10.8-lgmermnb2kmzendjw24fftlpxwpaokdm/bin/python3
+PMIN="8" # python3 minor version = 3.8
 
 script_path="$(readlink -f "$0")"
 script_dir="$(dirname "$script_path")"
@@ -8,22 +9,22 @@ script_dir="$(dirname "$script_path")"
 if [[ -d ~/.local/share/froster/bin ]]; then
   export VIRTUAL_ENV_DISABLE_PROMPT=1
   source ~/.local/share/froster/bin/activate
-  PYWHICH=$(which python3)
-  PYWHICH=$(readlink -f ${PYWHICH})
+  PY3=$(which python3)
+  PY3=$(readlink -f ${PY3})
   unset LIBRARY_PATH PYTHONPATH
-  export LD_LIBRARY_PATH=${PYWHICH%/bin/python3*}/lib:${LD_LIBRARY_PATH}
+  export LD_LIBRARY_PATH=${PY3%/bin/python3*}/lib:${LD_LIBRARY_PATH}
   LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
   python3 ${script_dir}/froster.py $@
   deactivate
 else
-  if [[ -e ${PYTHON} ]]; then
-    ${PYTHON} ${script_dir}/froster.py $@
+  if [[ -e ${ALTPYTHON} ]]; then
+    ${ALTPYTHON} ${script_dir}/froster.py $@
   else
-    # Check if we have at least python 3.7
-    if [[ $(/usr/bin/python3 -c 'import sys; print(sys.version_info >= (3,7))') == "True" ]]; then
+    # Check if we have at least the minimum Python version 
+    if [[ $(/usr/bin/python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "True" ]]; then
       /usr/bin/python3 ${script_dir}/froster.py $@
     else
-      echo "Python version must be greater than or equal to 3.7"
+      echo "Python version must be greater than or equal to 3.${PMIN}"
     fi
   fi
 fi
