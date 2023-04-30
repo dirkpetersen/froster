@@ -1,7 +1,5 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
-
-# Froster - cold archive 
 Froster is an easy to use tool that crawls your file system, suggests folders to archive, uploads your picks to Glacier or other S3-like storage, and retrieves it back or mounts the S3 storage in your on-premise file system.
 
 ## Table of Contents
