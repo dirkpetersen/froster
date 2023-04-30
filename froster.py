@@ -19,33 +19,17 @@ from textual.widgets import DataTable
 __app__ = 'Froster, a simple archiving tool'
 __version__ = '0.4'
 TABLECSV = '' # CSV string for DataTable
+SELECTEDFILE = '' # csv file to open in hotspots 
 
 def main():
     
     cfg = ConfigManager(args)
     arch = Archiver(args, cfg)
     global TABLECSV
+    global SELECTEDFILE
 
-    #if args.debug:
-
-        # row_dict = {
-        #     'local_folder': '',
-        #     'archive_folder': ':s3:froster/archive/home/dp/csv',
-        #     's3_storage_class': 'STANDARD',
-        #     'profile': 'default',
-        #     'timestamp': datetime.datetime.now().isoformat(),
-        #     'user': getpass.getuser()
-        # }
-
-        # print (row_dict)
-
-        # arch._archive_json_put_row('/home/dp/csv/', row_dict)
-        # ROW = arch._archive_json_get_row('/home/dp/csv/')
-        # CSV = arch.archive_json_get_csv(['local_folder', 'profile'])
-
-        # print('ROW', ROW)
-        # print('CSV', CSV)
-        # return 
+    if args.debug:
+        pass
 
     if args.version:
         print(f'Froster version: {__version__}')
@@ -220,12 +204,18 @@ def main():
             # Sort the CSV files by their modification time in descending order (newest first)
             # HERE we only allow to select the latest csv file 
             csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
-            # Open the newest CSV file
-            newest_csv_path = os.path.join(hsfolder, csv_files[0])
-            retline=[]
-            with open(newest_csv_path, 'r') as csvfile:
-                app = TableHotspots()
+            # if there are multiple files allow for selection
+            if len(csv_files) > 1:
+                TABLECSV='"Select a Hotspot file"\n' + '\n'.join(csv_files)
+                app = TableArchive()
                 retline=app.run()
+                if not retline:
+                    return False
+                SELECTEDFILE = os.path.join(hsfolder, retline[0])
+            else:
+                SELECTEDFILE = os.path.join(hsfolder, csv_files[0])            
+            app = TableHotspots()
+            retline=app.run()
             if not retline:
                 return False
             if len(retline) < 6:
@@ -516,62 +506,6 @@ def main():
                 # we can only mount a single folder if mountpoint is set 
                 break
 
-
-class Archiver_legacy:
-
-    def _remove_column_from_csv(input_file, output_file, column_to_remove):
-        with open(input_file, 'r', newline='') as infile:
-            reader = csv.reader(infile)
-            header = next(reader)  # Store header (column names) in a separate variable
-            # Find the index of the column to remove
-            col_index = header.index(column_to_remove)
-            # Remove the target column from the header
-            header.pop(col_index)
-            # Write the modified data to the output file
-            with open(output_file, 'w', newline='', dialect='excel') as outfile:
-                writer = csv.writer(outfile)
-                writer.writerow(header)  # Write the modified header
-                # Write the rows excluding the target column
-                for row in reader:
-                    row.pop(col_index)
-                    writer.writerow(row)
-
-    def _get_row_from_csv(self, file_path, column_name, search_value):
-        with open(file_path, mode='r', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                if row[column_name] == search_value:
-                    return row
-        return {}
-
-    def _add_update_csv_row(self, file_path, row_dict, primary_key):
-        updated_rows = []
-        row_found = False
-        fieldnames = list(row_dict.keys())
-        if os.path.exists(file_path):
-            with open(file_path, mode='r', newline='') as csvfile:
-                reader = csv.DictReader(csvfile)
-                if reader.fieldnames is not None:
-                    fieldnames = reader.fieldnames
-                for row in reader:
-                    if row[primary_key] == row_dict[primary_key]:
-                        updated_rows.append(row_dict)
-                        row_found = True
-                    else:
-                        updated_rows.append(row)
-        if not row_found:
-            updated_rows.append(row_dict)
-        with open(file_path, mode='w', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, dialect='excel')
-            writer.writeheader()
-            writer.writerows(updated_rows)
-
-        # Example usage:
-        #row_data = {'Name': 'John', 'Age': 30, 'City': 'New York'}
-        #file_name = 'sample.csv'
-        #primary_key_column = 'Name'
-        #_add_update_csv_row(file_name, row_data, primary_key_column)
-
 class Archiver:
     def __init__(self, args, cfg):
         self.args = args
@@ -854,8 +788,6 @@ class Archiver:
     def restore(self, folder):
 
         # copied from archive
-        #mycsv = os.path.join(self.cfg.config_root,"froster-archives.csv")
-        #rowdict = self._get_row_from_csv(mycsv,'local_folder',folder)
         rowdict = self.archive_json_get_row(folder)
 
         source = rowdict['archive_folder']
@@ -1213,25 +1145,14 @@ class TableHotspots(App[list]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        rows = csv.reader(self.get_csv()) #or io.StringIO(CSV)
+        fh = open(SELECTEDFILE, 'r')
+        rows = csv.reader(fh)
         #rows = csv.reader(io.StringIO(CSV))
         table.add_columns(*next(rows))
         table.add_rows(rows)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.exit(self.query_one(DataTable).get_row(event.row_key))
-
-    def get_csv(self):
-        home_dir = os.path.expanduser('~')
-        hsfolder = os.path.join(home_dir,'.config','froster', 'hotspots')
-        csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
-        # Sort the CSV files by their modification time in descending order (newest first)
-        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
-        # Open the newest CSV file
-        newest_csv_path = os.path.join(hsfolder, csv_files[0])
-        print(newest_csv_path)
-        return open(newest_csv_path, 'r')
-
 
 class TableArchive(App[list]):
 
