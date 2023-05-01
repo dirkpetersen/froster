@@ -90,10 +90,12 @@ def main():
         print('*** For most you can just hit <Enter> to accept the default. ***\n')
         # general setup 
         defdom = cfg.get_domain_name()
-        domain = cfg.prompt('Enter your domain name:',
-                            f'{defdom}|general|domain','string')
+
+        # domain-name not needed right now
+        #domain = cfg.prompt('Enter your domain name:',
+        #                    f'{defdom}|general|domain','string')
         emailaddr = cfg.prompt('Enter your email address:',
-                             f'{getpass.getuser()}@{domain}|general|email','string')
+                             f'{getpass.getuser()}@{defdom}|general|email','string')
 
         # cloud setup
         bucket = cfg.prompt('Please enter the S3 bucket to archive to',
@@ -1877,12 +1879,19 @@ class ConfigManager:
         return True
     
     def get_domain_name(self):
-        fqdn = platform.node()
-        hostname = platform.uname().node
-        if fqdn == hostname:
+        try:
+            with open('/etc/resolv.conf', 'r') as file:
+                content = file.readlines()
+        except FileNotFoundError:
             return "mydomain.edu"
-        domain_name = fqdn.replace(hostname + ".", "")
-        return domain_name
+        tld = None
+        for line in content:
+            if line.startswith('search') or line.startswith('domain'):
+                tokens = line.split()
+                if len(tokens) > 1:
+                    tld = tokens.pop()
+                    break
+        return tld if tld else "mydomain.edu"
 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
