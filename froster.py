@@ -172,9 +172,10 @@ def main():
             se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
-            se.add_line(f'ml python')            
+            #se.add_line(f'ml python')
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
-            se.add_line(f"python3 {cmdline}")
+            cmdline = cmdline.replace('/froster.py ', '/froster ')
+            se.add_line(cmdline)
             jobid = se.sbatch()
             print(f'Submitted froster indexing job: {jobid}')
             print(f'Check Job Output:')
@@ -242,12 +243,15 @@ def main():
             se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
-            se.add_line(f'ml python')      
+            #se.add_line(f'ml python')
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            cmdline = cmdline.replace('/froster.py ', '/froster ')
             if not args.folders[0] in cmdline:
                 folders = '" "'.join(args.folders)
                 cmdline=f'{cmdline} "{folders}"'
-            se.add_line(f"python3 {cmdline}")
+            if args.debug:
+                print(f'Command line passed to Slurm:\n{cmdline}')
+            se.add_line(cmdline)
             jobid = se.sbatch()
             print(f'Submitted froster archiving job: {jobid}')
             print(f'Check Job Output:')
@@ -342,11 +346,13 @@ def main():
             se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
             se.add_line(f'#SBATCH --time=1-0')
-            se.add_line(f'ml python')
-            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+            #se.add_line(f'ml python')
+            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline            
             if not "--profile" in cmdline and args.awsprofile:
-                #cmdline=f'{cmdline} --profile {args.awsprofile}'
-                cmdline.replace(' restore ',f' --profile {args.awsprofile} restore ')
+                #cmdline=f'{cmdline} --profile {args.awsprofile}'                
+                cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
+            else:
+                cmdline = cmdline.replace('/froster.py ', '/froster ')
             if not args.folders[0] in cmdline:
                 folders = '" "'.join(args.folders)
                 cmdline=f'{cmdline} "{folders}"'
