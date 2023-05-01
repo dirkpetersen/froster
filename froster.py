@@ -216,8 +216,12 @@ def main():
         if not cfg.check_bucket_access(cfg.bucket):
             return False
         
-        if not args.folders:
+        if not args.folders:            
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
+            if not os.path.exists(hsfolder):                
+                print("No folders to archive in arguments and no Hotspots CSV files found!")
+                print('Run: froster archive "/your/folder/to/archive"')
+                return False
             csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
             if len(csv_files) == 0:
                 print("No folders to archive in arguments and no Hotspots CSV files found!")
