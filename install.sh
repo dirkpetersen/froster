@@ -16,15 +16,21 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
   module load python > /dev/null 2>&1
   module load Python > /dev/null 2>&1
   echo "Done!"
+  printf "Starting Python from default module ... "
   if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-    printf "The default Lmod Python is older than 3.${PMIN}. Trying Python/3.${PMIN} ... "
-    ml python/3.${PMIN} > /dev/null 2>&1
-    ml Python/3.${PMIN} > /dev/null 2>&1
     echo "Done!"
+    printf "The default Python module is older than 3.${PMIN}. Trying Python/3.${PMIN} ... "
+    module load python/3.${PMIN} > /dev/null 2>&1
+    module load Python/3.${PMIN} > /dev/null 2>&1
+    echo "Done!"
+    printf "Starting Python 3.${PMIN} from module ... "
     if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
       echo "Failed to load Python 3.${PMIN}. Please load a Python module >= 3.${PMIN} manually."
       exit
     fi
+    echo "Done!"
+  else 
+    echo "Done!"
   fi
 fi
 ### Fixing a potentially broken LD_LIBRARY_PATH
