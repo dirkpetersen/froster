@@ -542,7 +542,7 @@ class Archiver:
         self.cfg = cfg
         self.archive_json = os.path.join(cfg.config_root, 'froster-archives.json')
         x = self.cfg.read('general', 'min_index_folder_size_gib')
-        self.thresholdGB = int(x) if x else 10
+        self.thresholdGB = int(x) if x else 3
         x = self.cfg.read('general', 'min_index_folder_size_avg_mib')
         self.thresholdMB = int(x) if x else 10
 
@@ -554,8 +554,8 @@ class Archiver:
         # move down to class 
         daysaged=[5475,3650,1825,1095,730,365,90,30]
         TiB=1099511627776
-        GiB=1073741824
-        MiB=1048576
+        #GiB=1073741824
+        #MiB=1048576
     
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
@@ -639,7 +639,7 @@ class Archiver:
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
                     row = list(r)
-                    if row[9] >= self.thresholdGB*GiB and row[9] >= self.thresholdMB*MiB:
+                    if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
                         row[0]=self.uid2user(row[0])                        
                         row[1]=self.daysago(self._get_newest_file_atime(row[5],row[1]))
                         row[2]=self.daysago(row[2])
