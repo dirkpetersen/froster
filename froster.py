@@ -19,7 +19,7 @@ from textual.widgets import DataTable
 __app__ = 'Froster, a simple archiving tool'
 __version__ = '0.4'
 TABLECSV = '' # CSV string for DataTable
-SELECTEDFILE = '' # csv file to open in hotspots 
+SELECTEDFILE = '' # CSV filename to open in hotspots 
 
 def main():
     
@@ -30,6 +30,16 @@ def main():
 
     if args.debug:
         pass
+
+    if len(sys.argv) == 1:        
+        print(textwrap.dedent(f'''\n
+            For example, use one of these commands:
+              froster config 
+              froster index /your/lab/root
+              froster archive
+            or you can use one of these: 
+              'froster delete', 'froster mount' or 'froster restore'
+            '''))
 
     if args.version:
         print(f'Froster version: {__version__}')
@@ -202,10 +212,9 @@ def main():
             csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
             if len(csv_files) == 0:
                 print("No folders to archive in arguments and no Hotspots CSV files found!")
+                print('Run: froster archive "/your/folder/to/archive"')
                 return False
-
             # Sort the CSV files by their modification time in descending order (newest first)
-            # HERE we only allow to select the latest csv file 
             csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
             # if there are multiple files allow for selection
             if len(csv_files) > 1:
@@ -244,8 +253,7 @@ def main():
             se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
             se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
-            se.add_line(f'#SBATCH --time=1-0')
-            #se.add_line(f'ml python')
+            se.add_line(f'#SBATCH --time=1-0')            
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
             if not "--profile" in cmdline and args.awsprofile:            
                 cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
@@ -278,8 +286,6 @@ def main():
             return False
         
         if not args.folders:
-            #csvfile = os.path.join(cfg.config_root, 'froster-archives.csv')
-            #arch._archive_json_get_csv            
             TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])            
             app = TableArchive()
             retline=app.run()
@@ -322,7 +328,6 @@ def main():
                         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
                         se.add_line(f'#SBATCH --mail-user={email}')
                         se.add_line(f'#SBATCH --time=1-0')
-                        #se.add_line(f'ml python')
                         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
                         if not "--profile" in cmdline and args.awsprofile:            
                             cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
@@ -353,8 +358,7 @@ def main():
             se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
             se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
             se.add_line(f'#SBATCH --mail-user={email}')
-            se.add_line(f'#SBATCH --time=1-0')
-            #se.add_line(f'ml python')
+            se.add_line(f'#SBATCH --time=1-0')            
             cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline            
             if not "--profile" in cmdline and args.awsprofile:            
                 cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
@@ -406,8 +410,6 @@ def main():
             fld = fld.rstrip(os.path.sep)
             # get archive storage location
             print (f'Deleting archived objects in {fld}, please wait ...', flush=True)
-            #mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
-            #rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
             rowdict = arch.archive_json_get_row(fld)
             archive_folder = rowdict['archive_folder']
 
@@ -495,8 +497,6 @@ def main():
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
             # get archive storage location
-            #mycsv = os.path.join(cfg.config_root,"froster-archives.csv")
-            #rowdict = arch._get_row_from_csv(mycsv,'local_folder',fld)
             rowdict = arch.archive_json_get_row(fld)
             archive_folder = rowdict['archive_folder']
 
@@ -1970,7 +1970,9 @@ def parse_arguments():
             Bootstrap the configurtion, install dependencies and setup your environment.
             You will need to answer a few questions about your cloud setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
+    
     # ***
+
     parser_index = subparsers.add_parser('index', aliases=['idx'], 
         help=textwrap.dedent(f'''
             Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file 
@@ -1986,7 +1988,9 @@ def parse_arguments():
     parser_index.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to index (separated by space), ' +
                 'using the pwalk file system crawler ')
+    
     # ***
+
     parser_archive = subparsers.add_parser('archive', aliases=['arc'], 
         help=textwrap.dedent(f'''
             Select from a list of large folders, that has been created by 'froster index', and 
@@ -2013,7 +2017,35 @@ def parse_arguments():
     parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to archive (separated by space), ' +
                 'the last folder in this list is the target   ')
+    
     # ***
+
+    parser_delete = subparsers.add_parser('delete', aliases=['del'],
+        help=textwrap.dedent(f'''
+            Remove data from a local filesystem folder that has been confirmed to 
+            be archived (through checksum verification). Use this instead of deleting manually
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
+        help='folders (separated by space) from which you would like to delete files, ' +
+               'you can only delete files that have been archived')
+
+    # ***
+       
+    parser_mount = subparsers.add_parser('mount', aliases=['umount'],
+        help=textwrap.dedent(f'''
+            Mount or unmount the remote S3 or Glacier storage in your local file system 
+            at the location of the original folder.
+        '''), formatter_class=argparse.RawTextHelpFormatter) 
+    parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='', 
+        help='pick a custom mount point, this only works if you select a single folder.')
+    parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
+        help="unmount instead of mount, you can also use the umount sub command instead.")
+    parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
+        help='archived folders (separated by space) which you would like to mount.' +
+               '')
+    
+    # ***
+
     parser_restore = subparsers.add_parser('restore', aliases=['rst'],
         help=textwrap.dedent(f'''
             Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need
@@ -2043,51 +2075,10 @@ def parse_arguments():
         help="skip download to local storage after retrieval from Glacier")
     parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to to restore (separated by space), ' +
-                '')
-    # ***
-    # parser_download = subparsers.add_parser('download', aliases=['rst'],
-    #     help=textwrap.dedent(f'''
-    #         This command downloads data from a S3 compatible object store to your local filesystem. 
-    #         If you are downloading from a cloud to your local network, egress fees may apply. 
-    #     '''), formatter_class=argparse.RawTextHelpFormatter)        
-    # parser_download.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
-    #     help="do not submit a Slurm job, execute index directly")        
-    # parser_download.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
-    #     help='Number of cores to be allocated for the machine. (default=4)')
-    # parser_download.add_argument('folders', action='store', default=[],  nargs='*',
-    #     help='folders you would like to to restore (separated by space), ' +
-    #             'the last folder in this list is the target  ')
-    # ***
-    parser_delete = subparsers.add_parser('delete', aliases=['del'],
-        help=textwrap.dedent(f'''
-            Remove data from a local filesystem folder that has been confirmed to 
-            be archived (through checksum verification). Use this instead of deleting manually
-        '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
-        help='folders (separated by space) from which you would like to delete files, ' +
-               'you can only delete files that have been archived')
-            # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
-            # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
-            # of up to 15%% of your AWS bill. (costs from April 2023)
-    parser_mount = subparsers.add_parser('mount', aliases=['umount'],
-        help=textwrap.dedent(f'''
-            Mount or unmount the remote S3 or Glacier storage in your local file system 
-            at the location of the original folder.
-        '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='', 
-        help='pick a custom mount point, this only works if you select a single folder.')
-    parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
-        help="unmount instead of mount, you can also use the umount sub command instead.")
-    parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
-        help='archived folders (separated by space) which you would like to mount.' +
-               '')
-
-            # For example, AWS charges about $90/TiB for downloads. You can avoid these costs by 
-            # requesting a Data Egress Waiver from AWS, which waives your Egress fees in the amount
-            # of up to 15%% of your AWS bill. (costs from April 2023)
-
+                '')  
+    
     if len(sys.argv) == 1:
-        parser.print_help(sys.stdout)            
+        parser.print_help(sys.stdout)               
 
     return parser.parse_args()
 
