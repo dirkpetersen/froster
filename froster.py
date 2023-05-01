@@ -80,11 +80,18 @@ def main():
                                 '/rclone-v*/',binfolder)
             print("Done!",flush=True)
 
+        # Basic setup, focus the indexer on larger folders and file sizes 
+        if not cfg.read('general', 'min_index_folder_size_gib'):
+            cfg.write('general', 'min_index_folder_size_gib', "10")
+        if not cfg.read('general', 'min_index_folder_size_avg_mib'):
+            cfg.write('general', 'min_index_folder_size_avg_mib', "10")
+
         print('\n*** Asking a few questions ***')
         print('*** For most you can just hit <Enter> to accept the default. ***\n')
         # general setup 
+        defdom = cfg.get_domain_name()
         domain = cfg.prompt('Enter your domain name:',
-                            'ohsu.edu|general|domain','string')
+                            f'{defdom}|general|domain','string')
         emailaddr = cfg.prompt('Enter your email address:',
                              f'{getpass.getuser()}@{domain}|general|email','string')
 
@@ -528,6 +535,11 @@ class Archiver:
         self.args = args
         self.cfg = cfg
         self.archive_json = os.path.join(cfg.config_root, 'froster-archives.json')
+        x = self.cfg.read('general', 'min_index_folder_size_gib')
+        self.thresholdGB = int(x) if x else 10
+        x = self.cfg.read('general', 'min_index_folder_size_avg_mib')
+        self.thresholdMB = int(x) if x else 10
+
         self.url = 'https://api.reporter.nih.gov/v2/projects/search'
         self.grants = []
 
@@ -535,10 +547,10 @@ class Archiver:
 
         # move down to class 
         daysaged=[5475,3650,1825,1095,730,365,90,30]
-        thresholdGB=1
         TiB=1099511627776
         GiB=1073741824
-        
+        MiB=1048576
+    
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
         con.execute('PRAGMA experimental_parallel_csv=TRUE;')
@@ -621,7 +633,7 @@ class Archiver:
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
                     row = list(r)
-                    if row[9] >= thresholdGB*GiB:
+                    if row[9] >= self.thresholdGB*GiB and row[9] >= self.thresholdMB*MiB:
                         row[0]=self.uid2user(row[0])                        
                         row[1]=self.daysago(self._get_newest_file_atime(row[5],row[1]))
                         row[2]=self.daysago(row[2])
@@ -639,7 +651,7 @@ class Archiver:
             # dedented multi-line retaining \n
             print(textwrap.dedent(f'''       
                 Wrote {os.path.basename(mycsv)}
-                with {numhotspots} hotspots >= {thresholdGB} GiB 
+                with {numhotspots} hotspots >= {self.thresholdGB} GiB 
                 with a total disk use of {round(totalbytes/TiB,3)} TiB
                 '''), flush=True)
             lastagedbytes=0
@@ -654,7 +666,7 @@ class Archiver:
                 lastagedbytes=agedbytes[i]
             print('')
         else:
-            print(f'No folders larger than {thresholdGB} GiB found under {pwalkfolder}', flush=True)                
+            print(f'No folders larger than {self.thresholdGB} GiB found under {pwalkfolder}', flush=True)                
 
         if locked_dirs:
             print('\n'+locked_dirs, flush=True)
@@ -1583,7 +1595,8 @@ class ConfigManager:
             directory for directory in path_dirs
             if directory.startswith(self.home_dir) and os.path.isdir(directory)
         }
-        return sorted(dirs_inside_home, key=len)
+        return sorted(dirs_inside_home, key=len)  
+
         
     def _get_config_root(self):
         theroot=os.path.join(self.home_dir, '.config', 'froster')
@@ -1862,6 +1875,14 @@ class ConfigManager:
             print(f"An unexpected error occurred: {e}")
             return False            
         return True
+    
+    def get_domain_name(self):
+        fqdn = platform.node()
+        hostname = platform.uname().node
+        if fqdn == hostname:
+            return "mydomain.edu"
+        domain_name = fqdn.replace(hostname + ".", "")
+        return domain_name
 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
