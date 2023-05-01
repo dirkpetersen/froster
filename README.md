@@ -208,7 +208,7 @@ Note that if you restore from AWS S3 to on-premises, you may be subject to AWS d
 If you have hundreds of terabytes or even petabtyes of data in billions of files you may not be able to easily locate data that is worth archiving. Among hundreds of thousands of folders there are typically only a few hundred that make up most of your storage consumption. We call these folders 'Hotspots' and to find them you use the `froster index` command and pass the root directory of your lab data. 
 
 ```
-[user@login ~]$ froster index /home/exacloud/gscratch/dpcri
+[user@login ~]$ froster index /home/gscratch/dpcri
 Submitted froster indexing job: 22218558
 Check Job Output:
  tail -f froster-index-@gscratch+dpcri-22218558.out
@@ -217,15 +217,15 @@ Check Job Output:
 we can see the status of the job 
 
 ```
-[peterdir@exahead1 ~]$ squeue --me
+[user@login ~]$ squeue --me
              JOBID PART         NAME     USER ST       TIME  TIME_LEFT NOD CPU TRES_PER_ MIN_ NODELIST(REASON)
-          22218560 exac froster:inde peterdir  R       0:07   23:59:53   1   4 gres:disk  64G exanode-2-0
+          22218560 exac froster:index:dp user  R       0:07   23:59:53   1   4 gres:disk  64G node-2-0
 ```
 
 and then use the suggested tail command to see how the indexing is progressing, we can see that the job finished successfully  
 
 ```
-[peterdir@exahead1 ~]$ tail -f froster-index-@gscratch+dpcri-22218558.out
+[user@login ~]$ tail -f froster-index-@gscratch+dpcri-22218558.out
 2023-04-20 08:28:22-07:00 mkdir-scratch.sh info: Preparing scratch space for job 22218558
 2023-04-20 08:28:22-07:00 mkdir-scratch.sh info: /mnt/scratch/22218558 has been created
 Indexing folder /home/exacloud/gscratch/dpcri, please wait ...
@@ -248,11 +248,10 @@ now we run the `froster archive` command without entering folder names on the co
 
 
 ```
-[peterdir@exahead1 ~]$ froster archive
+[user@login ~]$ froster archive
 Submitted froster archiving job: 22218563
 Check Job Output:
- tail -f froster-archive-+home+exacloud+gscratch+dpcri+csv-22218563.out
-[peterdir@exahead1 ~]$
+ tail -f froster-archive-+home+gscratch+dpcri+csv-22218563.out
 ```
 
 
