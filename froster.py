@@ -90,16 +90,17 @@ def main():
         print('*** For most you can just hit <Enter> to accept the default. ***\n')
         # general setup 
         defdom = cfg.get_domain_name()
+        whoami = getpass.getuser()
 
         # domain-name not needed right now
         #domain = cfg.prompt('Enter your domain name:',
         #                    f'{defdom}|general|domain','string')
         emailaddr = cfg.prompt('Enter your email address:',
-                             f'{getpass.getuser()}@{defdom}|general|email','string')
+                             f'{whoami}@{defdom}|general|email','string')
 
         # cloud setup
         bucket = cfg.prompt('Please enter the S3 bucket to archive to',
-                            'froster|general|bucket','string')
+                            f'froster-{whoami}|general|bucket','string')
         archiveroot = cfg.prompt('Please enter the archive root path in your S3 bucket',
                                  'archive|general|archiveroot','string')
         s3_storage_class =  cfg.prompt('Please enter the AWS S3 Storage class',
@@ -314,6 +315,8 @@ def main():
                 cfg.awsprofile = retline[2]
                 args.awsprofile = cfg.awsprofile
                 cfg._set_env_vars(cfg.awsprofile)
+                if args.debug:
+                    print("AWS profile:", cfg.awsprofile)
         
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
@@ -1091,6 +1094,8 @@ class Archiver:
         return mountinfo_list    
         
     def glacier_restore(self, bucket_name, prefix, keep_days=30, ret_opt="Bulk"):
+        #this is dropping back to default creds, need to fix
+        #print("AWS_ACCESS_KEY_ID:", os.environ['AWS_ACCESS_KEY_ID'])
         glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
         try:
             s3 = boto3.client('s3')
@@ -1571,7 +1576,9 @@ class ConfigManager:
         aws_access_key_id = config.get(profile, 'aws_access_key_id')
         aws_secret_access_key = config.get(profile, 'aws_secret_access_key')
 
-        # Set the environment variables for creds 
+        # Set the environment variables for creds
+        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
+        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
         self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
         self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
         self.envrn['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
