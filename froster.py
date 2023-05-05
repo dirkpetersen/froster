@@ -300,7 +300,9 @@ def main():
             return False
         
         if not args.folders:
-            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])            
+            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
+            if TABLECSV == None:
+                return False
             app = TableArchive()
             retline=app.run()
             if not retline:
@@ -406,7 +408,9 @@ def main():
             return False
 
         if not args.folders:
-            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])            
+            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
+            if TABLECSV == None:
+                return False
             app = TableArchive()
             retline=app.run()
             if not retline:
@@ -427,6 +431,8 @@ def main():
             # get archive storage location
             print (f'Deleting archived objects in {fld}, please wait ...', flush=True)
             rowdict = arch.archive_json_get_row(fld)
+            if rowdict == None:
+                return False
             archive_folder = rowdict['archive_folder']
 
             # compare archive hashes with local hashfile
@@ -493,7 +499,9 @@ def main():
         interactive=False
         if not args.folders:
             interactive=True
-            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])            
+            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
+            if TABLECSV == None:
+                return False
             app = TableArchive()
             retline=app.run()
             if not retline:
@@ -514,6 +522,8 @@ def main():
             fld = fld.rstrip(os.path.sep)
             # get archive storage location
             rowdict = arch.archive_json_get_row(fld)
+            if rowdict == None:
+                return False
             archive_folder = rowdict['archive_folder']
 
             rclone = Rclone(args,cfg)
@@ -827,6 +837,8 @@ class Archiver:
 
         # copied from archive
         rowdict = self.archive_json_get_row(folder)
+        if rowdict == None:
+            return False
 
         source = rowdict['archive_folder']
         target = rowdict['local_folder']
@@ -1993,7 +2005,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(prog='froster ',
         description='A (mostly) automated tool for archiving large scale data ' + \
                     'after finding folders in the file system that are worth archiving.')
-    parser.add_argument( '--debug', '-g', dest='debug', action='store_true', default=False,
+    parser.add_argument( '--debug', '-d', dest='debug', action='store_true', default=False,
         help="verbose output for all commands")
     parser.add_argument( '--no-slurm', '-n', dest='noslurm', action='store_true', default=False,
         help="do not submit a Slurm job, execute in the foreground. ")        
