@@ -49,7 +49,13 @@ printf "Installing virtual environment ~/.local/share/froster ... "
 mkdir -p ~/.local/share/froster
 mkdir -p ~/.local/bin
 export VIRTUAL_ENV_DISABLE_PROMPT=1
-python3 -m venv ~/.local/share/froster
+# Check if 'ensurepip' is available, or use old virtualenv
+if python3 -c "import ensurepip" &> /dev/null; then
+    python3 -m venv ~/.local/share/froster
+else
+    python3 -m pip install --upgrade virtualenv
+    python3 -m virtualenv ~/.local/share/froster
+fi
 source ~/.local/share/froster/bin/activate
 echo "Done!"
 echo "Installing packages required by Froster ... "
