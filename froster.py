@@ -1620,10 +1620,13 @@ class ConfigManager:
              self.read('general','archiveroot'))
         self.aws_region = self.read('general','aws_region')
         self.awsprofile = os.getenv('AWS_PROFILE', 'default')
+        profs = self.get_aws_profiles()
+        if "aws" in profs:
+            self.awsprofile = os.getenv('AWS_PROFILE', 'aws')
+        elif "AWS" in profs:
+            self.awsprofile = os.getenv('AWS_PROFILE', 'AWS')
         if hasattr(self.args, "awsprofile") and args.awsprofile:
             self.awsprofile = self.args.awsprofile
-        if not self.awsprofile:
-            self.awsprofile = self.read('general','aws_profile')
         self.envrn = os.environ.copy()
         if not self._set_env_vars(self.awsprofile):
             self.awsprofile = ''
@@ -2242,7 +2245,7 @@ def parse_arguments():
     parser.add_argument('--cores', '-c', dest='cores', action='store', default='4', 
         help='Number of cores to be allocated for the machine. (default=4)')
     parser.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
-        help='which AWS profile from "profiles" or "credentials" in ~/.aws/ should be used')
+        help='which AWS profile in ~/.aws/ should be used. default="aws"')
     parser.add_argument('--version', '-v', dest='version', action='store_true', default=False, 
         help='print Froster and Python version info')
     
