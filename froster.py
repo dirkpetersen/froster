@@ -17,7 +17,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
 __app__ = 'Froster, a simple archiving tool'
-__version__ = '0.4'
+__version__ = '0.5'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 
@@ -97,52 +97,97 @@ def main():
         #                    f'{defdom}|general|domain','string')
         emailaddr = cfg.prompt('Enter your email address:',
                              f'{whoami}@{defdom}|general|email','string')
+        emailstr = emailaddr.replace('@','-')
+        emailstr = emailstr.replace('.','-')
 
         # cloud setup
-        bucket = cfg.prompt('Please enter the S3 bucket to archive to',
-                            f'froster-{whoami}|general|bucket','string')
-        archiveroot = cfg.prompt('Please enter the archive root path in your S3 bucket',
+        bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
+                            f'froster-{emailstr}|general|bucket','string')
+        archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
                                  'archive|general|archiveroot','string')
-        s3_storage_class =  cfg.prompt('Please enter the AWS S3 Storage class',
+        s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
                                     'DEEP_ARCHIVE|general|s3_storage_class','string')
         #aws_profile =  cfg.prompt('Please enter the AWS profile in ~/.aws',
         #                          'default|general|aws_profile','string')
-        aws_region =  cfg.prompt('Please enter your AWS region for S3',
-                                 'us-west-2|general|aws_region','string')
-        
-        profs = cfg.get_aws_profiles()
-    
-        cfg.create_aws_configs(None, None, aws_region)
-        cfg.create_s3_bucket(bucket,aws_region)
+        #aws_region =  cfg.prompt('Please enter your AWS region for S3',
+        #                         'us-west-2|general|aws_region','string')
 
+        cfg.create_aws_configs()
+
+        aws_region = cfg.get_aws_region()
+        if not aws_region:
+            aws_region =  cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
+                                 cfg.get_aws_regions())
+        aws_region =  cfg.prompt('Please confirm/edit the AWS S3 region', aws_region)
+                
+        #cfg.create_aws_configs(None, None, aws_region)
+        print(f"\n  Verify that bucket '{bucket}' is configured ... ")
+        
         allowed_aws_profiles = ['default', 'aws', 'AWS'] # for accessing glacier use one of these
         profmsg = 1
+        profs = cfg.get_aws_profiles()
         for prof in profs:
             if prof in allowed_aws_profiles:
+                cfg.set_aws_config(prof, 'region', aws_region)
                 if prof == 'AWS' or prof == 'aws':
-                    cfg.write('general', 'aws_profile', prof)
+                    cfg.write('general', 'aws_profile', prof)                    
                 elif prof == 'default': 
                     cfg.write('general', 'aws_profile', 'default')
+                cfg.create_s3_bucket(bucket, prof)
                 continue
             if profmsg == 1:
                 print('\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
                 profmsg = 0
-            profile={'name': '', 'provider': '', 'endpoint': '', 'region': ''}
+            if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?','yes'):
+                continue 
+
+            profile={'name': '', 'provider': '', 'storage_class': ''}
+            pendpoint = ''
+            pregion = ''
             pr=cfg.read('profiles', prof)
             if isinstance(pr, dict):
                 profile = cfg.read('profiles', prof)            
             profile['name'] = prof
-            if not profile['provider']: profile['provider'] = 'Other'
+
+            if not profile['provider']: 
+                profile['provider'] = ['S3', 'GCS', 'Wasabi', 'IDrive', 'Ceph', 'Minio', 'Other']
             profile['provider'] = \
-                cfg.prompt(f'S3 Provider for "{prof}" (e.g Ceph, Wasabi, Minio, Other)',profile['provider'])
-            profile['endpoint'] = \
-                cfg.prompt(f'S3 Endpoint for "{prof}" (e.g https://s3.domain.com)',profile['endpoint'])
-            profile['region'] = \
-                cfg.prompt(f'S3 region for "{prof}" (default="")','')            
-            if profile['endpoint'] and profile['provider']:
+                cfg.prompt(f'S3 Provider for profile "{prof}"',profile['provider'])
+            
+            pregion = cfg.get_aws_region(prof) 
+            if not pregion:
+                pregion =  cfg.prompt('Please select the S3 region',
+                                 cfg.get_aws_regions(prof,profile['provider']))
+            pregion = \
+                cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
+            if pregion:
+                cfg.set_aws_config(prof, 'region', pregion)
+
+            if not pendpoint:
+                pendpoint=cfg.get_aws_s3_endpoint_url(prof)
+                if not pendpoint:
+                    if 'Wasabi' == profile['provider']:
+                        pendpoint = f'https://s3.{pregion}.wasabisys.com' 
+                    elif 'GCS' == profile['provider']:
+                        pendpoint = 'https://storage.googleapis.com' 
+
+            pendpoint = \
+                cfg.prompt(f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)',pendpoint)
+            if pendpoint:
+                if not pendpoint.startswith('http'):
+                    pendpoint = 'https://' + pendpoint
+                cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
+
+            if not profile['storage_class']:
+                if pendpoint and not pendpoint.endswith('amazonaws.com'):
+                    profile['storage_class'] = 'STANDARD'
+
+            if pendpoint and profile['provider']:
                 cfg.write('profiles', prof, profile) 
             else:
                 print(f'\nConfig for AWS profile "{prof}" was not saved.')
+            
+            cfg.create_s3_bucket(bucket, prof)
 
         print('\n*** And finally a few questions how your HPC uses local scratch space ***')
         print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
@@ -767,7 +812,7 @@ class Archiver:
             return False
 
         # If success, write metadata to froster-archives.json database
-        s3_storage_class=self.cfg.read('general','s3_storage_class')
+        s3_storage_class=os.getenv('RCLONE_S3_STORAGE_CLASS','STANDARD')
         timestamp=datetime.datetime.now().isoformat()
         dictrow = {'local_folder': source, 'archive_folder': target,
                    's3_storage_class': s3_storage_class, 'profile': self.cfg.awsprofile, 
@@ -1108,8 +1153,12 @@ class Archiver:
     def glacier_restore(self, bucket_name, prefix, keep_days=30, ret_opt="Bulk"):
         #this is dropping back to default creds, need to fix
         #print("AWS_ACCESS_KEY_ID:", os.environ['AWS_ACCESS_KEY_ID'])
+        #print("AWS_PROFILE:", os.environ['AWS_PROFILE'])
         glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
         try:
+            # not needed here as profile comes from env
+            #session = boto3.Session(profile_name=profile)
+            #s3 = session.client('s3')
             s3 = boto3.client('s3')
             paginator = s3.get_paginator('list_objects_v2')
             pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
@@ -1333,16 +1382,20 @@ class Rclone:
             return []
 
     def mount(self, url, mountpoint, *args):
+        if not shutil.which('fusermount3'):
+            print('Could not find "fusermount3". Please install the "fuse3" OS package')
+            return False
         if not url.endswith('/'): url+'/'
         mountpoint = mountpoint.rstrip(os.path.sep)
         command = [self.rc, 'mount'] + list(args)
-        # use older rclone for now, as fuse3 is not installed
-        if os.path.isfile('/usr/bin/rclone'):
-            command = ['/usr/bin/rclone', 'mount'] + list(args)            
+        # might use older rclone, if fuse3 is not installed
+        #if os.path.isfile('/usr/bin/rclone'):
+        #    command = ['/usr/bin/rclone', 'mount'] + list(args)            
         #command.append('--daemon') # not reliable, just starting background process
         command.append('--allow-non-empty')
         command.append('--read-only')
         command.append('--no-checksum')
+        command.append('--quiet')
         command.append(url)
         command.append(mountpoint)
         pid = self._run_bk(command)
@@ -1351,19 +1404,23 @@ class Rclone:
     def unmount(self, mountpoint, wait=False):
         mountpoint = mountpoint.rstrip(os.path.sep)
         if self._is_mounted(mountpoint):
-            rclone_pids = self._get_pids('rclone')
-            fld_pids = self._get_pids(mountpoint, True)
-            common_pids = [value for value in rclone_pids if value in fld_pids]
-            for pid in common_pids:
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                    if wait:
-                        _, _ = os.waitpid(int(pid), 0)
-                    return True
-                except PermissionError:
-                    print(f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
-                except Exception as e:
-                    print(f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}') 
+            if shutil.which('fusermount3'):
+                cmd = ['fusermount3', '-u', mountpoint]
+                ret = subprocess.run(cmd, capture_output=False, text=True, env=self.cfg.envrn)
+            else:
+                rclone_pids = self._get_pids('rclone')
+                fld_pids = self._get_pids(mountpoint, True)
+                common_pids = [value for value in rclone_pids if value in fld_pids]
+                for pid in common_pids:
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                        if wait:
+                            _, _ = os.waitpid(int(pid), 0)
+                        return True
+                    except PermissionError:
+                        print(f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
+                    except Exception as e:
+                        print(f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}') 
         else:
             print(f'\nError: Folder {mountpoint} is currently not used as a mountpoint by rclone.')
                 
@@ -1562,9 +1619,9 @@ class ConfigManager:
              self.bucket,
              self.read('general','archiveroot'))
         self.aws_region = self.read('general','aws_region')
-        self.awsprofile = ''
+        self.awsprofile = os.getenv('AWS_PROFILE', 'default')
         if hasattr(self.args, "awsprofile") and args.awsprofile:
-            self.awsprofile = self.args.awsprofile        
+            self.awsprofile = self.args.awsprofile
         if not self.awsprofile:
             self.awsprofile = self.read('general','aws_profile')
         self.envrn = os.environ.copy()
@@ -1591,8 +1648,10 @@ class ConfigManager:
         # Set the environment variables for creds
         os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
         os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
+        os.environ['AWS_PROFILE'] = profile
         self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
         self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
+        self.envrn['AWS_PROFILE'] = profile
         self.envrn['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
         self.envrn['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
 
@@ -1602,14 +1661,19 @@ class ConfigManager:
             self.envrn['RCLONE_S3_REGION'] = self.aws_region
             self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
             self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.read('general','s3_storage_class')
+            os.environ['RCLONE_S3_STORAGE_CLASS'] = self.read('general','s3_storage_class')
         else:
             prf=self.read('profiles',profile)
             self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
             self.envrn['RCLONE_S3_PROFILE'] = profile
-            if isinstance(prf,dict):  # profile={'name': '', 'provider': '', 'endpoint': '', 'region': ''}
+            if isinstance(prf,dict):  # profile={'name': '', 'provider': '', 'storage_class': ''}
                 self.envrn['RCLONE_S3_PROVIDER'] = prf['provider']
-                self.envrn['RCLONE_S3_ENDPOINT'] = prf['endpoint']
-                self.envrn['RCLONE_S3_REGION'] = prf['region']
+                self.envrn['RCLONE_S3_ENDPOINT'] = self.get_aws_s3_session_endpoint_url(profile)
+                self.aws_region = self.get_aws_region(profile)
+                self.envrn['RCLONE_S3_REGION'] = self.aws_region
+                self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
+                self.envrn['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
+                os.environ['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
 
         return True
 
@@ -1641,20 +1705,36 @@ class ConfigManager:
         return os.path.join(section_path, entry)
 
     def prompt(self, question, defaults=None, type_check=None):
-        # Prompts for user input and writes it to config 
+        # Prompts for user input and writes it to config. 
         # defaults are up to 3 pipe separated strings: 
         # if there is only one string this is the default 
+        #
         # if there are 2 strings they represent section 
         # and key name of the config entry and if there are 
         # 3 strings the last 2 represent section 
         # and key name of the config file and the first is
         # the default if section and key name are empty
+        #
+        # if defaults is a python list it will assign a number
+        # to each list element and prompt the user for one
+        # of the options
         default=''
         section=''
         key=''
         if not question.endswith(':'):
             question += ':'
-        if defaults is not None:
+        question = f"*** {question} ***"
+        if isinstance(defaults, list):
+            print(question)
+            for i, option in enumerate(defaults, 1):
+                print(f'  ({i}) {option}')           
+            while True:
+                selected = input("  Enter the number of your selection: ")
+                if selected.isdigit() and 1 <= int(selected) <= len(defaults):
+                    return defaults[int(selected) - 1]
+                else:
+                    print("  Invalid selection. Please enter a number from the list.")
+        elif defaults is not None:
             deflist=defaults.split('|')
             if len(deflist) == 3:
                 section=deflist[1]
@@ -1668,10 +1748,13 @@ class ConfigManager:
                 default = self.read(section, key)                                
             elif len(deflist) == 1:
                 default = deflist[0]
-            if default:
-                question += f"\n  [Default: {default}]"
+            #if default:
+            question += f"\n  [Default: {default}]"
+        else:
+            question += f"\n  [Default: '']"
         while True:
-            user_input = input(f"\033[93m{question}\033[0m ")
+            #user_input = input(f"\033[93m{question}\033[0m ")
+            user_input = input(f"{question} ")
             if not user_input:
                 if default is not None:
                     if section:
@@ -1702,11 +1785,71 @@ class ConfigManager:
                     if section:
                         self.write(section,key,user_input)
                     return user_input
-                
-    def check_s3_credentials(self):
-        # checks the credentials and returns the AWS ARN 
+
+    def ask_yes_no(self, question, default="yes"):
+        valid = {"yes": True, "y": True, "no": False, "n": False}
+
+        if default is None:
+            prompt = " [y/n] "
+        elif default == "yes":
+            prompt = " [Y/n] "
+        elif default == "no":
+            prompt = " [y/N] "
+        else:
+            raise ValueError("invalid default answer: '%s'" % default)
+
+        while True:
+            print(question + prompt, end="")
+            choice = input().lower()
+            if default and not choice:
+                return valid[default]
+            elif choice in valid:
+                return valid[choice]
+            else:
+                print("Please respond with 'yes' or 'no' (or 'y' or 'n').")
+
+
+    def check_s3_credentials(self, profile='default'):
+        from botocore.exceptions import NoCredentialsError, EndpointConnectionError, ClientError
+        try:
+            session = boto3.Session(profile_name=profile)
+            ep_url = self.get_aws_s3_session_endpoint_url(profile)
+            s3_client = session.client('s3', endpoint_url=ep_url)            
+            s3_client.list_buckets()
+            return True
+        except NoCredentialsError:
+            print("No AWS credentials found. Please check your access key and secret key.")
+        except EndpointConnectionError:
+            print("Unable to connect to the AWS S3 endpoint. Please check your internet connection.")
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code')
+            #error_code = e.response['Error']['Code']             
+            if error_code == 'RequestTimeTooSkewed':
+                print(f"The time difference between S3 storage and your computer is too high:\n{e}")
+            elif error_code == 'InvalidAccessKeyId':                
+                print(f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
+            elif error_code == 'SignatureDoesNotMatch':                
+                if "Signature expired" in str(e): 
+                    print(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
+                    return False
+                else:
+                    print(f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")         
+            elif error_code == 'InvalidClientTokenId':
+                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
+            else:
+                print(f"Error validating credentials for profile {profile}: {e}")
+            print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
+            return False
+
+    def check_s3_credentials_old(self, profile='default'):
+        # checks the credentials and returns the AWS ARN
         from botocore.exceptions import ClientError, NoCredentialsError
-        sts = boto3.client('sts')
+        session = boto3.Session(profile_name=profile)
+        sts = session.client('sts')
+        #sts = boto3.client('sts')
         try:
             response = sts.get_caller_identity() 
             if self.args.debug:
@@ -1721,23 +1864,23 @@ class ConfigManager:
             if error_code == 'RequestTimeTooSkewed':
                 print(f"The time difference between S3 storage and your computer is too high:\n{e}")
             elif error_code == 'InvalidAccessKeyId':                
-                print(f"Error: Invalid AWS Access Key ID in profile {self.awsprofile}:\n{e}")
+                print(f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
             elif error_code == 'SignatureDoesNotMatch':                
                 if "Signature expired" in str(e): 
                     print(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
                     return False
                 else:
-                    print(f"Error: Invalid AWS Secret Access Key in profile {self.awsprofile}:\n{e}")         
+                    print(f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")         
             elif error_code == 'InvalidClientTokenId':
                 print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
             else:
-                print(f"Error validating credentials for profile {self.awsprofile}: {e}")
-            print(f"Fix your credentials in ~/.aws/credentials for profile {self.awsprofile}")
+                print(f"Error validating credentials for profile {profile}: {e}")
+            print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
             return False
         except Exception as e:
-            print(f"An unexpected error occurred while validating credentials for profile {self.awsprofile}: {e}")
+            print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
             return False
-
+    
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
         config = configparser.ConfigParser()        
@@ -1750,7 +1893,7 @@ class ConfigManager:
         # Get the list of profiles
         profiles = []
         for section in config.sections():
-            profile_name = section.replace("profile ", "").replace("default", "default")
+            profile_name = section.replace("profile ", "") #.replace("default", "default")
             profiles.append(profile_name)        
         return profiles
 
@@ -1762,14 +1905,14 @@ class ConfigManager:
             os.makedirs(aws_dir)
 
         if not os.path.isfile(self.awsconfigfile):
-            print(f'\nAWS config file {self.awsconfigfile} does not exist, creating ...')
-            if not region: region = input("Enter your AWS region (e.g., us-west-2): ")
-            with open(self.awsconfigfile, "w") as config_file:
-                config_file.write("[default]\n")
-                config_file.write(f"region = {region}\n")
-                config_file.write("\n")
-                config_file.write("[aws]\n")
-                config_file.write(f"region = {region}\n")
+            if region:
+                print(f'\nAWS config file {self.awsconfigfile} does not exist, creating ...')            
+                with open(self.awsconfigfile, "w") as config_file:
+                    config_file.write("[default]\n")
+                    config_file.write(f"region = {region}\n")
+                    config_file.write("\n")
+                    config_file.write("[profile aws]\n")
+                    config_file.write(f"region = {region}\n")
 
         if not os.path.isfile(self.awscredsfile):
             print(f'\nAWS credentials file {self.awscredsfile} does not exist, creating ...')
@@ -1785,14 +1928,91 @@ class ConfigManager:
                 credentials_file.write(f"aws_secret_access_key = {secret_key}\n")
             os.chmod(self.awscredsfile, 0o600)
 
-
-    def check_bucket_access(self, bucket_name):
-        from botocore.exceptions import ClientError
-
-        if not self.check_s3_credentials():
-            return False 
+    def set_aws_config(self, profile, key, value, service=''):
+        if key == 'endpoint_url': 
+            if value.endswith('.amazonaws.com'):
+                return False
+            else:
+                value = f'{value}\nsignature_version = s3v4'
+        config = configparser.ConfigParser()
+        config.read(os.path.expanduser("~/.aws/config"))
+        section=profile
+        if profile != 'default':
+            section = f'profile {profile}'
+        if not config.has_section(section):
+            config.add_section(section)
+        if service: 
+            config.set(section, service, f"\n{key} = {value}\n")
+        else:
+            config.set(section, key, value)
+        with open(os.path.expanduser("~/.aws/config"), 'w') as configfile:
+            config.write(configfile)
+        return True
     
-        s3 = boto3.client('s3')
+    def get_aws_s3_endpoint_url(self, profile='default'):
+        # non boto3 method, use get_aws_s3_session_endpoint_url instead
+        config = configparser.ConfigParser()
+        config.read(os.path.expanduser('~/.aws/config'))
+        prof = 'profile ' + profile
+        if profile == 'default':
+            prof = profile
+        try:
+            # We use the configparser's interpolation feature here to 
+            # flatten the 's3' subsection into the 'profile test' section.
+            s3_config_string = config.get(prof, 's3')
+            s3_config = configparser.ConfigParser()
+            s3_config.read_string("[s3_section]\n" + s3_config_string)
+            endpoint_url = s3_config.get('s3_section', 'endpoint_url')
+            return endpoint_url
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            #print("  No endpoint_url found in aws profile:", profile)
+            return None
+        
+    def get_aws_s3_session_endpoint_url(self, profile='default'):
+        # retrieve endpoint url through boto API, not configparser
+        import botocore.session
+        session = botocore.session.Session(profile=profile)
+        config = session.full_config
+        s3_config = config["profiles"][profile].get("s3", {})
+        endpoint_url = s3_config.get("endpoint_url", None)
+        #print('*** endpoint url ***:', endpoint_url)
+        return endpoint_url
+
+    def get_aws_region(self, profile='default'):
+        try:
+            session = boto3.Session(profile_name=profile)
+            #print(f'* get_aws_region for profile {profile}:', session.region_name)
+            return session.region_name
+        except:
+            print('  cannot retrieve AWS region, no profile')
+            return ""
+    
+    def get_aws_regions(self, profile='default', provider='AWS'):
+        # returns a list of AWS regions 
+        if provider == 'AWS':
+            try:
+                session = boto3.Session(profile_name=profile)
+                regions = session.get_available_regions('ec2')
+                # make the list a little shorter 
+                regions = [i for i in regions if not i.startswith('ap-')]
+                return sorted(regions, reverse=True)
+            except:
+                return ['us-west-2','us-west-1', 'us-east-1', '']
+        elif provider == 'GCS':
+            return ['us-west1', 'us-east1', '']
+        elif provider == 'Wasabi':
+            return ['us-west-1', 'us-east-1', '']
+        elif provider == 'IDrive':
+            return ['us-or', 'us-va', 'us-la', '']
+                
+    def check_bucket_access(self, bucket_name, profile='default'):
+        from botocore.exceptions import ClientError
+        if not self.check_s3_credentials(profile):
+            #return False 
+            print('check_s3_credentials failed')
+        session = boto3.Session(profile_name=profile)
+        ep_url = self.get_aws_s3_session_endpoint_url(profile)
+        s3 = session.client('s3', endpoint_url=ep_url)
         
         try:
             # Check if bucket exists
@@ -1825,12 +2045,18 @@ class ConfigManager:
             print(f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
             return False
 
-    def create_s3_bucket(self, bucket_name, region='us-west-2'):
-        from botocore.exceptions import BotoCoreError, ClientError
-        if not self.check_s3_credentials():
+    def create_s3_bucket(self, bucket_name, profile='default'):
+        from botocore.exceptions import BotoCoreError, ClientError      
+        if not self.check_s3_credentials(profile):
             print(f"Cannot create bucket '{bucket_name}' with these credentials")
-            return False 
-        s3_client = boto3.client('s3')
+            print('check_s3_credentials failed')
+            #return False 
+        #s3_client = boto3.client('s3')
+        region = self.get_aws_region(profile)
+        #print(f'Create bucket in region "{region}" !')
+        session = boto3.Session(profile_name=profile)
+        ep_url = self.get_aws_s3_session_endpoint_url(profile)
+        s3_client = session.client('s3', endpoint_url=ep_url)        
         existing_buckets = s3_client.list_buckets()
         for bucket in existing_buckets['Buckets']:
             if bucket['Name'] == bucket_name:
@@ -1856,8 +2082,8 @@ class ConfigManager:
                 pass
                 #print(f"Error: You already own a bucket named '{bucket_name}'.")
             elif error_code == 'InvalidAccessKeyId':
-                pass
-                #print("Error: Invalid AWS Access Key ID.")
+                #pass
+                print("Error: InvalidAccessKeyId. The AWS Access Key Id you provided does not exist in our records")
             elif error_code == 'SignatureDoesNotMatch':
                 pass
                 #print("Error: Invalid AWS Secret Access Key.")
@@ -1894,6 +2120,10 @@ class ConfigManager:
                 print("Error: Access denied. Check your account permissions for creating S3 buckets")
             elif error_code == 'IllegalLocationConstraintException':
                 print(f"Error: The specified region '{region}' is not valid.")
+            elif error_code == 'InvalidLocationConstraint':
+                if not ep_url:
+                    # do not show this error with non AWS endpoints 
+                    print(f"Error: The specified location-constraint '{region}' is not valid")
             else:
                 print(f"ClientError: {e}")                        
         except Exception as e:            
