@@ -92,6 +92,13 @@ def main():
         defdom = cfg.get_domain_name()
         whoami = getpass.getuser()
 
+        # Create a shared config folder?
+        if args.cfgfolder != '~':
+            pass
+
+        if cfg.ask_yes_no(f'Create a shared config folder to collaborate with other users?'):
+            pass 
+
         # domain-name not needed right now
         #domain = cfg.prompt('Enter your domain name:',
         #                    f'{defdom}|general|domain','string')
@@ -1618,7 +1625,6 @@ class ConfigManager:
         self.archivepath = os.path.join( 
              self.bucket,
              self.read('general','archiveroot'))
-        self.aws_region = self.read('general','aws_region')
         self.awsprofile = os.getenv('AWS_PROFILE', 'default')
         profs = self.get_aws_profiles()
         if "aws" in profs:
@@ -1627,6 +1633,7 @@ class ConfigManager:
             self.awsprofile = os.getenv('AWS_PROFILE', 'AWS')
         if hasattr(self.args, "awsprofile") and args.awsprofile:
             self.awsprofile = self.args.awsprofile
+        self.aws_region = self.get_aws_region(self.awsprofile)
         self.envrn = os.environ.copy()
         if not self._set_env_vars(self.awsprofile):
             self.awsprofile = ''
@@ -1636,6 +1643,7 @@ class ConfigManager:
         # Read the credentials file
         config = configparser.ConfigParser()
         config.read(self.awscredsfile)
+        self.aws_region = self.get_aws_region(profile)
 
         if not config.has_section(profile):
             print (f'~/.aws/credentials has no section for profile {profile}')
@@ -1672,7 +1680,6 @@ class ConfigManager:
             if isinstance(prf,dict):  # profile={'name': '', 'provider': '', 'storage_class': ''}
                 self.envrn['RCLONE_S3_PROVIDER'] = prf['provider']
                 self.envrn['RCLONE_S3_ENDPOINT'] = self.get_aws_s3_session_endpoint_url(profile)
-                self.aws_region = self.get_aws_region(profile)
                 self.envrn['RCLONE_S3_REGION'] = self.aws_region
                 self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
                 self.envrn['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
@@ -2254,8 +2261,11 @@ def parse_arguments():
     parser_config = subparsers.add_parser('config', aliases=['cnf'], 
         help=textwrap.dedent(f'''
             Bootstrap the configurtion, install dependencies and setup your environment.
-            You will need to answer a few questions about your cloud setup.
+            You will need to answer a few questions about your cloud and hpc setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
+    parser_config.add_argument('cfgfolder', action='store', default="~",  nargs='*',
+        help='configuration root folder where .config/froster will be created ' +
+                '(default=~ home directory)  ')
     
     # ***
 
