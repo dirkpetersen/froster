@@ -59,12 +59,15 @@ def main():
 
     if args.subcmd in ['config', 'cnf']:
 
+        first_time=True
         binfolder = cfg.read('general', 'binfolder')
         if not binfolder:
             binfolder = f'{cfg.home_dir}/.local/bin'
             if not os.path.exists(binfolder):
                 os.makedirs(binfolder, mode=0o775)
             cfg.write('general', 'binfolder', binfolder)
+        else:
+            first_time=False
 
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         if not os.path.exists(os.path.join(binfolder,'pwalk')):
@@ -92,12 +95,14 @@ def main():
         defdom = cfg.get_domain_name()
         whoami = getpass.getuser()
 
-        # Create a shared config folder?
-        if args.cfgfolder != '~':
-            pass
-
-        if cfg.ask_yes_no(f'Create a shared config folder to collaborate with other users?'):
-            pass 
+        multiuser=False
+        if first_time and args.cfgfolder == '~':
+            if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?'):
+                multiuser=True
+        if multiuser or args.cfgfolder != '~':
+            multiuser=True
+            if not cfg.move_config(args.cfgfolder):
+                return False
 
         # domain-name not needed right now
         #domain = cfg.prompt('Enter your domain name:',
@@ -782,7 +787,7 @@ class Archiver:
         #    ret = rclone.copy(source, target,'--files-from', outp.name) 
             
         print ('Copying files to archive ...')
-        ret = rclone.copy(source,target,'--max-depth', '1', 
+        ret = rclone.copy(source,target,'--max-depth', '1', '--links',
                         '--exclude', '.froster.md5sum', 
                         '--exclude', '.froster-restored.md5sum', 
                         '--exclude', 'Where-did-the-files-go.txt'
@@ -1616,6 +1621,7 @@ class ConfigManager:
     def __init__(self, args):
         self.args = args
         self.home_dir = os.path.expanduser('~')
+        self.config_root_local = os.path.join(self.home_dir, '.config', 'froster')
         self.config_root = self._get_config_root()
         self.binfolder = self.read('general', 'binfolder')
         self.homepaths = self._get_home_paths()
@@ -1696,13 +1702,12 @@ class ConfigManager:
         }
         return sorted(dirs_inside_home, key=len)  
 
-        
     def _get_config_root(self):
-        theroot=os.path.join(self.home_dir, '.config', 'froster')
+        theroot=self.config_root_local
         rootfile = os.path.join(theroot, 'config_root')
         if os.path.exists(rootfile):
             with open(rootfile, 'r') as myfile:
-                theroot = myfile.read()
+                theroot = myfile.read().strip()
                 if not os.path.isdir(theroot):
                     raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
         return theroot
@@ -1711,8 +1716,11 @@ class ConfigManager:
         return os.path.join(self.config_root, section)
 
     def _get_entry_path(self, section, entry):
-        section_path = self._get_section_path(section)
-        return os.path.join(section_path, entry)
+        if section:
+            section_path = self._get_section_path(section)
+            return os.path.join(section_path, entry)
+        else:
+            return os.path.join(self.config_root, entry)
 
     def prompt(self, question, defaults=None, type_check=None):
         # Prompts for user input and writes it to config. 
@@ -2140,7 +2148,7 @@ class ConfigManager:
             print(f"An unexpected error occurred: {e}")
             return False            
         return True
-    
+        
     def get_domain_name(self):
         try:
             with open('/etc/resolv.conf', 'r') as file:
@@ -2204,6 +2212,40 @@ class ConfigManager:
             os.remove(os.path.join(section_path, entry))
         os.rmdir(section_path)
 
+    def move_config(self,cfgfolder):
+        if not cfgfolder or cfgfolder == '~':
+            cfgfolder = self.prompt("Please enter the root where folder .config/froster will be created.", 
+                                    os.path.expanduser('~'))
+        new_config_root = os.path.join(cfgfolder,'.config','froster')
+        old_config_root = self.config_root_local
+        config_root_file = os.path.join(self.config_root_local,'config_root')
+        
+        if os.path.exists(config_root_file):
+            with open(config_root_file, 'r') as f:
+                old_config_root = f.read()
+        
+        #print(old_config_root,new_config_root)
+
+        if not os.path.isdir(new_config_root):
+            if os.path.isdir(old_config_root):
+                shutil.move(old_config_root,new_config_root)              
+            else:
+                os.makedirs(new_config_root,exist_ok=True)
+            print(f'  Froster config moved to "{new_config_root}"\n')
+            if os.path.exists(self.awsconfigfile):
+                target=os.path.join(new_config_root,'aws_config')
+                if not os.path.exists(target):
+                    shutil.copyfile(self.awsconfigfile, target)
+                    print(f'  ~/.aws/config copied to "{new_config_root}/aws_config"\n')  
+
+        self.config_root = new_config_root
+
+        os.makedirs(old_config_root,exist_ok=True)
+        with open(config_root_file, 'w') as f:
+            f.write(self.config_root)
+
+        return True
+
     def copy_compiled_binary_from_github(self,user,repo,compilecmd,binary,targetfolder):
         tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
         response = requests.get(tarball_url, stream=True, allow_redirects=True)
@@ -2263,7 +2305,7 @@ def parse_arguments():
             Bootstrap the configurtion, install dependencies and setup your environment.
             You will need to answer a few questions about your cloud and hpc setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    parser_config.add_argument('cfgfolder', action='store', default="~",  nargs='*',
+    parser_config.add_argument('cfgfolder', action='store', default="~", nargs='?',
         help='configuration root folder where .config/froster will be created ' +
                 '(default=~ home directory)  ')
     
