@@ -95,16 +95,16 @@ def main():
         defdom = cfg.get_domain_name()
         whoami = getpass.getuser()
 
-        multiuser=False
-        if first_time and args.cfgfolder == '~':
+        # determine if we need to move the (shared) config to a new folder 
+        movecfg=False
+        if first_time and args.cfgfolder == '' and cfg.config_root == cfg.config_root_local:
             if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?'):
-                multiuser=True
-        if multiuser or args.cfgfolder != '~':
-            multiuser=True
+                movecfg=True
+        elif args.cfgfolder:
+            movecfg=True
+        if movecfg:
             if cfg.move_config(args.cfgfolder):
-                print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/config and ~/.aws/credentials\n')
-            else:
-                return False
+                print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
 
         # domain-name not needed right now
         #domain = cfg.prompt('Enter your domain name:',
@@ -130,7 +130,10 @@ def main():
         cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
         cfg.create_aws_configs()
 
-        aws_region = cfg.get_aws_region()
+        aws_region = cfg.get_aws_region('aws')
+        if not aws_region:
+            aws_region = cfg.get_aws_region()
+
         if not aws_region:
             aws_region =  cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
                                  cfg.get_aws_regions())
@@ -142,6 +145,7 @@ def main():
         allowed_aws_profiles = ['default', 'aws', 'AWS'] # for accessing glacier use one of these
         profmsg = 1
         profs = cfg.get_aws_profiles()
+
         for prof in profs:
             if prof in allowed_aws_profiles:
                 cfg.set_aws_config(prof, 'region', aws_region)
@@ -150,13 +154,15 @@ def main():
                 elif prof == 'default': 
                     cfg.write('general', 'aws_profile', 'default')
                 cfg.create_s3_bucket(bucket, prof)
+
+        for prof in profs:
+            if prof in allowed_aws_profiles:
                 continue
             if profmsg == 1:
                 print('\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
                 profmsg = 0
             if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?','yes'):
                 continue 
-
             profile={'name': '', 'provider': '', 'storage_class': ''}
             pendpoint = ''
             pregion = ''
@@ -1657,10 +1663,12 @@ class ConfigManager:
         self.aws_region = self.get_aws_region(profile)
 
         if not config.has_section(profile):
-            print (f'~/.aws/credentials has no section for profile {profile}')
+            if self.args.debug:
+                print (f'~/.aws/credentials has no section for profile {profile}')
             return False
         if not config.has_option(profile, 'aws_access_key_id'):
-            print (f'~/.aws/credentials has no entry aws_access_key_id in section/profile {profile}')
+            if self.args.debug:
+                print (f'~/.aws/credentials has no entry aws_access_key_id in section/profile {profile}')
             return False
         
         # Get the AWS access key and secret key from the specified profile
@@ -1714,7 +1722,10 @@ class ConfigManager:
             with open(rootfile, 'r') as myfile:
                 theroot = myfile.read().strip()
                 if not os.path.isdir(theroot):
-                    raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
+                    if not self.ask_yes_no(f'{rootfile} points to a shared config that does not exist. Do you want to configure {theroot} now?'):
+                        print (f"Please remove file {rootfile} to continue with a single user config.")
+                        sys.exit(1)
+                        #raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
         return theroot
 
     def _get_section_path(self, section):
@@ -1884,16 +1895,19 @@ class ConfigManager:
         with open(src_file, 'w') as src_configfile:
             src_parser.write(src_configfile)
 
-        #print(f"Ini-section copied from {src_file} to {dest_file}")
-        #print(f"Missing entries in source from destination copied back to {src_file}")
+        if self.args.debug:
+            print(f"Ini-section copied from {src_file} to {dest_file}")
+            print(f"Missing entries in source from destination copied back to {src_file}")
 
     def check_s3_credentials(self, profile='default'):
         from botocore.exceptions import NoCredentialsError, EndpointConnectionError, ClientError
         try:
+            print(f'  Checking credentials for profile "{profile}" ... ', end='')
             session = boto3.Session(profile_name=profile)
             ep_url = self.get_aws_s3_session_endpoint_url(profile)
             s3_client = session.client('s3', endpoint_url=ep_url)            
             s3_client.list_buckets()
+            print('Done.')
             return True
         except NoCredentialsError:
             print("No AWS credentials found. Please check your access key and secret key.")
@@ -1990,7 +2004,7 @@ class ConfigManager:
             config.set(section, key, value)
         with open(os.path.expanduser("~/.aws/config"), 'w') as configfile:
             config.write(configfile)
-        if profile != 'default':
+        if profile != 'default' and not self.args.cfgfolder: #when moving cfg it still writes to old folder
             self.replicate_ini(f'profile {profile}',self.awsconfigfile,self.awsconfigfileshr)
         return True
     
@@ -2010,7 +2024,8 @@ class ConfigManager:
             endpoint_url = s3_config.get('s3_section', 'endpoint_url')
             return endpoint_url
         except (configparser.NoSectionError, configparser.NoOptionError):
-            #print("  No endpoint_url found in aws profile:", profile)
+            if self.args.debug:
+                print("  No endpoint_url found in aws profile:", profile)
             return None
         
     def get_aws_s3_session_endpoint_url(self, profile='default'):
@@ -2029,7 +2044,8 @@ class ConfigManager:
             #print(f'* get_aws_region for profile {profile}:', session.region_name)
             return session.region_name
         except:
-            print('  cannot retrieve AWS region, no profile')
+            if self.args.debug:
+                print(f'  cannot retrieve AWS region for profile {profile}, no valid profile or credentials')
             return ""
     
     def get_aws_regions(self, profile='default', provider='AWS'):
@@ -2053,8 +2069,8 @@ class ConfigManager:
     def check_bucket_access(self, bucket_name, profile='default'):
         from botocore.exceptions import ClientError
         if not self.check_s3_credentials(profile):
-            #return False 
-            print('check_s3_credentials failed')
+            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
+            return False
         session = boto3.Session(profile_name=profile)
         ep_url = self.get_aws_s3_session_endpoint_url(profile)
         s3 = session.client('s3', endpoint_url=ep_url)
@@ -2080,7 +2096,7 @@ class ConfigManager:
         try:
             test_object_key = "test_write_access.txt"
             s3.put_object(Bucket=bucket_name, Key=test_object_key, Body="Test write access")
-            #print(f"Successfully wrote to {bucket_name}")
+            #print(f"Successfully wrote test to {bucket_name}")
 
             # Clean up by deleting the test object
             s3.delete_object(Bucket=bucket_name, Key=test_object_key)
@@ -2094,11 +2110,9 @@ class ConfigManager:
         from botocore.exceptions import BotoCoreError, ClientError      
         if not self.check_s3_credentials(profile):
             print(f"Cannot create bucket '{bucket_name}' with these credentials")
-            print('check_s3_credentials failed')
-            #return False 
-        #s3_client = boto3.client('s3')
+            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
+            return False 
         region = self.get_aws_region(profile)
-        #print(f'Create bucket in region "{region}" !')
         session = boto3.Session(profile_name=profile)
         ep_url = self.get_aws_s3_session_endpoint_url(profile)
         s3_client = session.client('s3', endpoint_url=ep_url)        
@@ -2223,7 +2237,7 @@ class ConfigManager:
                 if len(content) == 1:
                     return content[0].strip()
                 else:
-                    return content
+                    return content.strip()
 
     def delete(self, section, entry):
         entry_path = self._get_entry_path(section, entry)
@@ -2240,36 +2254,44 @@ class ConfigManager:
         os.rmdir(section_path)
 
     def move_config(self,cfgfolder):
-        if not cfgfolder or cfgfolder == '~':
-            cfgfolder = self.prompt("Please enter the root where folder .config/froster will be created.", 
+        if not cfgfolder and self.config_root == self.config_root_local:
+                cfgfolder = self.prompt("Please enter the root where folder .config/froster will be created.", 
                                     os.path.expanduser('~'))
-        new_config_root = os.path.join(cfgfolder,'.config','froster')
+        if cfgfolder:
+            new_config_root = os.path.join(os.path.expanduser(cfgfolder),'.config','froster')
+        else:
+            new_config_root = self.config_root
         old_config_root = self.config_root_local
         config_root_file = os.path.join(self.config_root_local,'config_root')
         
         if os.path.exists(config_root_file):
             with open(config_root_file, 'r') as f:
-                old_config_root = f.read()
+                old_config_root = f.read().strip()
         
         #print(old_config_root,new_config_root)
+        if old_config_root == new_config_root:
+            return True
 
         if not os.path.isdir(new_config_root):
             if os.path.isdir(old_config_root):
-                shutil.move(old_config_root,new_config_root)              
-            else:
-                os.makedirs(new_config_root,exist_ok=True)
-            print(f'  Froster config moved to "{new_config_root}"\n')
+                shutil.move(old_config_root,new_config_root) 
+                if os.path.isdir(old_config_root):
+                    try:
+                        os.rmdir(old_config_root)
+                    except:
+                        pass
+                print(f'  Froster config moved to "{new_config_root}"\n')
+            os.makedirs(new_config_root,exist_ok=True)
             if os.path.exists(self.awsconfigfile):
-                target=os.path.join(new_config_root,'aws_config')
-                if not os.path.exists(target):
-                    shutil.copyfile(self.awsconfigfile, target)
-                    print(f'  ~/.aws/config copied to "{new_config_root}/aws_config"\n')  
+                self.replicate_ini('ALL',self.awsconfigfile,os.path.join(new_config_root,'aws_config'))
+                print(f'  ~/.aws/config replicated to "{new_config_root}/aws_config"\n')  
 
         self.config_root = new_config_root
 
         os.makedirs(old_config_root,exist_ok=True)
         with open(config_root_file, 'w') as f:
             f.write(self.config_root)
+            print(f'  Switched configuration path to "{self.config_root}"')
 
         return True
 
@@ -2332,7 +2354,7 @@ def parse_arguments():
             Bootstrap the configurtion, install dependencies and setup your environment.
             You will need to answer a few questions about your cloud and hpc setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    parser_config.add_argument('cfgfolder', action='store', default="~", nargs='?',
+    parser_config.add_argument('cfgfolder', action='store', default="", nargs='?',
         help='configuration root folder where .config/froster will be created ' +
                 '(default=~ home directory)  ')
     
