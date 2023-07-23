@@ -101,7 +101,9 @@ def main():
                 multiuser=True
         if multiuser or args.cfgfolder != '~':
             multiuser=True
-            if not cfg.move_config(args.cfgfolder):
+            if cfg.move_config(args.cfgfolder):
+                print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/config and ~/.aws/credentials\n')
+            else:
                 return False
 
         # domain-name not needed right now
@@ -124,6 +126,8 @@ def main():
         #aws_region =  cfg.prompt('Please enter your AWS region for S3',
         #                         'us-west-2|general|aws_region','string')
 
+        # if there is a shared ~/.aws/config copy it over
+        cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
         cfg.create_aws_configs()
 
         aws_region = cfg.get_aws_region()
@@ -1627,6 +1631,7 @@ class ConfigManager:
         self.homepaths = self._get_home_paths()
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
+        self.awsconfigfileshr = os.path.join(self.config_root, 'aws_config')
         self.bucket = self.read('general','bucket')
         self.archivepath = os.path.join( 
              self.bucket,
@@ -1827,6 +1832,61 @@ class ConfigManager:
                 print("Please respond with 'yes' or 'no' (or 'y' or 'n').")
 
 
+    def replicate_ini(self, section, src_file, dest_file):
+
+        # copy an ini section from source to destination
+        # sync values in dest that do not exist in src back to src
+        # best used for sync of AWS profiles.
+        # if section==ALL copy all but section called default
+
+        if not os.path.exists(src_file):
+            return
+
+        # Create configparser objects
+        src_parser = configparser.ConfigParser()
+        dest_parser = configparser.ConfigParser()
+
+        # Read source and destination files
+        src_parser.read(src_file)
+        dest_parser.read(dest_file)
+
+        if section == 'ALL':
+            sections = src_parser.sections()
+            sections.remove('default') if 'default' in sections else None
+        else:
+            sections = [section]
+
+        for section in sections:
+            # Get the section from source and destination files
+            src_section_data = dict(src_parser.items(section))
+            dest_section_data = dict(dest_parser.items(section)) if dest_parser.has_section(section) else {}
+
+            # If section does not exist in source or destination file, add it
+            if not src_parser.has_section(section):
+                src_parser.add_section(section)
+
+            if not dest_parser.has_section(section):
+                dest_parser.add_section(section)
+
+            # Write the data into destination file
+            for key, val in src_section_data.items():
+                dest_parser.set(section, key, val)
+
+            # Write the data into source file
+            for key, val in dest_section_data.items():
+                if key not in src_section_data:
+                    src_parser.set(section, key, val)
+
+        # Save the changes in the destination and source files
+        with open(dest_file, 'w') as dest_configfile:
+            dest_parser.write(dest_configfile)
+
+        with open(src_file, 'w') as src_configfile:
+            src_parser.write(src_configfile)
+
+        #print(f"Ini-section copied from {src_file} to {dest_file}")
+        #print(f"Missing entries in source from destination copied back to {src_file}")
+
     def check_s3_credentials(self, profile='default'):
         from botocore.exceptions import NoCredentialsError, EndpointConnectionError, ClientError
         try:
@@ -1862,49 +1922,13 @@ class ConfigManager:
             print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
             return False
 
-    def check_s3_credentials_old(self, profile='default'):
-        # checks the credentials and returns the AWS ARN
-        from botocore.exceptions import ClientError, NoCredentialsError
-        session = boto3.Session(profile_name=profile)
-        sts = session.client('sts')
-        #sts = boto3.client('sts')
-        try:
-            response = sts.get_caller_identity() 
-            if self.args.debug:
-                print (f"Authentication success: Your ARN is {response['Arn']}!")           
-            return response['Arn']
-        except NoCredentialsError:
-            print("Error: No credentials found.")
-            print("run 'froster config' to generate credentials in ~/.aws/credentials")
-            return False
-        except ClientError as e:
-            error_code = e.response['Error']['Code']             
-            if error_code == 'RequestTimeTooSkewed':
-                print(f"The time difference between S3 storage and your computer is too high:\n{e}")
-            elif error_code == 'InvalidAccessKeyId':                
-                print(f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
-            elif error_code == 'SignatureDoesNotMatch':                
-                if "Signature expired" in str(e): 
-                    print(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
-                    return False
-                else:
-                    print(f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")         
-            elif error_code == 'InvalidClientTokenId':
-                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
-            else:
-                print(f"Error validating credentials for profile {profile}: {e}")
-            print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
-            return False
-        except Exception as e:
-            print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
-            return False
     
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
         config = configparser.ConfigParser()        
         # Read the AWS config file ---- optional, we only require a creds file
-        # if os.path.exists(self.awsconfigfile):
-        #     config.read(self.awsconfigfile)        
+        if os.path.exists(self.awsconfigfile):
+            config.read(self.awsconfigfile)        
         # Read the AWS credentials file
         if os.path.exists(self.awscredsfile):
             config.read(self.awscredsfile)        
@@ -1912,8 +1936,9 @@ class ConfigManager:
         profiles = []
         for section in config.sections():
             profile_name = section.replace("profile ", "") #.replace("default", "default")
-            profiles.append(profile_name)        
-        return profiles
+            profiles.append(profile_name)
+        # convert list to set and back to list to remove dups
+        return list(set(profiles))
 
     def create_aws_configs(self,access_key=None, secret_key=None, region=None):
 
@@ -1965,6 +1990,8 @@ class ConfigManager:
             config.set(section, key, value)
         with open(os.path.expanduser("~/.aws/config"), 'w') as configfile:
             config.write(configfile)
+        if profile != 'default':
+            self.replicate_ini(f'profile {profile}',self.awsconfigfile,self.awsconfigfileshr)
         return True
     
     def get_aws_s3_endpoint_url(self, profile='default'):
