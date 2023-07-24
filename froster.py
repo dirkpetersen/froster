@@ -50,11 +50,11 @@ def main():
         errfld=[]
         for fld in args.folders:            
             ret = arch.test_write(fld)
-            if ret==13:
+            if ret==13 or ret == 2:
                 errfld.append(fld)
         if errfld:
             errflds='" "'.join(errfld)
-            print(f'Error: You need write access to folder(s) "{errflds}" for this operation.')
+            print(f'Error: folder(s) "{errflds}" need to exist and you need write access to them.')
             return False
 
     if args.subcmd in ['config', 'cnf']:
@@ -504,7 +504,8 @@ def main():
             print (f'Deleting archived objects in {fld}, please wait ...', flush=True)
             rowdict = arch.archive_json_get_row(fld)
             if rowdict == None:
-                return False
+                print(f'Folder "{fld}" not in archive.')
+                continue
             archive_folder = rowdict['archive_folder']
 
             # compare archive hashes with local hashfile
@@ -596,7 +597,8 @@ def main():
             # get archive storage location
             rowdict = arch.archive_json_get_row(fld)
             if rowdict == None:
-                return False
+                print(f'Folder "{fld}" not in archive.')
+                continue
             archive_folder = rowdict['archive_folder']
 
             rclone = Rclone(args,cfg)
@@ -866,8 +868,12 @@ class Archiver:
                 print(f"An unexpected PermissionError occurred in {directory}:\n{e}")            
                 return False
         except Exception as e:
-            print(f"An unexpected error occurred in {directory}:\n{e}")
-            return False
+            if e.errno == 2:
+                #No such file or directory:
+                return 2
+            else:
+                print(f"An unexpected error occurred in {directory}:\n{e}")
+                return False
 
     def gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in os.walk(directory):
@@ -1914,7 +1920,6 @@ class ConfigManager:
             ep_url = self.get_aws_s3_session_endpoint_url(profile)
             s3_client = session.client('s3', endpoint_url=ep_url)            
             s3_client.list_buckets()
-            print('Done.')
             return True
         except NoCredentialsError:
             print("No AWS credentials found. Please check your access key and secret key.")
