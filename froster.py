@@ -180,13 +180,14 @@ def main():
                 cfg.prompt(f'S3 Provider for profile "{prof}"',profile['provider'])
             
             pregion = cfg.get_aws_region(prof) 
-            if not pregion:
-                pregion =  cfg.prompt('Please select the S3 region',
-                                 cfg.get_aws_regions(prof,profile['provider']))
-            pregion = \
-                cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
-            if pregion:
-                cfg.set_aws_config(prof, 'region', pregion)
+            if not profile['provider'] in ['Ceph', 'Minio']:
+                if not pregion:
+                    pregion =  cfg.prompt('Please select the S3 region',
+                                    cfg.get_aws_regions(prof,profile['provider']))
+                pregion = \
+                    cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
+                if pregion:
+                    cfg.set_aws_config(prof, 'region', pregion)
 
             if profile['provider'] != 'AWS':
                 if not pendpoint:
@@ -210,7 +211,7 @@ def main():
                 else:
                     profile['storage_class'] = 'STANDARD'
 
-            if pregion and profile['provider']:
+            if profile['provider']:
                 cfg.write('profiles', prof, profile) 
             else:
                 print(f'\nConfig for AWS profile "{prof}" was not saved.')
@@ -1442,6 +1443,7 @@ class Rclone:
         #    command = ['/usr/bin/rclone', 'mount'] + list(args)            
         #command.append('--daemon') # not reliable, just starting background process
         command.append('--allow-non-empty')
+        command.append('--default-permissions')
         command.append('--read-only')
         command.append('--no-checksum')
         command.append('--quiet')
@@ -1935,6 +1937,8 @@ class ConfigManager:
             ep_url = self.get_aws_s3_session_endpoint_url(profile)
             s3_client = session.client('s3', endpoint_url=ep_url)            
             s3_client.list_buckets()
+            if verbose:
+                print('Done.')
             return True
         except NoCredentialsError:
             print("No AWS credentials found. Please check your access key and secret key.")
@@ -2150,10 +2154,15 @@ class ConfigManager:
                     print(f'S3 bucket {bucket_name} exists')
                 return True
         try:
-            response = s3_client.create_bucket(
-                Bucket=bucket_name,
-                CreateBucketConfiguration={'LocationConstraint': region}
-                )
+            if region:
+                response = s3_client.create_bucket(
+                    Bucket=bucket_name,
+                    CreateBucketConfiguration={'LocationConstraint': region}
+                    )
+            else:
+                response = s3_client.create_bucket(
+                    Bucket=bucket_name,
+                    )              
             print(f"Created S3 Bucket '{bucket_name}'")
         except BotoCoreError as e:
             print(f"BotoCoreError: {e}")
