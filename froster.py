@@ -179,8 +179,8 @@ def main():
             profile['provider'] = \
                 cfg.prompt(f'S3 Provider for profile "{prof}"',profile['provider'])
             
-            pregion = cfg.get_aws_region(prof) 
             if not profile['provider'] in ['Ceph', 'Minio']:
+                pregion = cfg.get_aws_region(prof) 
                 if not pregion:
                     pregion =  cfg.prompt('Please select the S3 region',
                                     cfg.get_aws_regions(prof,profile['provider']))
@@ -188,7 +188,7 @@ def main():
                     cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
                 if pregion:
                     cfg.set_aws_config(prof, 'region', pregion)
-
+            
             if profile['provider'] != 'AWS':
                 if not pendpoint:
                     pendpoint=cfg.get_aws_s3_endpoint_url(prof)
