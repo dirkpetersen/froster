@@ -20,6 +20,7 @@ __app__ = 'Froster, a simple archiving tool'
 __version__ = '0.5'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
+MAXHOTSPOTS = 0
 
 def main():
     
@@ -27,7 +28,7 @@ def main():
     arch = Archiver(args, cfg)
     global TABLECSV
     global SELECTEDFILE
-
+    
     if args.debug:
         pass
 
@@ -88,6 +89,8 @@ def main():
             cfg.write('general', 'min_index_folder_size_gib', "10")
         if not cfg.read('general', 'min_index_folder_size_avg_mib'):
             cfg.write('general', 'min_index_folder_size_avg_mib', "10")
+        if not cfg.read('general', 'max_hotspots_display_entries'):
+            cfg.write('general', 'max_hotspots_display_entries', "5000")
 
         print('\n*** Asking a few questions ***')
         print('*** For most you can just hit <Enter> to accept the default. ***\n')
@@ -634,10 +637,13 @@ class Archiver:
         self.cfg = cfg
         self.archive_json = os.path.join(cfg.config_root, 'froster-archives.json')
         x = self.cfg.read('general', 'min_index_folder_size_gib')
-        self.thresholdGB = int(x) if x else 3
+        self.thresholdGB = int(x) if x else 10
         x = self.cfg.read('general', 'min_index_folder_size_avg_mib')
         self.thresholdMB = int(x) if x else 10
-
+        x = self.cfg.read('general', 'max_hotspots_display_entries')
+        global MAXHOTSPOTS
+        MAXHOTSPOTS = int(x) if x else 5000
+        
         self.url = 'https://api.reporter.nih.gov/v2/projects/search'
         self.grants = []
 
@@ -1288,6 +1294,7 @@ class TableHotspots(App[list]):
         table = self.query_one(DataTable)
         fh = open(SELECTEDFILE, 'r')
         rows = csv.reader(fh)
+        rows = rows[:MAXHOTSPOTS]
         #rows = csv.reader(io.StringIO(CSV))
         table.add_columns(*next(rows))
         table.add_rows(rows)
@@ -1308,6 +1315,7 @@ class TableArchive(App[list]):
     def on_mount(self) -> None:
         table = self.query_one(DataTable)        
         rows = csv.reader(io.StringIO(TABLECSV))
+        rows = rows[:MAXHOTSPOTS]
         table.add_columns(*next(rows))
         table.add_rows(rows)
 
