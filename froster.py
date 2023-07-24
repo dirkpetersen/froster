@@ -202,7 +202,9 @@ def main():
                     cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
 
             if not profile['storage_class']:
-                if pendpoint and not pendpoint.endswith('amazonaws.com'):
+                if profile['provider'] == 'AWS':
+                    profile['storage_class'] = s3_storage_class
+                else:
                     profile['storage_class'] = 'STANDARD'
 
             if pregion and profile['provider']:
@@ -282,9 +284,6 @@ def main():
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():            
             return False
         
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
-        
         if not args.folders:            
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
             if not os.path.exists(hsfolder):                
@@ -316,7 +315,10 @@ def main():
                 print('Error: Hotspots table did not return result')
                 return False
             args.folders.append(retline[5])
-        
+
+        if not cfg.check_bucket_access(cfg.bucket):
+            return False
+
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
@@ -364,9 +366,6 @@ def main():
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
             return False
         
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
-        
         if not args.folders:
             TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
             if TABLECSV == None:
@@ -387,7 +386,10 @@ def main():
                 cfg._set_env_vars(cfg.awsprofile)
                 if args.debug:
                     print("AWS profile:", cfg.awsprofile)
-        
+
+        if not cfg.check_bucket_access(cfg.bucket):
+            return False
+
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
@@ -471,9 +473,6 @@ def main():
 
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
             return False
-        
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
 
         if not args.folders:
             TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
@@ -493,6 +492,9 @@ def main():
                 cfg.awsprofile = retline[2]
                 args.awsprofile = cfg.awsprofile
                 cfg._set_env_vars(cfg.awsprofile)
+
+        if not cfg.check_bucket_access(cfg.bucket):
+            return False
 
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
@@ -560,9 +562,6 @@ def main():
 
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
             return False
-        
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
 
         interactive=False
         if not args.folders:
@@ -584,6 +583,9 @@ def main():
                 cfg.awsprofile = retline[2]
                 args.awsprofile = cfg.awsprofile
                 cfg._set_env_vars(cfg.awsprofile)      
+
+        if not cfg.check_bucket_access(cfg.bucket):
+            return False
 
         hostname = platform.node()
         for fld in args.folders:
@@ -1900,10 +1902,11 @@ class ConfigManager:
             print(f"Ini-section copied from {src_file} to {dest_file}")
             print(f"Missing entries in source from destination copied back to {src_file}")
 
-    def check_s3_credentials(self, profile='default'):
+    def _check_s3_credentials(self, profile='default', verbose=False):
         from botocore.exceptions import NoCredentialsError, EndpointConnectionError, ClientError
         try:
-            print(f'  Checking credentials for profile "{profile}" ... ', end='')
+            if verbose:
+                print(f'  Checking credentials for profile "{profile}" ... ', end='')
             session = boto3.Session(profile_name=profile)
             ep_url = self.get_aws_s3_session_endpoint_url(profile)
             s3_client = session.client('s3', endpoint_url=ep_url)            
@@ -2069,7 +2072,7 @@ class ConfigManager:
                 
     def check_bucket_access(self, bucket_name, profile='default'):
         from botocore.exceptions import ClientError
-        if not self.check_s3_credentials(profile):
+        if not self._check_s3_credentials(profile):
             print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
             return False
         session = boto3.Session(profile_name=profile)
@@ -2109,7 +2112,7 @@ class ConfigManager:
 
     def create_s3_bucket(self, bucket_name, profile='default'):
         from botocore.exceptions import BotoCoreError, ClientError      
-        if not self.check_s3_credentials(profile):
+        if not self._check_s3_credentials(profile, verbose=True):
             print(f"Cannot create bucket '{bucket_name}' with these credentials")
             print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
             return False 
