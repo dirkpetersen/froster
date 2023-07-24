@@ -318,7 +318,12 @@ def main():
             if len(retline) < 6:
                 print('Error: Hotspots table did not return result')
                 return False
-            args.folders.append(retline[5])
+            
+            if cfg.ask_yes_no(f'Folder: "{retline[5]}"\nDo you want to start archiving now?'):
+                args.folders.append(retline[5])
+            else:
+                print (f'You can start this process later by using this command:\n  froster archive "{retline[5]}"')
+                return False
 
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
             print(f'Profile "{args.awsprofile}" not found.')
