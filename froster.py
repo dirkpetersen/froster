@@ -735,6 +735,8 @@ class Archiver:
                         row[0]=self.uid2user(row[0])                        
                         row[1]=self.daysago(self._get_newest_file_atime(row[5],row[1]))
                         row[2]=self.daysago(row[2])
+                        row[3]=int(row[3])
+                        row[4]=int(row[4])
                         row[6]=self.gid2group(row[6])
                         writer.writerow(row)
                         numhotspots+=1
