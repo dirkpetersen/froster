@@ -16,8 +16,8 @@ import requests, duckdb, boto3, botocore
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
-__app__ = 'Froster, a simple archiving tool'
-__version__ = '0.5'
+__app__ = 'Froster, a simple S3/Glacier archiving tool'
+__version__ = '0.6'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 MAXHOTSPOTS = 0
