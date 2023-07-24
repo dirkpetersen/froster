@@ -7,8 +7,8 @@ archiving many Terabytes of data on HPC systems
 # internal modules
 import sys, os, argparse, json, configparser, csv, platform
 import urllib3, datetime, tarfile, zipfile, textwrap
-import concurrent.futures, hashlib, fnmatch, io, math
-import shutil, tempfile, glob, shlex, subprocess, signal
+import concurrent.futures, hashlib, fnmatch, io, math, signal
+import shutil, tempfile, glob, shlex, subprocess, itertools
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
@@ -1297,7 +1297,7 @@ class TableHotspots(App[list]):
         #rows = rows[:MAXHOTSPOTS]
         #rows = csv.reader(io.StringIO(CSV))
         table.add_columns(*next(rows))
-        table.add_rows(rows)
+        table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.exit(self.query_one(DataTable).get_row(event.row_key))
@@ -1317,7 +1317,7 @@ class TableArchive(App[list]):
         rows = csv.reader(io.StringIO(TABLECSV))
         #rows = rows[:MAXHOTSPOTS]
         table.add_columns(*next(rows))
-        table.add_rows(rows)
+        table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.exit(self.query_one(DataTable).get_row(event.row_key))
