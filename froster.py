@@ -98,7 +98,7 @@ def main():
         # determine if we need to move the (shared) config to a new folder 
         movecfg=False
         if first_time and args.cfgfolder == '' and cfg.config_root == cfg.config_root_local:
-            if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?'):
+            if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', 'no'):
                 movecfg=True
         elif args.cfgfolder:
             movecfg=True

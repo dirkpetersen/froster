@@ -1,6 +1,6 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
-Froster is an easy to use tool that crawls your file system, suggests folders to archive, uploads your picks to Glacier or other S3-like storage, and retrieves it back or mounts the S3 storage in your on-premise file system.
+Froster is an easy-to-use tool that crawls your file system, suggests folders to archive, checksums and uploads your picks to Glacier or other S3-like storage, and retrieves data back from archive with a single command. It can also mount the S3/Glacier storage in your on-premise file system and manage the [boto3 credentials/profiles](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html) that are used by the AWS CLI and other tools. 
 
 ## Table of Contents
 * [Problem](#problem)
@@ -18,6 +18,7 @@ Froster is an easy to use tool that crawls your file system, suggests folders to
 ## Problem 
 
 This problem may have been solved many times, but I have not found an easy open source solution for large scale archiving to free up disk space on a primary storage system. Researchers, who have hundreds of terabytes or petabytes of data, need to make a decison what to archive and where to archive it to. Archiving processes can run for days and they can fail easily. They need to resume automatically until completed and be validated (e.g. checksum comparison with the source) and finally there needs to be some metadata when it was archived, and where the data went and where the original location was. 
+A special issue with AWS Glacier appears to be that today it is implemented as a backend to S3 and only the Glacier options not supported by S3 require the use of a Glacier API. This is not well documented in many howtos. 
 
 ### Motivation 
 
@@ -31,11 +32,11 @@ There were 2 motivations to create `froster`:
 
 1. First we need to crawl the file system that likely has billions of files to find data that is actually worth archiving. For this we will use the the well known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all file metadata found. 
 1. We want to focus on archiving folders instead of individual files as data that resides in the same folder will typically belong together. For this we will filter pwalk's CSV file with [DuckDB](https://duckdb.org) and get a new list (CSV) of the largest folders sorted by size. 
-1. We pass the new list (CSV) to an [interactive tool] based on [Textual](https://textual.textualize.io/) that displays a table with folders along with their total size in GiB and their average file sizes in MiB (MiBAvg) along with their age in days since last accessed (AccD) and modified (ModD). You can scroll down and right using your mouse and if you hit enter it will select that folder for archiving.
+1. We pass the new list (CSV) to an interactive tool based on [Textual](https://textual.textualize.io/) that displays a table with folders along with their total size in GiB and their average file sizes in MiB (MiBAvg) as well as their age in days since last accessed (AccD) and modified (ModD). You can scroll down and right using your mouse and if you hit enter it will archive that folder right away.
 ![image](https://user-images.githubusercontent.com/1427719/230824467-6a6e5873-5a48-4656-8d75-42133a60ba30.png)
 1. If the average file size in the folder is small (size TBD) we will archive the folder (tar.gz) before uploading (not yet implemented) 
-1. Pass the folder to a tool like [Rclone](https://rclone.org) and execute a copy job in the background. 
-1. Nowadays most researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long running data copy jobs and Slurm can automatically re-run copy jobs that failed. You can also use the `--no-slurm` option to execute the job in the foreground. This is the default, if slurm is not installed on your Linux machine. 
+1. Pass the folder to [Rclone](https://rclone.org) and execute a copy job in the background. 
+1. Many researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long running data copy jobs and Slurm can automatically re-run copy jobs that failed. You can also use the `--no-slurm` option to execute the job in the foreground. This is the default, if slurm is not installed on your Linux machine. 
 1. Prior to copying, we put files with checksums (e.g. `.froster.md5sum`) in the folders that are to be archived to allow for an easy subsequent checksum comparison as the user must have evidence, that all data was archived correctly (size and md5sum comparison) 
 1. After files have been deleted from the source folder, we put a file `Where-did-the-files-go.txt` in the source folder that describes where the data was archived to, along with instructions how to get the data back. 
 1. WARNING: The current implementaton of Froster ignores sub-folders as only files that reside direcly in a chosen folder will be archived. There are two reasons for it: 1. If your goal is cost reduction rather than data management, most folders are small and are not worth archiving. We want to focus on the few large folders (Hotspots) that make a difference. 2. Many storage administrators are uncomfortable with users moving hundreds of terabytes. If an entire folder tree can be achived with a single command, it may create bottlenecks in the network or storage systems. 
@@ -52,8 +53,8 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
 
 ### configuring 
 
-The config is mostly automated but you need to answer a few questions for which you can accept defaults in most cases. 
-Sometimes the 'rclone' download times out, and you need to hit ctrl+c and start `froster config` again.
+The config is mostly automated (just run `froster config`) but you need to answer a few questions for which you can accept defaults in most cases. 
+Sometimes the 'rclone' download times out, and you need to hit ctrl+c and start `froster config` again. If you would like to work on the same configuration and database with other users, you can put those in a shared folder by answering 'yes' to "Do you want to collaborate?" or by running `froster config /your/shared/folder` any time. If you start with a personal configuration and change to a shared configuration at a later time the personal configuration will automatically be migrated to the shared folder.
 
 ```
 dp@grammy:~$ froster config
@@ -65,34 +66,96 @@ Compilation successful: gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk
 *** Asking a few questions ***
 *** For most you can just hit <Enter> to accept the default. ***
 
-Enter your domain name: mydomain.edu
-  [Default: domain.edu]
-Enter your email address: first.last@domain.edu
-  [Default: username@domain.edu]
-Please enter the S3 bucket to archive to:
-  [Default: froster]
-Please enter the archive root path in your S3 bucket:
+  Do you want to collaborate with other users on archive and restore? [y/N]
+*** Enter your email address: ***
+  [Default: dp@mydomain.edu] first.last@domain.edu
+*** Please confirm/edit S3 bucket name to be created in all used profiles.: ***
+  [Default: froster-first-last-domain-edu]
+*** Please confirm/edit the archive root path inside your S3 bucket: ***
   [Default: archive]
-Please enter the AWS S3 storage class: 
+*** Please confirm/edit the AWS S3 Storage class: ***
   [Default: DEEP_ARCHIVE]
-Please enter the AWS profile in ~/.aws:
-  [Default: default]
-Please enter your AWS region for S3:
+*** Please select AWS S3 region (e.g. us-west-2 for Oregon): ***
+  (1) us-west-2
+  (2) us-west-1
+  (3) us-east-2
+  (4) us-east-1
+  (5) sa-east-1
+  (6) me-south-1
+  (7) me-central-1
+  (8) eu-west-3
+  .
+  .
+  Enter the number of your selection: 1
+*** Please confirm/edit the AWS S3 region: ***
   [Default: us-west-2]
-  
+
+  Verify that bucket 'froster-first-last-domain-edu' is configured ...
+  Checking credentials for profile "aws" ... Done.
+Created S3 Bucket 'froster-first-last-domain-edu'
+Applied AES256 encryption to S3 bucket 'froster-first-last-domain-edu'
+  Checking credentials for profile "default" ... Done.
+
 Found additional profiles in ~/.aws and need to ask a few more questions.
 
-S3 Provider for "myceph" (e.g Ceph, Wasabi, Minio, Other): Ceph
-  [Default: Other]
-S3 Endpoint for "myceph" (e.g https://s3.domain.com): https://myceph.mydomain.com
-S3 region for "myceph" (default=""):
+Do you want to configure profile "moin"? [Y/n] n
+Do you want to configure profile "idrive"? [Y/n] y
+*** S3 Provider for profile "idrive": ***
+  (1) S3
+  (2) GCS
+  (3) Wasabi
+  (4) IDrive
+  (5) Ceph
+  (6) Minio
+  (7) Other
+  Enter the number of your selection: 4
+*** Confirm/edit S3 region for profile "idrive": ***
+  [Default: us-or]
+*** S3 Endpoint for profile "idrive" (e.g https://s3.domain.com): ***
+  [Default: https://v2u8.or.idrivee2-42.com]
+  Checking credentials for profile "idrive" ... Done.
+Created S3 Bucket 'froster-first-last-domain-edu'
+Applied AES256 encryption to S3 bucket 'froster-first-last-domain-edu'
+Do you want to configure profile "wasabi"? [Y/n] y
+*** S3 Provider for profile "wasabi": ***
+  (1) S3
+  (2) GCS
+  (3) Wasabi
+  (4) IDrive
+  (5) Ceph
+  (6) Minio
+  (7) Other
+  Enter the number of your selection: 3
+*** Confirm/edit S3 region for profile "wasabi": ***
+  [Default: us-west-1]
+*** S3 Endpoint for profile "wasabi" (e.g https://s3.domain.com): ***
+  [Default: https://s3.us-west-1.wasabisys.com]
+  Checking credentials for profile "wasabi" ... Done.
+Created S3 Bucket 'froster-first-last-domain-edu'
+
+*** And finally a few questions how your HPC uses local scratch space ***
+*** This config is optional and you can hit ctrl+c to cancel any time ***
+*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***
+
+*** How do you request local scratch from Slurm?: ***
+  [Default: --gres disk:1024]
+*** Is there a user script that provisions local scratch?: ***
+  [Default: mkdir-scratch.sh]
+*** Is there a user script that tears down local scratch at the end?: ***
+  [Default: rmdir-scratch.sh]
+*** What is the local scratch root ?: ***
+  [Default: /mnt/scratch]
 
 Done!    
 ```
 
 When running `froster config` you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the lowest cost storage solution available and it takes only 12 hours to retrieve your data with the lowest cost retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
 
-Please note that Froster expects a profile named 'default', 'aws' or 'AWS' in ~/.aws/credentials which will be used for the Amazon cloud. If Froster finds other profiles it will ask you questions about providers and endpoints. If you do not want to configure addional 3rd party storage providers you can just hit "Enter" multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and end points.
+Please note that Froster expects a profile named 'default', 'aws' or 'AWS' in ~/.aws/credentials which will be used for the Amazon cloud. If Froster finds other profiles it will ask you questions about providers, regions and endpoints. If you do not want to configure addional 3rd party storage providers you can just hit "n" multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and endpoints.
+
+It is important to note that Froster uses the same bucket name for S3 and all S3 compatible storage systems it supports. This makes it easier if data needs to be migrated between multiple storage systems. The selected bucket will be created if it does not exist and encryption will be applied (at least in AWS)
+
+Froster has been tested with many S3 compatible storage systems such as GCS, Wasabi, IDrive, Ceph and Minio have been tested. At this time only AWS supports the DEEP_ARCHIVE storage class.
 
 #### Changing defaults with aliases
 
@@ -175,6 +238,12 @@ Files deleted:
 myfile3.csv
 myfile1.csv
 myfile2.csv
+```
+
+Shortly after a folder has been deleted you need to grab a single file from the archive. For this you simply execute `froster mount` and select the folder you would like to access. Now you can copy single files or access them with your existing pipelines. Use `froster umount` to unmount the folder.
+
+```
+froster mount
 ```
 
 After a while you may want to restore the data. Again, you forgot the actual folder location and invoke `froster restore` without the folder argument to see the same dialog with a list of achived folders. Select a folder and hit "Enter" to restore immediatelty.
