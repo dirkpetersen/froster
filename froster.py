@@ -2071,7 +2071,8 @@ class ConfigManager:
     def get_aws_region(self, profile='default'):
         try:
             session = boto3.Session(profile_name=profile)
-            #print(f'* get_aws_region for profile {profile}:', session.region_name)
+            if self.args.debug:
+                print(f'* get_aws_region for profile {profile}:', session.region_name)
             return session.region_name
         except:
             if self.args.debug:
