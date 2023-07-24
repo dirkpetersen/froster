@@ -280,9 +280,6 @@ def main():
         fld = '" "'.join(args.folders)
         if args.debug:
             print (f'default cmdline: froster.py archive "{fld}"')
-
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():            
-            return False
         
         if not args.folders:            
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
@@ -316,6 +313,9 @@ def main():
                 return False
             args.folders.append(retline[5])
 
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            print(f'Profile "{args.awsprofile}" not found.')
+            return False
         if not cfg.check_bucket_access(cfg.bucket):
             return False
 
@@ -362,13 +362,11 @@ def main():
         fld = '" "'.join(args.folders)
         if args.debug:
             print (f'default cmdline: froster.py restore "{fld}"')
-
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-            return False
         
         if not args.folders:
             TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
             if TABLECSV == None:
+                print("No archives available.")
                 return False
             app = TableArchive()
             retline=app.run()
@@ -387,6 +385,9 @@ def main():
                 if args.debug:
                     print("AWS profile:", cfg.awsprofile)
 
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            print(f'Profile "{args.awsprofile}" not found.')
+            return False
         if not cfg.check_bucket_access(cfg.bucket):
             return False
 
@@ -471,12 +472,10 @@ def main():
         if args.debug:
             print (f'default cmdline: froster.py delete "{fld}"')
 
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-            return False
-
         if not args.folders:
             TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
             if TABLECSV == None:
+                print("No archives available.")
                 return False
             app = TableArchive()
             retline=app.run()
@@ -493,6 +492,9 @@ def main():
                 args.awsprofile = cfg.awsprofile
                 cfg._set_env_vars(cfg.awsprofile)
 
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            print(f'Profile "{args.awsprofile}" not found.')
+            return False
         if not cfg.check_bucket_access(cfg.bucket):
             return False
 
@@ -560,14 +562,12 @@ def main():
         if args.debug:
             print (f'default cmdline: froster.py mount "{fld}"')
 
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-            return False
-
         interactive=False
         if not args.folders:
             interactive=True
             TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile'])
             if TABLECSV == None:
+                print("No archives available.")
                 return False
             app = TableArchive()
             retline=app.run()
@@ -584,6 +584,9 @@ def main():
                 args.awsprofile = cfg.awsprofile
                 cfg._set_env_vars(cfg.awsprofile)      
 
+        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+            print(f'Profile "{args.awsprofile}" not found.')
+            return False
         if not cfg.check_bucket_access(cfg.bucket):
             return False
 
