@@ -172,7 +172,7 @@ def main():
             profile['name'] = prof
 
             if not profile['provider']: 
-                profile['provider'] = ['S3', 'GCS', 'Wasabi', 'IDrive', 'Ceph', 'Minio', 'Other']
+                profile['provider'] = ['AWS', 'GCS', 'Wasabi', 'IDrive', 'Ceph', 'Minio', 'Other']
             profile['provider'] = \
                 cfg.prompt(f'S3 Provider for profile "{prof}"',profile['provider'])
             
@@ -185,26 +185,27 @@ def main():
             if pregion:
                 cfg.set_aws_config(prof, 'region', pregion)
 
-            if not pendpoint:
-                pendpoint=cfg.get_aws_s3_endpoint_url(prof)
+            if profile['provider'] != 'AWS':
                 if not pendpoint:
-                    if 'Wasabi' == profile['provider']:
-                        pendpoint = f'https://s3.{pregion}.wasabisys.com' 
-                    elif 'GCS' == profile['provider']:
-                        pendpoint = 'https://storage.googleapis.com' 
+                    pendpoint=cfg.get_aws_s3_endpoint_url(prof)
+                    if not pendpoint:
+                        if 'Wasabi' == profile['provider']:
+                            pendpoint = f'https://s3.{pregion}.wasabisys.com' 
+                        elif 'GCS' == profile['provider']:
+                            pendpoint = 'https://storage.googleapis.com' 
 
-            pendpoint = \
-                cfg.prompt(f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)',pendpoint)
-            if pendpoint:
-                if not pendpoint.startswith('http'):
-                    pendpoint = 'https://' + pendpoint
-                cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
+                pendpoint = \
+                    cfg.prompt(f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)',pendpoint)
+                if pendpoint:
+                    if not pendpoint.startswith('http'):
+                        pendpoint = 'https://' + pendpoint
+                    cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
 
             if not profile['storage_class']:
                 if pendpoint and not pendpoint.endswith('amazonaws.com'):
                     profile['storage_class'] = 'STANDARD'
 
-            if pendpoint and profile['provider']:
+            if pregion and profile['provider']:
                 cfg.write('profiles', prof, profile) 
             else:
                 print(f'\nConfig for AWS profile "{prof}" was not saved.')
