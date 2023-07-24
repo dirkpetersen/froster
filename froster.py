@@ -179,15 +179,14 @@ def main():
             profile['provider'] = \
                 cfg.prompt(f'S3 Provider for profile "{prof}"',profile['provider'])
             
-            if not profile['provider'] in ['Ceph', 'Minio']:
-                pregion = cfg.get_aws_region(prof) 
-                if not pregion:
-                    pregion =  cfg.prompt('Please select the S3 region',
-                                    cfg.get_aws_regions(prof,profile['provider']))
-                pregion = \
-                    cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
-                if pregion:
-                    cfg.set_aws_config(prof, 'region', pregion)
+            pregion = cfg.get_aws_region(prof) 
+            if not pregion:
+                pregion =  cfg.prompt('Please select the S3 region',
+                                cfg.get_aws_regions(prof,profile['provider']))
+            pregion = \
+                cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
+            if pregion:
+                cfg.set_aws_config(prof, 'region', pregion)
             
             if profile['provider'] != 'AWS':
                 if not pendpoint:
@@ -2096,6 +2095,8 @@ class ConfigManager:
             return ['us-west-1', 'us-east-1', '']
         elif provider == 'IDrive':
             return ['us-or', 'us-va', 'us-la', '']
+        elif provider == 'Ceph':
+            return [':default-placement', 'us-east-1', '']
                 
     def check_bucket_access(self, bucket_name, profile='default'):
         from botocore.exceptions import ClientError
