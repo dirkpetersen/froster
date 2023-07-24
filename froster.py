@@ -1294,7 +1294,7 @@ class TableHotspots(App[list]):
         table = self.query_one(DataTable)
         fh = open(SELECTEDFILE, 'r')
         rows = csv.reader(fh)
-        rows = rows[:MAXHOTSPOTS]
+        #rows = rows[:MAXHOTSPOTS]
         #rows = csv.reader(io.StringIO(CSV))
         table.add_columns(*next(rows))
         table.add_rows(rows)
@@ -1315,7 +1315,7 @@ class TableArchive(App[list]):
     def on_mount(self) -> None:
         table = self.query_one(DataTable)        
         rows = csv.reader(io.StringIO(TABLECSV))
-        rows = rows[:MAXHOTSPOTS]
+        #rows = rows[:MAXHOTSPOTS]
         table.add_columns(*next(rows))
         table.add_rows(rows)
 
