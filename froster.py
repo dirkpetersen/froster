@@ -744,6 +744,7 @@ class Archiver:
                         row[3]=int(row[3])
                         row[4]=int(row[4])
                         row[6]=self.gid2group(row[6])
+                        row[7]=int(row[7])
                         writer.writerow(row)
                         numhotspots+=1
                         totalbytes+=row[9]
@@ -792,17 +793,18 @@ class Archiver:
                               source.lstrip(os.path.sep))
 
         if os.path.isfile(os.path.join(source,".froster.md5sum")):
-            print(f'The hashfile ".froster.md5sum" already exists in {source} from a previous archiving process.')
-            print('You need to manually rename the file before you can proceed.')
-            print('Without a valid ".froster.md5sum" in a folder you will not be able to use "froster" for restores')
+            print(f'  The hashfile ".froster.md5sum" already exists in {source} from a previous archiving process.')
+            print('  You need to manually rename the file before you can proceed.')
+            print('  Without a valid ".froster.md5sum" in a folder you will not be able to use "froster" for restores')
             return False
 
-        print ('Generating hashfile .froster.md5sum ...')
+        print ('  Generating hashfile .froster.md5sum ...')
         ret = self.gen_md5sums(source,'.froster.md5sum')
         if ret == 13: # cannot write to folder 
             return False
         elif not ret:
-            print ('Could not create hashfile .froster.md5sum. Perhaps there are no files?')
+            print ('  Could not create hashfile .froster.md5sum.') 
+            print ('  Perhaps there are no files or the folder does not exist?')
             return False
         hashfile = os.path.join(source,'.froster.md5sum')
 
@@ -1285,17 +1287,15 @@ class TableHotspots(App[list]):
     def compose(self) -> ComposeResult:
         table = DataTable()
         table.focus()
+        table.zebra_stripes = True    
         table.cursor_type = "row"
-        #table.fixed_columns = 1
-        table.fixed_rows = 1
+        table.styles.max_height = "99vh"
         yield table
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         fh = open(SELECTEDFILE, 'r')
         rows = csv.reader(fh)
-        #rows = rows[:MAXHOTSPOTS]
-        #rows = csv.reader(io.StringIO(CSV))
         table.add_columns(*next(rows))
         table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
@@ -1307,15 +1307,15 @@ class TableArchive(App[list]):
     def compose(self) -> ComposeResult:
         table = DataTable()
         table.focus()
+        table.zebra_stripes = True
         table.cursor_type = "row"
-        #table.fixed_columns = 1
-        table.fixed_rows = 1
+        table.styles.max_height = "99vh"
+        #table.fixed_rows = 1
         yield table
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)        
         rows = csv.reader(io.StringIO(TABLECSV))
-        #rows = rows[:MAXHOTSPOTS]
         table.add_columns(*next(rows))
         table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
@@ -1323,15 +1323,11 @@ class TableArchive(App[list]):
         self.exit(self.query_one(DataTable).get_row(event.row_key))
 
 
-#if __name__ == "__main__":
-#    app = TableApp()
-#    print(app.run())
-
 class Rclone:
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
-        self.rc = f'{self.cfg.binfolder}/rclone'
+        self.rc = os.path.join(self.cfg.binfolder,'rclone')
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
