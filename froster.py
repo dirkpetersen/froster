@@ -2156,7 +2156,7 @@ class ConfigManager:
                     print(f'S3 bucket {bucket_name} exists')
                 return True
         try:
-            if region:
+            if region and region != 'default-placement':
                 response = s3_client.create_bucket(
                     Bucket=bucket_name,
                     CreateBucketConfiguration={'LocationConstraint': region}
