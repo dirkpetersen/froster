@@ -238,17 +238,21 @@ def main():
         if not args.folders:
             print('you must point to at least one folder in your command line')
             return False
+        if args.pwalkcsv and not os.path.exists(args.pwalkcsv):
+            print(f'File "{args.pwalkcsv}" does not exist.')
+            return False
 
         for fld in args.folders:
             if not os.path.isdir(fld):
-                print(f'The folder {fld} does not exist. Check your command line!')
-                return False
+                print(f'The folder {fld} does not exist.')
+                if not args.pwalkcsv:
+                    return False
             
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
                 print (f'Indexing folder {fld}, please wait ...', flush=True)
-                arch.index(fld)            
+                arch.index(fld)
         else:
             se = SlurmEssentials(args, cfg)
             label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')            
@@ -647,7 +651,7 @@ class Archiver:
     
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
-        con.execute('PRAGMA experimental_parallel_csv=TRUE;')
+        #con.execute('PRAGMA experimental_parallel_csv=TRUE;') # now standard 
         con.execute(f'PRAGMA threads={self.args.cores};')
 
         locked_dirs = ''
