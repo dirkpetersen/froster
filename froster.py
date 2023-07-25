@@ -130,7 +130,8 @@ def main():
         #                         'us-west-2|general|aws_region','string')
 
         # if there is a shared ~/.aws/config copy it over
-        cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
+        if cfg.config_root_local != cfg.config_root:
+            cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
         cfg.create_aws_configs()
 
         aws_region = cfg.get_aws_region('aws')
@@ -2097,7 +2098,7 @@ class ConfigManager:
         elif provider == 'IDrive':
             return ['us-or', 'us-va', 'us-la', '']
         elif provider == 'Ceph':
-            return [':default-placement', 'us-east-1', '']
+            return ['default-placement', 'us-east-1', '']
                 
     def check_bucket_access(self, bucket_name, profile='default'):
         from botocore.exceptions import ClientError
