@@ -6,7 +6,7 @@ archiving many Terabytes of data on HPC systems
 """
 # internal modules
 import sys, os, argparse, json, configparser, csv, platform
-import urllib3, datetime, tarfile, zipfile, textwrap
+import urllib3, datetime, tarfile, zipfile, textwrap, tarfile
 import concurrent.futures, hashlib, fnmatch, io, math, signal
 import shutil, tempfile, glob, shlex, subprocess, itertools
 if sys.platform.startswith('linux'):
@@ -55,7 +55,7 @@ def main():
                 errfld.append(fld)
         if errfld:
             errflds='" "'.join(errfld)
-            print(f'Error: folder(s) "{errflds}" need to exist and you need write access to them.')
+            print(f'Error: folder(s) "{errflds}" must exist and you need write access to them.')
             return False
 
     if args.subcmd in ['config', 'cnf']:
@@ -84,7 +84,9 @@ def main():
                                 '/rclone-v*/',binfolder)
             print("Done!",flush=True)
 
-        # Basic setup, focus the indexer on larger folders and file sizes 
+        # Basic setup, focus the indexer on larger folders and file sizes
+        if not cfg.read('general', 'max_small_file_size_kib'):
+            cfg.write('general', 'max_small_file_size_kib', '1024')
         if not cfg.read('general', 'min_index_folder_size_gib'):
             cfg.write('general', 'min_index_folder_size_gib', "10")
         if not cfg.read('general', 'min_index_folder_size_avg_mib'):
@@ -535,12 +537,17 @@ def main():
                 print('Checksum test was not successful.')
                 return False
             
+            # if there is a restore that needs to be deleted a second time
+            # make sure that all files extracted from the archive are deleted again 
+            xdel = arch.delete_tar_content(fld)
+
             # delete files if confirmed that hashsums are identical
             delete_files=[]
             with open(hashfile, 'r') as inp:
                 for line in inp:
                     fn = line.strip().split('  ', 1)[1]
-                    delete_files.append(fn)
+                    if fn != 'Froster.allfiles.csv':
+                        delete_files.append(fn)
             deleted_files=[]
             for dfile in delete_files:
                 dpath = os.path.join(fld,dfile)
@@ -566,7 +573,10 @@ def main():
                     rme.write(f'\n')
                 print(f'Deleted files and wrote manifest to {readme}')
             else:
-                print(f'No files were deleted.')
+                if xdel > 0:
+                    print(f'Deleted tarred files')
+                else:    
+                    print(f'No files were deleted.')
 
     if args.subcmd in ['mount', 'mnt', 'umount']:
         if args.debug:
@@ -642,6 +652,8 @@ class Archiver:
         self.args = args
         self.cfg = cfg
         self.archive_json = os.path.join(cfg.config_root, 'froster-archives.json')
+        x = self.cfg.read('general', 'max_small_file_size_kib')
+        self.thresholdKB = int(x) if x else 1024
         x = self.cfg.read('general', 'min_index_folder_size_gib')
         self.thresholdGB = int(x) if x else 10
         x = self.cfg.read('general', 'min_index_folder_size_avg_mib')
@@ -804,8 +816,15 @@ class Archiver:
             print('  Without a valid ".froster.md5sum" in a folder you will not be able to use "froster" for restores')
             return False
 
-        print ('  Generating hashfile .froster.md5sum ...')
-        ret = self.gen_md5sums(source,'.froster.md5sum')
+        ret=self._tar_small_files(source,self.thresholdKB)
+        if ret == 13: # cannot write to folder 
+            return False
+        elif not ret:
+            print ('  Could not create Froster.smallfiles.tar') 
+            print ('  Perhaps there are no files or the folder does not exist?')
+            return False
+    
+        ret = self._gen_md5sums(source,'.froster.md5sum')
         if ret == 13: # cannot write to folder 
             return False
         elif not ret:
@@ -873,6 +892,9 @@ class Archiver:
         total=self.convert_size(tbytes)
         print(f'Source and archive are identical. {ttransfers} files with {total} transferred.')
 
+    def archive_recursive(self, folder):
+        pass
+
     def test_write(self, directory):
         testpath=os.path.join(directory,'.froster.test')
         try:
@@ -895,12 +917,13 @@ class Archiver:
                 print(f"An unexpected error occurred in {directory}:\n{e}")
                 return False
 
-    def gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
+    def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in os.walk(directory):
             if no_subdirs and root != directory:
                 break            
             hashpath=os.path.join(root, hash_file)
             try:
+                print(f'  Generating hash file {hash_file} ... ', end='')
                 with open(hashpath, "w") as out_f:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
                         tasks = {}
@@ -920,6 +943,7 @@ class Archiver:
                 if os.path.getsize(hashpath) == 0:
                     os.remove(hashpath)
                     return False
+                print('Done.')
             except PermissionError as e:
                 if e.errno == 13:  # Check if error number is 13 (Permission denied)
                     print("Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
@@ -930,7 +954,108 @@ class Archiver:
             except Exception as e:
                 print(f"An unexpected error occurred:\n{e}")
                 return False
-            return True
+        return True
+        
+    def _tar_small_files(self, directory, smallsize=1e6, no_subdirs=True):
+        for root, dirs, files in os.walk(directory):
+            if no_subdirs and root != directory:
+                break
+            tar_path=os.path.join(root,'Froster.smallfiles.tar')
+            csv_path=os.path.join(root,'Froster.allfiles.csv')
+            if os.path.exists(tar_path) or os.path.exists(csv_path):
+                print('{tar_path} or {csv_path} alreadly exists, skipping folder {root}')
+                continue 
+            try:
+                print(f'  Creating Froster.smallfiles.tar ... ', end='')
+                with tarfile.open(tar_path, "w") as tar, open(csv_path, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    # write the header
+                    writer.writerow(["File", "Size(bytes)", "Date-Modified", "Date-Accessed", "Tarred"])
+                    for filen in files:
+                        file_path = os.path.join(root, filen)
+                        # check if file is larger than X MB
+                        size = os.path.getsize(file_path)
+                        # get last modified and accessed dates 
+                        mtime = os.path.getmtime(file_path)
+                        atime = os.path.getatime(file_path)
+                        mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+                        adate = datetime.datetime.fromtimestamp(atime).strftime('%Y-%m-%d %H:%M:%S')
+                        # write file info to the csv file
+                        tarred="No"
+                        if size < smallsize*1024:  # 1e6 bytes is 1 MB  
+                            # add to tar file
+                            tar.add(file_path, arcname=filen)
+                            # remove original file
+                            os.remove(file_path)
+                            tarred="Yes"
+                        writer.writerow([filen, size, mdate, adate, tarred])
+                print('Done.')  
+            except PermissionError as e:
+                if e.errno == 13:  # Check if error number is 13 (Permission denied)
+                    print("Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
+                    return 13
+                else:
+                    print(f"An unexpected PermissionError occurred:\n{e}")            
+                    return False
+            except Exception as e:
+                print(f"An unexpected error occurred:\n{e}")
+                return False
+        return True
+        
+    def _untar_files(self, directory, no_subdirs=True):
+        for root, dirs, files in os.walk(directory):
+            if no_subdirs and root != directory:
+                break
+            tar_path=os.path.join(root, 'Froster.smallfiles.tar')
+            if not os.path.exists(tar_path):
+                #print('{tar_path} does not exist, skipping folder {root}')
+                continue 
+            try:
+                print(f'  Untarring Froster.smallfiles.tar ... ', end='')
+                with tarfile.open(tar_path, "r") as tar:
+                    tar.extractall(path=root)
+                os.remove(tar_path)
+                print('Done.')
+            except PermissionError as e:
+                if e.errno == 13:  # Check if error number is 13 (Permission denied)
+                    print("Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
+                    return 13
+                else:
+                    print(f"An unexpected PermissionError occurred:\n{e}")            
+                    return False
+            except Exception as e:
+                print(f"An unexpected error occurred:\n{e}")
+                return False
+        return True
+    
+    def delete_tar_content(self, directory):
+        deleted = 0
+        tar_path = os.path.join(directory,'Froster.smallfiles.tar')
+        if os.path.exists(tar_path):
+            with tarfile.open(tar_path, 'r') as tar:
+                for member in tar.getmembers():
+                    mp = os.path.join(directory,member.name)
+                    if os.path.exists(mp):
+                        os.remove(mp)
+                        deleted += 1
+        csv_path = os.path.join(directory,'Froster.allfiles.csv')
+        if os.path.exists(csv_path):
+            file_list = []
+            with open(csv_path, 'r') as csvfile:
+                # Use csv reader
+                reader = csv.DictReader(csvfile)
+                # Iterate over each row in the csv
+                for row in reader:
+                    # If "Tarred" is "Yes", append the "File" to the list
+                    if row['Tarred'] == 'Yes':
+                        file_list.append(row['File'])
+            for f in file_list:
+                fp = os.path.join(directory,f)
+                if os.path.exists(fp):
+                    os.remove(fp)
+                    deleted += 1
+        return deleted
+        # now also 
 
     def restore(self, folder):
 
@@ -972,7 +1097,7 @@ class Archiver:
             print('Copying was not successful.')
             return False
             # lastError could contain: Object in GLACIER, restore first
-        
+
         ttransfers=ret['stats']['totalTransfers']
         tbytes=ret['stats']['totalBytes']
         if self.args.debug:
@@ -986,15 +1111,14 @@ class Archiver:
         #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
         #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
         #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
-        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
+        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}   
+        # 
+        self.delete_tar_content(target)
 
-        print ('Generating hashfile .froster-restored.md5sum ...')
-        ret = self.gen_md5sums(target,'.froster-restored.md5sum')
+        ret = self._gen_md5sums(target,'.froster-restored.md5sum')
         if ret == 13: # cannot write to folder 
             return False
-
         hashfile = os.path.join(target,'.froster-restored.md5sum')
-
         ret = rclone.checksum(hashfile,source)
         if self.args.debug:
             print('*** RCLONE checksum ret ***:\n', ret, '\n')
@@ -1005,6 +1129,14 @@ class Archiver:
         
         total=self.convert_size(tbytes)
         print(f'Target and archive are identical. {ttransfers} files with {total} transferred.')
+
+        ret=self._untar_files(target)
+        if ret == 13: # cannot write to folder 
+            return False
+        elif not ret:
+            print ('  Could not create hashfile .froster.md5sum.') 
+            print ('  Perhaps there are no files or the folder does not exist?')
+            return False        
         return -1
     
     def md5sumex(self, file_path):
@@ -2440,6 +2572,10 @@ def parse_arguments():
         '''))
     parser_archive.add_argument( '--age-mtime', '-m', dest='agemtime', action='store_true', default=False,
         help="Use modified file time (mtime) instead of accessed time (atime)")
+    parser_archive.add_argument( '--recursive', '-r', dest='recursive', action='store_true', default=False,
+        help="Archive the current folder and all sub-folders")
+    parser_archive.add_argument( '--no-tar', '-n', dest='notar', action='store_true', default=False,
+        help="Do not move small files to tar file before archiving")  
     parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to archive (separated by space), ' +
                 'the last folder in this list is the target   ')
