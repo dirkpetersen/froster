@@ -816,13 +816,14 @@ class Archiver:
             print('  Without a valid ".froster.md5sum" in a folder you will not be able to use "froster" for restores')
             return False
 
-        ret=self._tar_small_files(source,self.thresholdKB)
-        if ret == 13: # cannot write to folder 
-            return False
-        elif not ret:
-            print ('  Could not create Froster.smallfiles.tar') 
-            print ('  Perhaps there are no files or the folder does not exist?')
-            return False
+        if not self.args.notar:
+            ret=self._tar_small_files(source,self.thresholdKB)
+            if ret == 13: # cannot write to folder 
+                return False
+            elif not ret:
+                print ('  Could not create Froster.smallfiles.tar') 
+                print ('  Perhaps there are no files or the folder does not exist?')
+                return False
     
         ret = self._gen_md5sums(source,'.froster.md5sum')
         if ret == 13: # cannot write to folder 
