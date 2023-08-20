@@ -35,13 +35,13 @@ There were two motivations behind the creation of `Froster``:
 1. Our focus is on archiving folders rather than individual files, as data that resides in the same folder typically belongs together. To this end, we will filter the pwalk's CSV file with [DuckDB](https://duckdb.org), yielding a new list (CSV) of the largest folders sorted by size.
 1. We pass this new list (CSV) to an interactive tool based on [Textual](https://textual.textualize.io/), which displays a table of folders alongside their total size in GiB, their average file sizes in MiB (MiBAvg), as well as their age in days since last accessed (AccD) and modified (ModD). Users can scroll down and right using the mouse, and hitting enter will trigger the archiving of the selected folder.
    ![image](https://user-images.githubusercontent.com/1427719/230824467-6a6e5873-5a48-4656-8d75-42133a60ba30.png)
-1. If the average file size in the folder is small (size TBD), we will archive the folder (tar.gz) before uploading it ([feature not yet implemented](https://github.com/dirkpetersen/froster/issues/4).
+1. All files < 1MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. to avoid tarring you can set max_small_file_size_kib to 0.
 1. We pass the folder to [Rclone](https://rclone.org) to execute a copy job in the background.
 1. Many researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long-running data copy jobs, and Slurm can automatically re-run copy jobs that failed. Users can also use the `--no-slurm` option to execute the job in the foreground. This is the default if Slurm is not installed on the Linux machine.
 1. Prior to copying, we place files with checksums (e.g., `.froster.md5sum`) in the folders to be archived. This allows for an easy subsequent checksum comparison, providing the user with evidence that all data was correctly archived (through size and md5sum comparisons).
 1. After files have been deleted from the source folder, we place a file named `Where-did-the-files-go.txt` in the source folder. This file describes where the data was archived, along with instructions on how to retrieve the data.
-1. WARNING: The current implementation of Froster ignores sub-folders, as only files that reside directly in a chosen folder will be archived. There are two reasons for this: First, if your goal is cost reduction rather than data management, most folders are small and not worth archiving. We want to focus on the few large folders (Hotspots) that make a difference. Secondly, many storage administrators are uncomfortable with users moving hundreds of terabytes. If an entire folder tree can be archived with a single command, it may create bottlenecks in the network or storage systems.
-However, there is a feature request for implementing [--recursive archiving](https://github.com/dirkpetersen/froster/issues/5)
+1. By default, Froster ignores sub-folders, as only files that reside directly in a chosen folder will be archived. There are two reasons for this: First, if your goal is cost reduction rather than data management, most folders are small and not worth archiving. We want to focus on the few large folders (Hotspots) that make a difference. Secondly, many storage administrators are uncomfortable with users moving hundreds of terabytes. If an entire folder tree can be archived with a single command, it may create bottlenecks in the network or storage systems.
+However, you can use the `--recursive` option with the archive command to include all sub-folders
 
 ## using Froster 
 
@@ -183,6 +183,26 @@ Some advanced configuration settings are not offered through a user inferface bu
 ```
 DEFAULT_STORAGE_CLASS=$(cat ~/.config/froster/general/s3_storage_class)
 ```
+
+a few advanced settings at ~/.config/froster/general deserve more explanation:
+
+* min_index_folder_size_gib (Default: 10)
+
+If the sum of all file sizes in one folder level is larger than this value in GiB that folder will be included in a hotspots file which is generated using the `froster index` command  
+
+
+* min_index_folder_size_avg_mib (Default: 10)
+
+If min_index_folder_size_gib is true and if the average file size in one folder level is larger than this value in MiB that folder will be included in a hotspots file which is generated using the `froster index` command  
+
+* max_hotspots_display_entries (Default: 5000)
+
+The maximum number of entries that will be shown in the dialog once a hotspots file is selected after using the `froster archive` command.
+
+* max_small_file_size_kib (Default: 1024)
+
+If a file is smaller than this size, it will be moved to a file Froster.smallfiles.tar at the same folder level before uploading when running the `froster archive` command. This is useful because Glacier consumes an overhead of about 40 KiB for each uploaded file. If you want to avoid tarring files set max_small_file_size_kib to 0.
+
 
 ### Standard usage
 
@@ -409,9 +429,11 @@ optional arguments:
 #### froster archive --help
 
 ```
-dp@grammy:~$ froster archive --help
- 
-uusage: froster archive [-h] [--larger LARGER] [--age AGE] [--age-mtime] [folders ...]
+dp@grammy:~$ ./froster archive --help
+
+usage: froster archive [-h] [--larger LARGER] [--age AGE] [--age-mtime]
+                       [--recursive] [--no-tar]
+                       [folders ...]
 
 positional arguments:
   folders               folders you would like to archive (separated by space), the last folder in this list is the target
@@ -430,6 +452,8 @@ optional arguments:
                         options are set froster will automatically archive
                         all folder meeting these criteria without prompting.
   --age-mtime, -m       Use modified file time (mtime) instead of accessed time (atime)
+  --recursive, -r       Archive the current folder and all sub-folders
+  --no-tar, -n          Do not move small files to tar file before archiving
 ```
 
 #### froster delete --help
