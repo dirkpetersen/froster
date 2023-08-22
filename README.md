@@ -14,6 +14,7 @@ Froster is a user-friendly archiving tool for teams that move data between highe
   * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
 * [Command line help](#command-line-help)
+* [Commercial Solutions](#commercial-solutions)
 
 ## Problem 
 
@@ -518,3 +519,7 @@ optional arguments:
                         (costs from April 2023)
   --no-download, -l     skip download to local storage after retrieval from Glacier
 ```
+
+## Commercial solutions 
+
+Froster can be installed by users without root access in a few seconds and it can work well for small teams. However, since it requires write access to all folders and files it manages. if you are looking for an Enterprise solution managed by IT you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com) . 
