@@ -1,6 +1,6 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
-Froster is a user-friendly tool that scans your file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage onto your on-premise file system and manage the [boto3 credentials/profiles](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html) that are utilized by the AWS CLI and other tools.
+Froster is a user-friendly archiving tool for teams that move data between a posix file systems and S3 like object storage systems such as AWS Glacier. Froster can scan your file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage onto your on-premise file system and manage the [boto3 credentials/profiles](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html) that are utilized by the AWS CLI and other tools.
 
 ## Table of Contents
 * [Problem](#problem)
