@@ -1,4 +1,4 @@
-![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
+n![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
 Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster can scan your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage onto your on-premise file system and manage the [boto3 credentials/profiles](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html) that are utilized by the AWS CLI and other tools.
 
@@ -522,4 +522,4 @@ optional arguments:
 
 ## Commercial solutions 
 
-Froster can be installed by users without root access in a few seconds and it can work well for small teams. However, since it requires write access to all folders and files it manages, it will not scale to many users. If you are rather looking for a feature rich solution managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com) . 
+Froster can be installed by users in a few seconds without requiring root access and it can work well for small teams. However, since it requires write access to all folders and files it manages, it will not scale to many users. If you are rather looking for a feature rich solution managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com) . 
