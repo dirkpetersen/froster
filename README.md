@@ -522,4 +522,5 @@ optional arguments:
 
 ## Commercial solutions 
 
-Froster can be installed by users in a few seconds without requiring root access and it can work well for small teams. However, since it requires write access to all folders and files it manages, it will not scale to many users. If you are rather looking for a feature rich solution managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com) . 
+Froster can be installed by users in a few seconds without requiring root access and it can work well for small teams. However, since it requires write access to all folders and files it manages, it will not scale to many users. If you are rather looking for a feature rich solution managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com).
+Froster is a good on-ramp to a solution such as Starfish. If many users in your organization end up using Froster it is time considering Starfish but if Noone has any use for Froster, Starfish may also not be what you need.
