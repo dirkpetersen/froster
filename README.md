@@ -13,6 +13,10 @@ Froster is a user-friendly archiving tool for teams that move data between highe
     * [Advanced configuration](#advanced-configuration)
   * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
+  * [Special use cases](#special-use-cases)
+    * [Recursive operations](#recursive-operations)
+    * [Tarring small files](#tarring-small-files)
+    * [NIH Life Science metadata](#nih-life-sciences-metadata)
 * [Command line help](#command-line-help)
 * [Commercial Solutions](#commercial-solutions)
 
@@ -287,7 +291,7 @@ Not in Glacier: 0
 Glacier retrievals pending, run this again in up to 12h
 ```
 
-If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`. Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved, the restore to the original folder location will proceed. 
+If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved, the restore to the original folder location will proceed. 
 
 ```
 dp@grammy:~$ froster restore
@@ -349,6 +353,17 @@ Submitted froster archiving job: 22218563
 Check Job Output:
  tail -f froster-archive-+home+gscratch+dpcri+csv-22218563.out
 ```
+
+### Special use cases
+
+
+
+
+    * [Recursive operations](#recursive-operations)
+    * [Tarring small files](#tarring-small-files)
+    * [NIH Life Science metadata](#nih-life-sciences-metadata)
+
+
 
 
 ## Command line help 
@@ -523,4 +538,4 @@ optional arguments:
 ## Commercial solutions 
 
 You can self-install Froster in a few seconds without requiring root access and you can collaborate well in small teams. However, since Froster requires you having write access to all folders and files you manage, it will not scale to many users. If you are rather looking for a feature rich solution managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com).
-Froster is a good on-ramp to a solution such as Starfish. If many users in your organization end up using Froster, it is time considering Starfish as an alternative but if only a handful users find Froster useful, you may not have to grow to a solution such as Starfish. You can access Starfish through a web browser while Froster has a CLI/TUI interface.
+Froster is a good on-ramp to a solution such as Starfish. If many users in your organization end up using Froster, it is time considering Starfish as an alternative but if fewer than a handful users find Froster useful, you may be able to defer your Starfish project until you have a critical mass. You can access many advanced Starfish features through a web browser while Froster has a simple CLI/TUI interface.
