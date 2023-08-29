@@ -525,13 +525,13 @@ def main():
                 if args.debug:
                     print(f'  Archiver.delete({fld}) returned False', flush=True)                
 
-    if args.subcmd in ['mount', 'mnt', 'umount']:
+    if args.subcmd in ['mount', 'mnt']:
         if args.debug:
-            print ("delete:",args.awsprofile, args.mountpoint, args.folders)
+            print ("mount:",args.awsprofile, args.mountpoint, args.folders)
         fld = '" "'.join(args.folders)
 
         if args.debug:
-            print (f'default cmdline: froster.py mount "{fld}"')
+            print (f'default cmdline: froster mount "{fld}"')
 
         interactive=False
         if not args.folders:
@@ -562,6 +562,7 @@ def main():
             return False
 
         hostname = platform.node()
+        rclone = Rclone(args,cfg)
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
             # get archive storage location
@@ -571,29 +572,42 @@ def main():
                 continue
             archive_folder = rowdict['archive_folder']
 
-            rclone = Rclone(args,cfg)
             if args.mountpoint and os.path.isdir(args.mountpoint):
                 fld=args.mountpoint 
-            if args.unmount or args.subcmd == 'umount':
-                print (f'Unmounting folder {fld} ... ', flush=True, end="")
-                rclone.unmount(fld)
-                print('Done!', flush=True)
-            else:
-                print (f'Mounting archive folder at {fld} ... ', flush=True, end="")
-                pid = rclone.mount(archive_folder,fld)
-                print('Done!', flush=True)
-                if interactive:
-                    print(textwrap.dedent(f'''
-                        Note that this mount point will only work on the current machine, 
-                        if you would like to have this work in a batch job you need to enter 
-                        these commands in the beginning and the end of a batch script:
-                        froster mount {fld}
-                        froster umount {fld}
-                        '''))                
+        
+            print (f'Mounting archive folder at {fld} ... ', flush=True, end="")
+            pid = rclone.mount(archive_folder,fld)
+            print('Done!', flush=True)
+            if interactive:
+                print(textwrap.dedent(f'''
+                    Note that this mount point will only work on the current machine, 
+                    if you would like to have this work in a batch job you need to enter 
+                    these commands in the beginning and the end of a batch script:
+                    froster mount {fld}
+                    froster umount {fld}
+                    '''))                
             if args.mountpoint:
                 # we can only mount a single folder if mountpoint is set 
                 break
 
+    if args.subcmd in ['umount'] or args.unmount:
+        rclone = Rclone(args,cfg)
+        mounts = rclone.get_mounts()
+        if len(mounts) == 0:
+            print("No Rclone mounts on this computer.")
+            return False
+        folders = args.folders
+        if len(folders) == 0:
+            TABLECSV="\n".join(mounts)
+            TABLECSV="Mountpoint\n"+TABLECSV
+            app = TableArchive()
+            retline=app.run()
+            folders.append(retline[0])
+        for fld in folders:
+            print (f'Unmounting folder {fld} ... ', flush=True, end="")
+            rclone.unmount(fld)
+            print('Done!', flush=True)
+        
 class Archiver:
     def __init__(self, args, cfg):
         self.args = args
@@ -1813,7 +1827,17 @@ class Rclone:
     def version(self):
         command = [self.rc, 'version']
         return self._run_rc(command)
-    
+
+    def get_mounts(self):
+        mounts = []
+        with open('/proc/mounts', 'r') as f:
+            for line in f:
+                parts = line.split()
+                mount_point, fs_type = parts[1], parts[2]
+                if fs_type.startswith('fuse.rclone'):
+                    mounts.append(mount_point)
+        return mounts
+
     def _get_pids(self, process, full=False):
         process = process.rstrip(os.path.sep)
         if full:
@@ -1836,6 +1860,7 @@ class Rclone:
                 mount_point, fs_type = parts[1], parts[2]
                 if mount_point == folder_path and fs_type.startswith('fuse.rclone'):
                     return True
+
 
     def _add_opt(self, cmd, option, value=None):
         if option in cmd:
