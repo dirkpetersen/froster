@@ -8,7 +8,7 @@ archiving many Terabytes of data on HPC systems
 import sys, os, argparse, json, configparser, csv, platform
 import urllib3, datetime, tarfile, zipfile, textwrap, tarfile
 import concurrent.futures, hashlib, fnmatch, io, math, signal
-import shutil, tempfile, glob, shlex, subprocess, itertools
+import shutil, tempfile, glob, shlex, subprocess, itertools, time
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
@@ -17,7 +17,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import DataTable
 
 __app__ = 'Froster, a simple S3/Glacier archiving tool'
-__version__ = '0.7'
+__version__ = '0.8'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 MAXHOTSPOTS = 0
@@ -284,6 +284,14 @@ def main():
             print(f' tail -f froster-index-{label}-{jobid}.out')
 
     elif args.subcmd in ['archive', 'arc']:
+
+        # Testing NIH reporter UI
+        if args.nih:
+            app = TableNIHGrants()
+            retline=app.run()
+            print("Table returns debug info",retline)
+            return
+
         if args.debug:
             print ("archive:",args.cores, args.awsprofile, args.noslurm,
                    args.larger, args.age, args.agemtime, args.folders)
@@ -590,7 +598,7 @@ def main():
                 # we can only mount a single folder if mountpoint is set 
                 break
 
-    if args.subcmd in ['umount'] or args.unmount:
+    if args.subcmd in ['umount']: #or args.unmount:
         rclone = Rclone(args,cfg)
         mounts = rclone.get_mounts()
         if len(mounts) == 0:
@@ -1678,6 +1686,97 @@ class TableArchive(App[list]):
         self.exit(self.query_one(DataTable).get_row(event.row_key))
 
 
+from textual import on, work
+from textual.app import App, ComposeResult
+from textual.widgets import Label, Input, LoadingIndicator, DataTable
+
+class TableNIHGrants(App[list]):
+    # (6)!
+    CSS = """
+    Input.-valid {
+        border: tall $success 60%;
+    }
+    Input.-valid:focus {
+        border: tall $success;
+    }
+    Input {
+        margin: 1 1;
+    }
+    Label {
+        margin: 1 2;
+    }
+    DataTable {
+        margin: 1 2;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Label("Enter seach terms to link your data with an NIH grant/project")
+        yield Input(
+            placeholder="Enter a part of a grant number, description, PI or Institution ...",
+        )
+        yield LoadingIndicator()
+        table = DataTable()
+        #table.focus()
+        table.zebra_stripes = True
+        table.cursor_type = "row"
+        table.styles.max_height = "99vh"
+        yield table
+
+    def on_mount(self) -> None:
+        self.query_one(LoadingIndicator).display = False
+        self.query_one(DataTable).display = False
+
+    @on(Input.Submitted)
+    def action_submit(self):
+        #self.query_one(Pretty).update("moin")
+        #table = self.query_one(DataTable)        
+        #rows = csv.reader(io.StringIO(TABLECSV))
+        #table.add_columns(*next(rows))
+        #table.add_rows(rows)
+        inp = self.query_one(Input)
+        self.load_data(inp.value)
+        inp.focus()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.exit(self.query_one(DataTable).get_row(event.row_key))
+
+    @work
+    async def load_data(self, searchstr):
+        table = self.query_one(DataTable)
+        self.query_one(LoadingIndicator).display = True
+        table.display = False
+        table.clear(columns=True)
+        #await asyncio.sleep(3)  # Simulate time to load the data
+
+        # data: list[tuple] = [
+        #     ("lane", "swimmer", "country", "time"),
+        #     (4, "Joseph Schooling", "Singapore", 50.39),
+        #     (2, "Michael Phelps", "United States", 51.14),
+        #     (5, "Chad le Clos", "South Africa", 51.14),
+        #     (6, "László Cseh", "Hungary", 51.14),
+        #     (3, "Li Zhuhao", "China", 51.26),
+        #     (8, "Mehdy Metella", "France", 51.58),
+        #     (7, "Tom Shields", "United States", 51.73),
+        #     (1, "Aleksandr Sadovnikov", "Russia", 51.84),
+        #     (10, "Darren Burns", "Scotland", 51.84),
+        # ]
+        
+        rep = NIHReporter()
+        TABLECSV = rep.search_full_csv(searchstr)
+        #print(TABLECSV)
+        #rows = iter(data)
+                
+        rows = csv.reader(io.StringIO(TABLECSV))
+        table.add_columns(*next(rows))
+        table.add_rows(rows)
+
+        table.display = True
+        self.query_one(LoadingIndicator).display = False
+
+        #return data
+        return rows
+
 class Rclone:
     def __init__(self, args, cfg):
         self.args = args
@@ -2009,6 +2108,141 @@ class SlurmEssentials:
 
     def display_job_info(self):
         print(self.job_info)
+
+
+class NIHReporter:
+    # if we use --nih as an argument we query NIH Reporter
+    # for metadata 
+
+    def __init__(self, verbose=False, active=False, years=None):
+        #self.args = args
+        self.verbose = verbose        
+        self.active = active
+        self.years = years
+        self.url = 'https://api.reporter.nih.gov/v2/projects/search'
+        self.exclude_fields = ['Terms', 'AbstractText', 'PhrText']  # pref_terms still included 
+        self.grants = []
+
+    def search_full_csv(self, searchstr):
+        searchstr = self._clean_string(searchstr)
+
+        # Search by Project 
+        print('Project search ...')
+        criteria = { 'project_nums': [searchstr] } 
+        self._post_request(criteria)
+        print('* # Grants:',len(self.grants))
+              
+        # Search by PI
+        print('PI search ...')
+        criteria = { "pi_names": [{"any_name": searchstr}] }
+        self._post_request(criteria)
+        print('* # Grants:',len(self.grants))
+
+        #Search by Organizations 
+        print('Org search ...')
+        criteria = { 'org_names': [searchstr] } 
+        self._post_request(criteria)
+        print('* # Grants:',len(self.grants))
+
+        # Search by text in  "projecttitle", "terms", and "abstracttext"
+        print('Text search ...')
+        criteria =  { 'advanced_text_search': 
+                        { 'operator': 'and', 'search_field': 'all', 
+                            'search_text': searchstr}  
+                    }                     
+        self._post_request(criteria)
+        print('* # Grants:',len(self.grants))
+
+
+        return self._result_csv()
+
+    def _clean_string(self, mystring):
+        mychars = ",:?'$^\%&*!`~+={}\\[]"+'"'
+        for i in mychars:
+            mystring = mystring.replace(i, ' ')
+            #print('mystring:', mystring)
+        return mystring        
+
+    def _post_request(self, criteria):
+        # make request with retries
+        offset = 0; timeout = 30; limit = 500; total = 15000; 
+        max_retries = 5; retry_delay = 1; retry_count = 0
+                  
+        #for retry_count in range(max_retries):
+        try:
+            while offset < total:
+                params = { 'offset': offset, 'limit': limit, 'criteria': criteria, 
+                            'exclude_fields': self.exclude_fields }                    
+                # make request
+                print('Params:', params)
+                #response = requests.post(self.url, json=params, timeout=timeout)
+                response = requests.post(self.url, json=params)
+                # check status code - else return data
+                if response.status_code >= 400 and response.status_code < 500:
+                    print(f"Bad request: {response.text}")
+                    if retry_count < max_retries - 1:
+                        print(f"Retrying after {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                    else:
+                        #raise Exception(f"Failed to complete POST request after {max_retries} attempts")
+                        print (f"Failed to complete POST request after {max_retries} attempts")
+                        return False 
+                else:
+                    json = response.json()
+                    total = json['meta']['total']
+                    if total == 0:
+                        if self.verbose:
+                            print("No records for criteria '{}'".format(criteria))
+                        return
+                    if self.verbose:
+                        print("Found {0} records for criteria '{1}'".format(total, criteria)) 
+                    self.grants += [g for g in json['results']]
+                    if self.verbose:
+                        print("{0} records off {1} total returned ...".format(offset,total),file=sys.stderr)
+                    offset+=limit            
+                    if offset == 15000:
+                        offset == 14999
+                    elif offset > 15000:
+                        return
+        except requests.exceptions.RequestException as e:
+            print(f"POST request failed: {e}")
+            if retry_count < max_retries - 1:
+                print(f"Retrying after {retry_delay} seconds...")
+                time.sleep(retry_delay)
+        #raise Exception(f"Failed to complete POST request after {max_retries} attempts")
+
+    def _result_csv(self):
+        CSV = 'core_project_num, start, end, contact_pi_name, project_title, org_name, project_detail_url, pi_profile_id\n'
+        grants = {}
+        for g in self.grants:
+            #print(json.dumps(g, indent=2))
+            #return
+            core_project_num = str(g.get('core_project_num','')).strip()
+            line = '"{0}",{1},{2},"{3}","{4}",'.format(
+                core_project_num,
+                #str(g.get('fiscal_year','')).strip(),
+                str(g.get('project_start_date','')).strip()[:10], 
+                str(g.get('project_end_date','')).strip()[:10], 
+                str(g.get('contact_pi_name','')).strip(),
+                str(g.get('project_title','')).strip()[:50] 
+                )
+            org=""
+            if g['organization']['org_name']:
+                org=g['organization']['org_name']
+            line += '"{0}","{1}",'.format(
+                str(org.encode('utf-8'),'utf-8'),
+                g.get('project_detail_url','')
+                )
+            for p in g['principal_investigators']:
+                if p.get('is_contact_pi',False):
+                    line += '"{0}"'.format(p.get('profile_id', '')).strip()
+            if not core_project_num in grants:
+                grants[core_project_num] = line
+        for g in grants.values():
+            CSV+=g+'\n'
+            #print(g)
+        #print("{0} total # of grants...".format(len(grants)),file=sys.stderr)
+        return CSV
 
 class ConfigManager:
     # we write all config entries as files to '~/.config'
@@ -2790,6 +3024,7 @@ def parse_arguments():
             works in conjunction with --age <days>. If both
             options are set froster will automatically archive
             all folder meeting these criteria, without prompting.
+            (Currently not implemented)
         '''))
     parser_archive.add_argument('--age', '-a', dest='age', action='store', default=0, 
          help=textwrap.dedent(f'''
@@ -2797,14 +3032,17 @@ def parse_arguments():
             works in conjunction with --larger <GiB>. If both
             options are set froster will automatically archive
             all folder meeting these criteria without prompting.
+            (Currently not implemented)
         '''))
     parser_archive.add_argument( '--age-mtime', '-m', dest='agemtime', action='store_true', default=False,
         help="Use modified file time (mtime) instead of accessed time (atime)")
     parser_archive.add_argument( '--recursive', '-r', dest='recursive', action='store_true', default=False,
         help="Archive the current folder and all sub-folders")
-    parser_archive.add_argument( '--no-tar', '-n', dest='notar', action='store_true', default=False,
+    parser_archive.add_argument( '--no-tar', '-t', dest='notar', action='store_true', default=False,
         help="Do not move small files to tar file before archiving")  
-    parser_archive.add_argument('folders', action='store', default=[],  nargs='*',
+    parser_archive.add_argument( '--nih', '-n', dest='nih', action='store_true', default=False,
+        help="Search and Link Metadata from NIH Reporter")      
+    parser_archive.add_argument('folders', action='store', default=[], nargs='*', 
         help='folders you would like to archive (separated by space), ' +
                 'the last folder in this list is the target   ')
     
