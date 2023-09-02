@@ -3,14 +3,18 @@
 Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster can scan your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and manage the [boto3 credentials/profiles](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html) that are utilized by the AWS CLI and other tools.
 
 ## Table of Contents
+
 * [Problem](#problem)
   * [Motivation](#motivation)
 * [Design](#design)
-* [Using Froster](#using-froster)
+* [Preparing Froster](#preparing-froster)
   * [Installing](#installing)
   * [Configuring](#configuring)
     * [Changing defaults with aliases](#changing-defaults-with-aliases)
+    * [Working with multiple users](#working-with-multiple-users)
+      * [AWS configuration for teams](#aws-configuration-for-teams)
     * [Advanced configuration](#advanced-configuration)
+* [Using Froster](#using-froster)    
   * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
   * [Special use cases](#special-use-cases)
@@ -50,7 +54,7 @@ There were three motivations behind the creation of `Froster`:
 1. Optionally link to NIH metadata with the `archive --nih` option to link to life sciences research projects [More details here](#nih-life-sciences-metadata).
 
 
-## using Froster 
+## Preparing Froster 
 
 ### Installing 
 
@@ -160,14 +164,88 @@ Created S3 Bucket 'froster-first-last-domain-edu'
 Done!    
 ```
 
-When running `froster config`, you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the most cost-effective storage solution available. It takes only 6 hours to retrieve your data with the least expensive retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
+When running `froster config`, you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the most cost-effective storage solution available. It takes only 5-12 hours to retrieve your data with the least expensive retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
 
-Please note that Froster expects a profile named 'default', 'aws', or 'AWS' in ~/.aws/credentials, which will be used for Amazon cloud. If Froster finds other profiles, it will ask you questions about providers, regions, and endpoints. If you do not wish to configure additional 3rd party storage providers, you can simply hit "n" multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and endpoints.
+Please note that Froster expects a profile named 'default', 'aws', or 'AWS' in ~/.aws/credentials, which will be used for the Amazon cloud (AWS). If Froster finds other profiles, it will ask you questions about providers, regions, and endpoints. If you do not wish to configure additional 3rd party storage providers, you can simply hit "n" multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and endpoints.
 
 It's important to note that Froster uses the same bucket name for S3 and all S3-compatible storage systems it supports. This streamlines the process if data needs to be migrated between multiple storage systems. The selected bucket will be created if it does not exist, and encryption will be applied (at least in AWS).
 
 Froster has been tested with numerous S3-compatible storage systems such as GCS, Wasabi, IDrive, Ceph, and Minio. At this time, only AWS supports the DEEP_ARCHIVE storage class.
 
+
+#### working with multiple users 
+
+If we setup a team configuration using `froster config /our/shared/froster/config` Froster knows 3 types of users or roles:
+
+* **Data Stewards**: Users with full write access, they can delete/destroy data in the archive as well as in the local file system
+* **Archive Users**: Data scientists with read only access to the archive bucket, they can restore data or mount the archive into the local file system
+* **Other Users**: Users without access to the archive cannot use froster with this team. However they can setup their own froster configuration using a different bucket and setup a new team. 
+
+The team config requires correct permissions for the AWS bucket (archive) and in your shared Posix file system where the Froster configuration and json database resides. In the Posix file system we need a security group (e.g. an ActiveDirectory groups called data_steward_grp) to give the group of data stewards write access to the shared config. For this we execute 2 commands:
+
+```
+chgrp data_steward_grp /our/shared/froster/config
+chmod 2775 /our/shared/froster/config
+```
+
+The chmod command ensures that the group of data stewards has write access while all other users have read only access to the configuration. Using 2775 instead of 0775 ensures that the group ownership is inherited to all sub-directories when running chmod (SETGID, This chmod command is run automatically each time you run `froster config`)
+
+##### AWS configuration for teams
+
+You typically use AWS Identity and Access Management (IAM) to set up policies for S3. You can define permissions at a granular level, such as by specifying individual API actions or using resource-level permissions for specific S3 buckets and objects.
+
+Here's a step-by-step guide for a simple permission setup for Data Stewards and Archive Users using the IAM Management Console:
+
+1. Open the IAM console at https://console.aws.amazon.com/iam/ and login with an administrative user account.
+1. Create User Groups: It's easier to manage permissions by grouping users. Create two groups: ReadWriteGroup and ReadOnlyGroup. Add the Data Stewards to ReadWriteGroup and the Archive Users to ReadOnlyGroup
+1. Create one each IAM Policy (JSON Files) for ReadWriteGroup and ReadOnlyGroup. The s3:RestoreObject action allows users to restore data from Glacier.
+1. Attach Policies to Groups: In the IAM console, select the ReadWriteGroup group, click on "Add permissions" and then "Attach policies". Create a new policy using the first JSON, and attach it to this group. Do the same for ReadOnlyGroup using the second JSON.
+
+Policy ReadWriteGroup:
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:DeleteObject",
+                "s3:RestoreObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::your-bucket-name",
+                "arn:aws:s3:::your-bucket-name/*"
+            ]
+        }
+    ]
+}
+
+```
+
+Policy ReadOnlyGroup:
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:RestoreObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::your-bucket-name",
+                "arn:aws:s3:::your-bucket-name/*"
+            ]
+        }
+    ]
+}
+
+```
 
 #### Changing defaults with aliases
 
@@ -210,6 +288,7 @@ The maximum number of entries that will be shown in the dialog once a hotspots f
 
 If a file is smaller than this size, it will be moved to a file Froster.smallfiles.tar at the same folder level before uploading with the `froster archive` command. This is useful because Glacier consumes an overhead of about 40 KiB for each uploaded file. If you want to avoid tarring files set max_small_file_size_kib to 0.
 
+## Using Froster 
 
 ### Standard usage
 

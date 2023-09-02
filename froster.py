@@ -77,7 +77,10 @@ def main():
                     'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                     'pwalk', binfolder)
 
-        #if not os.path.exists(os.path.join(binfolder,'rclone')):
+        if os.path.exists(os.path.join(binfolder,'rclone')):
+            if os.path.exists(os.path.join(binfolder,'bak.rclone')):
+                os.remove(os.path.join(binfolder,'bak.rclone'))
+            os.rename(os.path.join(binfolder,'rclone'),os.path.join(binfolder,'bak.rclone'))
         print(" Installing rclone ... please wait ... ", end='', flush=True)
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
         cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
