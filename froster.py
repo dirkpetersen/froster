@@ -5,19 +5,20 @@ Froster (almost) automates the challening task of
 archiving many Terabytes of data on HPC systems
 """
 # internal modules
-import sys, os, argparse, json, configparser, csv, platform
-import urllib3, datetime, tarfile, zipfile, textwrap, tarfile
-import concurrent.futures, hashlib, fnmatch, io, math, signal
-import shutil, tempfile, glob, shlex, subprocess, itertools, time
+import sys, os, argparse, json, configparser, csv, platform, asyncio
+import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time
+import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex
+import shutil, tempfile, glob,  subprocess, itertools
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
 import requests, duckdb, boto3, botocore
+from textual import on, work
 from textual.app import App, ComposeResult
-from textual.widgets import DataTable
+from textual.widgets import Label, Input, LoadingIndicator, DataTable
 
 __app__ = 'Froster, a simple S3/Glacier archiving tool'
-__version__ = '0.8'
+__version__ = '0.8.1'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 MAXHOTSPOTS = 0
@@ -77,15 +78,16 @@ def main():
                     'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                     'pwalk', binfolder)
 
-        if os.path.exists(os.path.join(binfolder,'rclone')):
-            if os.path.exists(os.path.join(binfolder,'bak.rclone')):
-                os.remove(os.path.join(binfolder,'bak.rclone'))
-            os.rename(os.path.join(binfolder,'rclone'),os.path.join(binfolder,'bak.rclone'))
-        print(" Installing rclone ... please wait ... ", end='', flush=True)
-        rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-        cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
-                            '/rclone-v*/',binfolder)
-        print("Done!",flush=True)
+        if not cfg.read('general', 'no-rclone-download'):
+            if os.path.exists(os.path.join(binfolder,'rclone')):
+                if os.path.exists(os.path.join(binfolder,'bak.rclone')):
+                    os.remove(os.path.join(binfolder,'bak.rclone'))
+                os.rename(os.path.join(binfolder,'rclone'),os.path.join(binfolder,'bak.rclone'))
+            print(" Installing rclone ... please wait ... ", end='', flush=True)
+            rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+            cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
+                                '/rclone-v*/',binfolder)
+            print("Done!",flush=True)
 
         # Basic setup, focus the indexer on larger folders and file sizes
         if not cfg.read('general', 'max_small_file_size_kib'):
@@ -113,6 +115,12 @@ def main():
         if movecfg:
             if cfg.move_config(args.cfgfolder):
                 print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
+
+        # set the correct permission for cfg.config_root 
+        try:
+            os.chmod(cfg.config_root, 0o2775)
+        except:
+            pass
 
         # domain-name not needed right now
         #domain = cfg.prompt('Enter your domain name:',
@@ -288,13 +296,6 @@ def main():
 
     elif args.subcmd in ['archive', 'arc']:
 
-        # Testing NIH reporter UI
-        if args.nih:
-            app = TableNIHGrants()
-            retline=app.run()
-            print("Table returns debug info",retline)
-            return
-
         if args.debug:
             print ("archive:",args.cores, args.awsprofile, args.noslurm,
                    args.larger, args.age, args.agemtime, args.folders)
@@ -302,6 +303,7 @@ def main():
         if args.debug:
             print (f'default cmdline: froster.py archive "{fld}"')
         
+        archmeta = []
         if not args.folders:            
             hsfolder = os.path.join(cfg.config_root, 'hotspots')
             if not os.path.exists(hsfolder):                
@@ -333,6 +335,10 @@ def main():
                 print('Error: Hotspots table did not return result')
                 return False
             
+            if cfg.nih or args.nih:
+                app = TableNIHGrants()
+                archmeta=app.run()                 
+
             if cfg.ask_yes_no(f'Folder: "{retline[5]}"\nDo you want to start archiving now?'):
                 args.folders.append(retline[5])
             else:
@@ -350,10 +356,10 @@ def main():
                 fld = fld.rstrip(os.path.sep)
                 if args.recursive:
                     print (f'Archiving folder {fld} and subfolders, please wait ...', flush=True)
-                    arch.archive_recursive(fld)
+                    arch.archive_recursive(fld, archmeta)
                 else:
                     print (f'Archiving folder {fld} (no subfolders), please wait ...', flush=True)
-                    arch.archive(fld)
+                    arch.archive(fld, archmeta)
         else:
             se = SlurmEssentials(args, cfg)
             label=args.folders[0].replace('/','+')
@@ -776,7 +782,7 @@ class Archiver:
         if self.args.debug:
             print(' Done indexing!', flush=True)
 
-    def archive(self, folder, isrecursive=False, issubfolder=False):
+    def archive(self, folder, meta, isrecursive=False, issubfolder=False):
 
         source = os.path.abspath(folder)
         target = os.path.join(f':s3:{self.cfg.archivepath}',
@@ -852,29 +858,35 @@ class Archiver:
         archive_mode="Single"
         if isrecursive:
             archive_mode="Recursive"
+        #meta = #['R41HL129728', '2016-09-30', '2017-07-31', 'MOLLER, DAVID ROBERT', 'Developing a Diagnostic Blood Test for Sarcoidosis', 'SARCOIDOSIS DIAGNOSTIC TESTING, LLC', 'https://reporter.nih.gov/project-details/9331239', '12519577']
         dictrow = {'local_folder': source, 'archive_folder': target,
                    's3_storage_class': s3_storage_class, 
                    'profile': self.cfg.awsprofile, 'archive_mode': archive_mode, 
                    'timestamp': timestamp, 'timestamp_archive': timestamp, 
                    'user': getpass.getuser()
                    }
+        if meta:
+            dictrow['nih_project'] = meta[0]
+            dictrow['nih_project_url'] = meta[6]
+            dictrow['nih_project_pi'] = meta[3]
+
         if not issubfolder:
             self._archive_json_put_row(source, dictrow)        
 
         total=self.convert_size(tbytes)
         print(f'  Source and archive are identical. {ttransfers} files with {total} transferred.\n')
 
-    def archive_recursive(self, folder):
+    def archive_recursive(self, folder, meta):
         for root, dirs, files in self._walker(folder):
             archpath=root
             print(f'  Processing folder "{archpath}" ... ')
             try:
                 if folder==root:
                     # main directory, store metadata in json file
-                    self.archive(archpath, True, False)
+                    self.archive(archpath, meta, True, False)
                 else:
                     # a subdirectory, don't write metadata to json
-                    self.archive(archpath, True, True)
+                    self.archive(archpath, meta, True, True)
             except PermissionError as e:
                 if e.errno == 13:  # Check if error number is 13 (Permission denied)
                     print(f'  Permission denied to "{archpath}"') 
@@ -1689,10 +1701,6 @@ class TableArchive(App[list]):
         self.exit(self.query_one(DataTable).get_row(event.row_key))
 
 
-from textual import on, work
-from textual.app import App, ComposeResult
-from textual.widgets import Label, Input, LoadingIndicator, DataTable
-
 class TableNIHGrants(App[list]):
     # (6)!
     CSS = """
@@ -1732,11 +1740,8 @@ class TableNIHGrants(App[list]):
 
     @on(Input.Submitted)
     def action_submit(self):
-        #self.query_one(Pretty).update("moin")
-        #table = self.query_one(DataTable)        
-        #rows = csv.reader(io.StringIO(TABLECSV))
-        #table.add_columns(*next(rows))
-        #table.add_rows(rows)
+        self.query_one(LoadingIndicator).display = True
+        self.query_one(DataTable).display = False
         inp = self.query_one(Input)
         self.load_data(inp.value)
         inp.focus()
@@ -1747,38 +1752,21 @@ class TableNIHGrants(App[list]):
     @work
     async def load_data(self, searchstr):
         table = self.query_one(DataTable)
-        self.query_one(LoadingIndicator).display = True
-        table.display = False
         table.clear(columns=True)
-        #await asyncio.sleep(3)  # Simulate time to load the data
 
-        # data: list[tuple] = [
-        #     ("lane", "swimmer", "country", "time"),
-        #     (4, "Joseph Schooling", "Singapore", 50.39),
-        #     (2, "Michael Phelps", "United States", 51.14),
-        #     (5, "Chad le Clos", "South Africa", 51.14),
-        #     (6, "László Cseh", "Hungary", 51.14),
-        #     (3, "Li Zhuhao", "China", 51.26),
-        #     (8, "Mehdy Metella", "France", 51.58),
-        #     (7, "Tom Shields", "United States", 51.73),
-        #     (1, "Aleksandr Sadovnikov", "Russia", 51.84),
-        #     (10, "Darren Burns", "Scotland", 51.84),
-        # ]
+        await asyncio.sleep(0.1)
         
         rep = NIHReporter()
-        TABLECSV = rep.search_full_csv(searchstr)
-        #print(TABLECSV)
-        #rows = iter(data)
+        data = rep.search_full(searchstr)        
+        rows = iter(data)
                 
-        rows = csv.reader(io.StringIO(TABLECSV))
         table.add_columns(*next(rows))
         table.add_rows(rows)
-
+        
         table.display = True
         self.query_one(LoadingIndicator).display = False
 
-        #return data
-        return rows
+        return 
 
 class Rclone:
     def __init__(self, args, cfg):
@@ -2126,26 +2114,29 @@ class NIHReporter:
         self.exclude_fields = ['Terms', 'AbstractText', 'PhrText']  # pref_terms still included 
         self.grants = []
 
-    def search_full_csv(self, searchstr):
+    def search_full(self, searchstr):
         searchstr = self._clean_string(searchstr)
 
-        # Search by Project 
-        print('Project search ...')
-        criteria = { 'project_nums': [searchstr] } 
-        self._post_request(criteria)
-        print('* # Grants:',len(self.grants))
-              
         # Search by PI
-        print('PI search ...')
-        criteria = { "pi_names": [{"any_name": searchstr}] }
-        self._post_request(criteria)
-        print('* # Grants:',len(self.grants))
+        if not self._is_number(searchstr):
+            print('PI search ...')
+            criteria = { "pi_names": [{"any_name": searchstr}] }
+            self._post_request(criteria)
+            print('* # Grants:',len(self.grants))
 
-        #Search by Organizations 
-        print('Org search ...')
-        criteria = { 'org_names': [searchstr] } 
-        self._post_request(criteria)
-        print('* # Grants:',len(self.grants))
+        if not self.grants:
+            # Search by Project 
+            print('Project search ...')
+            criteria = { 'project_nums': [searchstr] } 
+            self._post_request(criteria)
+            print('* # Grants:',len(self.grants))
+              
+        if not self.grants:
+            #Search by Organizations 
+            print('Org search ...')
+            criteria = { 'org_names': [searchstr] } 
+            self._post_request(criteria)
+            print('* # Grants:',len(self.grants))
 
         # Search by text in  "projecttitle", "terms", and "abstracttext"
         print('Text search ...')
@@ -2156,8 +2147,19 @@ class NIHReporter:
         self._post_request(criteria)
         print('* # Grants:',len(self.grants))
 
-
-        return self._result_csv()
+        return self._result_sets(True)
+    
+    def search_one(self, criteria, header=False):
+        searchstr = self._clean_string(searchstr)
+        self._post_request(criteria)
+        return self._result_sets(header)
+    
+    def _is_number(self, string):
+        try:
+            float(string)
+            return True
+        except ValueError:
+            return False
 
     def _clean_string(self, mystring):
         mychars = ",:?'$^\%&*!`~+={}\\[]"+'"'
@@ -2168,24 +2170,24 @@ class NIHReporter:
 
     def _post_request(self, criteria):
         # make request with retries
-        offset = 0; timeout = 30; limit = 500; total = 15000; 
+        offset = 0; timeout = 30; limit = 250; max = 250; 
         max_retries = 5; retry_delay = 1; retry_count = 0
-                  
+        total = max
         #for retry_count in range(max_retries):
         try:
-            while offset < total:
+            while offset < max:
                 params = { 'offset': offset, 'limit': limit, 'criteria': criteria, 
                             'exclude_fields': self.exclude_fields }                    
                 # make request
                 print('Params:', params)
-                #response = requests.post(self.url, json=params, timeout=timeout)
-                response = requests.post(self.url, json=params)
+                response = requests.post(self.url, json=params, timeout=timeout)
                 # check status code - else return data
                 if response.status_code >= 400 and response.status_code < 500:
                     print(f"Bad request: {response.text}")
                     if retry_count < max_retries - 1:
                         print(f"Retrying after {retry_delay} seconds...")
                         time.sleep(retry_delay)
+                        retry_count+=1
                     else:
                         #raise Exception(f"Failed to complete POST request after {max_retries} attempts")
                         print (f"Failed to complete POST request after {max_retries} attempts")
@@ -2197,6 +2199,8 @@ class NIHReporter:
                         if self.verbose:
                             print("No records for criteria '{}'".format(criteria))
                         return
+                    if total < max: 
+                        max=total                        
                     if self.verbose:
                         print("Found {0} records for criteria '{1}'".format(total, criteria)) 
                     self.grants += [g for g in json['results']]
@@ -2211,19 +2215,24 @@ class NIHReporter:
             print(f"POST request failed: {e}")
             if retry_count < max_retries - 1:
                 print(f"Retrying after {retry_delay} seconds...")
+                retry_count+=1
                 time.sleep(retry_delay)
+            else:
+                return
         #raise Exception(f"Failed to complete POST request after {max_retries} attempts")
 
-    def _result_csv(self):
-        CSV = 'project_num, start, end, contact_pi_name, project_title, org_name, project_detail_url, pi_profile_id\n'
+    def _result_sets(self, header=False):
+        sets = []
+        if header:
+            sets.append(('project_num', 'start', 'end', 'contact_pi_name', 'project_title', 
+                        'org_name', 'project_detail_url', 'pi_profile_id'))
         grants = {}
         for g in self.grants:
             #print(json.dumps(g, indent=2))
             #return
             core_project_num = str(g.get('core_project_num','')).strip()
-            line = '"{0}",{1},{2},"{3}","{4}",'.format(
-                core_project_num,
-                #str(g.get('fiscal_year','')).strip(),
+            line = (
+                core_project_num, 
                 str(g.get('project_start_date','')).strip()[:10], 
                 str(g.get('project_end_date','')).strip()[:10], 
                 str(g.get('contact_pi_name','')).strip(),
@@ -2232,20 +2241,20 @@ class NIHReporter:
             org=""
             if g['organization']['org_name']:
                 org=g['organization']['org_name']
-            line += '"{0}","{1}",'.format(
+            line += (
                 str(org.encode('utf-8'),'utf-8'),
                 g.get('project_detail_url','')
                 )
             for p in g['principal_investigators']:
                 if p.get('is_contact_pi',False):
-                    line += '"{0}"'.format(p.get('profile_id', '')).strip()
+                    line += (str(p.get('profile_id', '')),)
             if not core_project_num in grants:
                 grants[core_project_num] = line
         for g in grants.values():
-            CSV+=g+'\n'
+            sets.append(g)
             #print(g)
         #print("{0} total # of grants...".format(len(grants)),file=sys.stderr)
-        return CSV
+        return sets
 
 class ConfigManager:
     # we write all config entries as files to '~/.config'
@@ -2260,6 +2269,7 @@ class ConfigManager:
         self.config_root_local = os.path.join(self.home_dir, '.config', 'froster')
         self.config_root = self._get_config_root()
         self.binfolder = self.read('general', 'binfolder')
+        self.nih = self.read('general', 'prompt_nih_reporter')
         self.homepaths = self._get_home_paths()
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')

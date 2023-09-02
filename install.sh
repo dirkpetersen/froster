@@ -5,6 +5,7 @@ PMIN="8" # python3 minor version = 3.8)
 echo ""
 echo "Installing Froster, please wait ..."
 ### checking for correct Python verion 
+umask 0002
 P3=$(which python3)
 if [[ -z ${P3} ]]; then
   echo "python3 could not be found, please install Python >= 3.${PMIN} first"

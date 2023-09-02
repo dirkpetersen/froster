@@ -456,7 +456,7 @@ Froster addresses this by moving all small files < 1 MiB to to a Tar archive cal
 
 #### NIH Life Sciences metadata
 
-In many cases we would like to create a link between the data we archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) maintains a large database of all publicly funded life sciences projects is the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov). Froster uses the [RePORTER API](https://api.reporter.nih.gov) to allow you to search for grants and link them to your datasets.
+In many cases we would like to create a link between the data we archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) maintains a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov). Froster uses the [RePORTER API](https://api.reporter.nih.gov) to allow you to search for grants and link them to your datasets.
 
 To invoke the search interface use the --nih option with `archive` subcommand
 
