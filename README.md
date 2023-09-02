@@ -385,7 +385,8 @@ To invoke the search interface use the --nih option with `archive` subcommand
 froster archive --nih
 ```
 
-![Alt text](image.png)
+![image](https://github.com/dirkpetersen/froster/assets/1427719/b8a69cc0-8e23-44ee-9234-4d4f45a8834c)
+
 
 You can search multiple times. Once you found the grant you are looking for hit TAB and use the allow keys to select the grant and confirm with enter
 
