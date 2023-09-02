@@ -2212,7 +2212,7 @@ class NIHReporter:
         #raise Exception(f"Failed to complete POST request after {max_retries} attempts")
 
     def _result_csv(self):
-        CSV = 'core_project_num, start, end, contact_pi_name, project_title, org_name, project_detail_url, pi_profile_id\n'
+        CSV = 'project_num, start, end, contact_pi_name, project_title, org_name, project_detail_url, pi_profile_id\n'
         grants = {}
         for g in self.grants:
             #print(json.dumps(g, indent=2))
@@ -2224,7 +2224,7 @@ class NIHReporter:
                 str(g.get('project_start_date','')).strip()[:10], 
                 str(g.get('project_end_date','')).strip()[:10], 
                 str(g.get('contact_pi_name','')).strip(),
-                str(g.get('project_title','')).strip()[:50] 
+                str(g.get('project_title','')).strip() #[:50] 
                 )
             org=""
             if g['organization']['org_name']:
