@@ -77,12 +77,12 @@ def main():
                     'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
                     'pwalk', binfolder)
 
-        if not os.path.exists(os.path.join(binfolder,'rclone')):
-            print(" Installing rclone ... please wait ... ", end='', flush=True)
-            rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-            cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
-                                '/rclone-v*/',binfolder)
-            print("Done!",flush=True)
+        #if not os.path.exists(os.path.join(binfolder,'rclone')):
+        print(" Installing rclone ... please wait ... ", end='', flush=True)
+        rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+        cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
+                            '/rclone-v*/',binfolder)
+        print("Done!",flush=True)
 
         # Basic setup, focus the indexer on larger folders and file sizes
         if not cfg.read('general', 'max_small_file_size_kib'):
