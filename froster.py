@@ -15,10 +15,13 @@ if sys.platform.startswith('linux'):
 import requests, duckdb, boto3, botocore
 from textual import on, work
 from textual.app import App, ComposeResult
+from textual.containers import Grid
+from textual.screen import Screen
 from textual.widgets import Label, Input, LoadingIndicator, DataTable
+from textual.widgets import Header, Footer, Static, Button 
 
 __app__ = 'Froster, a simple S3/Glacier archiving tool'
-__version__ = '0.8.1'
+__version__ = '0.8.2'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 MAXHOTSPOTS = 0
@@ -1660,7 +1663,50 @@ class Archiver:
     #     time.sleep(60)  # Wait 60 seconds before checking again
     # download_restored_file(bucket_name, object_key, local_path)
 
+class ScreenConfirm(Screen):
+    CSS = """
+    ScreenConfirm {
+        align: center middle;
+    }
+
+    #dialog {
+        grid-size: 2;
+        grid-gutter: 1 2;
+        grid-rows: 1fr 3;
+        padding: 0 1;
+        width: 60;
+        height: 11;
+        border: thick $background 80%;
+        background: $surface;
+    }
+
+    #question {
+        column-span: 2;
+        height: 1fr;
+        width: 1fr;
+        content-align: center middle;
+    }
+
+    Button {
+        width: 100%;
+    }
+
+    """
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Static("Are you sure you want to start the process?", id="question"),
+            Button("Continue", variant="primary", id="continue"),
+            Button("Cancel", variant="default", id="cancel"),
+            id="dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "continue":
+            self.app.exit()
+
 class TableHotspots(App[list]):
+
+    BINDINGS = [("q", "request_quit", "Quit")]
 
     def compose(self) -> ComposeResult:
         table = DataTable()
@@ -1669,6 +1715,7 @@ class TableHotspots(App[list]):
         table.cursor_type = "row"
         table.styles.max_height = "99vh"
         yield table
+        #yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
@@ -1679,8 +1726,14 @@ class TableHotspots(App[list]):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.exit(self.query_one(DataTable).get_row(event.row_key))
+        #self.push_screen(ScreenConfirm())
+
+    def action_request_quit(self) -> None:
+        self.app.exit()
 
 class TableArchive(App[list]):
+
+    BINDINGS = [("q", "request_quit", "Quit")]
 
     def compose(self) -> ComposeResult:
         table = DataTable()
@@ -1690,6 +1743,7 @@ class TableArchive(App[list]):
         table.styles.max_height = "99vh"
         #table.fixed_rows = 1
         yield table
+        yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)        
@@ -1699,6 +1753,10 @@ class TableArchive(App[list]):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.exit(self.query_one(DataTable).get_row(event.row_key))
+        #self.push_screen(ScreenConfirm())
+
+    def action_request_quit(self) -> None:
+        self.app.exit()
 
 
 class TableNIHGrants(App[list]):
@@ -1722,9 +1780,9 @@ class TableNIHGrants(App[list]):
     """
 
     def compose(self) -> ComposeResult:
-        yield Label("Enter seach terms to link your data with an NIH grant/project")
+        yield Label("Enter search terms to link your data with an NIH grant/project")
         yield Input(
-            placeholder="Enter a part of a grant number, description, PI or Institution ...",
+            placeholder="Enter a part of a Grant Number, PI, Institution or Full Text (Title, Abstract, Terms) ...",
         )
         yield LoadingIndicator()
         table = DataTable()
@@ -1767,6 +1825,7 @@ class TableNIHGrants(App[list]):
         self.query_one(LoadingIndicator).display = False
 
         return 
+
 
 class Rclone:
     def __init__(self, args, cfg):
@@ -1881,6 +1940,13 @@ class Rclone:
         #if os.path.isfile('/usr/bin/rclone'):
         #    command = ['/usr/bin/rclone', 'mount'] + list(args)            
         #command.append('--daemon') # not reliable, just starting background process
+        try:
+            #os.chmod(mountpoint, 0o2775)
+            current_permissions = os.stat(mountpoint).st_mode
+            new_permissions = (current_permissions & ~0o07) | 0o05
+            os.chmod(mountpoint, new_permissions)            
+        except:
+            pass
         command.append('--allow-non-empty')
         command.append('--default-permissions')
         command.append('--read-only')
@@ -2131,7 +2197,7 @@ class NIHReporter:
             self._post_request(criteria)
             print('* # Grants:',len(self.grants))
               
-        if not self.grants:
+        if not self.grants and not self._is_number(searchstr):
             #Search by Organizations 
             print('Org search ...')
             criteria = { 'org_names': [searchstr] } 
@@ -2835,6 +2901,30 @@ class ConfigManager:
             print(f"An unexpected error occurred: {e}")
             return False            
         return True
+    
+    def create_ec2_instance(self):
+        # to avoid egress we are creating an EC2 instance 
+        # with ephemeral (local) disk for a temporary restore 
+        # 
+        # i3en.24xlarge, 96 cores, 60TiB for $10.85
+        # i3en.12xlarge, 48 cores, 30TiB for $5.42
+        # i3en.6xlarge, 24 cores, 15TiB for $2.71
+        # i3en.3xlarge, 12 cores, 7.5Tib for $1.36
+        # i3en.xlarge, 4 cores, 2.5Tib for $0.45
+        # i3en.large, 2 cores, 1.25Tib for $0.22
+
+        #miniconda3-23.5.2-on-amazon-linux-20230822.1523
+        #ami-06b09e1151de64922
+        #Miniconda3 23.5.2 on Amazon Linux (x86_64) 20230822.1523
+
+        instance_types = [['i3en.12xlarge',30000],
+                          ['i3en.6xlarge',15000],
+                          ['i3en.3xlarge',7500],
+                          ['i3en.xlarge',2500],
+                          ['i3en.large',1250]]
+        
+
+        
         
     def get_domain_name(self):
         try:
