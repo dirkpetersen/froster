@@ -21,11 +21,10 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a simple S3/Glacier archiving tool'
-__version__ = '0.8.2'
+__version__ = '0.8.3'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 MAXHOTSPOTS = 0
-
 
 def main():
     
@@ -59,8 +58,8 @@ def main():
             if ret==13 or ret == 2:
                 errfld.append(fld)
         if errfld:
-            errflds='" "'.join(errfld)
-            print(f'Error: folder(s) "{errflds}" must exist and you need write access to them.')
+            errflds='" \n"'.join(errfld)
+            print(f'\nERROR: These folder(s) \n"{errflds}"\n must exist and you need write access to them.')
             return False
 
     if args.subcmd in ['config', 'cnf']:
@@ -336,7 +335,14 @@ def main():
                     return False
                 SELECTEDFILE = os.path.join(hsfolder, retline[0])
             else:
-                SELECTEDFILE = os.path.join(hsfolder, csv_files[0])            
+                SELECTEDFILE = os.path.join(hsfolder, csv_files[0])
+            if args.larger > 0 and args.older > 0:
+                # implement archiving batchmode    
+                arch.archive_batch() 
+                return
+            elif args.larger > 0 or args.older > 0:
+                print('You need to combine both "--older <days> and --larger <GiB> options')
+                return
             app = TableHotspots()
             retline=app.run()
             #print('Retline:', retline)
@@ -872,7 +878,9 @@ class Archiver:
         archive_mode="Single"
         if isrecursive:
             archive_mode="Recursive"
-        #meta = #['R41HL129728', '2016-09-30', '2017-07-31', 'MOLLER, DAVID ROBERT', 'Developing a Diagnostic Blood Test for Sarcoidosis', 'SARCOIDOSIS DIAGNOSTIC TESTING, LLC', 'https://reporter.nih.gov/project-details/9331239', '12519577']
+        #meta = #['R41HL129728', '2016-09-30', '2017-07-31', 'MOLLER, DAVID ROBERT', 
+        # 'Developing a Diagnostic Blood Test for Sarcoidosis', 'SARCOIDOSIS DIAGNOSTIC TESTING, LLC',
+        #  'https://reporter.nih.gov/project-details/9331239', '12519577']
         dictrow = {'local_folder': source, 'archive_folder': target,
                    's3_storage_class': s3_storage_class, 
                    'profile': self.cfg.awsprofile, 'archive_mode': archive_mode, 
@@ -911,6 +919,39 @@ class Archiver:
             except Exception as e:
                 print(f"  An unexpected error occurred:\n{e}")
                 continue
+        return True
+    
+    def archive_batch(self):
+
+        print(f'\nProcessing hotspots file {SELECTEDFILE}!')
+
+        agefld = 'AccD'
+        if args.agemtime:
+            agefld = 'ModD'
+
+        # Initialize a connection to an in-memory database
+        conn = duckdb.connect(database=':memory:', read_only=False)
+        conn.execute(f'PRAGMA threads={self.args.cores};')
+
+        # Register CSV file as a virtual table
+        conn.execute(f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{SELECTEDFILE}')")
+
+        # Now, you can run SQL queries on this virtual table
+        rows = conn.execute(f"SELECT * FROM hs WHERE {agefld} > {args.older} and GiB > {args.larger} ").fetchall()
+
+        totalspace = 0
+        cmdline = ""
+        for row in rows:
+            totalspace += row[3]
+            cmdline += f'"{row[5]}" '
+
+        print(f'\nRun this command to archive all selected folders in batch mode:\n')   
+        print(f'froster archive {cmdline}\n')    
+        print(f'Total space to archive: {format(round(totalspace, 3),",")} GiB\n')
+
+        # Don't forget to close the connection when done
+        conn.close()
+
         return True
 
     def test_write(self, directory):
@@ -3148,21 +3189,19 @@ def parse_arguments():
             automatically submitted to Slurm. You can also automate this process 
 
         '''), formatter_class=argparse.RawTextHelpFormatter) 
-    parser_archive.add_argument('--larger', '-l', dest='larger', action='store', default=0, 
+    parser_archive.add_argument('--larger', '-l', dest='larger', type=int, action='store', default=0, 
         help=textwrap.dedent(f'''
             Archive folders larger than <GiB>. This option
-            works in conjunction with --age <days>. If both
+            works in conjunction with --older <days>. If both
             options are set froster will automatically archive
             all folder meeting these criteria, without prompting.
-            (Currently not implemented)
         '''))
-    parser_archive.add_argument('--age', '-a', dest='age', action='store', default=0, 
+    parser_archive.add_argument('--older', '-o', dest='older', type=int, action='store', default=0, 
          help=textwrap.dedent(f'''
             Archive folders older than <days>. This option
             works in conjunction with --larger <GiB>. If both
             options are set froster will automatically archive
-            all folder meeting these criteria without prompting.
-            (Currently not implemented)
+            all folder meeting these criteria without prompting.            
         '''))
     parser_archive.add_argument( '--age-mtime', '-m', dest='agemtime', action='store_true', default=False,
         help="Use modified file time (mtime) instead of accessed time (atime)")
