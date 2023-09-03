@@ -281,7 +281,8 @@ def main():
                 arch.index(fld)
         else:
             se = SlurmEssentials(args, cfg)
-            label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')            
+            label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
+            label=label.replace(' ','_')
             shortlabel=os.path.basename(args.folders[0])
             myjobname=f'froster:index:{shortlabel}'            
             email=cfg.read('general', 'email')
@@ -373,6 +374,7 @@ def main():
         else:
             se = SlurmEssentials(args, cfg)
             label=args.folders[0].replace('/','+')
+            label=label.replace(' ','_')
             shortlabel=os.path.basename(args.folders[0])
             myjobname=f'froster:archive:{shortlabel}'
             email=cfg.read('general', 'email')
@@ -451,6 +453,7 @@ def main():
                         #get a job start time 12 hours from now
                         fut_time = se.get_future_start_time(12)
                         label=fld.replace('/','+')
+                        label=label.replace(' ','_')
                         shortlabel=os.path.basename(fld)
                         myjobname=f'froster:restore:{shortlabel}'                        
                         email=cfg.read('general', 'email')
@@ -483,6 +486,7 @@ def main():
         else:
             se = SlurmEssentials(args, cfg)
             label=args.folders[0].replace('/','+')
+            label=label.replace(' ','_')
             shortlabel=os.path.basename(args.folders[0])
             myjobname=f'froster:restore:{shortlabel}'
             email=cfg.read('general', 'email')
