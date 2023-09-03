@@ -360,11 +360,11 @@ def main():
                 print('Error: Hotspots table did not return all columns')
                 return False
             
-            if cfg.nih or args.nih:
-                app = TableNIHGrants()
-                archmeta=app.run()
-
-            if not retline[-1]:
+            if retline[-1]:
+                if cfg.nih or args.nih:
+                    app = TableNIHGrants()
+                    archmeta=app.run()
+            else:
                 print (f'You can start this process later by using this command:\n  froster archive "{retline[5]}"')
                 return False
             
@@ -1762,10 +1762,11 @@ class ScreenConfirm(ModalScreen[bool]):
             with Horizontal():
                 yield Button("Continue", id="continue")
                 yield Button("Quit", id="quit")
-                #yield Button("Return", id="return")
+                yield Button("Return", id="return")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(result=event.button.id == "continue")
+        #self.dismiss(result=event.button.id == "continue")
+        self.dismiss(result=event.button.id)
 
 class TableHotspots(App[list]):
 
@@ -1791,11 +1792,11 @@ class TableHotspots(App[list]):
         table.add_columns(*next(rows))
         table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
-    def accept_answer(self, answer: bool) -> None:
+    def accept_answer(self, answer: str) -> None:
         # adds yesno answer as last element in list 
-        if answer:
+        if answer == 'continue':
             self.exit(self.myrow+[True])
-        else:
+        elif answer == 'quit':
             self.exit(self.myrow+[False])
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
