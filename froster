@@ -15,7 +15,7 @@ if [[ -d ~/.local/share/froster/bin ]]; then
   unset LIBRARY_PATH PYTHONPATH
   export LD_LIBRARY_PATH=${PY3%/bin/python3*}/lib:${LD_LIBRARY_PATH}
   LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
-  python3 ${script_dir}/froster.py $@
+  python3 ${script_dir}/froster.py "$@"
   deactivate
 else
   if [[ -e ${ALTPYTHON} ]]; then
@@ -23,7 +23,7 @@ else
   else
     # Check if we have at least the minimum Python version 
     if [[ $(/usr/bin/python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "True" ]]; then
-      /usr/bin/python3 ${script_dir}/froster.py $@
+      /usr/bin/python3 ${script_dir}/froster.py "$@"
     else
       echo "Python version must be greater than or equal to 3.${PMIN}"
     fi

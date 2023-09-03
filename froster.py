@@ -15,16 +15,17 @@ if sys.platform.startswith('linux'):
 import requests, duckdb, boto3, botocore
 from textual import on, work
 from textual.app import App, ComposeResult
-from textual.containers import Grid
-from textual.screen import Screen
-from textual.widgets import Label, Input, LoadingIndicator, DataTable
-from textual.widgets import Header, Footer, Static, Button 
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Label, Input, LoadingIndicator 
+from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a simple S3/Glacier archiving tool'
 __version__ = '0.8.2'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 MAXHOTSPOTS = 0
+
 
 def main():
     
@@ -135,6 +136,8 @@ def main():
 
         if cfg.ask_yes_no(f'\nDo you want to search and link NIH life sciences grants with your archives?','yes'):
             cfg.write('general', 'prompt_nih_reporter', 'yes')
+
+        print("")
 
         # cloud setup
         bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
@@ -335,22 +338,23 @@ def main():
                 SELECTEDFILE = os.path.join(hsfolder, csv_files[0])            
             app = TableHotspots()
             retline=app.run()
+            #print('Retline:', retline)
             if not retline:
                 return False
             if len(retline) < 6:
-                print('Error: Hotspots table did not return result')
+                print('Error: Hotspots table did not return all columns')
                 return False
             
             if cfg.nih or args.nih:
                 app = TableNIHGrants()
-                archmeta=app.run()                 
+                archmeta=app.run()
 
-            if cfg.ask_yes_no(f'Folder: "{retline[5]}"\nDo you want to start archiving now?'):
-                args.folders.append(retline[5])
-            else:
+            if not retline[-1]:
                 print (f'You can start this process later by using this command:\n  froster archive "{retline[5]}"')
                 return False
-
+            
+            args.folders.append(retline[5])
+            
         if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
             print(f'Profile "{args.awsprofile}" not found.')
             return False
@@ -1666,50 +1670,57 @@ class Archiver:
     #     time.sleep(60)  # Wait 60 seconds before checking again
     # download_restored_file(bucket_name, object_key, local_path)
 
-class ScreenConfirm(Screen):
-    CSS = """
+
+class ScreenConfirm(ModalScreen[bool]):
+    DEFAULT_CSS = """
     ScreenConfirm {
         align: center middle;
     }
 
-    #dialog {
-        grid-size: 2;
-        grid-gutter: 1 2;
-        grid-rows: 1fr 3;
-        padding: 0 1;
-        width: 60;
-        height: 11;
-        border: thick $background 80%;
-        background: $surface;
+    ScreenConfirm > Vertical {
+        background: $secondary;
+        width: auto;
+        height: auto;
+        border: thick $primary;
+        padding: 2 4;
     }
 
-    #question {
-        column-span: 2;
-        height: 1fr;
-        width: 1fr;
-        content-align: center middle;
+    ScreenConfirm > Vertical > * {
+        width: auto;
+        height: auto;
     }
 
-    Button {
-        width: 100%;
+    ScreenConfirm > Vertical > Label {
+        padding-bottom: 2;
     }
 
+    ScreenConfirm > Vertical > Horizontal {
+        align: right middle;
+    }
+
+    ScreenConfirm Button {
+        margin-left: 2;
+    }
     """
+
     def compose(self) -> ComposeResult:
-        yield Grid(
-            Static("Are you sure you want to start the process?", id="question"),
-            Button("Continue", variant="primary", id="continue"),
-            Button("Cancel", variant="default", id="cancel"),
-            id="dialog",
-        )
+        with Vertical():
+            yield Label("Do you want to start this archiving job now?")
+            with Horizontal():
+                yield Button("Continue", id="continue")
+                yield Button("Quit", id="quit")
+                #yield Button("Return", id="return")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "continue":
-            self.app.exit()
+        self.dismiss(result=event.button.id == "continue")
 
 class TableHotspots(App[list]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
+
+    def __init__(self):
+        super().__init__()
+        self.myrow = []
 
     def compose(self) -> ComposeResult:
         table = DataTable()
@@ -1727,10 +1738,18 @@ class TableHotspots(App[list]):
         table.add_columns(*next(rows))
         table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        self.exit(self.query_one(DataTable).get_row(event.row_key))
-        #self.push_screen(ScreenConfirm())
+    def accept_answer(self, answer: bool) -> None:
+        # adds yesno answer as last element in list 
+        if answer:
+            self.exit(self.myrow+[True])
+        else:
+            self.exit(self.myrow+[False])
 
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.myrow = self.query_one(DataTable).get_row(event.row_key)
+        #self.exit(self.myrow)
+        self.push_screen(ScreenConfirm(), callback=self.accept_answer)
+        
     def action_request_quit(self) -> None:
         self.app.exit()
 
@@ -3068,6 +3087,7 @@ class ConfigManager:
             else:    
                 print(f'Failed copying {binary} to {targetfolder}')
 
+
 def parse_arguments():
     """
     Gather command-line arguments.
@@ -3221,7 +3241,7 @@ if __name__ == "__main__":
         print('This software currently only runs on Linux x64')
         sys.exit(1)
     try:        
-        args = parse_arguments()      
+        args = parse_arguments()
         if main():
             sys.exit(0)
         else:
