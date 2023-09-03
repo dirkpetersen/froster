@@ -133,6 +133,9 @@ def main():
         emailstr = emailaddr.replace('@','-')
         emailstr = emailstr.replace('.','-')
 
+        if cfg.ask_yes_no(f'\nDo you want to search and link NIH life sciences grants with your archives?','yes'):
+            cfg.write('general', 'prompt_nih_reporter', 'yes')
+
         # cloud setup
         bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
                             f'froster-{emailstr}|general|bucket','string')
