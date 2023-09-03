@@ -49,6 +49,14 @@ def main():
     if args.version:
         print(f'Froster version: {__version__}')
         print(f'Python version:\n{sys.version}')
+        try:
+            print('Pwalk version:', subprocess.run(['pwalk', '--version'], 
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])        
+            print('Rclone version:', subprocess.run(['rclone', '--version'], 
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+        except FileNotFoundError as e:
+            print(f'Error: {e}')
+
         return True
 
     if args.subcmd in ['archive','delete','restore']:
@@ -133,7 +141,7 @@ def main():
         emailstr = emailaddr.replace('@','-')
         emailstr = emailstr.replace('.','-')
 
-        if cfg.ask_yes_no(f'\nDo you want to search and link NIH life sciences grants with your archives?','yes'):
+        if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?','yes'):
             cfg.write('general', 'prompt_nih_reporter', 'yes')
 
         print("")
