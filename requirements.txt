@@ -2,3 +2,5 @@ duckdb<0.9
 textual<0.40
 requests<2.40
 boto3<1.30
+paramiko<3.5.0
+
