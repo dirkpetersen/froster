@@ -8,7 +8,7 @@ archiving many Terabytes of data on HPC systems
 import sys, os, argparse, json, configparser, csv, platform, asyncio
 import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time
 import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex
-import shutil, tempfile, glob,  subprocess, itertools
+import shutil, tempfile, glob,  subprocess, itertools, stat 
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a simple S3/Glacier archiving tool'
-__version__ = '0.8.3'
+__version__ = '0.8.4'
 TABLECSV = '' # CSV string for DataTable
 SELECTEDFILE = '' # CSV filename to open in hotspots 
 MAXHOTSPOTS = 0
@@ -452,13 +452,33 @@ def main():
             return False
         if not cfg.check_bucket_access(cfg.bucket):
             return False
+        
+        # ********* Restore to new EC2 Instance in AWS 
+        if args.ec2:
+            ip, pemfile = cfg.ec2_create_instance(30, cfg.awsprofile)
+            print(f'\n  Connect to EC2 Instance:')
+            print(f'ssh -o StrictHostKeyChecking=no -i {pemfile} ec2-user@{ip}')
+
+            #cfg.send_email_aws('dipeit@gmail.com','my subject', 'my body')
+            #cfg._ec2_create_iam_costexplorer()
+            #cfg.send_ec2_costs('i-06e3803fbe39d55bb')
+
+            return False
+        
+            ip = "44.242.156.195"
+            out, err = cfg.ssh_upload('ec2-user', ip, 
+                    cfg.ec2_user_space_script(), "bootstrap.sh", is_string=True)
+            print(out, err)
+            out, err = cfg.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
+            print(out, err)
+            return True
 
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
                 fld = fld.rstrip(os.path.sep)
                 print (f'Restoring folder {fld}, please wait ...', flush=True)
                 # check if triggered a restore from glacier and other conditions 
-                if arch.restore(fld) > 0:                    
+                if arch.restore(fld) > 0:
                     if shutil.which('sbatch') and \
                             args.noslurm == False and \
                             args.nodownload == False:
@@ -605,6 +625,10 @@ def main():
             return False
         if not cfg.check_bucket_access(cfg.bucket):
             return False
+        
+        if args.ec2:
+            cfg.create_ec2_instance()
+            return True
 
         hostname = platform.node()
         rclone = Rclone(args,cfg)
@@ -2411,7 +2435,7 @@ class ConfigManager:
         self.config_root_local = os.path.join(self.home_dir, '.config', 'froster')
         self.config_root = self._get_config_root()
         self.binfolder = self.read('general', 'binfolder')
-        self.nih = self.read('general', 'prompt_nih_reporter')
+        self.nih = self.read('general', 'prompt_nih_reporter')        
         self.homepaths = self._get_home_paths()
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
@@ -2432,6 +2456,7 @@ class ConfigManager:
         self.envrn = os.environ.copy()
         if not self._set_env_vars(self.awsprofile):
             self.awsprofile = ''
+        self.ssh_key_name = 'froster-ec2'
         
     def _set_env_vars(self, profile):
         
@@ -2978,30 +3003,360 @@ class ConfigManager:
             return False            
         return True
     
-    def create_ec2_instance(self):
+    def _ec2_create_iam_self_destruct_role(self, profile):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+
+        # Step 1: Create IAM policy
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ec2:TerminateInstances",
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {
+                            "ec2:ResourceTag/Name": "FrosterSelfDestruct"
+                        }
+                    }
+                }
+            ]
+        }
+
+        policy_name = 'SelfDestructPolicy'
+        try:
+            iam.create_policy(
+                PolicyName=policy_name,
+                PolicyDocument=json.dumps(policy_document)
+            )
+        except iam.exceptions.EntityAlreadyExistsException:
+            print ('IAM SelfDestructPolicy already exists')
+
+        except botocore.exceptions.ClientError as e:
+            print(f'*** Error: {e}\n')
+            return False 
+
+        # Step 2: Create an IAM role and attach the policy
+        trust_relationship = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "ec2.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }
+
+        role_name = 'SelfDestructRole'
+        try:
+            iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(trust_relationship),
+                Description='Allows EC2 instances to call AWS services on your behalf.'
+            )
+        except iam.exceptions.EntityAlreadyExistsException:
+            print ('IAM SelfDestructRole already exists.')            
+
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=f'arn:aws:iam::{session.client("sts").get_caller_identity()["Account"]}:policy/{policy_name}'
+        )
+
+        return True
+    
+    def _ec2_create_iam_costexplorer(self, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+        sts = session.client('sts')
+
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ce:*",               # Permissions for Cost Explorer
+                        "ec2:Describe*",      # Basic EC2 read permissions
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }
+
+        response = iam.create_policy(
+            PolicyName='CE_EC2_Permissions',
+            Description='Policy for Cost Explorer in EC2',
+            PolicyDocument=json.dumps(policy_document)
+        )
+
+        # Get caller identity
+        identity = sts.get_caller_identity()
+        # Extract ARN
+        arn = identity['Arn']
+        # Extract the username or role name from the ARN
+        # ***********   THIS DOES JNOT WORK
+        username = arn.split(':')[-1]
+        username='root'
+
+        print(arn,username)
+
+        policy_arn = response['Policy']['Arn']
+        print(f"Created policy with ARN: {policy_arn}")
+
+        response = iam.attach_user_policy(
+            UserName=username,
+            PolicyArn=policy_arn
+        )
+
+        print(f"Policy {policy_arn} attached to user {username}")
+
+    
+    def _ec2_create_and_attach_security_group(self, instance_id, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2 = session.resource('ec2')
+        client = session.client('ec2')
+
+        group_name = 'SSHAndICMP'
+        
+        # Check if security group already exists
+        security_groups = client.describe_security_groups(Filters=[{'Name': 'group-name', 'Values': [group_name]}])
+        if security_groups['SecurityGroups']:
+            security_group_id = security_groups['SecurityGroups'][0]['GroupId']
+        else:
+            # Create security group
+            response = client.create_security_group(
+                GroupName=group_name,
+                Description='Allows SSH and ICMP inbound traffic'
+            )
+            security_group_id = response['GroupId']
+        
+            # Allow SSH (port 22) inbound
+            client.authorize_security_group_ingress(
+                GroupId=security_group_id,
+                IpPermissions=[
+                    {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 22,
+                        'ToPort': 22,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },
+                    {
+                        'IpProtocol': 'icmp',
+                        'FromPort': -1,  # -1 allows all ICMP types
+                        'ToPort': -1,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    }
+                ]
+            )
+        
+        # Attach the security group to the instance
+        instance = ec2.Instance(instance_id)
+        current_security_groups = [sg['GroupId'] for sg in instance.security_groups]
+        
+        # Check if the security group is already attached to the instance
+        if security_group_id not in current_security_groups:
+            current_security_groups.append(security_group_id)
+            instance.modify_attribute(Groups=current_security_groups)
+
+        return security_group_id
+
+    def _ec2_get_latest_amazon_linux2_ami(self, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2_client = session.client('ec2')
+
+        response = ec2_client.describe_images(
+            Filters=[
+                {'Name': 'name', 'Values': ['al2023-ami-*']},
+                {'Name': 'state', 'Values': ['available']},
+                {'Name': 'architecture', 'Values': ['x86_64']},
+                {'Name': 'virtualization-type', 'Values': ['hvm']}
+            ],
+            Owners=['amazon']
+
+            #amzn2-ami-hvm-2.0.*-x86_64-gp2
+            #al2023-ami-kernel-default-x86_64
+
+        )
+
+        # Sort images by creation date to get the latest
+        images = sorted(response['Images'], key=lambda k: k['CreationDate'], reverse=True)
+        if images:
+            return images[0]['ImageId']
+        else:
+            return None        
+
+    def _create_progress_bar(self, max_value):
+        def show_progress_bar(iteration):
+            percent = ("{0:.1f}").format(100 * (iteration / float(max_value)))
+            length = 50  # adjust as needed for the bar length
+            filled_length = int(length * iteration // max_value)
+            bar = "█" * filled_length + '-' * (length - filled_length)
+            print(f'\r|{bar}| {percent}%', end='\r')
+            if iteration == max_value: 
+                print()
+
+        return show_progress_bar
+
+    def _ec2_user_data_script(self):
+        # Define the User Data script
+        userdata = textwrap.dedent('''
+        #! /bin/bash
+        dnf check-update
+        dnf update -y
+        dnf install -y gcc python3-pip python3-psutil
+        dnf upgrade
+        dnf install -y mc R
+        dnf group install -y 'Development Tools'
+        ''').strip()
+        return userdata
+    
+    def ec2_user_space_script(self):
+        # Define script that will be installed by ec2-user 
+        return textwrap.dedent('''
+        #! /bin/bash
+        cd /tmp
+        curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        bash Miniconda3-latest-Linux-x86_64.sh -b
+        curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+        ''').strip()
+    
+    def ec2_create_instance(self, required_space, profile):
         # to avoid egress we are creating an EC2 instance 
         # with ephemeral (local) disk for a temporary restore 
         # 
-        # i3en.24xlarge, 96 cores, 60TiB for $10.85
-        # i3en.12xlarge, 48 cores, 30TiB for $5.42
-        # i3en.6xlarge, 24 cores, 15TiB for $2.71
-        # i3en.3xlarge, 12 cores, 7.5Tib for $1.36
-        # i3en.xlarge, 4 cores, 2.5Tib for $0.45
-        # i3en.large, 2 cores, 1.25Tib for $0.22
+        # i3en.24xlarge, 96 vcpu, 60TiB for $10.85
+        # i3en.12xlarge, 48 vcpu, 30TiB for $5.42
+        # i3en.6xlarge, 24 vcpu, 15TiB for $2.71
+        # i3en.3xlarge, 12 vcpu, 7.5Tib for $1.36
+        # i3en.xlarge, 4 vcpu, 2.5Tib for $0.45
+        # i3en.large, 2 vcpu, 1.25Tib for $0.22
+        # c5ad.large, 2 vcpu, 75GB, for $0.09
 
-        #miniconda3-23.5.2-on-amazon-linux-20230822.1523
-        #ami-06b09e1151de64922
-        #Miniconda3 23.5.2 on Amazon Linux (x86_64) 20230822.1523
+        instance_types =  {'i3en.24xlarge': 60000,
+                           'i3en.12xlarge': 30000,
+                           'i3en.6xlarge': 15000,
+                           'i3en.3xlarge': 7500,
+                           'i3en.xlarge': 2500,
+                           'i3en.large': 1250,
+                           'c5ad.large': 75}
+        
+        if not self._ec2_create_iam_self_destruct_role(profile):
+            return False
 
-        instance_types = [['i3en.12xlarge',30000],
-                          ['i3en.6xlarge',15000],
-                          ['i3en.3xlarge',7500],
-                          ['i3en.xlarge',2500],
-                          ['i3en.large',1250]]
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2 = session.resource('ec2')
+        client = session.client('ec2')
         
+        chosen_instance_type = None
+        for itype, space in instance_types.items():
+            if space > 1.3 * required_space:
+                chosen_instance_type = itype
+        print('Chosen Instance:',chosen_instance_type)
 
+        if not chosen_instance_type:
+            print("No suitable instance type found for the given disk space requirement.")
+            return False
+
+        # Create a new EC2 key pair
+        key_path = os.path.join(self.config_root,'cloud',f'{self.ssh_key_name}.pem')
+        if not os.path.exists(key_path):
+            try:
+                client.describe_key_pairs(KeyNames=[self.ssh_key_name])
+                # If the key pair exists, delete it
+                client.delete_key_pair(KeyName=self.ssh_key_name)
+            except client.exceptions.ClientError:
+                # Key pair doesn't exist in AWS, no need to delete
+                pass                        
+            key_pair = ec2.create_key_pair(KeyName=self.ssh_key_name)
+            os.makedirs(os.path.join(self.config_root,'cloud'),exist_ok=True)            
+            with open(key_path, 'w') as key_file:
+                key_file.write(key_pair.key_material)
+            os.chmod(key_path, stat.S_IRUSR)  # Set file permission to 400
+
+        imageid = self._ec2_get_latest_amazon_linux2_ami(profile)
+        print(f'Using Image ID: {imageid}')
+
+        #print(f'*** userdata-script:\n{self._ec2_user_data_script()}')
+
+        # Create EC2 instance
+        instance = ec2.create_instances(
+            ImageId=imageid,
+            MinCount=1,
+            MaxCount=1,
+            InstanceType=chosen_instance_type,
+            KeyName=self.ssh_key_name,
+            UserData=self._ec2_user_data_script(),
+            TagSpecifications=[
+                {
+                    'ResourceType': 'instance',
+                    'Tags': [{'Key': 'Name', 'Value': 'FrosterSelfDestruct'}]
+                }
+            ]
+        )[0]
         
+        # Use a waiter to ensure the instance is running before trying to access its properties
+        instance_id = instance.id    
+        print(f'Launching instance {instance_id} ... please wait ...')    
         
+        max_wait_time = 300  # seconds
+        delay_time = 10  # check every 10 seconds, adjust as needed
+        max_attempts = max_wait_time // delay_time
+
+        waiter = client.get_waiter('instance_running')
+        progress = self._create_progress_bar(max_attempts)
+
+        for attempt in range(max_attempts):
+            try:
+                waiter.wait(InstanceIds=[instance_id], WaiterConfig={'Delay': delay_time, 'MaxAttempts': 1})
+                progress(attempt)
+                break
+            except botocore.exceptions.WaiterError:
+                progress(attempt)
+                continue
+        print('')
+        instance.reload()
+        grpid = self._ec2_create_and_attach_security_group(instance_id, profile)
+        if grpid:
+            print(f'Security Group "{grpid}" attached.') 
+        else:
+            print('No Security Group ID created.')
+
+        return instance.public_ip_address, key_path
+
+    def ssh_execute(self, user, host, command):
+        """Execute an SSH command on the remote server."""
+        SSH_OPTIONS = "-o StrictHostKeyChecking=no"
+        key_path = os.path.join(self.config_root,'cloud',f'{self.ssh_key_name}.pem')
+        cmd = f"ssh {SSH_OPTIONS} -i '{key_path}' {user}@{host} '{command}'"
+        try:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            return result.stdout, result.stderr
+        except:
+            print(f'Error executing "{cmd}."')
+        return None, None
+                
+    def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
+        """Upload a file to the remote server using SCP."""
+        SSH_OPTIONS = "-o StrictHostKeyChecking=no"
+        key_path = os.path.join(self.config_root,'cloud',f'{self.ssh_key_name}.pem')
+        if is_string:
+            # the local_path is actually a string that needs to go into temp file 
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp:
+                temp.write(local_path)
+                local_path = temp.name
+        cmd = f"scp {SSH_OPTIONS} -i '{key_path}' {local_path} {user}@{host}:{remote_path}"        
+        try:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            os.remove(local_path)
+            return result.stdout, result.stderr        
+        except:
+            print(f'Error executing "{cmd}."')
+        return None, None
+            
     def get_domain_name(self):
         try:
             with open('/etc/resolv.conf', 'r') as file:
@@ -3016,6 +3371,173 @@ class ConfigManager:
                     tld = tokens.pop()
                     break
         return tld if tld else "mydomain.edu"
+    
+    def send_email_aws(self, to, subject, body, profile=None):
+        # Using AWS ses service to send emails
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ses = session.client("ses")
+
+        confirmed_emails = []
+        sender = self.read('general', 'email')
+        ret = self.read('cloud', 'ses_confirmed_emails')
+        if isinstance(ret, list):
+            confirmed_emails = ret
+        else:
+            confirmed_emails.append(ret)
+
+        checks = [sender, to]
+
+        checked=False
+        for check in checks:
+            if check not in confirmed_emails:
+                response = ses.verify_email_identity(EmailAddress=check)
+                confirmed_emails.append(check)
+                self.write('cloud', 'ses_confirmed_emails',confirmed_emails)
+                print(f'{check} was used for the first time')
+                print('Please check Inbox, confirm and then send again\n')
+                checked=True
+
+        if checked: 
+            return  
+        
+        try:
+            response = ses.send_email(
+                Source=sender,
+                Destination={
+                    'ToAddresses': [to]
+                },
+                Message={
+                    'Subject': {
+                        'Data': subject
+                    },
+                    'Body': {
+                        'Text': {
+                            'Data': body
+                        }
+                    }
+                }
+            )
+
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == 'MessageRejected':
+                print(f'Error: {e}')
+            else:
+            # Handle other exceptions, perhaps re-raise them
+                raise            
+
+        print(f'Sent email to {to}!')
+
+        # The below AIM policy is needed if you do not want to confirm 
+        # each and every email you want to send to. 
+
+        # iam = boto3.client('iam')
+        # policy_document = {
+        #     "Version": "2012-10-17",
+        #     "Statement": [
+        #         {
+        #             "Effect": "Allow",
+        #             "Action": [
+        #                 "ses:SendEmail",
+        #                 "ses:SendRawEmail"
+        #             ],
+        #             "Resource": "*"
+        #         }
+        #     ]
+        # }
+
+        # response = iam.create_policy(
+        #     PolicyName='SES_SendEmail_Policy',
+        #     Description='Policy to allow sending email via SES',
+        #     PolicyDocument=json.dumps(policy_document)
+        # )
+
+        # policy_arn = response['Policy']['Arn']
+        # print(f"Created policy with ARN: {policy_arn}")
+
+        # username = 'your_iam_username'  # Change this to the username you wish to attach the policy to
+
+        # response = iam.attach_user_policy(
+        #     UserName=username,
+        #     PolicyArn=policy_arn
+        # )
+
+        # print(f"Policy {policy_arn} attached to user {username}")
+
+    def send_ec2_costs(self, instance_id, profile=None):
+
+        # Initialize the clients
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ce = session.client('ce')
+        #sns = session.client('sns')
+
+        # Get the current date
+        now = datetime.datetime.utcnow()
+
+        # Get costs for the last 24 hours
+        start_time = (now - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        end_time = now.strftime('%Y-%m-%d')
+
+        try:
+            response = ce.get_cost_and_usage(
+                TimePeriod={
+                    'Start': start_time,
+                    'End': end_time
+                },
+                Granularity='DAILY',
+                Filter={
+                    'Dimensions': {
+                        'Key': 'USAGE_TYPE',
+                        'Values': [
+                            f'BoxUsage:{instance_id}'  # This is a simplistic filter, and may not cover all costs
+                        ]
+                    }
+                },
+                Metrics=['UnblendedCost']
+            )
+        except botocore.exceptions.ClientError as e:
+            print(f'Error: {e}')
+            return False
+
+        daily_cost = response['ResultsByTime'][0]['Total']['UnblendedCost']['Amount']
+
+        # Get total cost since the instance started
+        # Assuming instance was started 30 days ago for simplicity. You'll need to fetch the actual start date.
+        start_time = (now - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
+
+        response = ce.get_cost_and_usage(
+            TimePeriod={
+                'Start': start_time,
+                'End': end_time
+            },
+            Granularity='DAILY',
+            Filter={
+                'Dimensions': {
+                    'Key': 'USAGE_TYPE',
+                    'Values': [
+                        f'BoxUsage:{instance_id}'
+                    ]
+                }
+            },
+            Metrics=['UnblendedCost']
+        )
+
+        total_cost = sum([day['Total']['UnblendedCost']['Amount'] for day in response['ResultsByTime']])
+
+        # Send Email
+        email_subject = "EC2 Instance Cost Report"
+        email_body = (f"Cost for EC2 instance {instance_id}:\n"
+                    f"Last 24 hours: ${daily_cost}\n"
+                    f"Since instance start: ${total_cost}")
+
+        #sns.publish(
+        #    TopicArn="arn:aws:sns:region:account-id:topicname",  # Replace with your SNS topic ARN
+        #    Subject=email_subject,
+        #    Message=email_body
+        #)
+        print(email_subject,'\n',email_body)
+
+        #print("Email sent!")
+
 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
@@ -3049,7 +3571,7 @@ class ConfigManager:
                 if len(content) == 1:
                     return content[0].strip()
                 else:
-                    return content.strip()
+                    return content
 
     def delete(self, section, entry):
         entry_path = self._get_entry_path(section, entry)
@@ -3244,6 +3766,8 @@ def parse_arguments():
         '''), formatter_class=argparse.RawTextHelpFormatter) 
     parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='', 
         help='pick a custom mount point, this only works if you select a single folder.')
+    parser_mount.add_argument( '--ec2', '-e', dest='ec2', action='store_true', default=False,
+        help="Mount folder on new EC2 instance instead of local machine")    
     parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
         help="unmount instead of mount, you can also use the umount sub command instead.")
     parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
@@ -3277,6 +3801,8 @@ def parse_arguments():
 
             (costs from April 2023)
             '''))
+    parser_restore.add_argument( '--ec2', '-e', dest='ec2', action='store_true', default=False,
+        help="Restore folder on new EC2 instance instead of local machine")    
     parser_restore.add_argument( '--no-download', '-l', dest='nodownload', action='store_true', default=False,
         help="skip download to local storage after retrieval from Glacier")
     parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
