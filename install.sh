@@ -2,10 +2,26 @@
 
 PMIN="8" # python3 minor version = 3.8)
 
+froster_update() {
+  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
+        -o ~/.local/bin/froster.py
+
+  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
+        -o ~/.local/bin/froster
+
+  chmod +x ~/.local/bin/froster  
+}
 echo ""
+umask 0002
+if [[ $1 == "update" ]]; then
+  echo -e "  Updating Froster, please wait ...\n"
+  froster_update
+  froster --version
+  echo -e "\n  Froster updated! Run 'froster --help'\n"  
+  exit
+fi 
 echo "Installing Froster, please wait ..."
 ### checking for correct Python version 
-umask 0002
 P3=$(which python3)
 if [[ -z ${P3} ]]; then
   echo "python3 could not be found, please install Python >= 3.${PMIN} first"
@@ -66,13 +82,7 @@ curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirement
          install --upgrade -r ~/.local/share/froster/requirements.txt
 echo "Done!"
 
-curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
-        -o ~/.local/bin/froster.py
-
-curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
-        -o ~/.local/bin/froster
-
-chmod +x ~/.local/bin/froster
+froster_update
 
 DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
 
