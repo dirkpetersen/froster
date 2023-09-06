@@ -975,10 +975,10 @@ class Archiver:
         cmdline = ""
         for row in rows:
             totalspace += row[3]
-            cmdline += f'"{row[5]}" '
+            cmdline += f'"{row[5]}" \\\n'
 
         print(f'\nRun this command to archive all selected folders in batch mode:\n')   
-        print(f'froster archive {cmdline}\n')    
+        print(f'froster archive --dry-run \\\n{cmdline[:-3]}\n')
         print(f'Total space to archive: {format(round(totalspace, 3),",")} GiB\n')
 
         # Don't forget to close the connection when done
@@ -2207,9 +2207,13 @@ class SlurmEssentials:
             script.write(line + "\n")
         script.seek(0)
         oscript = self._reorder_sbatch_lines(script)
-        output = subprocess.check_output('sbatch', shell=True, 
-                    text=True, input=oscript.read())
-        job_id = int(output.split()[-1])
+        try:
+            output = subprocess.check_output('sbatch', shell=True, 
+                        text=True, input=oscript.read())
+            job_id = int(output.split()[-1])
+        except subprocess.CalledProcessError as e:
+            print(f'Error: {e}')
+            job_id = ""        
         if args.debug:
             oscript.seek(0)
             with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
@@ -3742,6 +3746,8 @@ def parse_arguments():
         help="Do not move small files to tar file before archiving")  
     parser_archive.add_argument( '--nih', '-n', dest='nih', action='store_true', default=False,
         help="Search and Link Metadata from NIH Reporter")      
+    parser_archive.add_argument( '--dry-run', '-d', dest='dryrun', action='store_true', default=False,
+        help="Execute a test archive without actually copying the data")      
     parser_archive.add_argument('folders', action='store', default=[], nargs='*', 
         help='folders you would like to archive (separated by space), ' +
                 'the last folder in this list is the target   ')
