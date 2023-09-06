@@ -2207,13 +2207,25 @@ class SlurmEssentials:
             script.write(line + "\n")
         script.seek(0)
         oscript = self._reorder_sbatch_lines(script)
-        try:
-            output = subprocess.check_output('sbatch', shell=True, 
-                        text=True, input=oscript.read())
-            job_id = int(output.split()[-1])
-        except subprocess.CalledProcessError as e:
-            print(f'Error: {e}')
-            job_id = ""        
+        #try:
+            #output = subprocess.check_output('sbatch', shell=True, 
+            #            text=True, input=oscript.read())
+            #job_id = int(output.split()[-1])
+            #subprocess.run()
+        #except subprocess.CalledProcessError as e:
+        #    print(f'Error: {e}')
+        #    job_id = 0        
+        result = subprocess.run(["sbatch"], text=True, shell=True, input=oscript.read(),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            if 'Invalid generic resource' in result.stderr:
+                print('Invalid generic resource request. Please remove or change ') 
+                print('config file ~/.config/froster/hpc/slurm_lscratch')
+            else:
+                raise RuntimeError(f"Error running sbatch: {result.stderr.strip()}")
+            sys.exit()
+            return False
+        job_id = int(result.stdout.split()[-1])
         if args.debug:
             oscript.seek(0)
             with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
