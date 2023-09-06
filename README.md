@@ -58,10 +58,16 @@ There were three motivations behind the creation of `Froster`:
 
 ### Installing 
 
-Just pipe this curl command to bash: 
+Just pipe this curl command to bash to install: 
 
 ```
 curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+```
+
+and if you have recently installed it with all dependencies and just would like to update the core software, you just run with `update` argument which will only take a second:
+
+```
+curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- update
 ```
 
 ### configuring 
