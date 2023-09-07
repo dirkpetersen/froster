@@ -1860,8 +1860,8 @@ class TableArchive(App[list]):
 
 
 class TableNIHGrants(App[list]):
-    # (6)!
-    CSS = """
+
+    DEFAULT_CSS = """
     Input.-valid {
         border: tall $success 60%;
     }
@@ -1879,8 +1879,10 @@ class TableNIHGrants(App[list]):
     }
     """
 
+    BINDINGS = [("q", "request_quit", "Quit")]
+
     def compose(self) -> ComposeResult:
-        yield Label("Enter search terms to link your data with an NIH grant/project")
+        yield Label("Enter search to link your data with metadata of an NIH grant/project")
         yield Input(
             placeholder="Enter a part of a Grant Number, PI, Institution or Full Text (Title, Abstract, Terms) ...",
         )
@@ -1891,6 +1893,7 @@ class TableNIHGrants(App[list]):
         table.cursor_type = "row"
         table.styles.max_height = "99vh"
         yield table
+        #yield Footer()
 
     def on_mount(self) -> None:
         self.query_one(LoadingIndicator).display = False
@@ -1901,11 +1904,17 @@ class TableNIHGrants(App[list]):
         self.query_one(LoadingIndicator).display = True
         self.query_one(DataTable).display = False
         inp = self.query_one(Input)
-        self.load_data(inp.value)
+        if inp.value:
+            self.load_data(inp.value)
+        else:
+            self.app.exit([])
         inp.focus()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.exit(self.query_one(DataTable).get_row(event.row_key))
+
+    def action_request_quit(self) -> None:
+        self.app.exit([])
 
     @work
     async def load_data(self, searchstr):
@@ -1915,7 +1924,9 @@ class TableNIHGrants(App[list]):
         await asyncio.sleep(0.1)
         
         rep = NIHReporter()
-        data = rep.search_full(searchstr)        
+        data = rep.search_full(searchstr)
+        if not data:
+            return
         rows = iter(data)
                 
         table.add_columns(*next(rows))
@@ -2207,24 +2218,15 @@ class SlurmEssentials:
             script.write(line + "\n")
         script.seek(0)
         oscript = self._reorder_sbatch_lines(script)
-        #try:
-            #output = subprocess.check_output('sbatch', shell=True, 
-            #            text=True, input=oscript.read())
-            #job_id = int(output.split()[-1])
-            #subprocess.run()
-        #except subprocess.CalledProcessError as e:
-        #    print(f'Error: {e}')
-        #    job_id = 0        
         result = subprocess.run(["sbatch"], text=True, shell=True, input=oscript.read(),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             if 'Invalid generic resource' in result.stderr:
                 print('Invalid generic resource request. Please remove or change file:') 
-                print(os.path.join(self.config_root,'hpc','slurm_lscratch')
+                print(os.path.join(self.config_root,'hpc','slurm_lscratch'))
             else:
                 raise RuntimeError(f"Error running sbatch: {result.stderr.strip()}")
             sys.exit()
-            return False
         job_id = int(result.stdout.split()[-1])
         if args.debug:
             oscript.seek(0)
@@ -2298,6 +2300,8 @@ class NIHReporter:
 
     def search_full(self, searchstr):
         searchstr = self._clean_string(searchstr)
+        if not searchstr:
+            return []
 
         # Search by PI
         if not self._is_number(searchstr):
