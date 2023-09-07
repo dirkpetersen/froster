@@ -2219,8 +2219,8 @@ class SlurmEssentials:
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             if 'Invalid generic resource' in result.stderr:
-                print('Invalid generic resource request. Please remove or change ') 
-                print('config file ~/.config/froster/hpc/slurm_lscratch')
+                print('Invalid generic resource request. Please remove or change file:') 
+                print(os.path.join(self.config_root,'hpc','slurm_lscratch')
             else:
                 raise RuntimeError(f"Error running sbatch: {result.stderr.strip()}")
             sys.exit()
