@@ -455,23 +455,26 @@ def main():
         
         # ********* Restore to new EC2 Instance in AWS 
         if args.ec2:
-            ip, pemfile = cfg.ec2_create_instance(30, cfg.awsprofile)
-            print(f'\n  Connect to EC2 Instance:')
-            print(f'ssh -o StrictHostKeyChecking=no -i {pemfile} ec2-user@{ip}')
-
-            #cfg.send_email_aws('dipeit@gmail.com','my subject', 'my body')
-            #cfg._ec2_create_iam_costexplorer()
-            #cfg.send_ec2_costs('i-06e3803fbe39d55bb')
-
-            return False
-        
-            ip = "44.242.156.195"
+            prof = cfg._ec2_create_iam_policy_roles_ec2profile()
+            iid, ip = cfg.ec2_create_instance(30, prof, cfg.awsprofile)
             out, err = cfg.ssh_upload('ec2-user', ip, 
-                    cfg.ec2_user_space_script(), "bootstrap.sh", is_string=True)
+                cfg.ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
             print(out, err)
+            print('Executing bootstrap script ... please wait ...')
+            time.sleep(5)
             out, err = cfg.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
-            print(out, err)
-            return True
+            print (out)
+            #print(err)
+
+            #print(f'\n  Connect to EC2 Instance:')
+            #print(f'ssh -o StrictHostKeyChecking=no -i {pemfile} ec2-user@{ip}')            
+
+            #cfg._ec2_create_iam_costexplorer_ses('i-0ceeaa2aa897be879')
+
+            #cfg.send_email_aws('dipeit@gmail.com','my subject', 'my body')            
+            #cfg.send_ec2_costs(iid)
+            return
+
 
         if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
             for fld in args.folders:
@@ -676,7 +679,34 @@ def main():
             print (f'Unmounting folder {fld} ... ', flush=True, end="")
             rclone.unmount(fld)
             print('Done!', flush=True)
-        
+
+    if args.subcmd in ['ssh', 'scp']: #or args.unmount:
+        ips = cfg.ec2_list_ips('Name', 'FrosterSelfDestruct')
+        myhost = cfg.read('cloud', 'ec2_last_instance')
+        if ips and not myhost in ips:
+            print(f'{myhost} is no longer running, replacing with {ips[-1]}')
+            myhost = ips[-1]
+            #cfg.write('cloud', 'ec2_last_instance', myhost)
+        if args.ec2host:
+            myhost = args.ec2host
+        if args.terminate:
+            cfg.ec2_terminate_instance(myhost)
+            return True
+        if args.list:
+            if ips:
+                sips = '\n'.join(ips)
+                print(f"Running EC2 Instances:\n{sips}")
+            else:
+                print('No running instances detected')
+            return True
+        if args.subcmd == 'ssh':
+            print(f'Connecting to {myhost} ...')
+            cfg.ssh_execute('ec2-user', myhost)
+            return True
+        elif args.subcmd == 'scp':
+            pass
+    
+
 class Archiver:
     def __init__(self, args, cfg):
         self.args = args
@@ -3023,14 +3053,93 @@ class ConfigManager:
             return False            
         return True
     
-    def _ec2_create_iam_self_destruct_role(self, profile):
+    def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         iam = session.client('iam')
 
-        # Step 1: Create IAM policy
+        policy_arn = None
+        try:
+            response = iam.create_policy(
+                PolicyName=pol_name,
+                PolicyDocument=json.dumps(pol_doc)
+            )
+            policy_arn = response['Policy']['Arn']
+            print(f"Policy created with ARN: {policy_arn}")
+        except iam.exceptions.EntityAlreadyExistsException as e:
+            policies = iam.list_policies(Scope='Local')  
+               # Scope='Local' for customer-managed policies, 
+               # 'AWS' for AWS-managed policies            
+            for policy in policies['Policies']:
+                if policy['PolicyName'] == pol_name:
+                    policy_arn = policy['Arn']
+                    break
+            print(f'Policy {pol_name} already exists')
+        except Exception as e:
+            print('Other Error:', e)
+        return policy_arn
+
+
+
+
+    def _ec2_create_froster_iam_policy(self, profile=None):
+        # Initialize session with specified profile or default
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+
+        # Create IAM client
+        iam = session.client('iam')
+
+        # Define policy name and policy document
+        policy_name = 'FrosterEC2DescribePolicy'
         policy_document = {
             "Version": "2012-10-17",
             "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ec2:Describe*",
+                    "Resource": "*"
+                }
+            ]
+        }
+
+        # Get current IAM user's details
+        user = iam.get_user()
+        user_name = user['User']['UserName']
+
+        # Check if policy already exists for the user
+        existing_policies = iam.list_user_policies(UserName=user_name)
+        if policy_name in existing_policies['PolicyNames']:
+            print(f"{policy_name} already exists for user {user_name}.")
+            return
+
+        # Create policy for user
+        iam.put_user_policy(
+            UserName=user_name,
+            PolicyName=policy_name,
+            PolicyDocument=json.dumps(policy_document)
+        )
+
+        print(f"Policy {policy_name} attached successfully to user {user_name}.")
+
+
+
+
+    def _ec2_create_iam_policy_roles_ec2profile(self, profile=None):
+        # create all the IAM requirement to allow an ec2 instance to
+        # 1. self destruct, 2. monitor cost with CE and 3. send emails via SES
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+
+      # Step 0: Create IAM self destruct and EC2 read policy 
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ec2:Describe*",     # Basic EC2 read permissions
+                    ],
+                    "Resource": "*"
+                },                
                 {
                     "Effect": "Allow",
                     "Action": "ec2:TerminateInstances",
@@ -3040,107 +3149,94 @@ class ConfigManager:
                             "ec2:ResourceTag/Name": "FrosterSelfDestruct"
                         }
                     }
-                }
-            ]
-        }
-
-        policy_name = 'SelfDestructPolicy'
-        try:
-            iam.create_policy(
-                PolicyName=policy_name,
-                PolicyDocument=json.dumps(policy_document)
-            )
-        except iam.exceptions.EntityAlreadyExistsException:
-            print ('IAM SelfDestructPolicy already exists')
-
-        except botocore.exceptions.ClientError as e:
-            print(f'*** Error: {e}\n')
-            return False 
-
-        # Step 2: Create an IAM role and attach the policy
-        trust_relationship = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {
-                        "Service": "ec2.amazonaws.com"
-                    },
-                    "Action": "sts:AssumeRole"
-                }
-            ]
-        }
-
-        role_name = 'SelfDestructRole'
-        try:
-            iam.create_role(
-                RoleName=role_name,
-                AssumeRolePolicyDocument=json.dumps(trust_relationship),
-                Description='Allows EC2 instances to call AWS services on your behalf.'
-            )
-        except iam.exceptions.EntityAlreadyExistsException:
-            print ('IAM SelfDestructRole already exists.')            
-
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=f'arn:aws:iam::{session.client("sts").get_caller_identity()["Account"]}:policy/{policy_name}'
-        )
-
-        return True
-    
-    def _ec2_create_iam_costexplorer(self, profile=None):
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
-        sts = session.client('sts')
-
-        policy_document = {
-            "Version": "2012-10-17",
-            "Statement": [
+                },
                 {
                     "Effect": "Allow",
                     "Action": [
-                        "ce:*",               # Permissions for Cost Explorer
-                        "ec2:Describe*",      # Basic EC2 read permissions
+                        "ce:GetCostAndUsage"
                     ],
                     "Resource": "*"
                 }
             ]
         }
+        policy_name = 'FrosterSelfDestructPolicy'     
 
-        response = iam.create_policy(
-            PolicyName='CE_EC2_Permissions',
-            Description='Policy for Cost Explorer in EC2',
-            PolicyDocument=json.dumps(policy_document)
+        destruct_policy_arn = self._ec2_create_or_get_iam_policy(
+            policy_name, policy_document, profile)
+    
+        # 1. Create an IAM role
+        trust_policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ec2.amazonaws.com"},
+                    "Action": "sts:AssumeRole"
+                },
+            ]
+        }
+
+        role_name = "FrosterEC2Role"
+        try:
+            iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(trust_policy),
+                Description='Froster role allows Billing, SES and Terminate'
+            )
+        except iam.exceptions.EntityAlreadyExistsException:        
+            print (f'Role {role_name} already exists.') 
+        except Exception as e:            
+            print('Error:', e)
+        
+        # 2. Attach permissions policies to the IAM role
+        cost_explorer_policy = "arn:aws:iam::aws:policy/AWSBillingReadOnlyAccess"
+        ses_policy = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
+        
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=cost_explorer_policy
+        )
+        
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=ses_policy
         )
 
-        # Get caller identity
-        identity = sts.get_caller_identity()
-        # Extract ARN
-        arn = identity['Arn']
-        # Extract the username or role name from the ARN
-        # ***********   THIS DOES JNOT WORK
-        username = arn.split(':')[-1]
-        username='root'
-
-        print(arn,username)
-
-        policy_arn = response['Policy']['Arn']
-        print(f"Created policy with ARN: {policy_arn}")
-
-        response = iam.attach_user_policy(
-            UserName=username,
-            PolicyArn=policy_arn
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=destruct_policy_arn
         )
 
-        print(f"Policy {policy_arn} attached to user {username}")
+        
+        # 3. Create an instance profile and associate it with the role
+        instance_profile_name = "FrosterEC2Profile"
+        try:
+            iam.create_instance_profile(
+                InstanceProfileName=instance_profile_name
+            )
+            iam.add_role_to_instance_profile(
+                InstanceProfileName=instance_profile_name,
+                RoleName=role_name
+            )
+        except iam.exceptions.EntityAlreadyExistsException:
+            print (f'Profile {instance_profile_name} already exists.')
+            return instance_profile_name
+        except Exception as e:            
+            print('Error:', e)
+            return None
+        
+        # Give AWS a moment to propagate the changes
+        print('wait for 15 sec ...')
+        time.sleep(15)  # Wait for 15 seconds
 
+        return instance_profile_name
     
     def _ec2_create_and_attach_security_group(self, instance_id, profile=None):
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ec2 = session.resource('ec2')
         client = session.client('ec2')
 
-        group_name = 'SSHAndICMP'
+        group_name = 'Web-SSH-ICMP'
         
         # Check if security group already exists
         security_groups = client.describe_security_groups(Filters=[{'Name': 'group-name', 'Values': [group_name]}])
@@ -3154,7 +3250,7 @@ class ConfigManager:
             )
             security_group_id = response['GroupId']
         
-            # Allow SSH (port 22) inbound
+            # Allow ports 22, 80, 443, 8080, ICMP
             client.authorize_security_group_ingress(
                 GroupId=security_group_id,
                 IpPermissions=[
@@ -3165,6 +3261,23 @@ class ConfigManager:
                         'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
                     },
                     {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 80,
+                        'ToPort': 80,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },
+                    {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 443,
+                        'ToPort': 443,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },
+                    {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 8080,
+                        'ToPort': 8080,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },                    {
                         'IpProtocol': 'icmp',
                         'FromPort': -1,  # -1 allows all ICMP types
                         'ToPort': -1,
@@ -3221,30 +3334,41 @@ class ConfigManager:
 
         return show_progress_bar
 
-    def _ec2_user_data_script(self):
+    def _ec2_cloud_init_script(self):
         # Define the User Data script
-        userdata = textwrap.dedent('''
+        userdata = textwrap.dedent(f'''
         #! /bin/bash
         dnf check-update
         dnf update -y
         dnf install -y gcc python3-pip python3-psutil
+        export AWS_DEFAULT_REGION=us-west-2
+        echo 'export AWS_DEFAULT_REGION={self.aws_region}' >> ~/.bashrc
+        hostnamectl set-hostname froster                                   
         dnf upgrade
-        dnf install -y mc R
-        dnf group install -y 'Development Tools'
+        dnf install -y vim mc R
+        dnf group install -y 'Development Tools'                                   
         ''').strip()
         return userdata
     
-    def ec2_user_space_script(self):
+    def ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
         # Define script that will be installed by ec2-user 
-        return textwrap.dedent('''
+        return textwrap.dedent(f'''
         #! /bin/bash
+        echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
+        echo 'export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
         cd /tmp
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
-        curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+        curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
+        aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
+        aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
+        aws configure set region {self.aws_region}
+        python3 -m pip install boto3  > /dev/null
+        sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
+        sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
         ''').strip()
     
-    def ec2_create_instance(self, required_space, profile):
+    def ec2_create_instance(self, required_space, iamprofile=None, profile=None):
         # to avoid egress we are creating an EC2 instance 
         # with ephemeral (local) disk for a temporary restore 
         # 
@@ -3264,8 +3388,10 @@ class ConfigManager:
                            'i3en.large': 1250,
                            'c5ad.large': 75}
         
-        if not self._ec2_create_iam_self_destruct_role(profile):
-            return False
+        # if not self._ec2_create_iam_self_destruct_role(profile):
+        #     return False
+            
+        #if not self._ec2
 
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ec2 = session.resource('ec2')
@@ -3295,13 +3421,20 @@ class ConfigManager:
             os.makedirs(os.path.join(self.config_root,'cloud'),exist_ok=True)            
             with open(key_path, 'w') as key_file:
                 key_file.write(key_pair.key_material)
-            os.chmod(key_path, stat.S_IRUSR)  # Set file permission to 400
+            os.chmod(key_path, 0o600)  # Set file permission to 600
 
         imageid = self._ec2_get_latest_amazon_linux2_ami(profile)
         print(f'Using Image ID: {imageid}')
 
         #print(f'*** userdata-script:\n{self._ec2_user_data_script()}')
 
+        iam_instance_profile={}
+        if iamprofile:
+            iam_instance_profile={
+                'Name': iamprofile  # Use the instance profile name
+            }        
+        print(f'IAM Instance profile: {iamprofile}.')    
+        
         # Create EC2 instance
         instance = ec2.create_instances(
             ImageId=imageid,
@@ -3309,7 +3442,8 @@ class ConfigManager:
             MaxCount=1,
             InstanceType=chosen_instance_type,
             KeyName=self.ssh_key_name,
-            UserData=self._ec2_user_data_script(),
+            UserData=self._ec2_cloud_init_script(),
+            IamInstanceProfile = iam_instance_profile,
             TagSpecifications=[
                 {
                     'ResourceType': 'instance',
@@ -3338,25 +3472,99 @@ class ConfigManager:
                 progress(attempt)
                 continue
         print('')
-        instance.reload()
+        instance.reload()        
         grpid = self._ec2_create_and_attach_security_group(instance_id, profile)
         if grpid:
             print(f'Security Group "{grpid}" attached.') 
         else:
             print('No Security Group ID created.')
+        instance.wait_until_running()
+        print(f'Instance IP: {instance.public_ip_address}')
 
-        return instance.public_ip_address, key_path
+        self.write('cloud', 'ec2_last_instance', instance.public_ip_address)
 
-    def ssh_execute(self, user, host, command):
+        return instance_id, instance.public_ip_address
+
+    def ec2_terminate_instance(self, ip, profile=None):
+        # terminate instance  
+        # with ephemeral (local) disk for a temporary restore 
+        
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()        
+        ec2 = session.client('ec2')
+        #ips = self.ec2_list_ips(self, 'Name', 'FrosterSelfDestruct')    
+        # Use describe_instances with a filter for the public IP address to find the instance ID
+        filters = [{
+            'Name': 'network-interface.addresses.association.public-ip',
+            'Values': [ip]
+        }]
+        try:
+            response = ec2.describe_instances(Filters=filters)        
+        except botocore.exceptions.ClientError as e: 
+            print(f'Error: {e}')
+            return False
+        # Check if any instances match the criteria
+        instances = [instance for reservation in response['Reservations'] for instance in reservation['Instances']]        
+        if not instances:
+            print(f"No EC2 instance found with public IP: {ip}")
+            return 
+        # Extract instance ID from the instance
+        instance_id = instances[0]['InstanceId']
+        
+        # Terminate the instance
+        ec2.terminate_instances(InstanceIds=[instance_id])
+        
+        print(f"EC2 Instance {instance_id} with public IP {ip} is being terminated !")
+
+    def ec2_list_ips(self, tag_name, tag_value, profile=None):
+        """
+        List all IP addresses of running EC2 instances with a specific tag name and value.
+        :param tag_name: The name of the tag
+        :param tag_value: The value of the tag
+        :return: List of IP addresses
+        """
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2 = session.client('ec2')        
+        
+        # Define the filter
+        filters = [
+            {
+                'Name': 'tag:' + tag_name,
+                'Values': [tag_value]
+            },
+            {
+                'Name': 'instance-state-name',
+                'Values': ['running']
+            }
+        ]
+        
+        # Make the describe instances call
+        try:
+            response = ec2.describe_instances(Filters=filters)        
+        except botocore.exceptions.ClientError as e: 
+            print(f'Error: {e}')
+            return []
+        #An error occurred (AuthFailure) when calling the DescribeInstances operation: AWS was not able to validate the provided access credentials
+        ips = []        
+        # Extract IP addresses
+        for reservation in response['Reservations']:
+            for instance in reservation['Instances']:
+                ips.append(instance['PublicIpAddress'])        
+        return ips
+
+    def ssh_execute(self, user, host, command=None):
         """Execute an SSH command on the remote server."""
         SSH_OPTIONS = "-o StrictHostKeyChecking=no"
         key_path = os.path.join(self.config_root,'cloud',f'{self.ssh_key_name}.pem')
-        cmd = f"ssh {SSH_OPTIONS} -i '{key_path}' {user}@{host} '{command}'"
-        try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            return result.stdout, result.stderr
-        except:
-            print(f'Error executing "{cmd}."')
+        cmd = f"ssh {SSH_OPTIONS} -i '{key_path}' {user}@{host}"
+        if command:
+            cmd += f" '{command}'"
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                return result.stdout, result.stderr
+            except:
+                print(f'Error executing "{cmd}."')
+        else:
+            subprocess.run(cmd, shell=True, capture_output=False, text=True)
         return None, None
                 
     def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
@@ -3465,14 +3673,10 @@ class ConfigManager:
         #     ]
         # }
 
-        # response = iam.create_policy(
-        #     PolicyName='SES_SendEmail_Policy',
-        #     Description='Policy to allow sending email via SES',
-        #     PolicyDocument=json.dumps(policy_document)
-        # )
+        # policy_name = 'SES_SendEmail_Policy'
 
-        # policy_arn = response['Policy']['Arn']
-        # print(f"Created policy with ARN: {policy_arn}")
+        # policy_arn = self._ec2_create_or_get_iam_policy(
+        #     policy_name, policy_document, profile)
 
         # username = 'your_iam_username'  # Change this to the username you wish to attach the policy to
 
@@ -3684,6 +3888,135 @@ class ConfigManager:
                 print(f'Failed copying {binary} to {targetfolder}')
 
 
+    def _ec2_create_iam_costexplorer_ses(self, instance_id ,profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+        ec2 = session.client('ec2')
+
+        # Define the policy
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ses:SendEmail",
+                    "Resource": "*"
+                },                
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ce:*",              # Permissions for Cost Explorer
+                        "ce:GetCostAndUsage", # all
+                        "ec2:Describe*",     # Basic EC2 read permissions
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }
+
+        # Step 1: Create the policy in IAM
+        policy_name = "CostExplorerSESPolicy"
+
+        policy_arn = self._ec2_create_or_get_iam_policy(
+            policy_name, policy_document, profile)
+                
+
+        # Step 2: Retrieve the IAM instance profile attached to the EC2 instance
+        response = ec2.describe_instances(InstanceIds=[instance_id])
+        instance_data = response['Reservations'][0]['Instances'][0]
+        if 'IamInstanceProfile' not in instance_data:
+            print(f"No IAM Instance Profile attached to the instance: {instance_id}")
+            return False
+
+        instance_profile_arn = response['Reservations'][0]['Instances'][0]['IamInstanceProfile']['Arn']
+
+        # Extract the instance profile name from its ARN
+        instance_profile_name = instance_profile_arn.split('/')[-1]
+
+        # Step 3: Fetch the role name from the instance profile
+        response = iam.get_instance_profile(InstanceProfileName=instance_profile_name)
+        role_name = response['InstanceProfile']['Roles'][0]['RoleName']
+
+        # Step 4: Attach the desired policy to the role
+        try:
+            iam.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=policy_arn
+            )
+            print(f"Policy {policy_arn} attached to role {role_name}")
+        except iam.exceptions.NoSuchEntityException:
+            print(f"Role {role_name} does not exist!")
+        except iam.exceptions.InvalidInputException as e:
+            print(f"Invalid input: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+
+    def _ec2_create_iam_self_destruct_role(self, profile):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+
+        # Step 1: Create IAM policy
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ec2:TerminateInstances",
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {
+                            "ec2:ResourceTag/Name": "FrosterSelfDestruct"
+                        }
+                    }
+                }
+            ]
+        }
+        policy_name = 'SelfDestructPolicy'
+        
+        policy_arn = self._ec2_create_or_get_iam_policy(
+            policy_name, policy_document, profile)
+
+        # Step 2: Create an IAM role and attach the policy
+        trust_relationship = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "ec2.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }
+
+        role_name = 'SelfDestructRole'
+        try:
+            iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(trust_relationship),
+                Description='Allows EC2 instances to call AWS services on your behalf.'
+            )
+        except iam.exceptions.EntityAlreadyExistsException:
+            print ('IAM SelfDestructRole already exists.')            
+
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=policy_arn
+        )
+
+        return True
+
+
+# class SubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
+#     def _format_action(self, action):
+#         parts = super(argparse.RawDescriptionHelpFormatter, self)._format_action(action)
+#         if action.nargs == argparse.PARSER:
+#             parts = "\n".join(parts.split("\n")[1:])
+#         return parts
+
+
 def parse_arguments():
     """
     Gather command-line arguments.
@@ -3830,7 +4163,35 @@ def parse_arguments():
     parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to to restore (separated by space), ' +
                 '')  
-    
+
+    # ***
+       
+    parser_ssh = subparsers.add_parser('ssh', aliases=['scp'],
+        help=textwrap.dedent(f'''
+            Login to an AWS EC2 instance to which data was restored with the --ec2 option
+        '''), formatter_class=argparse.RawTextHelpFormatter)
+    parser_ssh.add_argument( '--list', '-l', dest='list', action='store_true', default=False,
+        help="List running Froster EC2 instances")        
+    parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='', 
+        help='Terminate EC2 instance with this public IP Address.')    
+    # parser_ssh.add_argument('--key', '-k', dest='key', action='store', default='', 
+    #     help='pick a custom ssh key for your connection')
+    parser_ssh.add_argument('ec2host', action='store', default="", nargs='?',
+        help='ip address or hostname of EC2 system to connect to' +
+               '')
+
+    # # ***
+    # # monitoring for EC2 hosts    
+    # parser_mon = subparsers.add_parser('mon', aliases=['ec2'],
+    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)
+    # parser_mon.add_argument( '--test', '-l', dest='test', action='store_true', default=False,
+    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)        
+    # parser_mon.add_argument('--test2', '-t', dest='test2', action='store', default='', 
+    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)
+    # parser_mon.add_argument('ec2host', action='store', default="", nargs='?',
+    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)
+
+
     if len(sys.argv) == 1:
         parser.print_help(sys.stdout)               
 
