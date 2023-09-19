@@ -3032,10 +3032,10 @@ class AWSBoto:
         #! /bin/bash
         dnf check-update
         dnf update -y
-        dnf install -y gcc cronie python3-pip python3-psutil
+        dnf install -y gcc cronie vim wget python3-pip python3-psutil
         hostnamectl set-hostname froster
         dnf upgrade
-        dnf install -y vim mc wget R
+        dnf install -y mc R
         dnf group install -y 'Development Tools'
         dnf install -y https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.06.2-561-x86_64.rpm
         #echo 'export AWS_DEFAULT_REGION={self.cfg.aws_region}' >> ~/.bashrc
@@ -3333,20 +3333,16 @@ class AWSBoto:
             confirmed_emails.append(ret)
         
         checks = [sender, to]
+        checks = list(set(checks)) # remove duplicates
 
-        checked=False
         for check in checks:
             if check not in confirmed_emails:
                 response = ses.verify_email_identity(EmailAddress=check)
                 confirmed_emails.append(check)
-                self.write('cloud', 'ses_confirmed_emails',confirmed_emails)
-                print(f'{check} was used for the first time')
-                print('Please check Inbox, confirm and then send again\n')
-                checked=True
-
-        if checked: 
-            return  
-        
+                self.cfg.write('cloud', 'ses_confirmed_emails',confirmed_emails)
+                print(f'{check} was used for the first time on this computer')
+                print('email may not have been sent. Please check Inbox and confirm\n')
+                        
         try:
             response = ses.send_email(
                 Source=sender,
@@ -3364,15 +3360,15 @@ class AWSBoto:
                     }
                 }
             )
-
+            print(f'Sent email "{subject}" to {to}!')
         except botocore.exceptions.ClientError as e:
             if e.response['Error']['Code'] == 'MessageRejected':
+                print(f'Message was rejected, Error: {e}')
+            elif Exception as e:
                 print(f'Error: {e}')
-            else:
             # Handle other exceptions, perhaps re-raise them
-                raise            
-
-        print(f'Sent email to {to}!')
+            else:
+                pass
 
         # The below AIM policy is needed if you do not want to confirm 
         # each and every email you want to send to. 
@@ -3567,8 +3563,11 @@ class AWSBoto:
 
         instance_id = self._get_ec2_metadata('instance-id')
         public_ip = self._get_ec2_metadata('public-ipv4')
-
-        print(f'Current machine IP {public_ip} and instance id {instance_id} ...')
+        instance_type = self._get_ec2_metadata('instance-type')
+        ami_id = self._get_ec2_metadata('ami-id')
+        reservation_id = self._get_ec2_metadata('reservation-id')
+        
+        #print(f'Current machine IP {public_ip} ({instance_id}, {instance_type}, {ami_id}, {reservation_id}) ... ')
 
         if self._monitor_none_logged_in() and self._monitor_is_idle():
             # This machine was idle for a long time, destroy it
@@ -3598,9 +3597,9 @@ class AWSBoto:
         body.append(f"{user_monthly_cost:.2f} {user_monthly_unit} cost of user {user_name} for the current month.")
         body.append(f"{user_daily_cost:.2f} {user_daily_unit} cost of user {user_name} in the last 24 hours.")
         body.append("Cost for each EC2 instance type in the last 24 hours:")
-        for instance_type, (cost, unit) in daily_costs_by_instance.items():
-            if instance_type != 'NoInstanceType':
-                body.append(f"  {instance_type:12}: ${cost:.2f} {unit}")
+        for instance_t, (cost, unit) in daily_costs_by_instance.items():
+            if instance_t != 'NoInstanceType':
+                body.append(f"  {instance_t:12}: ${cost:.2f} {unit}")
         body_text = "\n".join(body)
         self.send_email_ses("", "", f'Froster AWS cost report ({instance_id})', body_text)
 
