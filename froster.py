@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.8.4'
+__version__ = '0.8.5'
 
 def main():
         
@@ -3050,8 +3050,8 @@ class AWSBoto:
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo 'export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
         cd /tmp
-        curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-        bash Miniconda3-latest-Linux-x86_64.sh -b
+        # curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        # bash Miniconda3-latest-Linux-x86_64.sh -b
         curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
         froster config --monitor '{emailaddr}'
         aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
