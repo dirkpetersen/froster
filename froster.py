@@ -3364,11 +3364,9 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             if e.response['Error']['Code'] == 'MessageRejected':
                 print(f'Message was rejected, Error: {e}')
-            elif Exception as e:
-                print(f'Error: {e}')
+        except Exception as e:
+            print(f'Error: {e}')
             # Handle other exceptions, perhaps re-raise them
-            else:
-                pass
 
         # The below AIM policy is needed if you do not want to confirm 
         # each and every email you want to send to. 
