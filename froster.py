@@ -3044,6 +3044,7 @@ class AWSBoto:
     
     def ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
         # Define script that will be installed by ec2-user 
+        emailaddr = self.cfg.read('general','email')
         return textwrap.dedent(f'''
         #! /bin/bash
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
@@ -3052,7 +3053,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
-        froster config --monitor
+        froster config --monitor '{emailaddr}'
         aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
         aws configure set region {self.cfg.aws_region}
