@@ -138,8 +138,8 @@ def subcmd_config(args, cfg, aws):
     if args.monitor:
         # monitoring only setup, do not continue 
         fro = os.path.join(binfolder,'froster')
-        print(fro)
-        cfg.add_cron_job(f'{fro} restore --monitor','30','*')
+        cfg.write('general', 'email', args.monitor)
+        cfg.add_cron_job(f'{fro} restore --monitor > /var/tmp/froster_monitor.log 2>&1','30','*')
         return True
 
     print('\n*** Asking a few questions ***')
@@ -3441,7 +3441,6 @@ class AWSBoto:
         policy_arn = self._ec2_create_or_get_iam_policy(
             policy_name, policy_document, profile)
                 
-
         # Step 2: Retrieve the IAM instance profile attached to the EC2 instance
         response = ec2.describe_instances(InstanceIds=[instance_id])
         instance_data = response['Reservations'][0]['Instances'][0]
@@ -3566,7 +3565,7 @@ class AWSBoto:
         # if system is idle self-destroy 
 
         instance_id = self._get_ec2_metadata('instance-id')
-        public_ip = self._get_ec2_metadata('public-ip')
+        public_ip = self._get_ec2_metadata('public-ipv4')
 
         print(f'Current machine IP {public_ip} and instance id {instance_id} ...')
 
@@ -3574,6 +3573,8 @@ class AWSBoto:
             # This machine was idle for a long time, destroy it
             print(f'Destroying current machine {public_ip} ({instance_id}) ...')
             if public_ip:
+                body_text = "Instance was detected as idle and terminated"
+                self.send_email_ses("", "", f'Terminating idle instance {public_ip} ({instance_id})', body_text)
                 self.ec2_terminate_instance(public_ip)
                 return True 
             else:
@@ -4424,8 +4425,9 @@ def parse_arguments():
             Bootstrap the configurtion, install dependencies and setup your environment.
             You will need to answer a few questions about your cloud and hpc setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    parser_config.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
-        help="setup froster as a monitoring cronjob on an ec2 instance")
+    parser_config.add_argument( '--monitor', '-m', dest='monitor', action='store', default='',
+        metavar='<email@address.org>', help='setup froster as a monitoring cronjob ' +
+        'on an ec2 instance and notify an email address')
     parser_config.add_argument('cfgfolder', action='store', default="", nargs='?',
         help='configuration root folder where .config/froster will be created ' +
                 '(default=~ home directory)  ')
