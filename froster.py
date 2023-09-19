@@ -137,7 +137,9 @@ def subcmd_config(args, cfg, aws):
 
     if args.monitor:
         # monitoring only setup, do not continue 
-        cfg.add_cron_job("froster restore --monitor","30","*")
+        fro = os.path.join(binfolder,'froster')
+        print(fro)
+        cfg.add_cron_job(f'{fro} restore --monitor','30','*')
         return True
 
     print('\n*** Asking a few questions ***')
@@ -3030,7 +3032,7 @@ class AWSBoto:
         #! /bin/bash
         dnf check-update
         dnf update -y
-        dnf install -y gcc python3-pip python3-psutil
+        dnf install -y gcc cronie python3-pip python3-psutil
         hostnamectl set-hostname froster
         dnf upgrade
         dnf install -y vim mc wget R
@@ -3539,7 +3541,7 @@ class AWSBoto:
         token_url = "http://169.254.169.254/latest/api/token"
         token_headers = {"X-aws-ec2-metadata-token-ttl-seconds": "60"}
         try:
-            token_response = requests.put(token_url, headers=token_headers, timeout=1)
+            token_response = requests.put(token_url, headers=token_headers, timeout=2)
         except Exception as e:
             print(f'Error: {e}')
             return ""
@@ -3547,11 +3549,16 @@ class AWSBoto:
 
         # Use the token to retrieve the specified metadata entry
         headers = {"X-aws-ec2-metadata-token": token}
-        response = requests.get(base_url + metadata_entry, headers=headers, timeout=1)
-        
-        if response.status_code != 200:
-            raise Exception(f"Failed to retrieve metadata for entry: {metadata_entry}. HTTP Status Code: {response.status_code}")
+        try:
+            response = requests.get(base_url + metadata_entry, headers=headers, timeout=2)
+        except Exception as e:
+            print(f'Error: {e}')
+            return ""            
 
+        if response.status_code != 200:
+            print(f"Error: Failed to retrieve metadata for entry: {metadata_entry}. HTTP Status Code: {response.status_code}")
+            return ""
+    
         return response.text
     
     def monitor_ec2(self):
@@ -4040,7 +4047,10 @@ class ConfigManager:
             return False 
         with tempfile.NamedTemporaryFile(delete=False) as temp:
             # Dump the current crontab to the temporary file
-            os.system('crontab -l > {}'.format(temp.name))
+            try:
+                os.system('crontab -l > {}'.format(temp.name))
+            except Exception as e:
+                print(f"Error: {e}")                
 
             # Add the new cron job to the temporary file
             cron_time = "{} {} {} {} {}".format(str(minute), hour, day_of_month, month, day_of_week)
@@ -4048,8 +4058,11 @@ class ConfigManager:
                 file.write('{} {}\n'.format(cron_time, cmd))
             
             # Install the new crontab
-            os.system('crontab {}'.format(temp.name))
-            
+            try:            
+                os.system('crontab {}'.format(temp.name))
+            except Exception as e:
+                print(f"Error: {e}")                
+
             # Clean up by removing the temporary file
             os.unlink(temp.name)
 
@@ -4401,8 +4414,6 @@ def parse_arguments():
         help='Number of cores to be allocated for the machine. (default=4)')
     parser.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile in ~/.aws/ should be used. default="aws"')
-    parser.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
-        help="setup froster as a monitoring cronjob on an ec2 instance")
     parser.add_argument('--version', '-v', dest='version', action='store_true', default=False, 
         help='print Froster and Python version info')
     
@@ -4413,6 +4424,8 @@ def parse_arguments():
             Bootstrap the configurtion, install dependencies and setup your environment.
             You will need to answer a few questions about your cloud and hpc setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
+    parser_config.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
+        help="setup froster as a monitoring cronjob on an ec2 instance")
     parser_config.add_argument('cfgfolder', action='store', default="", nargs='?',
         help='configuration root folder where .config/froster will be created ' +
                 '(default=~ home directory)  ')
