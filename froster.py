@@ -8,11 +8,11 @@ archiving many Terabytes of data on HPC systems
 import sys, os, argparse, json, configparser, csv, platform, asyncio
 import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time
 import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex
-import shutil, tempfile, glob,  subprocess, itertools, stat 
+import shutil, tempfile, glob,  subprocess, itertools, socket
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
-import requests, duckdb, boto3, botocore
+import requests, duckdb, boto3, botocore, psutil
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -20,19 +20,11 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, Input, LoadingIndicator 
 from textual.widgets import DataTable, Footer, Button 
 
-__app__ = 'Froster, a simple S3/Glacier archiving tool'
+__app__ = 'Froster, a user friendly S3/Glacier archiving tool'
 __version__ = '0.8.4'
-TABLECSV = '' # CSV string for DataTable
-SELECTEDFILE = '' # CSV filename to open in hotspots 
-MAXHOTSPOTS = 0
 
 def main():
-    
-    cfg = ConfigManager(args)
-    arch = Archiver(args, cfg)
-    global TABLECSV
-    global SELECTEDFILE
-    
+        
     if args.debug:
         pass
 
@@ -47,19 +39,15 @@ def main():
             '''))
 
     if args.version:
-        print(f'Froster version: {__version__}')
-        print(f'Python version:\n{sys.version}')
-        try:
-            print('Pwalk version:', subprocess.run(['pwalk', '--version'], 
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])        
-            print('Rclone version:', subprocess.run(['rclone', '--version'], 
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
-        except FileNotFoundError as e:
-            print(f'Error: {e}')
+        args_version()
 
-        return True
+    # Instantiate classes required by all functions         
+    cfg = ConfigManager(args)
+    arch = Archiver(args, cfg)
+    aws = AWSBoto(args, cfg)
 
     if args.subcmd in ['archive','delete','restore']:
+        # remove folders that are not writable from args.folders
         errfld=[]
         for fld in args.folders:            
             ret = arch.test_write(fld)
@@ -70,642 +58,728 @@ def main():
             print(f'\nERROR: These folder(s) \n"{errflds}"\n must exist and you need write access to them.')
             return False
 
+    # call a function for each sub command in our CLI
     if args.subcmd in ['config', 'cnf']:
-
-        first_time=True
-        binfolder = cfg.read('general', 'binfolder')
-        if not binfolder:
-            binfolder = f'{cfg.home_dir}/.local/bin'
-            if not os.path.exists(binfolder):
-                os.makedirs(binfolder, mode=0o775)
-            cfg.write('general', 'binfolder', binfolder)
-        else:
-            first_time=False
-
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        if not os.path.exists(os.path.join(binfolder,'pwalk')):
-            print(" Installing pwalk ...", flush=True)        
-            cfg.copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
-                    'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
-                    'pwalk', binfolder)
-
-        if not cfg.read('general', 'no-rclone-download'):
-            if os.path.exists(os.path.join(binfolder,'rclone')):
-                if os.path.exists(os.path.join(binfolder,'bak.rclone')):
-                    os.remove(os.path.join(binfolder,'bak.rclone'))
-                os.rename(os.path.join(binfolder,'rclone'),os.path.join(binfolder,'bak.rclone'))
-            print(" Installing rclone ... please wait ... ", end='', flush=True)
-            rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-            cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
-                                '/rclone-v*/',binfolder)
-            print("Done!",flush=True)
-
-        # Basic setup, focus the indexer on larger folders and file sizes
-        if not cfg.read('general', 'max_small_file_size_kib'):
-            cfg.write('general', 'max_small_file_size_kib', '1024')
-        if not cfg.read('general', 'min_index_folder_size_gib'):
-            cfg.write('general', 'min_index_folder_size_gib', "10")
-        if not cfg.read('general', 'min_index_folder_size_avg_mib'):
-            cfg.write('general', 'min_index_folder_size_avg_mib', "10")
-        if not cfg.read('general', 'max_hotspots_display_entries'):
-            cfg.write('general', 'max_hotspots_display_entries', "5000")
-
-        print('\n*** Asking a few questions ***')
-        print('*** For most you can just hit <Enter> to accept the default. ***\n')
-        # general setup 
-        defdom = cfg.get_domain_name()
-        whoami = getpass.getuser()
-
-        # determine if we need to move the (shared) config to a new folder 
-        movecfg=False
-        if first_time and args.cfgfolder == '' and cfg.config_root == cfg.config_root_local:
-            if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', 'no'):
-                movecfg=True
-        elif args.cfgfolder:
-            movecfg=True
-        if movecfg:
-            if cfg.move_config(args.cfgfolder):
-                print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
-
-        # set the correct permission for cfg.config_root 
-        try:
-            os.chmod(cfg.config_root, 0o2775)
-        except:
-            pass
-
-        # domain-name not needed right now
-        #domain = cfg.prompt('Enter your domain name:',
-        #                    f'{defdom}|general|domain','string')
-        emailaddr = cfg.prompt('Enter your email address:',
-                             f'{whoami}@{defdom}|general|email','string')
-        emailstr = emailaddr.replace('@','-')
-        emailstr = emailstr.replace('.','-')
-
-        if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?','yes'):
-            cfg.write('general', 'prompt_nih_reporter', 'yes')
-
-        print("")
-
-        # cloud setup
-        bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
-                            f'froster-{emailstr}|general|bucket','string')
-        archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
-                                 'archive|general|archiveroot','string')
-        s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
-                                    'DEEP_ARCHIVE|general|s3_storage_class','string')
-        #aws_profile =  cfg.prompt('Please enter the AWS profile in ~/.aws',
-        #                          'default|general|aws_profile','string')
-        #aws_region =  cfg.prompt('Please enter your AWS region for S3',
-        #                         'us-west-2|general|aws_region','string')
-
-        # if there is a shared ~/.aws/config copy it over
-        if cfg.config_root_local != cfg.config_root:
-            cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
-        cfg.create_aws_configs()
-
-        aws_region = cfg.get_aws_region('aws')
-        if not aws_region:
-            aws_region = cfg.get_aws_region()
-
-        if not aws_region:
-            aws_region =  cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
-                                 cfg.get_aws_regions())
-        aws_region =  cfg.prompt('Please confirm/edit the AWS S3 region', aws_region)
-                
-        #cfg.create_aws_configs(None, None, aws_region)
-        print(f"\n  Verify that bucket '{bucket}' is configured ... ")
-        
-        allowed_aws_profiles = ['default', 'aws', 'AWS'] # for accessing glacier use one of these
-        profmsg = 1
-        profs = cfg.get_aws_profiles()
-
-        for prof in profs:
-            if prof in allowed_aws_profiles:
-                cfg.set_aws_config(prof, 'region', aws_region)
-                if prof == 'AWS' or prof == 'aws':
-                    cfg.write('general', 'aws_profile', prof)                    
-                elif prof == 'default': 
-                    cfg.write('general', 'aws_profile', 'default')
-                cfg.create_s3_bucket(bucket, prof)
-
-        for prof in profs:
-            if prof in allowed_aws_profiles:
-                continue
-            if profmsg == 1:
-                print('\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
-                profmsg = 0
-            if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?','yes'):
-                continue 
-            profile={'name': '', 'provider': '', 'storage_class': ''}
-            pendpoint = ''
-            pregion = ''
-            pr=cfg.read('profiles', prof)
-            if isinstance(pr, dict):
-                profile = cfg.read('profiles', prof)            
-            profile['name'] = prof
-
-            if not profile['provider']: 
-                profile['provider'] = ['AWS', 'GCS', 'Wasabi', 'IDrive', 'Ceph', 'Minio', 'Other']
-            profile['provider'] = \
-                cfg.prompt(f'S3 Provider for profile "{prof}"',profile['provider'])
-            
-            pregion = cfg.get_aws_region(prof) 
-            if not pregion:
-                pregion =  cfg.prompt('Please select the S3 region',
-                                cfg.get_aws_regions(prof,profile['provider']))
-            pregion = \
-                cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
-            if pregion:
-                cfg.set_aws_config(prof, 'region', pregion)
-            
-            if profile['provider'] != 'AWS':
-                if not pendpoint:
-                    pendpoint=cfg.get_aws_s3_endpoint_url(prof)
-                    if not pendpoint:
-                        if 'Wasabi' == profile['provider']:
-                            pendpoint = f'https://s3.{pregion}.wasabisys.com' 
-                        elif 'GCS' == profile['provider']:
-                            pendpoint = 'https://storage.googleapis.com' 
-
-                pendpoint = \
-                    cfg.prompt(f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)',pendpoint)
-                if pendpoint:
-                    if not pendpoint.startswith('http'):
-                        pendpoint = 'https://' + pendpoint
-                    cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
-
-            if not profile['storage_class']:
-                if profile['provider'] == 'AWS':
-                    profile['storage_class'] = s3_storage_class
-                else:
-                    profile['storage_class'] = 'STANDARD'
-
-            if profile['provider']:
-                cfg.write('profiles', prof, profile) 
-            else:
-                print(f'\nConfig for AWS profile "{prof}" was not saved.')
-            
-            cfg.create_s3_bucket(bucket, prof)
-
-        print('\n*** And finally a few questions how your HPC uses local scratch space ***')
-        print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
-        print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
-
-        # setup local scratch spaces, the defauls are OHSU specific 
-        x = cfg.prompt('How do you request local scratch from Slurm?',
-                            '--gres disk:1024|hpc|slurm_lscratch','string') # get 1TB scratch space
-        x = cfg.prompt('Is there a user script that provisions local scratch?',
-                            'mkdir-scratch.sh|hpc|lscratch_mkdir','string') # optional
-        x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
-                            'rmdir-scratch.sh|hpc|lscratch_rmdir','string') # optional
-        x = cfg.prompt('What is the local scratch root ?',
-                            '/mnt/scratch|hpc|lscratch_root','string') # add slurm jobid at the end
-        
-        print('\nDone!\n')
-
+        subcmd_config(args, cfg, aws)
     elif args.subcmd in ['index', 'ind']:
-        if args.debug:
-            print (" Command line:",args.cores, args.noslurm, 
-                    args.pwalkcsv, args.folders,flush=True)
-
-        if not args.folders:
-            print('you must point to at least one folder in your command line')
-            return False
-        if args.pwalkcsv and not os.path.exists(args.pwalkcsv):
-            print(f'File "{args.pwalkcsv}" does not exist.')
-            return False
-
-        for fld in args.folders:
-            if not os.path.isdir(fld):
-                print(f'The folder {fld} does not exist.')
-                if not args.pwalkcsv:
-                    return False
-            
-        if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
-            for fld in args.folders:
-                fld = fld.rstrip(os.path.sep)
-                print (f'Indexing folder {fld}, please wait ...', flush=True)
-                arch.index(fld)
-        else:
-            se = SlurmEssentials(args, cfg)
-            label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
-            label=label.replace(' ','_')
-            shortlabel=os.path.basename(args.folders[0])
-            myjobname=f'froster:index:{shortlabel}'            
-            email=cfg.read('general', 'email')
-            se.add_line(f'#SBATCH --job-name={myjobname}')
-            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-            se.add_line(f'#SBATCH --mem=64G')            
-            se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
-            se.add_line(f'#SBATCH --mail-user={email}')
-            se.add_line(f'#SBATCH --time=1-0')
-            #se.add_line(f'ml python')
-            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
-            cmdline = cmdline.replace('/froster.py ', '/froster ')
-            if args.debug:
-                print(f'Command line passed to Slurm:\n{cmdline}')
-            se.add_line(cmdline)
-            jobid = se.sbatch()
-            print(f'Submitted froster indexing job: {jobid}')
-            print(f'Check Job Output:')
-            print(f' tail -f froster-index-{label}-{jobid}.out')
-
+        subcmd_index(args, cfg, arch, aws)
     elif args.subcmd in ['archive', 'arc']:
-
-        if args.debug:
-            print ("archive:",args.cores, args.awsprofile, args.noslurm,
-                   args.larger, args.age, args.agemtime, args.folders)
-        fld = '" "'.join(args.folders)
-        if args.debug:
-            print (f'default cmdline: froster.py archive "{fld}"')
-        
-        archmeta = []
-        if not args.folders:            
-            hsfolder = os.path.join(cfg.config_root, 'hotspots')
-            if not os.path.exists(hsfolder):                
-                print("No folders to archive in arguments and no Hotspots CSV files found!")
-                print('Run: froster archive "/your/folder/to/archive"')
-                return False
-            csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
-            if len(csv_files) == 0:
-                print("No folders to archive in arguments and no Hotspots CSV files found!")
-                print('Run: froster archive "/your/folder/to/archive"')
-                return False
-            # Sort the CSV files by their modification time in descending order (newest first)
-            csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
-            # if there are multiple files allow for selection
-            if len(csv_files) > 1:
-                TABLECSV='"Select a Hotspot file"\n' + '\n'.join(csv_files)
-                app = TableArchive()
-                retline=app.run()
-                if not retline:
-                    return False
-                SELECTEDFILE = os.path.join(hsfolder, retline[0])
-            else:
-                SELECTEDFILE = os.path.join(hsfolder, csv_files[0])
-            if args.larger > 0 and args.older > 0:
-                # implement archiving batchmode    
-                arch.archive_batch() 
-                return
-            elif args.larger > 0 or args.older > 0:
-                print('You need to combine both "--older <days> and --larger <GiB> options')
-                return
-            app = TableHotspots()
-            retline=app.run()
-            #print('Retline:', retline)
-            if not retline:
-                return False
-            if len(retline) < 6:
-                print('Error: Hotspots table did not return all columns')
-                return False
-            
-            if retline[-1]:
-                if cfg.nih or args.nih:
-                    app = TableNIHGrants()
-                    archmeta=app.run()
-            else:
-                print (f'You can start this process later by using this command:\n  froster archive "{retline[5]}"')
-                return False
-            
-            args.folders.append(retline[5])
-            
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-            print(f'Profile "{args.awsprofile}" not found.')
-            return False
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
-
-        if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
-            for fld in args.folders:
-                fld = fld.rstrip(os.path.sep)
-                if args.recursive:
-                    print (f'Archiving folder {fld} and subfolders, please wait ...', flush=True)
-                    arch.archive_recursive(fld, archmeta)
-                else:
-                    print (f'Archiving folder {fld} (no subfolders), please wait ...', flush=True)
-                    arch.archive(fld, archmeta)
-        else:
-            se = SlurmEssentials(args, cfg)
-            label=args.folders[0].replace('/','+')
-            label=label.replace(' ','_')
-            shortlabel=os.path.basename(args.folders[0])
-            myjobname=f'froster:archive:{shortlabel}'
-            email=cfg.read('general', 'email')
-            se.add_line(f'#SBATCH --job-name={myjobname}')
-            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-            se.add_line(f'#SBATCH --mem=64G')
-            se.add_line(f'#SBATCH --requeue')
-            se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
-            se.add_line(f'#SBATCH --mail-user={email}')
-            se.add_line(f'#SBATCH --time=1-0')            
-            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
-            if not "--profile" in cmdline and args.awsprofile:            
-                cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
-            else:
-                cmdline = cmdline.replace('/froster.py ', '/froster ')
-            if not args.folders[0] in cmdline:
-                folders = '" "'.join(args.folders)
-                cmdline=f'{cmdline} "{folders}"'
-            if args.debug:
-                print(f'Command line passed to Slurm:\n{cmdline}')
-            se.add_line(cmdline)
-            jobid = se.sbatch()
-            print(f'Submitted froster archiving job: {jobid}')
-            print(f'Check Job Output:')
-            print(f' tail -f froster-archive-{label}-{jobid}.out')
-
+        subcmd_archive(args, cfg, arch, aws)
     elif args.subcmd in ['restore', 'rst']:
-        
-        if args.debug:
-            print ("restore:",args.cores, args.awsprofile, args.noslurm, 
-                   args.days, args.retrieveopt, args.nodownload, args.folders)
-        fld = '" "'.join(args.folders)
-        if args.debug:
-            print (f'default cmdline: froster.py restore "{fld}"')
-        
-        if not args.folders:
-            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
-            if TABLECSV == None:
-                print("No archives available.")
-                return False
-            app = TableArchive()
-            retline=app.run()
-            if not retline:
-                return False
-            if len(retline) < 2:
-                print('Error: froster-archives table did not return result')
-                return False
-            if args.debug:
-                print("dialog returns:",retline)
-            args.folders.append(retline[0])
-            if retline[2]: 
-                cfg.awsprofile = retline[2]
-                args.awsprofile = cfg.awsprofile
-                cfg._set_env_vars(cfg.awsprofile)
-                if args.debug:
-                    print("AWS profile:", cfg.awsprofile)
-
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-            print(f'Profile "{args.awsprofile}" not found.')
-            return False
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
-        
-        # ********* Restore to new EC2 Instance in AWS 
-        if args.ec2:
-            prof = cfg._ec2_create_iam_policy_roles_ec2profile()
-            iid, ip = cfg.ec2_create_instance(30, prof, cfg.awsprofile)
-            out, err = cfg.ssh_upload('ec2-user', ip, 
-                cfg.ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
-            print(out, err)
-            print('Executing bootstrap script ... please wait ...')
-            time.sleep(5)
-            out, err = cfg.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
-            print (out)
-            #print(err)
-
-            #print(f'\n  Connect to EC2 Instance:')
-            #print(f'ssh -o StrictHostKeyChecking=no -i {pemfile} ec2-user@{ip}')            
-
-            #cfg._ec2_create_iam_costexplorer_ses('i-0ceeaa2aa897be879')
-
-            #cfg.send_email_aws('dipeit@gmail.com','my subject', 'my body')            
-            #cfg.send_ec2_costs(iid)
-            return
-
-
-        if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
-            for fld in args.folders:
-                fld = fld.rstrip(os.path.sep)
-                print (f'Restoring folder {fld}, please wait ...', flush=True)
-                # check if triggered a restore from glacier and other conditions 
-                if arch.restore(fld) > 0:
-                    if shutil.which('sbatch') and \
-                            args.noslurm == False and \
-                            args.nodownload == False:
-                        # start a future Slurm job just for the download
-                        se = SlurmEssentials(args, cfg)
-                        #get a job start time 12 hours from now
-                        fut_time = se.get_future_start_time(12)
-                        label=fld.replace('/','+')
-                        label=label.replace(' ','_')
-                        shortlabel=os.path.basename(fld)
-                        myjobname=f'froster:restore:{shortlabel}'                        
-                        email=cfg.read('general', 'email')
-                        se.add_line(f'#SBATCH --job-name={myjobname}')
-                        se.add_line(f'#SBATCH --begin={fut_time}')
-                        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-                        se.add_line(f'#SBATCH --mem=64G')
-                        se.add_line(f'#SBATCH --requeue')
-                        se.add_line(f'#SBATCH --output=froster-download-{label}-%J.out')
-                        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
-                        se.add_line(f'#SBATCH --mail-user={email}')
-                        se.add_line(f'#SBATCH --time=1-0')
-                        cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
-                        if not "--profile" in cmdline and args.awsprofile:            
-                            cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
-                        else:
-                            cmdline = cmdline.replace('/froster.py ', '/froster ')
-                        if not fld in cmdline:
-                            cmdline=f'{cmdline} "{fld}"'
-                        if args.debug:
-                            print(f'Command line passed to Slurm:\n{cmdline}')
-                        se.add_line(cmdline)
-                        jobid = se.sbatch()
-                        print(f'Submitted froster download job to run in 12 hours: {jobid}')
-                        print(f'Check Job Output:')
-                        print(f' tail -f froster-download-{label}-{jobid}.out')
-                    else:
-                        print(f'\nGlacier retrievals pending, run this again in up to 12h\n')
-                                        
-        else:
-            se = SlurmEssentials(args, cfg)
-            label=args.folders[0].replace('/','+')
-            label=label.replace(' ','_')
-            shortlabel=os.path.basename(args.folders[0])
-            myjobname=f'froster:restore:{shortlabel}'
-            email=cfg.read('general', 'email')
-            se.add_line(f'#SBATCH --job-name={myjobname}')
-            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-            se.add_line(f'#SBATCH --mem=64G')
-            se.add_line(f'#SBATCH --requeue')
-            se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
-            se.add_line(f'#SBATCH --mail-user={email}')
-            se.add_line(f'#SBATCH --time=1-0')            
-            cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline            
-            if not "--profile" in cmdline and args.awsprofile:            
-                cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
-            else:
-                cmdline = cmdline.replace('/froster.py ', '/froster ')
-            if not args.folders[0] in cmdline:
-                folders = '" "'.join(args.folders)
-                cmdline=f'{cmdline} "{folders}"'
-            if args.debug:
-                print(f'Command line passed to Slurm:\n{cmdline}')
-            se.add_line(cmdline)
-            jobid = se.sbatch()
-            print(f'Submitted froster restore job: {jobid}')
-            print(f'Check Job Output:')
-            print(f' tail -f froster-restore-{label}-{jobid}.out')
-
+        subcmd_restore(args, cfg, arch, aws)
     elif args.subcmd in ['delete', 'del']:
+        subcmd_delete(args, cfg, arch, aws)
+    elif args.subcmd in ['mount', 'mnt']:
+        subcmd_mount(args, cfg, arch, aws)
+    elif args.subcmd in ['umount']: #or args.unmount:
+        subcmd_umount(args, cfg)
+    elif args.subcmd in ['ssh', 'scp']: #or args.unmount:
+        subcmd_ssh(args, cfg, aws)
+
+def args_version():
+    print(f'Froster version: {__version__}')
+    print(f'Python version:\n{sys.version}')
+    try:
+        print('Pwalk version:', subprocess.run(['pwalk', '--version'], 
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])        
+        print('Rclone version:', subprocess.run(['rclone', '--version'], 
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+    except FileNotFoundError as e:
+        print(f'Error: {e}')
+        return False
+    return True
     
-        if args.debug:
-            print ("delete:",args.awsprofile, args.folders)
-        fld = '" "'.join(args.folders)
-        if args.debug:
-            print (f'default cmdline: froster.py delete "{fld}"')
+def subcmd_config(args, cfg, aws):
+    # configure user and / or team settings 
+    # arguments are Class instances passed from main
 
-        if not args.folders:
-            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
-            if TABLECSV == None:
-                print("No archives available.")
-                return False
-            app = TableArchive()
-            retline=app.run()
-            if not retline:
-                return False
-            if len(retline) < 2:
-                print('Error: froster-archives table did not return result')
-                return False
-            if args.debug:
-                print("dialog returns:",retline)
-            args.folders.append(retline[0])
-            if retline[2]: 
-                cfg.awsprofile = retline[2]
-                args.awsprofile = cfg.awsprofile
-                cfg._set_env_vars(cfg.awsprofile)
+    first_time=True
+    binfolder = cfg.read('general', 'binfolder')
+    if not binfolder:
+        binfolder = f'{cfg.home_dir}/.local/bin'
+        if not os.path.exists(binfolder):
+            os.makedirs(binfolder, mode=0o775)
+        cfg.write('general', 'binfolder', binfolder)
+    else:
+        first_time=False
 
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-            print(f'Profile "{args.awsprofile}" not found.')
-            return False
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    if not os.path.exists(os.path.join(binfolder,'pwalk')):
+        print(" Installing pwalk ...", flush=True)        
+        cfg.copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
+                'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
+                'pwalk', binfolder)
 
-        for fld in args.folders:
-            fld = fld.rstrip(os.path.sep)
-            # get archive storage location
-            print (f'Deleting archived files in "{fld}", please wait ...', flush=True)
-            if not arch.delete(fld):
-                if args.debug:
-                    print(f'  Archiver.delete({fld}) returned False', flush=True)                
+    if not cfg.read('general', 'no-rclone-download'):
+        if os.path.exists(os.path.join(binfolder,'rclone')):
+            if os.path.exists(os.path.join(binfolder,'bak.rclone')):
+                os.remove(os.path.join(binfolder,'bak.rclone'))
+            os.rename(os.path.join(binfolder,'rclone'),os.path.join(binfolder,'bak.rclone'))
+        print(" Installing rclone ... please wait ... ", end='', flush=True)
+        rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+        cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
+                            '/rclone-v*/',binfolder)
+        print("Done!",flush=True)
 
-    if args.subcmd in ['mount', 'mnt']:
-        if args.debug:
-            print ("mount:",args.awsprofile, args.mountpoint, args.folders)
-        fld = '" "'.join(args.folders)
+    # Basic setup, focus the indexer on larger folders and file sizes
+    if not cfg.read('general', 'max_small_file_size_kib'):
+        cfg.write('general', 'max_small_file_size_kib', '1024')
+    if not cfg.read('general', 'min_index_folder_size_gib'):
+        cfg.write('general', 'min_index_folder_size_gib', "10")
+    if not cfg.read('general', 'min_index_folder_size_avg_mib'):
+        cfg.write('general', 'min_index_folder_size_avg_mib', "10")
+    if not cfg.read('general', 'max_hotspots_display_entries'):
+        cfg.write('general', 'max_hotspots_display_entries', "5000")
 
-        if args.debug:
-            print (f'default cmdline: froster mount "{fld}"')
+    # general setup 
+    defdom = cfg.get_domain_name()
+    whoami = getpass.getuser()
 
-        interactive=False
-        if not args.folders:
-            interactive=True
-            TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
-            if TABLECSV == None:
-                print("No archives available.")
-                return False
-            app = TableArchive()
-            retline=app.run()
-            if not retline:
-                return False
-            if len(retline) < 2:
-                print('Error: froster-archives table did not return result')
-                return False
-            if args.debug:
-                print("dialog returns:",retline)
-            args.folders.append(retline[0])
-            if retline[2]: 
-                cfg.awsprofile = retline[2]
-                args.awsprofile = cfg.awsprofile
-                cfg._set_env_vars(cfg.awsprofile)      
+    if args.monitor:
+        # monitoring only setup, do not continue 
+        cfg.add_cron_job("froster restore --monitor","30","*")
+        return True
 
-        if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-            print(f'Profile "{args.awsprofile}" not found.')
-            return False
-        if not cfg.check_bucket_access(cfg.bucket):
-            return False
+    print('\n*** Asking a few questions ***')
+    print('*** For most you can just hit <Enter> to accept the default. ***\n')
+
+
+    # determine if we need to move the (shared) config to a new folder 
+    movecfg=False
+    if first_time and args.cfgfolder == '' and cfg.config_root == cfg.config_root_local:
+        if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', 'no'):
+            movecfg=True
+    elif args.cfgfolder:
+        movecfg=True
+    if movecfg:
+        if cfg.move_config(args.cfgfolder):
+            print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
+
+    # set the correct permission for cfg.config_root 
+    try:
+        os.chmod(cfg.config_root, 0o2775)
+    except:
+        pass
+
+    # domain-name not needed right now
+    #domain = cfg.prompt('Enter your domain name:',
+    #                    f'{defdom}|general|domain','string')
+    emailaddr = cfg.prompt('Enter your email address:',
+                            f'{whoami}@{defdom}|general|email','string')
+    emailstr = emailaddr.replace('@','-')
+    emailstr = emailstr.replace('.','-')
+
+    if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?','yes'):
+        cfg.write('general', 'prompt_nih_reporter', 'yes')
+
+    print("")
+
+    # cloud setup
+    bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
+                        f'froster-{emailstr}|general|bucket','string')
+    archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
+                                'archive|general|archiveroot','string')
+    s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
+                                'DEEP_ARCHIVE|general|s3_storage_class','string')
+    #aws_profile =  cfg.prompt('Please enter the AWS profile in ~/.aws',
+    #                          'default|general|aws_profile','string')
+    #aws_region =  cfg.prompt('Please enter your AWS region for S3',
+    #                         'us-west-2|general|aws_region','string')
+
+    # if there is a shared ~/.aws/config copy it over
+    if cfg.config_root_local != cfg.config_root:
+        cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
+    cfg.create_aws_configs()
+
+    aws_region = cfg.get_aws_region('aws')
+    if not aws_region:
+        aws_region = cfg.get_aws_region()
+
+    if not aws_region:
+        aws_region =  cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
+                                aws.get_aws_regions())
+    aws_region =  cfg.prompt('Please confirm/edit the AWS S3 region', aws_region)
+            
+    #cfg.create_aws_configs(None, None, aws_region)
+    print(f"\n  Verify that bucket '{bucket}' is configured ... ")
+    
+    allowed_aws_profiles = ['default', 'aws', 'AWS'] # for accessing glacier use one of these
+    profmsg = 1
+    profs = cfg.get_aws_profiles()
+
+    for prof in profs:
+        if prof in allowed_aws_profiles:
+            cfg.set_aws_config(prof, 'region', aws_region)
+            if prof == 'AWS' or prof == 'aws':
+                cfg.write('general', 'aws_profile', prof)                    
+            elif prof == 'default': 
+                cfg.write('general', 'aws_profile', 'default')
+            aws.create_s3_bucket(bucket, prof)
+
+    for prof in profs:
+        if prof in allowed_aws_profiles:
+            continue
+        if profmsg == 1:
+            print('\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
+            profmsg = 0
+        if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?','yes'):
+            continue 
+        profile={'name': '', 'provider': '', 'storage_class': ''}
+        pendpoint = ''
+        pregion = ''
+        pr=cfg.read('profiles', prof)
+        if isinstance(pr, dict):
+            profile = cfg.read('profiles', prof)            
+        profile['name'] = prof
+
+        if not profile['provider']: 
+            profile['provider'] = ['AWS', 'GCS', 'Wasabi', 'IDrive', 'Ceph', 'Minio', 'Other']
+        profile['provider'] = \
+            cfg.prompt(f'S3 Provider for profile "{prof}"',profile['provider'])
         
-        if args.ec2:
-            cfg.create_ec2_instance()
-            return True
-
-        hostname = platform.node()
-        rclone = Rclone(args,cfg)
-        for fld in args.folders:
-            fld = fld.rstrip(os.path.sep)
-            # get archive storage location
-            rowdict = arch.archive_json_get_row(fld)
-            if rowdict == None:
-                print(f'Folder "{fld}" not in archive.')
-                continue
-            archive_folder = rowdict['archive_folder']
-
-            if args.mountpoint and os.path.isdir(args.mountpoint):
-                fld=args.mountpoint 
+        pregion = cfg.get_aws_region(prof) 
+        if not pregion:
+            pregion =  cfg.prompt('Please select the S3 region',
+                            aws.get_aws_regions(prof,profile['provider']))
+        pregion = \
+            cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"',pregion)
+        if pregion:
+            cfg.set_aws_config(prof, 'region', pregion)
         
-            print (f'Mounting archive folder at {fld} ... ', flush=True, end="")
-            pid = rclone.mount(archive_folder,fld)
-            print('Done!', flush=True)
-            if interactive:
-                print(textwrap.dedent(f'''
-                    Note that this mount point will only work on the current machine, 
-                    if you would like to have this work in a batch job you need to enter 
-                    these commands in the beginning and the end of a batch script:
-                    froster mount {fld}
-                    froster umount {fld}
-                    '''))                
-            if args.mountpoint:
-                # we can only mount a single folder if mountpoint is set 
-                break
+        if profile['provider'] != 'AWS':
+            if not pendpoint:
+                pendpoint=cfg.get_aws_s3_endpoint_url(prof)
+                if not pendpoint:
+                    if 'Wasabi' == profile['provider']:
+                        pendpoint = f'https://s3.{pregion}.wasabisys.com' 
+                    elif 'GCS' == profile['provider']:
+                        pendpoint = 'https://storage.googleapis.com' 
 
-    if args.subcmd in ['umount']: #or args.unmount:
-        rclone = Rclone(args,cfg)
-        mounts = rclone.get_mounts()
-        if len(mounts) == 0:
-            print("No Rclone mounts on this computer.")
-            return False
-        folders = args.folders
-        if len(folders) == 0:
-            TABLECSV="\n".join(mounts)
-            TABLECSV="Mountpoint\n"+TABLECSV
-            app = TableArchive()
-            retline=app.run()
-            folders.append(retline[0])
-        for fld in folders:
-            print (f'Unmounting folder {fld} ... ', flush=True, end="")
-            rclone.unmount(fld)
-            print('Done!', flush=True)
+            pendpoint = \
+                cfg.prompt(f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)',pendpoint)
+            if pendpoint:
+                if not pendpoint.startswith('http'):
+                    pendpoint = 'https://' + pendpoint
+                cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
 
-    if args.subcmd in ['ssh', 'scp']: #or args.unmount:
-        ips = cfg.ec2_list_ips('Name', 'FrosterSelfDestruct')
-        myhost = cfg.read('cloud', 'ec2_last_instance')
-        if ips and not myhost in ips:
-            print(f'{myhost} is no longer running, replacing with {ips[-1]}')
-            myhost = ips[-1]
-            #cfg.write('cloud', 'ec2_last_instance', myhost)
-        if args.ec2host:
-            myhost = args.ec2host
-        if args.terminate:
-            cfg.ec2_terminate_instance(myhost)
-            return True
-        if args.list:
-            if ips:
-                sips = '\n'.join(ips)
-                print(f"Running EC2 Instances:\n{sips}")
+        if not profile['storage_class']:
+            if profile['provider'] == 'AWS':
+                profile['storage_class'] = s3_storage_class
             else:
-                print('No running instances detected')
-            return True
-        if args.subcmd == 'ssh':
-            print(f'Connecting to {myhost} ...')
-            cfg.ssh_execute('ec2-user', myhost)
-            return True
-        elif args.subcmd == 'scp':
-            pass
+                profile['storage_class'] = 'STANDARD'
+
+        if profile['provider']:
+            cfg.write('profiles', prof, profile) 
+        else:
+            print(f'\nConfig for AWS profile "{prof}" was not saved.')
+        
+        aws.create_s3_bucket(bucket, prof)
+
+    print('\n*** And finally a few questions how your HPC uses local scratch space ***')
+    print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
+    print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
+
+    # setup local scratch spaces, the defauls are OHSU specific 
+    x = cfg.prompt('How do you request local scratch from Slurm?',
+                        '--gres disk:1024|hpc|slurm_lscratch','string') # get 1TB scratch space
+    x = cfg.prompt('Is there a user script that provisions local scratch?',
+                        'mkdir-scratch.sh|hpc|lscratch_mkdir','string') # optional
+    x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
+                        'rmdir-scratch.sh|hpc|lscratch_rmdir','string') # optional
+    x = cfg.prompt('What is the local scratch root ?',
+                        '/mnt/scratch|hpc|lscratch_root','string') # add slurm jobid at the end
     
+    print('\nDone!\n')
+
+def subcmd_index(args,cfg,arch):
+
+    if args.debug:
+        print (" Command line:",args.cores, args.noslurm, 
+                args.pwalkcsv, args.folders,flush=True)
+
+    if not args.folders:
+        print('you must point to at least one folder in your command line')
+        return False
+    if args.pwalkcsv and not os.path.exists(args.pwalkcsv):
+        print(f'File "{args.pwalkcsv}" does not exist.')
+        return False
+
+    for fld in args.folders:
+        if not os.path.isdir(fld):
+            print(f'The folder {fld} does not exist.')
+            if not args.pwalkcsv:
+                return False
+        
+    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            print (f'Indexing folder {fld}, please wait ...', flush=True)
+            arch.index(fld)
+    else:
+        se = SlurmEssentials(args, cfg)
+        label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
+        label=label.replace(' ','_')
+        shortlabel=os.path.basename(args.folders[0])
+        myjobname=f'froster:index:{shortlabel}'            
+        email=cfg.read('general', 'email')
+        se.add_line(f'#SBATCH --job-name={myjobname}')
+        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')            
+        se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
+        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --time=1-0')
+        #se.add_line(f'ml python')
+        cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+        cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if args.debug:
+            print(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster indexing job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-index-{label}-{jobid}.out')
+
+
+def subcmd_archive(args,cfg,arch,aws):
+
+    global TABLECSV
+    global SELECTEDFILE
+
+    if args.debug:
+        print ("archive:",args.cores, args.awsprofile, args.noslurm,
+                args.larger, args.age, args.agemtime, args.folders)
+    fld = '" "'.join(args.folders)
+    if args.debug:
+        print (f'default cmdline: froster.py archive "{fld}"')
+    
+    archmeta = []
+    if not args.folders:            
+        hsfolder = os.path.join(cfg.config_root, 'hotspots')
+        if not os.path.exists(hsfolder):                
+            print("No folders to archive in arguments and no Hotspots CSV files found!")
+            print('Run: froster archive "/your/folder/to/archive"')
+            return False
+        csv_files = [f for f in os.listdir(hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+        if len(csv_files) == 0:
+            print("No folders to archive in arguments and no Hotspots CSV files found!")
+            print('Run: froster archive "/your/folder/to/archive"')
+            return False
+        # Sort the CSV files by their modification time in descending order (newest first)
+        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(hsfolder, x)), reverse=True)
+        # if there are multiple files allow for selection
+        if len(csv_files) > 1:
+            TABLECSV='"Select a Hotspot file"\n' + '\n'.join(csv_files)
+            app = TableArchive()
+            retline=app.run()
+            if not retline:
+                return False
+            SELECTEDFILE = os.path.join(hsfolder, retline[0])
+        else:
+            SELECTEDFILE = os.path.join(hsfolder, csv_files[0])
+        if args.larger > 0 and args.older > 0:
+            # implement archiving batchmode    
+            arch.archive_batch() 
+            return
+        elif args.larger > 0 or args.older > 0:
+            print('You need to combine both "--older <days> and --larger <GiB> options')
+            return
+        app = TableHotspots()
+        retline=app.run()
+        #print('Retline:', retline)
+        if not retline:
+            return False
+        if len(retline) < 6:
+            print('Error: Hotspots table did not return all columns')
+            return False
+        
+        if retline[-1]:
+            if cfg.nih or args.nih:
+                app = TableNIHGrants()
+                archmeta=app.run()
+        else:
+            print (f'You can start this process later by using this command:\n  froster archive "{retline[5]}"')
+            return False
+        
+        args.folders.append(retline[5])
+        
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access(cfg.bucket):
+        return False
+
+    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            if args.recursive:
+                print (f'Archiving folder {fld} and subfolders, please wait ...', flush=True)
+                arch.archive_recursive(fld, archmeta)
+            else:
+                print (f'Archiving folder {fld} (no subfolders), please wait ...', flush=True)
+                arch.archive(fld, archmeta)
+    else:
+        se = SlurmEssentials(args, cfg)
+        label=args.folders[0].replace('/','+')
+        label=label.replace(' ','_')
+        shortlabel=os.path.basename(args.folders[0])
+        myjobname=f'froster:archive:{shortlabel}'
+        email=cfg.read('general', 'email')
+        se.add_line(f'#SBATCH --job-name={myjobname}')
+        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --requeue')
+        se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
+        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --time=1-0')            
+        cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+        if not "--profile" in cmdline and args.awsprofile:            
+            cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
+        else:
+            cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if not args.folders[0] in cmdline:
+            folders = '" "'.join(args.folders)
+            cmdline=f'{cmdline} "{folders}"'
+        if args.debug:
+            print(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster archiving job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-archive-{label}-{jobid}.out')
+
+
+def subcmd_restore(args,cfg,arch,aws):
+
+    global TABLECSV
+    global SELECTEDFILE    
+
+    if args.debug:
+        print ("restore:",args.cores, args.awsprofile, args.noslurm, 
+                args.days, args.retrieveopt, args.nodownload, args.folders)
+    fld = '" "'.join(args.folders)
+    if args.debug:
+        print (f'default cmdline: froster restore "{fld}"')
+
+    # ********* 
+    if args.monitor:
+        # aws inactivity and cost monitoring
+        aws.monitor_ec2()
+        return True
+
+    elif args.ec2:
+        prof = aws._ec2_create_iam_policy_roles_ec2profile()
+        iid, ip = aws.ec2_create_instance(3, prof, cfg.awsprofile)
+        print(' Waiting for ssh host to become ready ...')
+        if not cfg.wait_for_ssh_ready(ip):
+            return False
+        ret = aws.ssh_upload('ec2-user', ip, 
+            aws.ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
+        print(ret.stdout, ret.stderr)
+        print(' Executing bootstrap script ... please wait ...')
+        ret = aws.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
+        print (ret.stdout)
+        #print(err)
+
+        #print(f'\n  Connect to EC2 Instance:')
+        #print(f'ssh -o StrictHostKeyChecking=no -i {pemfile} ec2-user@{ip}')            
+
+        #cfg._ec2_create_iam_costexplorer_ses('i-0ceeaa2aa897be879')
+
+        #cfg.send_email_aws('dipeit@gmail.com','my subject', 'my body')            
+        #cfg.send_ec2_costs(iid)
+        return        
+    
+    if not args.folders:
+        TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
+        if TABLECSV == None:
+            print("No archives available.")
+            return False
+        app = TableArchive()
+        retline=app.run()
+        if not retline:
+            return False
+        if len(retline) < 2:
+            print('Error: froster-archives table did not return result')
+            return False
+        if args.debug:
+            print("dialog returns:",retline)
+        args.folders.append(retline[0])
+        if retline[2]: 
+            cfg.awsprofile = retline[2]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)
+            if args.debug:
+                print("AWS profile:", cfg.awsprofile)
+
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access(cfg.bucket):
+        return False
+
+    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+        # either no slurm or already running inside a slurm job 
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            print (f'Restoring folder {fld}, please wait ...', flush=True)
+            # check if triggered a restore from glacier and other conditions 
+            if arch.restore(fld) > 0:
+                if shutil.which('sbatch') and \
+                        args.noslurm == False and \
+                        args.nodownload == False:
+                    # start a future Slurm job just for the download
+                    se = SlurmEssentials(args, cfg)
+                    #get a job start time 12 hours from now
+                    fut_time = se.get_future_start_time(12)
+                    label=fld.replace('/','+')
+                    label=label.replace(' ','_')
+                    shortlabel=os.path.basename(fld)
+                    myjobname=f'froster:restore:{shortlabel}'                        
+                    email=cfg.read('general', 'email')
+                    se.add_line(f'#SBATCH --job-name={myjobname}')
+                    se.add_line(f'#SBATCH --begin={fut_time}')
+                    se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+                    se.add_line(f'#SBATCH --mem=64G')
+                    se.add_line(f'#SBATCH --requeue')
+                    se.add_line(f'#SBATCH --output=froster-download-{label}-%J.out')
+                    se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
+                    se.add_line(f'#SBATCH --mail-user={email}')
+                    se.add_line(f'#SBATCH --time=1-0')
+                    cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
+                    if not "--profile" in cmdline and args.awsprofile:            
+                        cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
+                    else:
+                        cmdline = cmdline.replace('/froster.py ', '/froster ')
+                    if not fld in cmdline:
+                        cmdline=f'{cmdline} "{fld}"'
+                    if args.debug:
+                        print(f'Command line passed to Slurm:\n{cmdline}')
+                    se.add_line(cmdline)
+                    jobid = se.sbatch()
+                    print(f'Submitted froster download job to run in 12 hours: {jobid}')
+                    print(f'Check Job Output:')
+                    print(f' tail -f froster-download-{label}-{jobid}.out')
+                else:
+                    print(f'\nGlacier retrievals pending, run this again in up to 12h\n')
+                                    
+    else:
+        se = SlurmEssentials(args, cfg)
+        label=args.folders[0].replace('/','+')
+        label=label.replace(' ','_')
+        shortlabel=os.path.basename(args.folders[0])
+        myjobname=f'froster:restore:{shortlabel}'
+        email=cfg.read('general', 'email')
+        se.add_line(f'#SBATCH --job-name={myjobname}')
+        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --requeue')
+        se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
+        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --time=1-0')            
+        cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline            
+        if not "--profile" in cmdline and args.awsprofile:            
+            cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
+        else:
+            cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if not args.folders[0] in cmdline:
+            folders = '" "'.join(args.folders)
+            cmdline=f'{cmdline} "{folders}"'
+        if args.debug:
+            print(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster restore job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-restore-{label}-{jobid}.out')
+
+
+def subcmd_delete(args,cfg,arch,aws):
+
+    global TABLECSV
+    global SELECTEDFILE    
+    
+    if args.debug:
+        print ("delete:",args.awsprofile, args.folders)
+    fld = '" "'.join(args.folders)
+    if args.debug:
+        print (f'default cmdline: froster.py delete "{fld}"')
+
+    if not args.folders:
+        TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
+        if TABLECSV == None:
+            print("No archives available.")
+            return False
+        app = TableArchive()
+        retline=app.run()
+        if not retline:
+            return False
+        if len(retline) < 2:
+            print('Error: froster-archives table did not return result')
+            return False
+        if args.debug:
+            print("dialog returns:",retline)
+        args.folders.append(retline[0])
+        if retline[2]: 
+            cfg.awsprofile = retline[2]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)
+
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access(cfg.bucket):
+        return False
+
+    for fld in args.folders:
+        fld = fld.rstrip(os.path.sep)
+        # get archive storage location
+        print (f'Deleting archived files in "{fld}", please wait ...', flush=True)
+        if not arch.delete(fld):
+            if args.debug:
+                print(f'  Archiver.delete({fld}) returned False', flush=True)                
+
+
+def subcmd_mount(args,cfg,arch,aws):
+    
+    global TABLECSV
+    global SELECTEDFILE
+
+    if args.debug:
+        print ("mount:",args.awsprofile, args.mountpoint, args.folders)
+    fld = '" "'.join(args.folders)
+
+    if args.debug:
+        print (f'default cmdline: froster mount "{fld}"')
+
+    interactive=False
+    if not args.folders:
+        interactive=True
+        TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
+        if TABLECSV == None:
+            print("No archives available.")
+            return False
+        app = TableArchive()
+        retline=app.run()
+        if not retline:
+            return False
+        if len(retline) < 2:
+            print('Error: froster-archives table did not return result')
+            return False
+        if args.debug:
+            print("dialog returns:",retline)
+        args.folders.append(retline[0])
+        if retline[2]: 
+            cfg.awsprofile = retline[2]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)      
+
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access(cfg.bucket):
+        return False
+    
+    if args.ec2:
+        #cfg.create_ec2_instance()
+        return True
+
+    hostname = platform.node()
+    rclone = Rclone(args,cfg)
+    for fld in args.folders:
+        fld = fld.rstrip(os.path.sep)
+        # get archive storage location
+        rowdict = arch.archive_json_get_row(fld)
+        if rowdict == None:
+            print(f'Folder "{fld}" not in archive.')
+            continue
+        archive_folder = rowdict['archive_folder']
+
+        if args.mountpoint and os.path.isdir(args.mountpoint):
+            fld=args.mountpoint 
+    
+        print (f'Mounting archive folder at {fld} ... ', flush=True, end="")
+        pid = rclone.mount(archive_folder,fld)
+        print('Done!', flush=True)
+        if interactive:
+            print(textwrap.dedent(f'''
+                Note that this mount point will only work on the current machine, 
+                if you would like to have this work in a batch job you need to enter 
+                these commands in the beginning and the end of a batch script:
+                froster mount {fld}
+                froster umount {fld}
+                '''))                
+        if args.mountpoint:
+            # we can only mount a single folder if mountpoint is set 
+            break
+
+def subcmd_umount(args, cfg):
+
+    global TABLECSV
+    global SELECTEDFILE
+
+    rclone = Rclone(args,cfg)
+    mounts = rclone.get_mounts()
+    if len(mounts) == 0:
+        print("No Rclone mounts on this computer.")
+        return False
+    folders = args.folders
+    if len(folders) == 0:
+        TABLECSV="\n".join(mounts)
+        TABLECSV="Mountpoint\n"+TABLECSV
+        app = TableArchive()
+        retline=app.run()
+        folders.append(retline[0])
+    for fld in folders:
+        print (f'Unmounting folder {fld} ... ', flush=True, end="")
+        rclone.unmount(fld)
+        print('Done!', flush=True)
+
+def subcmd_ssh(args, cfg, aws):
+
+    ilist = aws.ec2_list_instances('Name', 'FrosterSelfDestruct')
+    ips = [sublist[0] for sublist in ilist if sublist]
+    if args.list:
+        if ips:
+            print("Running EC2 Instances:")
+            for row in ilist:
+                print(' - '.join(row))        
+        else:
+            print('No running instances detected')
+        return True        
+    if args.terminate:
+        aws.ec2_terminate_instance(args.terminate)
+        return True        
+    myhost = cfg.read('cloud', 'ec2_last_instance')        
+    if ips and not myhost in ips:
+        print(f'{myhost} is no longer running, replacing with {ips[-1]}')
+        myhost = ips[-1]
+        #cfg.write('cloud', 'ec2_last_instance', myhost)
+    if args.subcmd == 'ssh':
+        if args.sshargs:
+            myhost = args.sshargs[0]
+        print(f'Connecting to {myhost} ...')
+        aws.ssh_execute('ec2-user', myhost)
+        return True
+    elif args.subcmd == 'scp':
+        if len(args.sshargs) != 2:
+            print('The "scp" sub command supports currently 2 arguments')
+            return False
+        hostloc = next((i for i, item in enumerate(args.sshargs) if ":" in item), None)
+        if hostloc == 0:
+            # the hostname is in the first argument: download
+            host, remote_path = args.sshargs[0].split(':')
+            ret=aws.ssh_download('ec2-user', host, remote_path, args.sshargs[1])
+        elif hostloc == 1:
+            # the hostname is in the second argument: uploaad
+            host, remote_path = args.sshargs[1].split(':')
+            ret=aws.ssh_upload('ec2-user', host, args.sshargs[0], remote_path)
+        else:
+            print('The "scp" sub command supports currently 2 arguments')
+            return False
+        print(ret.stdout,ret.stderr)
 
 class Archiver:
     def __init__(self, args, cfg):
@@ -2472,6 +2546,1269 @@ class NIHReporter:
         #print("{0} total # of grants...".format(len(grants)),file=sys.stderr)
         return sets
 
+
+class AWSBoto:
+    # we write all config entries as files to '~/.config'
+    # to make it easier for bash users to read entries 
+    # with a simple var=$(cat ~/.config/froster/section/entry)
+    # entries can be strings, lists that are written as 
+    # multi-line files and dictionaries which are written to json
+
+    def __init__(self, args, cfg):
+        self.args = args
+        self.cfg = cfg
+        self.awsprofile = self.cfg.awsprofile
+    
+    def get_aws_regions(self, profile='default', provider='AWS'):
+        # returns a list of AWS regions 
+        if provider == 'AWS':
+            try:
+                session = boto3.Session(profile_name=profile)
+                regions = session.get_available_regions('ec2')
+                # make the list a little shorter 
+                regions = [i for i in regions if not i.startswith('ap-')]
+                return sorted(regions, reverse=True)
+            except:
+                return ['us-west-2','us-west-1', 'us-east-1', '']
+        elif provider == 'GCS':
+            return ['us-west1', 'us-east1', '']
+        elif provider == 'Wasabi':
+            return ['us-west-1', 'us-east-1', '']
+        elif provider == 'IDrive':
+            return ['us-or', 'us-va', 'us-la', '']
+        elif provider == 'Ceph':
+            return ['default-placement', 'us-east-1', '']
+                
+    def check_bucket_access(self, bucket_name, profile='default'):
+        from botocore.exceptions import ClientError
+        if not self._check_s3_credentials(profile):
+            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
+            return False
+        session = boto3.Session(profile_name=profile)
+        ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+        s3 = session.client('s3', endpoint_url=ep_url)
+        
+        try:
+            # Check if bucket exists
+            s3.head_bucket(Bucket=bucket_name)
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '403':
+                print(f"Error: Access denied to bucket {bucket_name} for profile {self.awsprofile}. Check your permissions.")
+            elif error_code == '404':
+                print(f"Error: Bucket {bucket_name} does not exist in profile {self.awsprofile}.")
+                print("run 'froster config' to create this bucket.")
+            else:
+                print(f"Error accessing bucket {bucket_name} in profile {self.awsprofile}: {e}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred for profile {self.awsprofile}: {e}")
+            return False
+
+        # Test write access by uploading a small test file
+        try:
+            test_object_key = "test_write_access.txt"
+            s3.put_object(Bucket=bucket_name, Key=test_object_key, Body="Test write access")
+            #print(f"Successfully wrote test to {bucket_name}")
+
+            # Clean up by deleting the test object
+            s3.delete_object(Bucket=bucket_name, Key=test_object_key)
+            #print(f"Successfully deleted test object from {bucket_name}")
+            return True
+        except ClientError as e:
+            print(f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
+            return False
+
+    def create_s3_bucket(self, bucket_name, profile='default'):
+        from botocore.exceptions import BotoCoreError, ClientError      
+        if not self._check_s3_credentials(profile, verbose=True):
+            print(f"Cannot create bucket '{bucket_name}' with these credentials")
+            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
+            return False 
+        region = self.get_aws_region(profile)
+        session = boto3.Session(profile_name=profile)
+        ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+        s3_client = session.client('s3', endpoint_url=ep_url)        
+        existing_buckets = s3_client.list_buckets()
+        for bucket in existing_buckets['Buckets']:
+            if bucket['Name'] == bucket_name:
+                if self.args.debug:
+                    print(f'S3 bucket {bucket_name} exists')
+                return True
+        try:
+            if region and region != 'default-placement':
+                response = s3_client.create_bucket(
+                    Bucket=bucket_name,
+                    CreateBucketConfiguration={'LocationConstraint': region}
+                    )
+            else:
+                response = s3_client.create_bucket(
+                    Bucket=bucket_name,
+                    )              
+            print(f"Created S3 Bucket '{bucket_name}'")
+        except BotoCoreError as e:
+            print(f"BotoCoreError: {e}")
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'InvalidBucketName':
+                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
+            elif error_code == 'BucketAlreadyExists':
+                pass
+                #print(f"Error: Bucket '{bucket_name}' already exists.")
+            elif error_code == 'BucketAlreadyOwnedByYou':
+                pass
+                #print(f"Error: You already own a bucket named '{bucket_name}'.")
+            elif error_code == 'InvalidAccessKeyId':
+                #pass
+                print("Error: InvalidAccessKeyId. The AWS Access Key Id you provided does not exist in our records")
+            elif error_code == 'SignatureDoesNotMatch':
+                pass
+                #print("Error: Invalid AWS Secret Access Key.")
+            elif error_code == 'AccessDenied':
+                print("Error: Access denied. Check your account permissions for creating S3 buckets")
+            elif error_code == 'IllegalLocationConstraintException':
+                print(f"Error: The specified region '{region}' is not valid.")
+            else:
+                print(f"ClientError: {e}")
+            return False
+        except Exception as e:            
+            print(f"An unexpected error occurred: {e}")
+            return False
+        encryption_configuration = {
+            'Rules': [
+                {
+                    'ApplyServerSideEncryptionByDefault': {
+                        'SSEAlgorithm': 'AES256'
+                    }
+                }
+            ]
+        }
+        try:
+            response = s3_client.put_bucket_encryption(
+                Bucket=bucket_name,
+                ServerSideEncryptionConfiguration=encryption_configuration
+            )            
+            print(f"Applied AES256 encryption to S3 bucket '{bucket_name}'")    
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'InvalidBucketName':
+                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
+            elif error_code == 'AccessDenied':
+                print("Error: Access denied. Check your account permissions for creating S3 buckets")
+            elif error_code == 'IllegalLocationConstraintException':
+                print(f"Error: The specified region '{region}' is not valid.")
+            elif error_code == 'InvalidLocationConstraint':
+                if not ep_url:
+                    # do not show this error with non AWS endpoints 
+                    print(f"Error: The specified location-constraint '{region}' is not valid")
+            else:
+                print(f"ClientError: {e}")                        
+        except Exception as e:            
+            print(f"An unexpected error occurred: {e}")
+            return False            
+        return True
+    
+    def _check_s3_credentials(self, profile='default', verbose=False):
+        from botocore.exceptions import NoCredentialsError, EndpointConnectionError, ClientError
+        try:
+            if verbose:
+                print(f'  Checking credentials for profile "{profile}" ... ', end='')
+            session = boto3.Session(profile_name=profile)
+            ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+            s3_client = session.client('s3', endpoint_url=ep_url)            
+            s3_client.list_buckets()
+            if verbose:
+                print('Done.')
+            return True
+        except NoCredentialsError:
+            print("No AWS credentials found. Please check your access key and secret key.")
+        except EndpointConnectionError:
+            print("Unable to connect to the AWS S3 endpoint. Please check your internet connection.")
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code')
+            #error_code = e.response['Error']['Code']             
+            if error_code == 'RequestTimeTooSkewed':
+                print(f"The time difference between S3 storage and your computer is too high:\n{e}")
+            elif error_code == 'InvalidAccessKeyId':                
+                print(f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
+            elif error_code == 'SignatureDoesNotMatch':                
+                if "Signature expired" in str(e): 
+                    print(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
+                    return False
+                else:
+                    print(f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")         
+            elif error_code == 'InvalidClientTokenId':
+                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
+            else:
+                print(f"Error validating credentials for profile {profile}: {e}")
+            print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
+            return False
+    
+    def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+
+        policy_arn = None
+        try:
+            response = iam.create_policy(
+                PolicyName=pol_name,
+                PolicyDocument=json.dumps(pol_doc)
+            )
+            policy_arn = response['Policy']['Arn']
+            print(f"Policy created with ARN: {policy_arn}")
+        except iam.exceptions.EntityAlreadyExistsException as e:
+            policies = iam.list_policies(Scope='Local')  
+               # Scope='Local' for customer-managed policies, 
+               # 'AWS' for AWS-managed policies            
+            for policy in policies['Policies']:
+                if policy['PolicyName'] == pol_name:
+                    policy_arn = policy['Arn']
+                    break
+            print(f'Policy {pol_name} already exists')
+        except Exception as e:
+            print('Other Error:', e)
+        return policy_arn
+
+
+    def _ec2_create_froster_iam_policy(self, profile=None):
+        # Initialize session with specified profile or default
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+
+        # Create IAM client
+        iam = session.client('iam')
+
+        # Define policy name and policy document
+        policy_name = 'FrosterEC2DescribePolicy'
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ec2:Describe*",
+                    "Resource": "*"
+                }
+            ]
+        }
+
+        # Get current IAM user's details
+        user = iam.get_user()
+        user_name = user['User']['UserName']
+
+        # Check if policy already exists for the user
+        existing_policies = iam.list_user_policies(UserName=user_name)
+        if policy_name in existing_policies['PolicyNames']:
+            print(f"{policy_name} already exists for user {user_name}.")
+            return
+
+        # Create policy for user
+        iam.put_user_policy(
+            UserName=user_name,
+            PolicyName=policy_name,
+            PolicyDocument=json.dumps(policy_document)
+        )
+
+        print(f"Policy {policy_name} attached successfully to user {user_name}.")
+
+
+    def _ec2_create_iam_policy_roles_ec2profile(self, profile=None):
+        # create all the IAM requirement to allow an ec2 instance to
+        # 1. self destruct, 2. monitor cost with CE and 3. send emails via SES
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+
+      # Step 0: Create IAM self destruct and EC2 read policy 
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ec2:Describe*",     # Basic EC2 read permissions
+                    ],
+                    "Resource": "*"
+                },                
+                {
+                    "Effect": "Allow",
+                    "Action": "ec2:TerminateInstances",
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {
+                            "ec2:ResourceTag/Name": "FrosterSelfDestruct"
+                        }
+                    }
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ce:GetCostAndUsage"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }
+        policy_name = 'FrosterSelfDestructPolicy'     
+
+        destruct_policy_arn = self._ec2_create_or_get_iam_policy(
+            policy_name, policy_document, profile)
+    
+        # 1. Create an IAM role
+        trust_policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ec2.amazonaws.com"},
+                    "Action": "sts:AssumeRole"
+                },
+            ]
+        }
+
+        role_name = "FrosterEC2Role"
+        try:
+            iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(trust_policy),
+                Description='Froster role allows Billing, SES and Terminate'
+            )
+        except iam.exceptions.EntityAlreadyExistsException:        
+            print (f'Role {role_name} already exists.') 
+        except Exception as e:            
+            print('Error:', e)
+        
+        # 2. Attach permissions policies to the IAM role
+        cost_explorer_policy = "arn:aws:iam::aws:policy/AWSBillingReadOnlyAccess"
+        ses_policy = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
+        
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=cost_explorer_policy
+        )
+        
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=ses_policy
+        )
+
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=destruct_policy_arn
+        )
+
+        
+        # 3. Create an instance profile and associate it with the role
+        instance_profile_name = "FrosterEC2Profile"
+        try:
+            iam.create_instance_profile(
+                InstanceProfileName=instance_profile_name
+            )
+            iam.add_role_to_instance_profile(
+                InstanceProfileName=instance_profile_name,
+                RoleName=role_name
+            )
+        except iam.exceptions.EntityAlreadyExistsException:
+            print (f'Profile {instance_profile_name} already exists.')
+            return instance_profile_name
+        except Exception as e:            
+            print('Error:', e)
+            return None
+        
+        # Give AWS a moment to propagate the changes
+        print('wait for 15 sec ...')
+        time.sleep(15)  # Wait for 15 seconds
+
+        return instance_profile_name
+    
+    def _ec2_create_and_attach_security_group(self, instance_id, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2 = session.resource('ec2')
+        client = session.client('ec2')
+
+        group_name = 'SSH-HTTP-ICMP'
+        
+        # Check if security group already exists
+        security_groups = client.describe_security_groups(Filters=[{'Name': 'group-name', 'Values': [group_name]}])
+        if security_groups['SecurityGroups']:
+            security_group_id = security_groups['SecurityGroups'][0]['GroupId']
+        else:
+            # Create security group
+            response = client.create_security_group(
+                GroupName=group_name,
+                Description='Allows SSH and ICMP inbound traffic'
+            )
+            security_group_id = response['GroupId']
+        
+            # Allow ports 22, 80, 443, 8000-9000, ICMP
+            client.authorize_security_group_ingress(
+                GroupId=security_group_id,
+                IpPermissions=[
+                    {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 22,
+                        'ToPort': 22,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },
+                    {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 80,
+                        'ToPort': 80,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },
+                    {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 443,
+                        'ToPort': 443,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },
+                    {
+                        'IpProtocol': 'tcp',
+                        'FromPort': 8000,
+                        'ToPort': 9000,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    },                    {
+                        'IpProtocol': 'icmp',
+                        'FromPort': -1,  # -1 allows all ICMP types
+                        'ToPort': -1,
+                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+                    }
+                ]
+            )
+        
+        # Attach the security group to the instance
+        instance = ec2.Instance(instance_id)
+        current_security_groups = [sg['GroupId'] for sg in instance.security_groups]
+        
+        # Check if the security group is already attached to the instance
+        if security_group_id not in current_security_groups:
+            current_security_groups.append(security_group_id)
+            instance.modify_attribute(Groups=current_security_groups)
+
+        return security_group_id
+
+    def _ec2_get_latest_amazon_linux2_ami(self, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2_client = session.client('ec2')
+
+        response = ec2_client.describe_images(
+            Filters=[
+                {'Name': 'name', 'Values': ['al2023-ami-*']},
+                {'Name': 'state', 'Values': ['available']},
+                {'Name': 'architecture', 'Values': ['x86_64']},
+                {'Name': 'virtualization-type', 'Values': ['hvm']}
+            ],
+            Owners=['amazon']
+
+            #amzn2-ami-hvm-2.0.*-x86_64-gp2
+            #al2023-ami-kernel-default-x86_64
+
+        )
+
+        # Sort images by creation date to get the latest
+        images = sorted(response['Images'], key=lambda k: k['CreationDate'], reverse=True)
+        if images:
+            return images[0]['ImageId']
+        else:
+            return None        
+
+    def _create_progress_bar(self, max_value):
+        def show_progress_bar(iteration):
+            percent = ("{0:.1f}").format(100 * (iteration / float(max_value)))
+            length = 50  # adjust as needed for the bar length
+            filled_length = int(length * iteration // max_value)
+            bar = "█" * filled_length + '-' * (length - filled_length)
+            print(f'\r|{bar}| {percent}%', end='\r')
+            if iteration == max_value: 
+                print()
+
+        return show_progress_bar
+
+    def _ec2_cloud_init_script(self):
+        # Define the User Data script
+        userdata = textwrap.dedent(f'''
+        #! /bin/bash
+        dnf check-update
+        dnf update -y
+        dnf install -y gcc python3-pip python3-psutil
+        hostnamectl set-hostname froster
+        dnf upgrade
+        dnf install -y vim mc wget R
+        dnf group install -y 'Development Tools'
+        dnf install -y https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.06.2-561-x86_64.rpm
+        #echo 'export AWS_DEFAULT_REGION={self.cfg.aws_region}' >> ~/.bashrc
+        ''').strip()
+        return userdata
+    
+    def ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
+        # Define script that will be installed by ec2-user 
+        return textwrap.dedent(f'''
+        #! /bin/bash
+        echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
+        echo 'export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
+        cd /tmp
+        curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        bash Miniconda3-latest-Linux-x86_64.sh -b
+        curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
+        froster config --monitor
+        aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
+        aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
+        aws configure set region {self.cfg.aws_region}
+        #sudo aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
+        #sudo aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
+        #sudo aws configure set region {self.cfg.aws_region}
+        python3 -m pip install boto3  > /dev/null
+        sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
+        sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
+        ''').strip()
+    
+    def ec2_create_instance(self, required_space, iamprofile=None, profile=None):
+        # to avoid egress we are creating an EC2 instance 
+        # with ephemeral (local) disk for a temporary restore 
+        # 
+        # i3en.24xlarge, 96 vcpu, 60TiB for $10.85
+        # i3en.12xlarge, 48 vcpu, 30TiB for $5.42
+        # i3en.6xlarge, 24 vcpu, 15TiB for $2.71
+        # i3en.3xlarge, 12 vcpu, 7.5Tib for $1.36
+        # i3en.xlarge, 4 vcpu, 2.5Tib for $0.45
+        # i3en.large, 2 vcpu, 1.25Tib for $0.22
+        # c5ad.large, 2 vcpu, 75GB, for $0.09
+
+        instance_types =  {'i3en.24xlarge': 60000,
+                           'i3en.12xlarge': 30000,
+                           'i3en.6xlarge': 15000,
+                           'i3en.3xlarge': 7500,
+                           'i3en.xlarge': 2500,
+                           'i3en.large': 1250,
+                           'c5ad.large': 75,
+                           't3a.micro': 5,
+                           }
+        
+        # if not self._ec2_create_iam_self_destruct_role(profile):
+        #     return False
+            
+        #if not self._ec2
+
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2 = session.resource('ec2')
+        client = session.client('ec2')
+        
+        chosen_instance_type = None
+        for itype, space in instance_types.items():
+            if space > 1.3 * required_space:
+                chosen_instance_type = itype
+
+        if self.args.instancetype:
+            chosen_instance_type = self.args.instancetype 
+        print('Chosen Instance:',chosen_instance_type)
+
+        if not chosen_instance_type:
+            print("No suitable instance type found for the given disk space requirement.")
+            return False
+
+        # Create a new EC2 key pair
+        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        if not os.path.exists(key_path):
+            try:
+                client.describe_key_pairs(KeyNames=[self.cfg.ssh_key_name])
+                # If the key pair exists, delete it
+                client.delete_key_pair(KeyName=self.cfg.ssh_key_name)
+            except client.exceptions.ClientError:
+                # Key pair doesn't exist in AWS, no need to delete
+                pass                        
+            key_pair = ec2.create_key_pair(KeyName=self.cfg.ssh_key_name)
+            os.makedirs(os.path.join(self.cfg.config_root,'cloud'),exist_ok=True)            
+            with open(key_path, 'w') as key_file:
+                key_file.write(key_pair.key_material)
+            os.chmod(key_path, 0o600)  # Set file permission to 600
+
+        imageid = self._ec2_get_latest_amazon_linux2_ami(profile)
+        print(f'Using Image ID: {imageid}')
+
+        #print(f'*** userdata-script:\n{self._ec2_user_data_script()}')
+
+        iam_instance_profile={}
+        if iamprofile:
+            iam_instance_profile={
+                'Name': iamprofile  # Use the instance profile name
+            }        
+        print(f'IAM Instance profile: {iamprofile}.')    
+
+        # iam_instance_profile = {}
+        
+        # Create EC2 instance
+        instance = ec2.create_instances(
+            ImageId=imageid,
+            MinCount=1,
+            MaxCount=1,
+            InstanceType=chosen_instance_type,
+            KeyName=self.cfg.ssh_key_name,
+            UserData=self._ec2_cloud_init_script(),
+            IamInstanceProfile = iam_instance_profile,
+            TagSpecifications=[
+                {
+                    'ResourceType': 'instance',
+                    'Tags': [{'Key': 'Name', 'Value': 'FrosterSelfDestruct'}]
+                }
+            ]
+        )[0]
+        
+        # Use a waiter to ensure the instance is running before trying to access its properties
+        instance_id = instance.id    
+
+        # tag the instance for cost explorer 
+        tag = {
+            'Key': 'INSTANCE_ID',
+            'Value': instance_id
+        }
+        ec2.create_tags(Resources=[instance_id], Tags=[tag])
+
+        print(f'Launching instance {instance_id} ... please wait ...')    
+        
+        max_wait_time = 300  # seconds
+        delay_time = 10  # check every 10 seconds, adjust as needed
+        max_attempts = max_wait_time // delay_time
+
+        waiter = client.get_waiter('instance_running')
+        progress = self._create_progress_bar(max_attempts)
+
+        for attempt in range(max_attempts):
+            try:
+                waiter.wait(InstanceIds=[instance_id], WaiterConfig={'Delay': delay_time, 'MaxAttempts': 1})
+                progress(attempt)
+                break
+            except botocore.exceptions.WaiterError:
+                progress(attempt)
+                continue
+        print('')
+        instance.reload()        
+        grpid = self._ec2_create_and_attach_security_group(instance_id, profile)
+        if grpid:
+            print(f'Security Group "{grpid}" attached.') 
+        else:
+            print('No Security Group ID created.')
+        instance.wait_until_running()
+        print(f'Instance IP: {instance.public_ip_address}')
+
+        self.cfg.write('cloud', 'ec2_last_instance', instance.public_ip_address)
+
+        return instance_id, instance.public_ip_address
+
+    def ec2_terminate_instance(self, ip, profile=None):
+        # terminate instance  
+        # with ephemeral (local) disk for a temporary restore 
+        
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()        
+        ec2 = session.client('ec2')
+        #ips = self.ec2_list_ips(self, 'Name', 'FrosterSelfDestruct')    
+        # Use describe_instances with a filter for the public IP address to find the instance ID
+        filters = [{
+            'Name': 'network-interface.addresses.association.public-ip',
+            'Values': [ip]
+        }]
+        try:
+            response = ec2.describe_instances(Filters=filters)        
+        except botocore.exceptions.ClientError as e: 
+            print(f'Error: {e}')
+            return False
+        # Check if any instances match the criteria
+        instances = [instance for reservation in response['Reservations'] for instance in reservation['Instances']]        
+        if not instances:
+            print(f"No EC2 instance found with public IP: {ip}")
+            return 
+        # Extract instance ID from the instance
+        instance_id = instances[0]['InstanceId']
+        
+        # Terminate the instance
+        ec2.terminate_instances(InstanceIds=[instance_id])
+        
+        print(f"EC2 Instance {instance_id} with public IP {ip} is being terminated !")
+
+    def ec2_list_instances(self, tag_name, tag_value, profile=None):
+        """
+        List all IP addresses of running EC2 instances with a specific tag name and value.
+        :param tag_name: The name of the tag
+        :param tag_value: The value of the tag
+        :return: List of IP addresses
+        """
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ec2 = session.client('ec2')        
+        
+        # Define the filter
+        filters = [
+            {
+                'Name': 'tag:' + tag_name,
+                'Values': [tag_value]
+            },
+            {
+                'Name': 'instance-state-name',
+                'Values': ['running']
+            }
+        ]
+        
+        # Make the describe instances call
+        try:
+            response = ec2.describe_instances(Filters=filters)        
+        except botocore.exceptions.ClientError as e: 
+            print(f'Error: {e}')
+            return []
+        #An error occurred (AuthFailure) when calling the DescribeInstances operation: AWS was not able to validate the provided access credentials
+        ilist = []    
+        # Extract IP addresses
+        for reservation in response['Reservations']:
+            for instance in reservation['Instances']:
+                row = [instance['PublicIpAddress'], 
+                       instance['InstanceId'], 
+                       instance['InstanceType']]
+                ilist.append(row)                
+        return ilist
+
+    def ssh_execute(self, user, host, command=None):
+        """Execute an SSH command on the remote server."""
+        SSH_OPTIONS = "-o StrictHostKeyChecking=no"
+        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        cmd = f"ssh {SSH_OPTIONS} -i '{key_path}' {user}@{host}"
+        if command:
+            cmd += f" '{command}'"
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                return result
+            except:
+                print(f'Error executing "{cmd}."')
+        else:
+            subprocess.run(cmd, shell=True, capture_output=False, text=True)
+        return None
+                
+    def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
+        """Upload a file to the remote server using SCP."""
+        SSH_OPTIONS = "-o StrictHostKeyChecking=no"
+        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        if is_string:
+            # the local_path is actually a string that needs to go into temp file 
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp:
+                temp.write(local_path)
+                local_path = temp.name
+        cmd = f"scp {SSH_OPTIONS} -i '{key_path}' {local_path} {user}@{host}:{remote_path}"        
+        try:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if is_string:
+                os.remove(local_path)
+            return result       
+        except:
+            print(f'Error executing "{cmd}."')
+        return None
+
+    def ssh_download(self, user, host, remote_path, local_path):
+        """Upload a file to the remote server using SCP."""
+        SSH_OPTIONS = "-o StrictHostKeyChecking=no"
+        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        cmd = f"scp {SSH_OPTIONS} -i '{key_path}' {user}@{host}:{remote_path} {local_path}"        
+        try:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            return result
+        except:
+            print(f'Error executing "{cmd}."')
+        return None            
+    
+    def send_email_ses(self, sender, to, subject, body, profile=None):
+        # Using AWS ses service to send emails
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        ses = session.client("ses")
+
+        confirmed_emails = []
+        if not sender:
+            sender = self.cfg.read('general', 'email')
+        if not to:
+            to = self.cfg.read('general', 'email')
+        if not to or not sender:
+            print('from and to email addresses cannot be empty')
+            return False
+        ret = self.cfg.read('cloud', 'ses_confirmed_emails')
+        if isinstance(ret, list):
+            confirmed_emails = ret
+        else:
+            confirmed_emails.append(ret)
+        
+        checks = [sender, to]
+
+        checked=False
+        for check in checks:
+            if check not in confirmed_emails:
+                response = ses.verify_email_identity(EmailAddress=check)
+                confirmed_emails.append(check)
+                self.write('cloud', 'ses_confirmed_emails',confirmed_emails)
+                print(f'{check} was used for the first time')
+                print('Please check Inbox, confirm and then send again\n')
+                checked=True
+
+        if checked: 
+            return  
+        
+        try:
+            response = ses.send_email(
+                Source=sender,
+                Destination={
+                    'ToAddresses': [to]
+                },
+                Message={
+                    'Subject': {
+                        'Data': subject
+                    },
+                    'Body': {
+                        'Text': {
+                            'Data': body
+                        }
+                    }
+                }
+            )
+
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == 'MessageRejected':
+                print(f'Error: {e}')
+            else:
+            # Handle other exceptions, perhaps re-raise them
+                raise            
+
+        print(f'Sent email to {to}!')
+
+        # The below AIM policy is needed if you do not want to confirm 
+        # each and every email you want to send to. 
+
+        # iam = boto3.client('iam')
+        # policy_document = {
+        #     "Version": "2012-10-17",
+        #     "Statement": [
+        #         {
+        #             "Effect": "Allow",
+        #             "Action": [
+        #                 "ses:SendEmail",
+        #                 "ses:SendRawEmail"
+        #             ],
+        #             "Resource": "*"
+        #         }
+        #     ]
+        # }
+
+        # policy_name = 'SES_SendEmail_Policy'
+
+        # policy_arn = self._ec2_create_or_get_iam_policy(
+        #     policy_name, policy_document, profile)
+
+        # username = 'your_iam_username'  # Change this to the username you wish to attach the policy to
+
+        # response = iam.attach_user_policy(
+        #     UserName=username,
+        #     PolicyArn=policy_arn
+        # )
+
+        # print(f"Policy {policy_arn} attached to user {username}")
+
+    def send_ec2_costs(self, instance_id, profile=None):
+        pass
+
+
+    def _ec2_create_iam_costexplorer_ses(self, instance_id ,profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+        ec2 = session.client('ec2')
+
+        # Define the policy
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ses:SendEmail",
+                    "Resource": "*"
+                },                
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ce:*",              # Permissions for Cost Explorer
+                        "ce:GetCostAndUsage", # all
+                        "ec2:Describe*",     # Basic EC2 read permissions
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }
+
+        # Step 1: Create the policy in IAM
+        policy_name = "CostExplorerSESPolicy"
+
+        policy_arn = self._ec2_create_or_get_iam_policy(
+            policy_name, policy_document, profile)
+                
+
+        # Step 2: Retrieve the IAM instance profile attached to the EC2 instance
+        response = ec2.describe_instances(InstanceIds=[instance_id])
+        instance_data = response['Reservations'][0]['Instances'][0]
+        if 'IamInstanceProfile' not in instance_data:
+            print(f"No IAM Instance Profile attached to the instance: {instance_id}")
+            return False
+
+        instance_profile_arn = response['Reservations'][0]['Instances'][0]['IamInstanceProfile']['Arn']
+
+        # Extract the instance profile name from its ARN
+        instance_profile_name = instance_profile_arn.split('/')[-1]
+
+        # Step 3: Fetch the role name from the instance profile
+        response = iam.get_instance_profile(InstanceProfileName=instance_profile_name)
+        role_name = response['InstanceProfile']['Roles'][0]['RoleName']
+
+        # Step 4: Attach the desired policy to the role
+        try:
+            iam.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=policy_arn
+            )
+            print(f"Policy {policy_arn} attached to role {role_name}")
+        except iam.exceptions.NoSuchEntityException:
+            print(f"Role {role_name} does not exist!")
+        except iam.exceptions.InvalidInputException as e:
+            print(f"Invalid input: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+
+    def _ec2_create_iam_self_destruct_role(self, profile):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        iam = session.client('iam')
+
+        # Step 1: Create IAM policy
+        policy_document = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ec2:TerminateInstances",
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {
+                            "ec2:ResourceTag/Name": "FrosterSelfDestruct"
+                        }
+                    }
+                }
+            ]
+        }
+        policy_name = 'SelfDestructPolicy'
+        
+        policy_arn = self._ec2_create_or_get_iam_policy(
+            policy_name, policy_document, profile)
+
+        # Step 2: Create an IAM role and attach the policy
+        trust_relationship = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "ec2.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }
+
+        role_name = 'SelfDestructRole'
+        try:
+            iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(trust_relationship),
+                Description='Allows EC2 instances to call AWS services on your behalf.'
+            )
+        except iam.exceptions.EntityAlreadyExistsException:
+            print ('IAM SelfDestructRole already exists.')            
+
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=policy_arn
+        )
+
+        return True
+    
+
+    def _get_ec2_metadata(self, metadata_entry):
+
+        # request 'local-hostname', 'public-hostname', 'local-ipv4', 'public-ipv4'
+
+        # Define the base URL for the EC2 metadata service
+        base_url = "http://169.254.169.254/latest/meta-data/"
+
+        # Request a token with a TTL of 60 seconds
+        token_url = "http://169.254.169.254/latest/api/token"
+        token_headers = {"X-aws-ec2-metadata-token-ttl-seconds": "60"}
+        try:
+            token_response = requests.put(token_url, headers=token_headers, timeout=1)
+        except Exception as e:
+            print(f'Error: {e}')
+            return ""
+        token = token_response.text
+
+        # Use the token to retrieve the specified metadata entry
+        headers = {"X-aws-ec2-metadata-token": token}
+        response = requests.get(base_url + metadata_entry, headers=headers, timeout=1)
+        
+        if response.status_code != 200:
+            raise Exception(f"Failed to retrieve metadata for entry: {metadata_entry}. HTTP Status Code: {response.status_code}")
+
+        return response.text
+    
+    def monitor_ec2(self):
+
+        # if system is idle self-destroy 
+
+        instance_id = self._get_ec2_metadata('instance-id')
+        public_ip = self._get_ec2_metadata('public-ip')
+
+        print(f'Current machine IP {public_ip} and instance id {instance_id} ...')
+
+        if self._monitor_none_logged_in() and self._monitor_is_idle():
+            # This machine was idle for a long time, destroy it
+            print(f'Destroying current machine {public_ip} ({instance_id}) ...')
+            if public_ip:
+                self.ec2_terminate_instance(public_ip)
+                return True 
+            else:
+                print('Could not retrieve metadata (IP)')
+                return False 
+            
+        current_time = datetime.datetime.now().time()
+        start_time = datetime.datetime.strptime("23:00:00", "%H:%M:%S").time()
+        end_time = datetime.datetime.strptime("23:59:59", "%H:%M:%S").time()
+    
+        if start_time >= current_time or current_time > end_time:
+            # only run cost emails once a day 
+            return True 
+
+        monthly_cost, monthly_unit, daily_costs_by_instance, user_monthly_cost, user_monthly_unit, \
+            user_daily_cost, user_daily_unit, user_name = self._monitor_get_ec2_costs()
+        
+        body = []
+        body.append(f"{monthly_cost:.2f} {monthly_unit} total account cost for the current month.")
+        body.append(f"{user_monthly_cost:.2f} {user_monthly_unit} cost of user {user_name} for the current month.")
+        body.append(f"{user_daily_cost:.2f} {user_daily_unit} cost of user {user_name} in the last 24 hours.")
+        body.append("Cost for each EC2 instance type in the last 24 hours:")
+        for instance_type, (cost, unit) in daily_costs_by_instance.items():
+            if instance_type != 'NoInstanceType':
+                body.append(f"  {instance_type:12}: ${cost:.2f} {unit}")
+        body_text = "\n".join(body)
+        self.send_email_ses("", "", f'Froster AWS cost report ({instance_id})', body_text)
+
+    def _monitor_none_logged_in(self):
+        """Check if any users are logged in."""
+        try:
+            output = subprocess.check_output(['who']).decode('utf-8')
+            if output:
+                return False  # Users are logged in
+            return True
+        except:
+            return True
+        
+    def _monitor_is_idle(self, interval=60, idle_hours=72):
+
+        # each run checks idle time for 60 seconds (interval)
+        # if the system has been idle for 72 consecutive runs
+        # the fucntion will return idle state after 3 days 
+        # if the cron job is running hourly 
+
+        # Constants
+        CPU_THRESHOLD = 15  # percent
+        NET_READ_THRESHOLD = 1000  # bytes per second
+        NET_WRITE_THRESHOLD = 1000  # bytes per second
+        DISK_WRITE_THRESHOLD = 100000  # bytes per second
+        PROCESS_CPU_THRESHOLD = 5  # percent (for individual processes)
+        PROCESS_MEM_THRESHOLD = 5  # percent (for individual processes)
+        DISK_WRITE_EXCLUSIONS = ["systemd", "systemd-journald", \
+                                "chronyd", "sshd", "auditd" , "agetty"]
+        IDLE_STATE_FILE = os.path.join(os.getenv('TMPDIR', '/tmp'), 
+                                    'froster_idle_state.txt')
+
+        # Check CPU Utilization
+        cpu_percent = psutil.cpu_percent(interval=None)
+        if cpu_percent > CPU_THRESHOLD:
+            return False
+
+        # Time I/O and Network Activity 
+        io_start = psutil.disk_io_counters()
+        net_start = psutil.net_io_counters()
+        time.sleep(interval)
+        io_end = psutil.disk_io_counters()
+        net_end = psutil.net_io_counters()
+
+        # Check I/O Activity
+        write_diff = io_end.write_bytes - io_start.write_bytes
+        write_per_second = write_diff / interval
+
+        if write_per_second > DISK_WRITE_THRESHOLD:
+            for proc in psutil.process_iter(['name']):
+                if proc.info['name'] in DISK_WRITE_EXCLUSIONS:
+                    continue
+                try:
+                    if proc.io_counters().write_bytes > 0:
+                        return False
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+        # Check Network Activity
+        bytes_sent_diff = net_end.bytes_sent - net_start.bytes_sent
+        bytes_recv_diff = net_end.bytes_recv - net_start.bytes_recv
+
+        bytes_sent_per_second = bytes_sent_diff / interval
+        bytes_recv_per_second = bytes_recv_diff / interval
+
+        if bytes_sent_per_second > NET_WRITE_THRESHOLD or \
+                            bytes_recv_per_second > NET_READ_THRESHOLD:
+            return False
+
+        # Examine Running Processes for CPU and Memory Usage
+        for proc in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
+            if proc.info['name'] not in DISK_WRITE_EXCLUSIONS:
+                if proc.info['cpu_percent'] > PROCESS_CPU_THRESHOLD:
+                    return False
+                if proc.info['memory_percent'] > PROCESS_MEM_THRESHOLD:
+                    return False
+
+        # Write idle state and read consecutive idle hours
+        is_system_idle = True
+        with open(IDLE_STATE_FILE, 'a') as file:
+            file.write('1\n' if is_system_idle else '0\n')        
+        if not os.path.exists(IDLE_STATE_FILE):
+            return False
+        with open(IDLE_STATE_FILE, 'r') as file:
+            states = file.readlines()        
+        count = 0
+        for state in reversed(states):
+            if state.strip() == '1':
+                count += 1
+            else:
+                break
+        return count >= idle_hours
+        
+    def _monitor_get_ec2_costs(self, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        
+        # Set up boto3 client for Cost Explorer
+        ce = session.client('ce')
+        sts = session.client('sts')
+
+        # Identify current user/account
+        identity = sts.get_caller_identity()
+        user_arn = identity['Arn']
+        # Check if it's the root user
+        is_root = ":root" in user_arn
+
+        # Dates for the current month and the last 24 hours
+        today = datetime.datetime.today()
+        first_day_of_month = datetime.datetime(today.year, today.month, 1).date()
+        yesterday = (today - datetime.timedelta(days=1)).date()
+
+        # Fetch EC2 cost of the current month
+        monthly_response = ce.get_cost_and_usage(
+            TimePeriod={
+                'Start': str(first_day_of_month),
+                'End': str(today.date())
+            },
+            Filter={
+                'Dimensions': {
+                    'Key': 'SERVICE',
+                    'Values': ['Amazon Elastic Compute Cloud - Compute']
+                }
+            },
+            Granularity='MONTHLY',
+            Metrics=['UnblendedCost'],
+        )
+        monthly_cost = float(monthly_response['ResultsByTime'][0]['Total']['UnblendedCost']['Amount'])
+        monthly_unit = monthly_response['ResultsByTime'][0]['Total']['UnblendedCost']['Unit']
+
+        # If it's the root user, the whole account's costs are assumed to be caused by root.
+        if is_root:
+            user_name = 'root'
+            user_monthly_cost = monthly_cost
+            user_monthly_unit = monthly_unit
+        else:
+            # Assuming a tag `CreatedBy` (change as per your tagging system)
+            user_name = user_arn.split('/')[-1]
+            user_monthly_response = ce.get_cost_and_usage(
+                TimePeriod={
+                    'Start': str(first_day_of_month),
+                    'End': str(today.date())
+                },
+                Filter={
+                    "And": [
+                        {
+                            'Dimensions': {
+                                'Key': 'SERVICE',
+                                'Values': ['Amazon Elastic Compute Cloud - Compute']
+                            }
+                        },
+                        {
+                            'Tags': {
+                                'Key': 'CreatedBy',
+                                'Values': [user_name]
+                            }
+                        }
+                    ]
+                },
+                Granularity='MONTHLY',
+                Metrics=['UnblendedCost'],
+            )
+            user_monthly_cost = float(user_monthly_response['ResultsByTime'][0]['Total']['UnblendedCost']['Amount'])
+            user_monthly_unit = user_monthly_response['ResultsByTime'][0]['Total']['UnblendedCost']['Unit']
+
+        # Fetch cost of each EC2 instance type in the last 24 hours
+        daily_response = ce.get_cost_and_usage(
+            TimePeriod={
+                'Start': str(yesterday),
+                'End': str(today.date())
+            },
+            Filter={
+                'Dimensions': {
+                    'Key': 'SERVICE',
+                    'Values': ['Amazon Elastic Compute Cloud - Compute']
+                }
+            },
+            Granularity='DAILY',
+            GroupBy=[{'Type': 'DIMENSION', 'Key': 'INSTANCE_TYPE'}],
+            Metrics=['UnblendedCost'],
+        )
+        daily_costs_by_instance = {group['Keys'][0]: (float(group['Metrics']['UnblendedCost']['Amount']), group['Metrics']['UnblendedCost']['Unit']) for group in daily_response['ResultsByTime'][0]['Groups']}
+
+        # Fetch cost caused by the current user in the last 24 hours
+        if is_root:
+            user_daily_cost = sum([cost[0] for cost in daily_costs_by_instance.values()])
+            user_daily_unit = monthly_unit  # Using monthly unit since it should be the same for daily
+        else:
+            user_daily_response = ce.get_cost_and_usage(
+                TimePeriod={
+                    'Start': str(yesterday),
+                    'End': str(today.date())
+                },
+                Filter={
+                    "And": [
+                        {
+                            'Dimensions': {
+                                'Key': 'SERVICE',
+                                'Values': ['Amazon Elastic Compute Cloud - Compute']
+                            }
+                        },
+                        {
+                            'Tags': {
+                                'Key': 'CreatedBy',
+                                'Values': [user_name]
+                            }
+                        }
+                    ]
+                },
+                Granularity='DAILY',
+                Metrics=['UnblendedCost'],
+            )
+            user_daily_cost = float(user_daily_response['ResultsByTime'][0]['Total']['UnblendedCost']['Amount'])
+            user_daily_unit = user_daily_response['ResultsByTime'][0]['Total']['UnblendedCost']['Unit']
+
+        return monthly_cost, monthly_unit, daily_costs_by_instance, user_monthly_cost, \
+               user_monthly_unit, user_daily_cost, user_daily_unit, user_name
+
 class ConfigManager:
     # we write all config entries as files to '~/.config'
     # to make it easier for bash users to read entries 
@@ -2551,7 +3888,7 @@ class ConfigManager:
             self.envrn['RCLONE_S3_PROFILE'] = profile
             if isinstance(prf,dict):  # profile={'name': '', 'provider': '', 'storage_class': ''}
                 self.envrn['RCLONE_S3_PROVIDER'] = prf['provider']
-                self.envrn['RCLONE_S3_ENDPOINT'] = self.get_aws_s3_session_endpoint_url(profile)
+                self.envrn['RCLONE_S3_ENDPOINT'] = self._get_aws_s3_session_endpoint_url(profile)
                 self.envrn['RCLONE_S3_REGION'] = self.aws_region
                 self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
                 self.envrn['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
@@ -2696,6 +4033,28 @@ class ConfigManager:
                 print("Please respond with 'yes' or 'no' (or 'y' or 'n').")
 
 
+    def add_cron_job(self, cmd, minute, hour='*', day_of_month='*', month='*', day_of_week='*'):
+        # Create a temporary file
+        if not minute:
+            print('You must set the minute (1-60) explicily')
+            return False 
+        with tempfile.NamedTemporaryFile(delete=False) as temp:
+            # Dump the current crontab to the temporary file
+            os.system('crontab -l > {}'.format(temp.name))
+
+            # Add the new cron job to the temporary file
+            cron_time = "{} {} {} {} {}".format(str(minute), hour, day_of_month, month, day_of_week)
+            with open(temp.name, 'a') as file:
+                file.write('{} {}\n'.format(cron_time, cmd))
+            
+            # Install the new crontab
+            os.system('crontab {}'.format(temp.name))
+            
+            # Clean up by removing the temporary file
+            os.unlink(temp.name)
+
+        print("Cron job added!")
+
     def replicate_ini(self, section, src_file, dest_file):
 
         # copy an ini section from source to destination
@@ -2752,46 +4111,6 @@ class ConfigManager:
             print(f"Ini-section copied from {src_file} to {dest_file}")
             print(f"Missing entries in source from destination copied back to {src_file}")
 
-    def _check_s3_credentials(self, profile='default', verbose=False):
-        from botocore.exceptions import NoCredentialsError, EndpointConnectionError, ClientError
-        try:
-            if verbose:
-                print(f'  Checking credentials for profile "{profile}" ... ', end='')
-            session = boto3.Session(profile_name=profile)
-            ep_url = self.get_aws_s3_session_endpoint_url(profile)
-            s3_client = session.client('s3', endpoint_url=ep_url)            
-            s3_client.list_buckets()
-            if verbose:
-                print('Done.')
-            return True
-        except NoCredentialsError:
-            print("No AWS credentials found. Please check your access key and secret key.")
-        except EndpointConnectionError:
-            print("Unable to connect to the AWS S3 endpoint. Please check your internet connection.")
-        except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code')
-            #error_code = e.response['Error']['Code']             
-            if error_code == 'RequestTimeTooSkewed':
-                print(f"The time difference between S3 storage and your computer is too high:\n{e}")
-            elif error_code == 'InvalidAccessKeyId':                
-                print(f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
-            elif error_code == 'SignatureDoesNotMatch':                
-                if "Signature expired" in str(e): 
-                    print(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
-                    return False
-                else:
-                    print(f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")         
-            elif error_code == 'InvalidClientTokenId':
-                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
-            else:
-                print(f"Error validating credentials for profile {profile}: {e}")
-            print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
-            return False
-        except Exception as e:
-            print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
-            return False
-
-    
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
         config = configparser.ConfigParser()        
@@ -2864,7 +4183,7 @@ class ConfigManager:
         return True
     
     def get_aws_s3_endpoint_url(self, profile='default'):
-        # non boto3 method, use get_aws_s3_session_endpoint_url instead
+        # non boto3 method, use _get_aws_s3_session_endpoint_url instead
         config = configparser.ConfigParser()
         config.read(os.path.expanduser('~/.aws/config'))
         prof = 'profile ' + profile
@@ -2883,7 +4202,7 @@ class ConfigManager:
                 print("  No endpoint_url found in aws profile:", profile)
             return None
         
-    def get_aws_s3_session_endpoint_url(self, profile='default'):
+    def _get_aws_s3_session_endpoint_url(self, profile='default'):
         # retrieve endpoint url through boto API, not configparser
         import botocore.session
         session = botocore.session.Session(profile=profile)
@@ -2903,687 +4222,6 @@ class ConfigManager:
             if self.args.debug:
                 print(f'  cannot retrieve AWS region for profile {profile}, no valid profile or credentials')
             return ""
-    
-    def get_aws_regions(self, profile='default', provider='AWS'):
-        # returns a list of AWS regions 
-        if provider == 'AWS':
-            try:
-                session = boto3.Session(profile_name=profile)
-                regions = session.get_available_regions('ec2')
-                # make the list a little shorter 
-                regions = [i for i in regions if not i.startswith('ap-')]
-                return sorted(regions, reverse=True)
-            except:
-                return ['us-west-2','us-west-1', 'us-east-1', '']
-        elif provider == 'GCS':
-            return ['us-west1', 'us-east1', '']
-        elif provider == 'Wasabi':
-            return ['us-west-1', 'us-east-1', '']
-        elif provider == 'IDrive':
-            return ['us-or', 'us-va', 'us-la', '']
-        elif provider == 'Ceph':
-            return ['default-placement', 'us-east-1', '']
-                
-    def check_bucket_access(self, bucket_name, profile='default'):
-        from botocore.exceptions import ClientError
-        if not self._check_s3_credentials(profile):
-            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
-            return False
-        session = boto3.Session(profile_name=profile)
-        ep_url = self.get_aws_s3_session_endpoint_url(profile)
-        s3 = session.client('s3', endpoint_url=ep_url)
-        
-        try:
-            # Check if bucket exists
-            s3.head_bucket(Bucket=bucket_name)
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == '403':
-                print(f"Error: Access denied to bucket {bucket_name} for profile {self.awsprofile}. Check your permissions.")
-            elif error_code == '404':
-                print(f"Error: Bucket {bucket_name} does not exist in profile {self.awsprofile}.")
-                print("run 'froster config' to create this bucket.")
-            else:
-                print(f"Error accessing bucket {bucket_name} in profile {self.awsprofile}: {e}")
-            return False
-        except Exception as e:
-            print(f"An unexpected error occurred for profile {self.awsprofile}: {e}")
-            return False
-
-        # Test write access by uploading a small test file
-        try:
-            test_object_key = "test_write_access.txt"
-            s3.put_object(Bucket=bucket_name, Key=test_object_key, Body="Test write access")
-            #print(f"Successfully wrote test to {bucket_name}")
-
-            # Clean up by deleting the test object
-            s3.delete_object(Bucket=bucket_name, Key=test_object_key)
-            #print(f"Successfully deleted test object from {bucket_name}")
-            return True
-        except ClientError as e:
-            print(f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
-            return False
-
-    def create_s3_bucket(self, bucket_name, profile='default'):
-        from botocore.exceptions import BotoCoreError, ClientError      
-        if not self._check_s3_credentials(profile, verbose=True):
-            print(f"Cannot create bucket '{bucket_name}' with these credentials")
-            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
-            return False 
-        region = self.get_aws_region(profile)
-        session = boto3.Session(profile_name=profile)
-        ep_url = self.get_aws_s3_session_endpoint_url(profile)
-        s3_client = session.client('s3', endpoint_url=ep_url)        
-        existing_buckets = s3_client.list_buckets()
-        for bucket in existing_buckets['Buckets']:
-            if bucket['Name'] == bucket_name:
-                if self.args.debug:
-                    print(f'S3 bucket {bucket_name} exists')
-                return True
-        try:
-            if region and region != 'default-placement':
-                response = s3_client.create_bucket(
-                    Bucket=bucket_name,
-                    CreateBucketConfiguration={'LocationConstraint': region}
-                    )
-            else:
-                response = s3_client.create_bucket(
-                    Bucket=bucket_name,
-                    )              
-            print(f"Created S3 Bucket '{bucket_name}'")
-        except BotoCoreError as e:
-            print(f"BotoCoreError: {e}")
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'InvalidBucketName':
-                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
-            elif error_code == 'BucketAlreadyExists':
-                pass
-                #print(f"Error: Bucket '{bucket_name}' already exists.")
-            elif error_code == 'BucketAlreadyOwnedByYou':
-                pass
-                #print(f"Error: You already own a bucket named '{bucket_name}'.")
-            elif error_code == 'InvalidAccessKeyId':
-                #pass
-                print("Error: InvalidAccessKeyId. The AWS Access Key Id you provided does not exist in our records")
-            elif error_code == 'SignatureDoesNotMatch':
-                pass
-                #print("Error: Invalid AWS Secret Access Key.")
-            elif error_code == 'AccessDenied':
-                print("Error: Access denied. Check your account permissions for creating S3 buckets")
-            elif error_code == 'IllegalLocationConstraintException':
-                print(f"Error: The specified region '{region}' is not valid.")
-            else:
-                print(f"ClientError: {e}")
-            return False
-        except Exception as e:            
-            print(f"An unexpected error occurred: {e}")
-            return False
-        encryption_configuration = {
-            'Rules': [
-                {
-                    'ApplyServerSideEncryptionByDefault': {
-                        'SSEAlgorithm': 'AES256'
-                    }
-                }
-            ]
-        }
-        try:
-            response = s3_client.put_bucket_encryption(
-                Bucket=bucket_name,
-                ServerSideEncryptionConfiguration=encryption_configuration
-            )            
-            print(f"Applied AES256 encryption to S3 bucket '{bucket_name}'")    
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'InvalidBucketName':
-                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
-            elif error_code == 'AccessDenied':
-                print("Error: Access denied. Check your account permissions for creating S3 buckets")
-            elif error_code == 'IllegalLocationConstraintException':
-                print(f"Error: The specified region '{region}' is not valid.")
-            elif error_code == 'InvalidLocationConstraint':
-                if not ep_url:
-                    # do not show this error with non AWS endpoints 
-                    print(f"Error: The specified location-constraint '{region}' is not valid")
-            else:
-                print(f"ClientError: {e}")                        
-        except Exception as e:            
-            print(f"An unexpected error occurred: {e}")
-            return False            
-        return True
-    
-    def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
-
-        policy_arn = None
-        try:
-            response = iam.create_policy(
-                PolicyName=pol_name,
-                PolicyDocument=json.dumps(pol_doc)
-            )
-            policy_arn = response['Policy']['Arn']
-            print(f"Policy created with ARN: {policy_arn}")
-        except iam.exceptions.EntityAlreadyExistsException as e:
-            policies = iam.list_policies(Scope='Local')  
-               # Scope='Local' for customer-managed policies, 
-               # 'AWS' for AWS-managed policies            
-            for policy in policies['Policies']:
-                if policy['PolicyName'] == pol_name:
-                    policy_arn = policy['Arn']
-                    break
-            print(f'Policy {pol_name} already exists')
-        except Exception as e:
-            print('Other Error:', e)
-        return policy_arn
-
-
-
-
-    def _ec2_create_froster_iam_policy(self, profile=None):
-        # Initialize session with specified profile or default
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-
-        # Create IAM client
-        iam = session.client('iam')
-
-        # Define policy name and policy document
-        policy_name = 'FrosterEC2DescribePolicy'
-        policy_document = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": "ec2:Describe*",
-                    "Resource": "*"
-                }
-            ]
-        }
-
-        # Get current IAM user's details
-        user = iam.get_user()
-        user_name = user['User']['UserName']
-
-        # Check if policy already exists for the user
-        existing_policies = iam.list_user_policies(UserName=user_name)
-        if policy_name in existing_policies['PolicyNames']:
-            print(f"{policy_name} already exists for user {user_name}.")
-            return
-
-        # Create policy for user
-        iam.put_user_policy(
-            UserName=user_name,
-            PolicyName=policy_name,
-            PolicyDocument=json.dumps(policy_document)
-        )
-
-        print(f"Policy {policy_name} attached successfully to user {user_name}.")
-
-
-
-
-    def _ec2_create_iam_policy_roles_ec2profile(self, profile=None):
-        # create all the IAM requirement to allow an ec2 instance to
-        # 1. self destruct, 2. monitor cost with CE and 3. send emails via SES
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
-
-      # Step 0: Create IAM self destruct and EC2 read policy 
-        policy_document = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "ec2:Describe*",     # Basic EC2 read permissions
-                    ],
-                    "Resource": "*"
-                },                
-                {
-                    "Effect": "Allow",
-                    "Action": "ec2:TerminateInstances",
-                    "Resource": "*",
-                    "Condition": {
-                        "StringEquals": {
-                            "ec2:ResourceTag/Name": "FrosterSelfDestruct"
-                        }
-                    }
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "ce:GetCostAndUsage"
-                    ],
-                    "Resource": "*"
-                }
-            ]
-        }
-        policy_name = 'FrosterSelfDestructPolicy'     
-
-        destruct_policy_arn = self._ec2_create_or_get_iam_policy(
-            policy_name, policy_document, profile)
-    
-        # 1. Create an IAM role
-        trust_policy = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"Service": "ec2.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                },
-            ]
-        }
-
-        role_name = "FrosterEC2Role"
-        try:
-            iam.create_role(
-                RoleName=role_name,
-                AssumeRolePolicyDocument=json.dumps(trust_policy),
-                Description='Froster role allows Billing, SES and Terminate'
-            )
-        except iam.exceptions.EntityAlreadyExistsException:        
-            print (f'Role {role_name} already exists.') 
-        except Exception as e:            
-            print('Error:', e)
-        
-        # 2. Attach permissions policies to the IAM role
-        cost_explorer_policy = "arn:aws:iam::aws:policy/AWSBillingReadOnlyAccess"
-        ses_policy = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
-        
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=cost_explorer_policy
-        )
-        
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=ses_policy
-        )
-
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=destruct_policy_arn
-        )
-
-        
-        # 3. Create an instance profile and associate it with the role
-        instance_profile_name = "FrosterEC2Profile"
-        try:
-            iam.create_instance_profile(
-                InstanceProfileName=instance_profile_name
-            )
-            iam.add_role_to_instance_profile(
-                InstanceProfileName=instance_profile_name,
-                RoleName=role_name
-            )
-        except iam.exceptions.EntityAlreadyExistsException:
-            print (f'Profile {instance_profile_name} already exists.')
-            return instance_profile_name
-        except Exception as e:            
-            print('Error:', e)
-            return None
-        
-        # Give AWS a moment to propagate the changes
-        print('wait for 15 sec ...')
-        time.sleep(15)  # Wait for 15 seconds
-
-        return instance_profile_name
-    
-    def _ec2_create_and_attach_security_group(self, instance_id, profile=None):
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        ec2 = session.resource('ec2')
-        client = session.client('ec2')
-
-        group_name = 'Web-SSH-ICMP'
-        
-        # Check if security group already exists
-        security_groups = client.describe_security_groups(Filters=[{'Name': 'group-name', 'Values': [group_name]}])
-        if security_groups['SecurityGroups']:
-            security_group_id = security_groups['SecurityGroups'][0]['GroupId']
-        else:
-            # Create security group
-            response = client.create_security_group(
-                GroupName=group_name,
-                Description='Allows SSH and ICMP inbound traffic'
-            )
-            security_group_id = response['GroupId']
-        
-            # Allow ports 22, 80, 443, 8080, ICMP
-            client.authorize_security_group_ingress(
-                GroupId=security_group_id,
-                IpPermissions=[
-                    {
-                        'IpProtocol': 'tcp',
-                        'FromPort': 22,
-                        'ToPort': 22,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                    },
-                    {
-                        'IpProtocol': 'tcp',
-                        'FromPort': 80,
-                        'ToPort': 80,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                    },
-                    {
-                        'IpProtocol': 'tcp',
-                        'FromPort': 443,
-                        'ToPort': 443,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                    },
-                    {
-                        'IpProtocol': 'tcp',
-                        'FromPort': 8080,
-                        'ToPort': 8080,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                    },                    {
-                        'IpProtocol': 'icmp',
-                        'FromPort': -1,  # -1 allows all ICMP types
-                        'ToPort': -1,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                    }
-                ]
-            )
-        
-        # Attach the security group to the instance
-        instance = ec2.Instance(instance_id)
-        current_security_groups = [sg['GroupId'] for sg in instance.security_groups]
-        
-        # Check if the security group is already attached to the instance
-        if security_group_id not in current_security_groups:
-            current_security_groups.append(security_group_id)
-            instance.modify_attribute(Groups=current_security_groups)
-
-        return security_group_id
-
-    def _ec2_get_latest_amazon_linux2_ami(self, profile=None):
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        ec2_client = session.client('ec2')
-
-        response = ec2_client.describe_images(
-            Filters=[
-                {'Name': 'name', 'Values': ['al2023-ami-*']},
-                {'Name': 'state', 'Values': ['available']},
-                {'Name': 'architecture', 'Values': ['x86_64']},
-                {'Name': 'virtualization-type', 'Values': ['hvm']}
-            ],
-            Owners=['amazon']
-
-            #amzn2-ami-hvm-2.0.*-x86_64-gp2
-            #al2023-ami-kernel-default-x86_64
-
-        )
-
-        # Sort images by creation date to get the latest
-        images = sorted(response['Images'], key=lambda k: k['CreationDate'], reverse=True)
-        if images:
-            return images[0]['ImageId']
-        else:
-            return None        
-
-    def _create_progress_bar(self, max_value):
-        def show_progress_bar(iteration):
-            percent = ("{0:.1f}").format(100 * (iteration / float(max_value)))
-            length = 50  # adjust as needed for the bar length
-            filled_length = int(length * iteration // max_value)
-            bar = "█" * filled_length + '-' * (length - filled_length)
-            print(f'\r|{bar}| {percent}%', end='\r')
-            if iteration == max_value: 
-                print()
-
-        return show_progress_bar
-
-    def _ec2_cloud_init_script(self):
-        # Define the User Data script
-        userdata = textwrap.dedent(f'''
-        #! /bin/bash
-        dnf check-update
-        dnf update -y
-        dnf install -y gcc python3-pip python3-psutil
-        export AWS_DEFAULT_REGION=us-west-2
-        echo 'export AWS_DEFAULT_REGION={self.aws_region}' >> ~/.bashrc
-        hostnamectl set-hostname froster                                   
-        dnf upgrade
-        dnf install -y vim mc R
-        dnf group install -y 'Development Tools'                                   
-        ''').strip()
-        return userdata
-    
-    def ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
-        # Define script that will be installed by ec2-user 
-        return textwrap.dedent(f'''
-        #! /bin/bash
-        echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
-        echo 'export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
-        cd /tmp
-        curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-        bash Miniconda3-latest-Linux-x86_64.sh -b
-        curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
-        aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
-        aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        aws configure set region {self.aws_region}
-        python3 -m pip install boto3  > /dev/null
-        sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
-        sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
-        ''').strip()
-    
-    def ec2_create_instance(self, required_space, iamprofile=None, profile=None):
-        # to avoid egress we are creating an EC2 instance 
-        # with ephemeral (local) disk for a temporary restore 
-        # 
-        # i3en.24xlarge, 96 vcpu, 60TiB for $10.85
-        # i3en.12xlarge, 48 vcpu, 30TiB for $5.42
-        # i3en.6xlarge, 24 vcpu, 15TiB for $2.71
-        # i3en.3xlarge, 12 vcpu, 7.5Tib for $1.36
-        # i3en.xlarge, 4 vcpu, 2.5Tib for $0.45
-        # i3en.large, 2 vcpu, 1.25Tib for $0.22
-        # c5ad.large, 2 vcpu, 75GB, for $0.09
-
-        instance_types =  {'i3en.24xlarge': 60000,
-                           'i3en.12xlarge': 30000,
-                           'i3en.6xlarge': 15000,
-                           'i3en.3xlarge': 7500,
-                           'i3en.xlarge': 2500,
-                           'i3en.large': 1250,
-                           'c5ad.large': 75}
-        
-        # if not self._ec2_create_iam_self_destruct_role(profile):
-        #     return False
-            
-        #if not self._ec2
-
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        ec2 = session.resource('ec2')
-        client = session.client('ec2')
-        
-        chosen_instance_type = None
-        for itype, space in instance_types.items():
-            if space > 1.3 * required_space:
-                chosen_instance_type = itype
-        print('Chosen Instance:',chosen_instance_type)
-
-        if not chosen_instance_type:
-            print("No suitable instance type found for the given disk space requirement.")
-            return False
-
-        # Create a new EC2 key pair
-        key_path = os.path.join(self.config_root,'cloud',f'{self.ssh_key_name}.pem')
-        if not os.path.exists(key_path):
-            try:
-                client.describe_key_pairs(KeyNames=[self.ssh_key_name])
-                # If the key pair exists, delete it
-                client.delete_key_pair(KeyName=self.ssh_key_name)
-            except client.exceptions.ClientError:
-                # Key pair doesn't exist in AWS, no need to delete
-                pass                        
-            key_pair = ec2.create_key_pair(KeyName=self.ssh_key_name)
-            os.makedirs(os.path.join(self.config_root,'cloud'),exist_ok=True)            
-            with open(key_path, 'w') as key_file:
-                key_file.write(key_pair.key_material)
-            os.chmod(key_path, 0o600)  # Set file permission to 600
-
-        imageid = self._ec2_get_latest_amazon_linux2_ami(profile)
-        print(f'Using Image ID: {imageid}')
-
-        #print(f'*** userdata-script:\n{self._ec2_user_data_script()}')
-
-        iam_instance_profile={}
-        if iamprofile:
-            iam_instance_profile={
-                'Name': iamprofile  # Use the instance profile name
-            }        
-        print(f'IAM Instance profile: {iamprofile}.')    
-        
-        # Create EC2 instance
-        instance = ec2.create_instances(
-            ImageId=imageid,
-            MinCount=1,
-            MaxCount=1,
-            InstanceType=chosen_instance_type,
-            KeyName=self.ssh_key_name,
-            UserData=self._ec2_cloud_init_script(),
-            IamInstanceProfile = iam_instance_profile,
-            TagSpecifications=[
-                {
-                    'ResourceType': 'instance',
-                    'Tags': [{'Key': 'Name', 'Value': 'FrosterSelfDestruct'}]
-                }
-            ]
-        )[0]
-        
-        # Use a waiter to ensure the instance is running before trying to access its properties
-        instance_id = instance.id    
-        print(f'Launching instance {instance_id} ... please wait ...')    
-        
-        max_wait_time = 300  # seconds
-        delay_time = 10  # check every 10 seconds, adjust as needed
-        max_attempts = max_wait_time // delay_time
-
-        waiter = client.get_waiter('instance_running')
-        progress = self._create_progress_bar(max_attempts)
-
-        for attempt in range(max_attempts):
-            try:
-                waiter.wait(InstanceIds=[instance_id], WaiterConfig={'Delay': delay_time, 'MaxAttempts': 1})
-                progress(attempt)
-                break
-            except botocore.exceptions.WaiterError:
-                progress(attempt)
-                continue
-        print('')
-        instance.reload()        
-        grpid = self._ec2_create_and_attach_security_group(instance_id, profile)
-        if grpid:
-            print(f'Security Group "{grpid}" attached.') 
-        else:
-            print('No Security Group ID created.')
-        instance.wait_until_running()
-        print(f'Instance IP: {instance.public_ip_address}')
-
-        self.write('cloud', 'ec2_last_instance', instance.public_ip_address)
-
-        return instance_id, instance.public_ip_address
-
-    def ec2_terminate_instance(self, ip, profile=None):
-        # terminate instance  
-        # with ephemeral (local) disk for a temporary restore 
-        
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()        
-        ec2 = session.client('ec2')
-        #ips = self.ec2_list_ips(self, 'Name', 'FrosterSelfDestruct')    
-        # Use describe_instances with a filter for the public IP address to find the instance ID
-        filters = [{
-            'Name': 'network-interface.addresses.association.public-ip',
-            'Values': [ip]
-        }]
-        try:
-            response = ec2.describe_instances(Filters=filters)        
-        except botocore.exceptions.ClientError as e: 
-            print(f'Error: {e}')
-            return False
-        # Check if any instances match the criteria
-        instances = [instance for reservation in response['Reservations'] for instance in reservation['Instances']]        
-        if not instances:
-            print(f"No EC2 instance found with public IP: {ip}")
-            return 
-        # Extract instance ID from the instance
-        instance_id = instances[0]['InstanceId']
-        
-        # Terminate the instance
-        ec2.terminate_instances(InstanceIds=[instance_id])
-        
-        print(f"EC2 Instance {instance_id} with public IP {ip} is being terminated !")
-
-    def ec2_list_ips(self, tag_name, tag_value, profile=None):
-        """
-        List all IP addresses of running EC2 instances with a specific tag name and value.
-        :param tag_name: The name of the tag
-        :param tag_value: The value of the tag
-        :return: List of IP addresses
-        """
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        ec2 = session.client('ec2')        
-        
-        # Define the filter
-        filters = [
-            {
-                'Name': 'tag:' + tag_name,
-                'Values': [tag_value]
-            },
-            {
-                'Name': 'instance-state-name',
-                'Values': ['running']
-            }
-        ]
-        
-        # Make the describe instances call
-        try:
-            response = ec2.describe_instances(Filters=filters)        
-        except botocore.exceptions.ClientError as e: 
-            print(f'Error: {e}')
-            return []
-        #An error occurred (AuthFailure) when calling the DescribeInstances operation: AWS was not able to validate the provided access credentials
-        ips = []        
-        # Extract IP addresses
-        for reservation in response['Reservations']:
-            for instance in reservation['Instances']:
-                ips.append(instance['PublicIpAddress'])        
-        return ips
-
-    def ssh_execute(self, user, host, command=None):
-        """Execute an SSH command on the remote server."""
-        SSH_OPTIONS = "-o StrictHostKeyChecking=no"
-        key_path = os.path.join(self.config_root,'cloud',f'{self.ssh_key_name}.pem')
-        cmd = f"ssh {SSH_OPTIONS} -i '{key_path}' {user}@{host}"
-        if command:
-            cmd += f" '{command}'"
-            try:
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-                return result.stdout, result.stderr
-            except:
-                print(f'Error executing "{cmd}."')
-        else:
-            subprocess.run(cmd, shell=True, capture_output=False, text=True)
-        return None, None
-                
-    def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
-        """Upload a file to the remote server using SCP."""
-        SSH_OPTIONS = "-o StrictHostKeyChecking=no"
-        key_path = os.path.join(self.config_root,'cloud',f'{self.ssh_key_name}.pem')
-        if is_string:
-            # the local_path is actually a string that needs to go into temp file 
-            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp:
-                temp.write(local_path)
-                local_path = temp.name
-        cmd = f"scp {SSH_OPTIONS} -i '{key_path}' {local_path} {user}@{host}:{remote_path}"        
-        try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            os.remove(local_path)
-            return result.stdout, result.stderr        
-        except:
-            print(f'Error executing "{cmd}."')
-        return None, None
             
     def get_domain_name(self):
         try:
@@ -3600,169 +4238,7 @@ class ConfigManager:
                     break
         return tld if tld else "mydomain.edu"
     
-    def send_email_aws(self, to, subject, body, profile=None):
-        # Using AWS ses service to send emails
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        ses = session.client("ses")
-
-        confirmed_emails = []
-        sender = self.read('general', 'email')
-        ret = self.read('cloud', 'ses_confirmed_emails')
-        if isinstance(ret, list):
-            confirmed_emails = ret
-        else:
-            confirmed_emails.append(ret)
-
-        checks = [sender, to]
-
-        checked=False
-        for check in checks:
-            if check not in confirmed_emails:
-                response = ses.verify_email_identity(EmailAddress=check)
-                confirmed_emails.append(check)
-                self.write('cloud', 'ses_confirmed_emails',confirmed_emails)
-                print(f'{check} was used for the first time')
-                print('Please check Inbox, confirm and then send again\n')
-                checked=True
-
-        if checked: 
-            return  
-        
-        try:
-            response = ses.send_email(
-                Source=sender,
-                Destination={
-                    'ToAddresses': [to]
-                },
-                Message={
-                    'Subject': {
-                        'Data': subject
-                    },
-                    'Body': {
-                        'Text': {
-                            'Data': body
-                        }
-                    }
-                }
-            )
-
-        except botocore.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == 'MessageRejected':
-                print(f'Error: {e}')
-            else:
-            # Handle other exceptions, perhaps re-raise them
-                raise            
-
-        print(f'Sent email to {to}!')
-
-        # The below AIM policy is needed if you do not want to confirm 
-        # each and every email you want to send to. 
-
-        # iam = boto3.client('iam')
-        # policy_document = {
-        #     "Version": "2012-10-17",
-        #     "Statement": [
-        #         {
-        #             "Effect": "Allow",
-        #             "Action": [
-        #                 "ses:SendEmail",
-        #                 "ses:SendRawEmail"
-        #             ],
-        #             "Resource": "*"
-        #         }
-        #     ]
-        # }
-
-        # policy_name = 'SES_SendEmail_Policy'
-
-        # policy_arn = self._ec2_create_or_get_iam_policy(
-        #     policy_name, policy_document, profile)
-
-        # username = 'your_iam_username'  # Change this to the username you wish to attach the policy to
-
-        # response = iam.attach_user_policy(
-        #     UserName=username,
-        #     PolicyArn=policy_arn
-        # )
-
-        # print(f"Policy {policy_arn} attached to user {username}")
-
-    def send_ec2_costs(self, instance_id, profile=None):
-
-        # Initialize the clients
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        ce = session.client('ce')
-        #sns = session.client('sns')
-
-        # Get the current date
-        now = datetime.datetime.utcnow()
-
-        # Get costs for the last 24 hours
-        start_time = (now - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-        end_time = now.strftime('%Y-%m-%d')
-
-        try:
-            response = ce.get_cost_and_usage(
-                TimePeriod={
-                    'Start': start_time,
-                    'End': end_time
-                },
-                Granularity='DAILY',
-                Filter={
-                    'Dimensions': {
-                        'Key': 'USAGE_TYPE',
-                        'Values': [
-                            f'BoxUsage:{instance_id}'  # This is a simplistic filter, and may not cover all costs
-                        ]
-                    }
-                },
-                Metrics=['UnblendedCost']
-            )
-        except botocore.exceptions.ClientError as e:
-            print(f'Error: {e}')
-            return False
-
-        daily_cost = response['ResultsByTime'][0]['Total']['UnblendedCost']['Amount']
-
-        # Get total cost since the instance started
-        # Assuming instance was started 30 days ago for simplicity. You'll need to fetch the actual start date.
-        start_time = (now - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
-
-        response = ce.get_cost_and_usage(
-            TimePeriod={
-                'Start': start_time,
-                'End': end_time
-            },
-            Granularity='DAILY',
-            Filter={
-                'Dimensions': {
-                    'Key': 'USAGE_TYPE',
-                    'Values': [
-                        f'BoxUsage:{instance_id}'
-                    ]
-                }
-            },
-            Metrics=['UnblendedCost']
-        )
-
-        total_cost = sum([day['Total']['UnblendedCost']['Amount'] for day in response['ResultsByTime']])
-
-        # Send Email
-        email_subject = "EC2 Instance Cost Report"
-        email_body = (f"Cost for EC2 instance {instance_id}:\n"
-                    f"Last 24 hours: ${daily_cost}\n"
-                    f"Since instance start: ${total_cost}")
-
-        #sns.publish(
-        #    TopicArn="arn:aws:sns:region:account-id:topicname",  # Replace with your SNS topic ARN
-        #    Subject=email_subject,
-        #    Message=email_body
-        #)
-        print(email_subject,'\n',email_body)
-
-        #print("Email sent!")
-
-
+ 
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
         os.makedirs(os.path.dirname(entry_path), exist_ok=True)
@@ -3850,8 +4326,22 @@ class ConfigManager:
         with open(config_root_file, 'w') as f:
             f.write(self.config_root)
             print(f'  Switched configuration path to "{self.config_root}"')
-
         return True
+    
+    def wait_for_ssh_ready(self, hostname, port=22, timeout=60):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(3)  # Set a timeout on the socket operations
+            result = s.connect_ex((hostname, port))
+            if result == 0:
+                s.close()
+                return True
+            else:
+                time.sleep(5)  # Wait for 5 seconds before retrying
+                s.close()
+        print("Timeout reached without SSH server being ready.")
+        return False
 
     def copy_compiled_binary_from_github(self,user,repo,compilecmd,binary,targetfolder):
         tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
@@ -3888,127 +4378,6 @@ class ConfigManager:
                 print(f'Failed copying {binary} to {targetfolder}')
 
 
-    def _ec2_create_iam_costexplorer_ses(self, instance_id ,profile=None):
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
-        ec2 = session.client('ec2')
-
-        # Define the policy
-        policy_document = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": "ses:SendEmail",
-                    "Resource": "*"
-                },                
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "ce:*",              # Permissions for Cost Explorer
-                        "ce:GetCostAndUsage", # all
-                        "ec2:Describe*",     # Basic EC2 read permissions
-                    ],
-                    "Resource": "*"
-                }
-            ]
-        }
-
-        # Step 1: Create the policy in IAM
-        policy_name = "CostExplorerSESPolicy"
-
-        policy_arn = self._ec2_create_or_get_iam_policy(
-            policy_name, policy_document, profile)
-                
-
-        # Step 2: Retrieve the IAM instance profile attached to the EC2 instance
-        response = ec2.describe_instances(InstanceIds=[instance_id])
-        instance_data = response['Reservations'][0]['Instances'][0]
-        if 'IamInstanceProfile' not in instance_data:
-            print(f"No IAM Instance Profile attached to the instance: {instance_id}")
-            return False
-
-        instance_profile_arn = response['Reservations'][0]['Instances'][0]['IamInstanceProfile']['Arn']
-
-        # Extract the instance profile name from its ARN
-        instance_profile_name = instance_profile_arn.split('/')[-1]
-
-        # Step 3: Fetch the role name from the instance profile
-        response = iam.get_instance_profile(InstanceProfileName=instance_profile_name)
-        role_name = response['InstanceProfile']['Roles'][0]['RoleName']
-
-        # Step 4: Attach the desired policy to the role
-        try:
-            iam.attach_role_policy(
-                RoleName=role_name,
-                PolicyArn=policy_arn
-            )
-            print(f"Policy {policy_arn} attached to role {role_name}")
-        except iam.exceptions.NoSuchEntityException:
-            print(f"Role {role_name} does not exist!")
-        except iam.exceptions.InvalidInputException as e:
-            print(f"Invalid input: {e}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-
-
-    def _ec2_create_iam_self_destruct_role(self, profile):
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
-
-        # Step 1: Create IAM policy
-        policy_document = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": "ec2:TerminateInstances",
-                    "Resource": "*",
-                    "Condition": {
-                        "StringEquals": {
-                            "ec2:ResourceTag/Name": "FrosterSelfDestruct"
-                        }
-                    }
-                }
-            ]
-        }
-        policy_name = 'SelfDestructPolicy'
-        
-        policy_arn = self._ec2_create_or_get_iam_policy(
-            policy_name, policy_document, profile)
-
-        # Step 2: Create an IAM role and attach the policy
-        trust_relationship = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {
-                        "Service": "ec2.amazonaws.com"
-                    },
-                    "Action": "sts:AssumeRole"
-                }
-            ]
-        }
-
-        role_name = 'SelfDestructRole'
-        try:
-            iam.create_role(
-                RoleName=role_name,
-                AssumeRolePolicyDocument=json.dumps(trust_relationship),
-                Description='Allows EC2 instances to call AWS services on your behalf.'
-            )
-        except iam.exceptions.EntityAlreadyExistsException:
-            print ('IAM SelfDestructRole already exists.')            
-
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=policy_arn
-        )
-
-        return True
-
-
 # class SubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
 #     def _format_action(self, action):
 #         parts = super(argparse.RawDescriptionHelpFormatter, self)._format_action(action)
@@ -4032,6 +4401,8 @@ def parse_arguments():
         help='Number of cores to be allocated for the machine. (default=4)')
     parser.add_argument('--profile', '-p', dest='awsprofile', action='store', default='', 
         help='which AWS profile in ~/.aws/ should be used. default="aws"')
+    parser.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
+        help="setup froster as a monitoring cronjob on an ec2 instance")
     parser.add_argument('--version', '-v', dest='version', action='store_true', default=False, 
         help='print Froster and Python version info')
     
@@ -4151,13 +4522,16 @@ def parse_arguments():
                 - 1-5 minutes retrieval 
                 - costs of $30 per TiB
 
-            In addition to the retrieval cost, AWS will charge you about $10/TiB/month for the
-            duration you keep the data in S3.
-
-            (costs from April 2023)
+            In addition to the retrieval cost, AWS will charge you about 
+            $10/TiB/month for the duration you keep the data in S3.
+            (Costs in Summer 2023)
             '''))
     parser_restore.add_argument( '--ec2', '-e', dest='ec2', action='store_true', default=False,
         help="Restore folder on new EC2 instance instead of local machine")    
+    parser_restore.add_argument('--instance-type', '-i', dest='instancetype', action='store', default="",
+        help='The EC2 instance type is auto-selected, but you can pick any other type here')    
+    parser_restore.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
+        help="Monitor EC2 server for cost and idle time.")
     parser_restore.add_argument( '--no-download', '-l', dest='nodownload', action='store_true', default=False,
         help="skip download to local storage after retrieval from Glacier")
     parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
@@ -4173,23 +4547,23 @@ def parse_arguments():
     parser_ssh.add_argument( '--list', '-l', dest='list', action='store_true', default=False,
         help="List running Froster EC2 instances")        
     parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='', 
-        help='Terminate EC2 instance with this public IP Address.')    
+        metavar='<hostname>', help='Terminate EC2 instance with this public IP Address.')    
     # parser_ssh.add_argument('--key', '-k', dest='key', action='store', default='', 
     #     help='pick a custom ssh key for your connection')
-    parser_ssh.add_argument('ec2host', action='store', default="", nargs='?',
-        help='ip address or hostname of EC2 system to connect to' +
+    parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
+        help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
                '')
 
-    # # ***
-    # # monitoring for EC2 hosts    
+    # # # ***
+    # # # monitoring for EC2 hosts    
     # parser_mon = subparsers.add_parser('mon', aliases=['ec2'],
-    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)
-    # parser_mon.add_argument( '--test', '-l', dest='test', action='store_true', default=False,
-    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)        
-    # parser_mon.add_argument('--test2', '-t', dest='test2', action='store', default='', 
-    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)
-    # parser_mon.add_argument('ec2host', action='store', default="", nargs='?',
-    #     help=argparse.SUPPRESS, formatter_class=SubcommandHelpFormatter)
+    #     help=argparse.SUPPRESS) # , formatter_class=SubcommandHelpFormatter
+    # parser_mon.add_argument( '--test', '-l', dest='test', action='store_true', default=argparse.SUPPRESS,
+    #     help=argparse.SUPPRESS)        
+    # parser_mon.add_argument('--test2', '-t', dest='test2', action='store', default=argparse.SUPPRESS, 
+    #     help=argparse.SUPPRESS)
+    # parser_mon.add_argument('ec2host', action='store', default=argparse.SUPPRESS, nargs='?',
+    #     help=argparse.SUPPRESS)
 
 
     if len(sys.argv) == 1:
@@ -4201,8 +4575,11 @@ if __name__ == "__main__":
     if not sys.platform.startswith('linux'):
         print('This software currently only runs on Linux x64')
         sys.exit(1)
-    try:        
+    try:
         args = parse_arguments()
+        TABLECSV = '' # CSV string for DataTable
+        SELECTEDFILE = '' # CSV filename to open in hotspots 
+        MAXHOTSPOTS = 0    
         if main():
             sys.exit(0)
         else:
