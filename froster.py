@@ -139,9 +139,8 @@ def subcmd_config(args, cfg, aws):
         # monitoring only setup, do not continue 
         fro = os.path.join(binfolder,'froster')
         cfg.write('general', 'email', args.monitor)
-        cfg.add_cron_job(f'{fro} restore --monitor > /var/tmp/froster_monitor.log 2>&1','30','*')
+        cfg.add_systemd_cron_job(f'{fro} restore --monitor > /var/tmp/froster_monitor.log 2>&1','30','*')
         return True
-
     print('\n*** Asking a few questions ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
 
@@ -3032,7 +3031,7 @@ class AWSBoto:
         #! /bin/bash
         dnf check-update
         dnf update -y
-        dnf install -y gcc cronie vim wget python3-pip python3-psutil
+        dnf install -y gcc vim wget python3-pip python3-psutil                           
         hostnamectl set-hostname froster
         dnf upgrade
         dnf install -y mc R
@@ -3318,7 +3317,7 @@ class AWSBoto:
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ses = session.client("ses")
 
-        confirmed_emails = []
+        ses_verify_requests_sent = []
         if not sender:
             sender = self.cfg.read('general', 'email')
         if not to:
@@ -3326,23 +3325,26 @@ class AWSBoto:
         if not to or not sender:
             print('from and to email addresses cannot be empty')
             return False
-        ret = self.cfg.read('cloud', 'ses_confirmed_emails')
+        ret = self.cfg.read('cloud', 'ses_verify_requests_sent')
         if isinstance(ret, list):
-            confirmed_emails = ret
+            ses_verify_requests_sent = ret
         else:
-            confirmed_emails.append(ret)
-        
+            ses_verify_requests_sent.append(ret)
+
+        response = ses.list_verified_email_addresses()
+        verified_email_addr = response.get('VerifiedEmailAddresses', [])
+    
         checks = [sender, to]
         checks = list(set(checks)) # remove duplicates
+        checked = []
 
         for check in checks:
-            if check not in confirmed_emails:
+            if check not in verified_email_addr and check not in ses_verify_requests_sent:
                 response = ses.verify_email_identity(EmailAddress=check)
-                confirmed_emails.append(check)
-                self.cfg.write('cloud', 'ses_confirmed_emails',confirmed_emails)
-                print(f'{check} was used for the first time on this computer')
-                print('email may not have been sent. Please check Inbox and confirm\n')
-                        
+                checked.append(check)
+                print(f'{check} was used for the first time, verification email sent.')
+                print('Please have {check} check inbox and confirm email from AWS.\n')
+        self.cfg.write('cloud', 'ses_verify_requests_sent', checked)
         try:
             response = ses.send_email(
                 Source=sender,
@@ -3364,9 +3366,11 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             if e.response['Error']['Code'] == 'MessageRejected':
                 print(f'Message was rejected, Error: {e}')
+            return False
         except Exception as e:
             print(f'Error: {e}')
-            # Handle other exceptions, perhaps re-raise them
+            return False
+        return True
 
         # The below AIM policy is needed if you do not want to confirm 
         # each and every email you want to send to. 
@@ -3611,7 +3615,7 @@ class AWSBoto:
         except:
             return True
         
-    def _monitor_is_idle(self, interval=60, idle_hours=72):
+    def _monitor_is_idle(self, interval=60, min_idle_cnt=72):
 
         # each run checks idle time for 60 seconds (interval)
         # if the system has been idle for 72 consecutive runs
@@ -3627,13 +3631,11 @@ class AWSBoto:
         PROCESS_MEM_THRESHOLD = 5  # percent (for individual processes)
         DISK_WRITE_EXCLUSIONS = ["systemd", "systemd-journald", \
                                 "chronyd", "sshd", "auditd" , "agetty"]
-        IDLE_STATE_FILE = os.path.join(os.getenv('TMPDIR', '/tmp'), 
-                                    'froster_idle_state.txt')
-
+    
         # Check CPU Utilization
         cpu_percent = psutil.cpu_percent(interval=None)
         if cpu_percent > CPU_THRESHOLD:
-            return False
+            return self._monitor_save_idle_state(False, min_idle_cnt)
 
         # Time I/O and Network Activity 
         io_start = psutil.disk_io_counters()
@@ -3652,7 +3654,7 @@ class AWSBoto:
                     continue
                 try:
                     if proc.io_counters().write_bytes > 0:
-                        return False
+                        return self._monitor_save_idle_state(False, min_idle_cnt)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
 
@@ -3665,7 +3667,7 @@ class AWSBoto:
 
         if bytes_sent_per_second > NET_WRITE_THRESHOLD or \
                             bytes_recv_per_second > NET_READ_THRESHOLD:
-            return False
+            return self._monitor_save_idle_state(False, min_idle_cnt)
 
         # Examine Running Processes for CPU and Memory Usage
         for proc in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
@@ -3676,7 +3678,11 @@ class AWSBoto:
                     return False
 
         # Write idle state and read consecutive idle hours
-        is_system_idle = True
+        return self._monitor_save_idle_state(True, min_idle_cnt)
+
+    def _monitor_save_idle_state(self, is_system_idle, min_idle_cnt):
+        IDLE_STATE_FILE = os.path.join(os.getenv('TMPDIR', '/tmp'), 
+                            'froster_idle_state.txt')
         with open(IDLE_STATE_FILE, 'a') as file:
             file.write('1\n' if is_system_idle else '0\n')        
         if not os.path.exists(IDLE_STATE_FILE):
@@ -3689,8 +3695,8 @@ class AWSBoto:
                 count += 1
             else:
                 break
-        return count >= idle_hours
-        
+        return count >= min_idle_cnt        
+
     def _monitor_get_ec2_costs(self, profile=None):
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         
@@ -4040,7 +4046,7 @@ class ConfigManager:
 
 
     def add_cron_job(self, cmd, minute, hour='*', day_of_month='*', month='*', day_of_week='*'):
-        # Create a temporary file
+        # CURRENTLY INACTIVE
         if not minute:
             print('You must set the minute (1-60) explicily')
             return False 
@@ -4066,6 +4072,52 @@ class ConfigManager:
             os.unlink(temp.name)
 
         print("Cron job added!")
+
+    def add_systemd_cron_job(self, cmd, minute, hour='*'):
+
+        SERVICE_CONTENT = f"""
+        [Unit]
+        Description=Run Froster Cron Job
+
+        [Service]
+        Type=simple
+        ExecStart={cmd}
+        """
+
+        TIMER_CONTENT = f"""
+        [Unit]
+        Description=Run Froster Cron Job hourly 
+
+        [Timer]
+        OnCalendar=*-*-* {hour}:{minute}:00
+        Persistent=true
+
+        [Install]
+        WantedBy=default.target
+        """
+
+        # Ensure the directory exists
+        user_systemd_dir = os.path.expanduser("~/.config/systemd/user/")
+        os.makedirs(user_systemd_dir, exist_ok=True)
+
+        SERVICE_PATH = os.path.join(user_systemd_dir, "myscript.service")
+        TIMER_PATH = os.path.join(user_systemd_dir, "myscript.timer")
+
+        # Create service and timer files
+        with open(SERVICE_PATH, "w") as service_file:
+            service_file.write(SERVICE_CONTENT)
+
+        with open(TIMER_PATH, "w") as timer_file:
+            timer_file.write(TIMER_CONTENT)
+
+        # Reload systemd and enable/start timer
+        try:
+            os.system("systemctl --user daemon-reload")
+            os.system("systemctl --user start myscript.timer")
+            os.system("systemctl --user enable myscript.timer")
+            print("Systemd cron job added!")
+        except Exception as e:
+            print(f'Could not add systemd scheduler job, Error: {e}')
 
     def replicate_ini(self, section, src_file, dest_file):
 
