@@ -139,11 +139,10 @@ def subcmd_config(args, cfg, aws):
         # monitoring only setup, do not continue 
         fro = os.path.join(binfolder,'froster')
         cfg.write('general', 'email', args.monitor)
-        cfg.add_systemd_cron_job(f'{fro} restore --monitor > /var/tmp/froster_monitor.log 2>&1','30','*')
+        cfg.add_systemd_cron_job(f'{fro} restore --monitor','30','*')
         return True
     print('\n*** Asking a few questions ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
-
 
     # determine if we need to move the (shared) config to a new folder 
     movecfg=False
