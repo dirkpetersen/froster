@@ -3044,10 +3044,12 @@ class AWSBoto:
     def ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
         # Define script that will be installed by ec2-user 
         emailaddr = self.cfg.read('general','email')
+        short_timezone = datetime.datetime.now().astimezone().tzinfo
         return textwrap.dedent(f'''
         #! /bin/bash
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo 'export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
+        echo 'export TZ={short_timezone}' >> ~/.bashrc
         cd /tmp
         # curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         # bash Miniconda3-latest-Linux-x86_64.sh -b
@@ -3569,11 +3571,12 @@ class AWSBoto:
         ami_id = self._get_ec2_metadata('ami-id')
         reservation_id = self._get_ec2_metadata('reservation-id')
         
-        #print(f'Current machine IP {public_ip} ({instance_id}, {instance_type}, {ami_id}, {reservation_id}) ... ')
+        nowstr = datetime.datetime.now().strftime('%H:%M:%S')
+        #print(f'froster-monitor ({nowstr}): {public_ip} ({instance_id}, {instance_type}, {ami_id}, {reservation_id}) ... ')
 
         if self._monitor_none_logged_in() and self._monitor_is_idle():
             # This machine was idle for a long time, destroy it
-            print(f'Destroying current machine {public_ip} ({instance_id}) ...')
+            print(f'froster-monitor ({nowstr}): Destroying current idling machine {public_ip} ({instance_id}) ...')
             if public_ip:
                 body_text = "Instance was detected as idle and terminated"
                 self.send_email_ses("", "", f'Terminating idle instance {public_ip} ({instance_id})', body_text)
@@ -3585,8 +3588,7 @@ class AWSBoto:
             
         current_time = datetime.datetime.now().time()
         start_time = datetime.datetime.strptime("23:00:00", "%H:%M:%S").time()
-        end_time = datetime.datetime.strptime("23:59:59", "%H:%M:%S").time()
-    
+        end_time = datetime.datetime.strptime("23:59:59", "%H:%M:%S").time()    
         if start_time >= current_time or current_time > end_time:
             # only run cost emails once a day 
             return True 
@@ -4075,18 +4077,23 @@ class ConfigManager:
 
     def add_systemd_cron_job(self, cmd, minute, hour='*'):
 
-        SERVICE_CONTENT = f"""
+        # Troubleshoot with: 
+        # journalctl -f --user-unit froster-monitor.service
+        # journalctl -f --user-unit froster-monitor.timer
+        # journalctl --since "5 minutes ago" | grep froster-monitor
+
+        SERVICE_CONTENT = textwrap.dedent(f"""
         [Unit]
-        Description=Run Froster Cron Job
+        Description=Run Froster-Monitor Cron Job
 
         [Service]
         Type=simple
         ExecStart={cmd}
-        """
+        """)
 
-        TIMER_CONTENT = f"""
+        TIMER_CONTENT = textwrap.dedent(f"""
         [Unit]
-        Description=Run Froster Cron Job hourly 
+        Description=Run Froster-Monitor Cron Job hourly 
 
         [Timer]
         OnCalendar=*-*-* {hour}:{minute}:00
@@ -4094,14 +4101,14 @@ class ConfigManager:
 
         [Install]
         WantedBy=default.target
-        """
+        """)
 
         # Ensure the directory exists
         user_systemd_dir = os.path.expanduser("~/.config/systemd/user/")
         os.makedirs(user_systemd_dir, exist_ok=True)
 
-        SERVICE_PATH = os.path.join(user_systemd_dir, "myscript.service")
-        TIMER_PATH = os.path.join(user_systemd_dir, "myscript.timer")
+        SERVICE_PATH = os.path.join(user_systemd_dir, "froster-monitor.service")
+        TIMER_PATH = os.path.join(user_systemd_dir, "froster-monitor.timer")
 
         # Create service and timer files
         with open(SERVICE_PATH, "w") as service_file:
@@ -4111,10 +4118,10 @@ class ConfigManager:
             timer_file.write(TIMER_CONTENT)
 
         # Reload systemd and enable/start timer
-        try:
+        try:            
+            os.system("systemctl --user enable froster-monitor")
             os.system("systemctl --user daemon-reload")
-            os.system("systemctl --user start myscript.timer")
-            os.system("systemctl --user enable myscript.timer")
+            os.system("systemctl --user start froster-monitor")            
             print("Systemd cron job added!")
         except Exception as e:
             print(f'Could not add systemd scheduler job, Error: {e}')
