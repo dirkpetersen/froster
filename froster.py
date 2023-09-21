@@ -139,7 +139,7 @@ def subcmd_config(args, cfg, aws):
         # monitoring only setup, do not continue 
         fro = os.path.join(binfolder,'froster')
         cfg.write('general', 'email', args.monitor)
-        cfg.add_systemd_cron_job(f'{fro} restore --monitor','30','*')
+        cfg.add_systemd_cron_job(f'{fro} restore --monitor','*','*')
         return True
     print('\n*** Asking a few questions ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
@@ -3026,12 +3026,14 @@ class AWSBoto:
 
     def _ec2_cloud_init_script(self):
         # Define the User Data script
+        long_timezone = self.cfg.get_time_zone()
         userdata = textwrap.dedent(f'''
         #! /bin/bash
         dnf check-update
         dnf update -y
-        dnf install -y gcc vim wget python3-pip python3-psutil                           
+        dnf install -y gcc vim wget python3-pip python3-psutil
         hostnamectl set-hostname froster
+        timedatectl set-timezone '{long_timezone}'
         dnf upgrade
         dnf install -y mc R
         dnf group install -y 'Development Tools'
@@ -3048,8 +3050,8 @@ class AWSBoto:
         return textwrap.dedent(f'''
         #! /bin/bash
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
-        echo 'export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
-        echo 'export TZ={long_timezone}' >> ~/.bashrc
+        echo '#export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
+        echo '#export TZ={long_timezone}' >> ~/.bashrc
         cd /tmp
         # curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         # bash Miniconda3-latest-Linux-x86_64.sh -b
@@ -3572,9 +3574,9 @@ class AWSBoto:
         reservation_id = self._get_ec2_metadata('reservation-id')
         
         nowstr = datetime.datetime.now().strftime('%H:%M:%S')
-        #print(f'froster-monitor ({nowstr}): {public_ip} ({instance_id}, {instance_type}, {ami_id}, {reservation_id}) ... ')
+        print(f'froster-monitor ({nowstr}): {public_ip} ({instance_id}, {instance_type}, {ami_id}, {reservation_id}) ... ')
 
-        if self._monitor_none_logged_in() and self._monitor_is_idle():
+        if self._monitor_is_idle():
             # This machine was idle for a long time, destroy it
             print(f'froster-monitor ({nowstr}): Destroying current idling machine {public_ip} ({instance_id}) ...')
             if public_ip:
@@ -3607,14 +3609,16 @@ class AWSBoto:
         body_text = "\n".join(body)
         self.send_email_ses("", "", f'Froster AWS cost report ({instance_id})', body_text)
 
-    def _monitor_none_logged_in(self):
+    def _monitor_users_logged_in(self):
         """Check if any users are logged in."""
         try:
             output = subprocess.check_output(['who']).decode('utf-8')
             if output:
-                return False  # Users are logged in
-            return True
-        except:
+                print('froster-monitor: Not idle, logged in:', output)
+                return True  # Users are logged in
+            return False
+        except Exception as e:
+            print(f'Error: {e}')
             return True
         
     def _monitor_is_idle(self, interval=60, min_idle_cnt=72):
@@ -3634,6 +3638,10 @@ class AWSBoto:
         DISK_WRITE_EXCLUSIONS = ["systemd", "systemd-journald", \
                                 "chronyd", "sshd", "auditd" , "agetty"]
     
+        # Not idle if any users are logged in 
+        if self._monitor_users_logged_in():
+            return self._monitor_save_idle_state(False, min_idle_cnt)
+
         # Check CPU Utilization
         cpu_percent = psutil.cpu_percent(interval=None)
         if cpu_percent > CPU_THRESHOLD:
@@ -3687,8 +3695,8 @@ class AWSBoto:
                             'froster_idle_state.txt')
         with open(IDLE_STATE_FILE, 'a') as file:
             file.write('1\n' if is_system_idle else '0\n')        
-        if not os.path.exists(IDLE_STATE_FILE):
-            return False
+        #if not os.path.exists(IDLE_STATE_FILE):
+        #    return False
         with open(IDLE_STATE_FILE, 'r') as file:
             states = file.readlines()        
         count = 0
