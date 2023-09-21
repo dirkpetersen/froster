@@ -139,7 +139,7 @@ def subcmd_config(args, cfg, aws):
         # monitoring only setup, do not continue 
         fro = os.path.join(binfolder,'froster')
         cfg.write('general', 'email', args.monitor)
-        cfg.add_systemd_cron_job(f'{fro} restore --monitor','*','*')
+        cfg.add_systemd_cron_job(f'{fro} restore --monitor',"15")
         return True
     print('\n*** Asking a few questions ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
@@ -3142,23 +3142,27 @@ class AWSBoto:
 
         # iam_instance_profile = {}
         
-        # Create EC2 instance
-        instance = ec2.create_instances(
-            ImageId=imageid,
-            MinCount=1,
-            MaxCount=1,
-            InstanceType=chosen_instance_type,
-            KeyName=self.cfg.ssh_key_name,
-            UserData=self._ec2_cloud_init_script(),
-            IamInstanceProfile = iam_instance_profile,
-            TagSpecifications=[
-                {
-                    'ResourceType': 'instance',
-                    'Tags': [{'Key': 'Name', 'Value': 'FrosterSelfDestruct'}]
-                }
-            ]
-        )[0]
-        
+        try:
+            # Create EC2 instance
+            instance = ec2.create_instances(
+                ImageId=imageid,
+                MinCount=1,
+                MaxCount=1,
+                InstanceType=chosen_instance_type,
+                KeyName=self.cfg.ssh_key_name,
+                UserData=self._ec2_cloud_init_script(),
+                IamInstanceProfile = iam_instance_profile,
+                TagSpecifications=[
+                    {
+                        'ResourceType': 'instance',
+                        'Tags': [{'Key': 'Name', 'Value': 'FrosterSelfDestruct'}]
+                    }
+                ]
+            )[0]
+        except Exception as e:
+            print('Error: {e}')
+            sys.exit(1)
+    
         # Use a waiter to ensure the instance is running before trying to access its properties
         instance_id = instance.id    
 
@@ -4083,12 +4087,16 @@ class ConfigManager:
 
         print("Cron job added!")
 
-    def add_systemd_cron_job(self, cmd, minute, hour='*'):
+    def add_systemd_cron_job(self, cmd, waitsec=1800):
+
+        waitsec = 60, 3600, 86400
 
         # Troubleshoot with: 
         # journalctl -f --user-unit froster-monitor.service
         # journalctl -f --user-unit froster-monitor.timer
         # journalctl --since "5 minutes ago" | grep froster-monitor
+
+        #add_systemd_cron_job(self, cmd, minute, hour='*')
 
         SERVICE_CONTENT = textwrap.dedent(f"""
         [Unit]
@@ -4097,6 +4105,9 @@ class ConfigManager:
         [Service]
         Type=simple
         ExecStart={cmd}
+
+        [Install]
+        WantedBy=default.target
         """)
 
         TIMER_CONTENT = textwrap.dedent(f"""
@@ -4104,11 +4115,14 @@ class ConfigManager:
         Description=Run Froster-Monitor Cron Job hourly 
 
         [Timer]
-        OnCalendar=*-*-* {hour}:{minute}:00
         Persistent=true
+        #OnCalendar=*-*-* *:30:00        
+        OnBootSec=18
+        OnUnitActiveSec={waitsec}
+        Unit=froster-monitor.service
 
         [Install]
-        WantedBy=default.target
+        WantedBy=timers.target
         """)
 
         # Ensure the directory exists
@@ -4126,11 +4140,12 @@ class ConfigManager:
             timer_file.write(TIMER_CONTENT)
 
         # Reload systemd and enable/start timer
-        try:            
-            os.system("systemctl --user enable froster-monitor")
-            os.system("systemctl --user daemon-reload")
-            os.system("systemctl --user start froster-monitor")            
-            print("Systemd cron job added!")
+        try:
+            os.system("systemctl --user daemon-reload")            
+            os.system("systemctl --user enable froster-monitor.service")
+            os.system("systemctl --user enable froster-monitor.timer")            
+            os.system("systemctl --user start froster-monitor.timer")            
+            print("Systemd froster-monitor.timer cron job started!")
         except Exception as e:
             print(f'Could not add systemd scheduler job, Error: {e}')
 
