@@ -3044,12 +3044,13 @@ class AWSBoto:
     def ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
         # Define script that will be installed by ec2-user 
         emailaddr = self.cfg.read('general','email')
-        short_timezone = datetime.datetime.now().astimezone().tzinfo
+        #short_timezone = datetime.datetime.now().astimezone().tzinfo
+        long_timezone = self.cfg.get_time_zone()
         return textwrap.dedent(f'''
         #! /bin/bash
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo 'export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
-        echo 'export TZ={short_timezone}' >> ~/.bashrc
+        echo 'export TZ={long_timezone}' >> ~/.bashrc
         cd /tmp
         # curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         # bash Miniconda3-latest-Linux-x86_64.sh -b
@@ -4309,7 +4310,21 @@ class ConfigManager:
                     break
         return tld if tld else "mydomain.edu"
     
- 
+    def get_time_zone(self):
+        current_tz_str = 'America/Los_Angeles'
+        try:        
+            # Resolve the /etc/localtime symlink
+            timezone_path = os.path.realpath("/etc/localtime")
+            # Extract the time zone string by stripping off the prefix of the zoneinfo path
+            current_tz_str = timezone_path.split("zoneinfo/")[-1]
+            #import zoneinfo 
+            #current_tz = zoneinfo.ZoneInfo(current_tz_str)\
+            #current_time = datetime.datetime.now(current_tz)
+        except Exception as e:
+            print(f'Error: {e}')
+            current_tz_str = 'America/Los_Angeles'
+        return current_tz_str
+        
     def write(self, section, entry, value):
         entry_path = self._get_entry_path(section, entry)
         os.makedirs(os.path.dirname(entry_path), exist_ok=True)
