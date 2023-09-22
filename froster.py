@@ -3691,6 +3691,7 @@ class AWSBoto:
         # Check CPU Utilization
         cpu_percent = psutil.cpu_percent(interval=None)
         if cpu_percent > CPU_THRESHOLD:
+            print(f'froster-monitor: Not idle: CPU% {cpu_percent}')
             return self._monitor_save_idle_state(False, min_idle_cnt)
 
         # Time I/O and Network Activity 
@@ -3710,6 +3711,7 @@ class AWSBoto:
                     continue
                 try:
                     if proc.io_counters().write_bytes > 0:
+                        print(f'froster-monitor:io bytes written: {proc.io_counters().write_bytes}')
                         return self._monitor_save_idle_state(False, min_idle_cnt)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
@@ -3723,14 +3725,17 @@ class AWSBoto:
 
         if bytes_sent_per_second > NET_WRITE_THRESHOLD or \
                             bytes_recv_per_second > NET_READ_THRESHOLD:
+            print(f'froster-monitor:net bytes recv: {bytes_recv_per_second}')
             return self._monitor_save_idle_state(False, min_idle_cnt)
-
+            
         # Examine Running Processes for CPU and Memory Usage
         for proc in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
             if proc.info['name'] not in DISK_WRITE_EXCLUSIONS:
                 if proc.info['cpu_percent'] > PROCESS_CPU_THRESHOLD:
+                    print(f'froster-monitor: Not idle: CPU% {proc.info["cpu_percent"]}')
                     return False
                 if proc.info['memory_percent'] > PROCESS_MEM_THRESHOLD:
+                    print(f'froster-monitor: Not idle: MEM% {proc.info["memory_percent"]}')
                     return False
 
         # Write idle state and read consecutive idle hours
