@@ -139,7 +139,7 @@ def subcmd_config(args, cfg, aws):
         # monitoring only setup, do not continue 
         fro = os.path.join(binfolder,'froster')
         cfg.write('general', 'email', args.monitor)
-        cfg.add_systemd_cron_job(f'{fro} restore --monitor',"15")
+        cfg.add_systemd_cron_job(f'{fro} restore --monitor','*') 
         return True
     print('\n*** Asking a few questions ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
@@ -467,29 +467,6 @@ def subcmd_restore(args,cfg,arch,aws):
         # aws inactivity and cost monitoring
         aws.monitor_ec2()
         return True
-
-    elif args.ec2:
-        prof = aws._ec2_create_iam_policy_roles_ec2profile()
-        iid, ip = aws.ec2_create_instance(3, prof, cfg.awsprofile)
-        print(' Waiting for ssh host to become ready ...')
-        if not cfg.wait_for_ssh_ready(ip):
-            return False
-        ret = aws.ssh_upload('ec2-user', ip, 
-            aws.ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
-        print(ret.stdout, ret.stderr)
-        print(' Executing bootstrap script ... please wait ...')
-        ret = aws.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
-        print (ret.stdout)
-        #print(err)
-
-        #print(f'\n  Connect to EC2 Instance:')
-        #print(f'ssh -o StrictHostKeyChecking=no -i {pemfile} ec2-user@{ip}')            
-
-        #cfg._ec2_create_iam_costexplorer_ses('i-0ceeaa2aa897be879')
-
-        #cfg.send_email_aws('dipeit@gmail.com','my subject', 'my body')            
-        #cfg.send_ec2_costs(iid)
-        return        
     
     if not args.folders:
         TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
@@ -518,7 +495,48 @@ def subcmd_restore(args,cfg,arch,aws):
         return False
     if not aws.check_bucket_access(cfg.bucket):
         return False
+    
+    if args.ec2:
+        # part 1, installing .....
+        prof = aws._ec2_create_iam_policy_roles_ec2profile()
+        # source = "CCCCCCC"
+        # sps = source.split('/', 1)
+        # bk = sps[0].replace(':s3:','')
+        # pr = f'{sps[1]}/' # trailing slash ensured 
+        s3size = 3 #aws.get_s3_data_size(bk, pr)
+        #print(f"Total data below {pr}' in bucket '{bk}': {s3size:.2f} GiB")
+        iid, ip = aws.ec2_create_instance(s3size, prof, cfg.awsprofile)
+        print(' Waiting for ssh host to become ready ...')
+        if not cfg.wait_for_ssh_ready(ip):
+            return False
+        ret = aws.ssh_upload('ec2-user', ip, 
+            aws.ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
+        print(ret.stdout, ret.stderr)
+        print(' Executing bootstrap script ... please wait ...')
+        ret = aws.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
+        print (ret.stdout)
+        archive_json = os.path.join(cfg.config_root, 'froster-archives.json')
+        ret = aws.ssh_upload('ec2-user', ip, archive_json, "~/.config/froster/")
+        print(ret.stdout, ret.stderr)
 
+        # part 2, restoring .....
+        for folder in args.folders:
+            aws.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
+            aws.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
+        ### this block may need to be moved to a function
+        cmdlist = [item for item in sys.argv if item != '--ec2']
+        if not '--profile' in cmdlist and args.awsprofile:
+            cmdlist.insert(1,'--profile')
+            cmdlist.insert(2, args.awsprofile)
+        cmdline = 'froster ' + " ".join(map(shlex.quote, cmdlist[1:])) #original cmdline
+        if not args.folders[0] in cmdline:
+            folders = '" "'.join(args.folders)
+            cmdline=f'{cmdline} "{folders}"'
+        ### end block 
+        aws.ssh_execute('ec2-user', ip, f"{cmdline}")
+        print(f'{cmdline} executed on {ip}')
+        aws.send_email_ses('', '', 'Froster restore on EC2', f'this command line was executed on host {ip}:\n{cmdline}')
+    
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
         # either no slurm or already running inside a slurm job 
         for fld in args.folders:
@@ -2747,6 +2765,29 @@ class AWSBoto:
             print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
             return False
     
+    def get_s3_data_size(self, bucket_name, prefix, profile=None):
+        """
+        Get the size of data in GiB in an S3 bucket below a certain prefix.
+
+        :param bucket_name: Name of the S3 bucket.
+        :param prefix: The prefix to filter the objects in the S3 bucket.
+        :return: Size of the data in GiB.
+        """
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        s3 = session.client('s3')
+
+        # Initialize total size
+        total_size_bytes = 0
+
+        # Use paginator to handle buckets with large number of objects
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+            if "Contents" in page:  # Ensure there are objects under the specified prefix
+                for obj in page['Contents']:
+                    total_size_bytes += obj['Size']
+        total_size_gib = total_size_bytes / (1024 ** 3)  # Convert bytes to GiB
+        return total_size_gib
+
     def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         iam = session.client('iam')
@@ -3034,6 +3075,7 @@ class AWSBoto:
         dnf install -y gcc vim wget python3-pip python3-psutil
         hostnamectl set-hostname froster
         timedatectl set-timezone '{long_timezone}'
+        loginctl enable-linger ec2-user
         dnf upgrade
         dnf install -y mc R
         dnf group install -y 'Development Tools'
@@ -4087,16 +4129,13 @@ class ConfigManager:
 
         print("Cron job added!")
 
-    def add_systemd_cron_job(self, cmd, waitsec=1800):
-
-        waitsec = 60, 3600, 86400
+    def add_systemd_cron_job(self, cmd, minute, hour='*'):
 
         # Troubleshoot with: 
+        #
         # journalctl -f --user-unit froster-monitor.service
         # journalctl -f --user-unit froster-monitor.timer
         # journalctl --since "5 minutes ago" | grep froster-monitor
-
-        #add_systemd_cron_job(self, cmd, minute, hour='*')
 
         SERVICE_CONTENT = textwrap.dedent(f"""
         [Unit]
@@ -4112,13 +4151,15 @@ class ConfigManager:
 
         TIMER_CONTENT = textwrap.dedent(f"""
         [Unit]
-        Description=Run Froster-Monitor Cron Job hourly 
+        Description=Run Froster-Monitor Cron Job hourly
 
         [Timer]
         Persistent=true
-        #OnCalendar=*-*-* *:30:00        
-        OnBootSec=18
-        OnUnitActiveSec={waitsec}
+        OnCalendar=*-*-* {hour}:{minute}:00
+        #RandomizedDelaySec=300
+        #FixedRandomDelay=true
+        #OnBootSec=180
+        #OnUnitActiveSec=3600
         Unit=froster-monitor.service
 
         [Install]
@@ -4637,7 +4678,7 @@ def parse_arguments():
             '''))
     parser_restore.add_argument( '--ec2', '-e', dest='ec2', action='store_true', default=False,
         help="Restore folder on new EC2 instance instead of local machine")    
-    parser_restore.add_argument('--instance-type', '-i', dest='instancetype', action='store', default="",
+    parser_restore.add_argument('--instance-type', dest='instancetype', action='store', default="",
         help='The EC2 instance type is auto-selected, but you can pick any other type here')    
     parser_restore.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
         help="Monitor EC2 server for cost and idle time.")
