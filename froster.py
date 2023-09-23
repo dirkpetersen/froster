@@ -3675,31 +3675,33 @@ class AWSBoto:
         # if the cron job is running hourly 
 
         # Constants
-        CPU_THRESHOLD = 15  # percent
+        CPU_THRESHOLD = 20  # percent
         NET_READ_THRESHOLD = 1000  # bytes per second
         NET_WRITE_THRESHOLD = 1000  # bytes per second
         DISK_WRITE_THRESHOLD = 100000  # bytes per second
-        PROCESS_CPU_THRESHOLD = 5  # percent (for individual processes)
-        PROCESS_MEM_THRESHOLD = 5  # percent (for individual processes)
+        PROCESS_CPU_THRESHOLD = 10  # percent (for individual processes)
+        PROCESS_MEM_THRESHOLD = 10  # percent (for individual processes)
         DISK_WRITE_EXCLUSIONS = ["systemd", "systemd-journald", \
                                 "chronyd", "sshd", "auditd" , "agetty"]
     
         # Not idle if any users are logged in 
         if self._monitor_users_logged_in():
-            return self._monitor_save_idle_state(False, min_idle_cnt)
-
-        # Check CPU Utilization
-        cpu_percent = psutil.cpu_percent(interval=None)
-        if cpu_percent > CPU_THRESHOLD:
-            print(f'froster-monitor: Not idle: CPU% {cpu_percent}')
-            return self._monitor_save_idle_state(False, min_idle_cnt)
-
-        # Time I/O and Network Activity 
+            print(f'froster-monitor: Not idle: user(s) logged in')
+            #return self._monitor_save_idle_state(False, min_idle_cnt)        
+        
+        # CPU, Time I/O and Network Activity 
         io_start = psutil.disk_io_counters()
         net_start = psutil.net_io_counters()
-        time.sleep(interval)
+        cpu_percent = psutil.cpu_percent(interval=interval)
         io_end = psutil.disk_io_counters()
         net_end = psutil.net_io_counters()
+
+        print(f'froster-monitor: Current CPU% {cpu_percent}')
+
+        # Check CPU Utilization
+        if cpu_percent > CPU_THRESHOLD:
+            print(f'froster-monitor: Not idle: CPU% {cpu_percent}')
+            #return self._monitor_save_idle_state(False, min_idle_cnt)
 
         # Check I/O Activity
         write_diff = io_end.write_bytes - io_start.write_bytes
@@ -3733,12 +3735,14 @@ class AWSBoto:
             if proc.info['name'] not in DISK_WRITE_EXCLUSIONS:
                 if proc.info['cpu_percent'] > PROCESS_CPU_THRESHOLD:
                     print(f'froster-monitor: Not idle: CPU% {proc.info["cpu_percent"]}')
-                    return False
-                if proc.info['memory_percent'] > PROCESS_MEM_THRESHOLD:
-                    print(f'froster-monitor: Not idle: MEM% {proc.info["memory_percent"]}')
-                    return False
+                    #return False
+                # disabled this idle checker 
+                #if proc.info['memory_percent'] > PROCESS_MEM_THRESHOLD:
+                #    print(f'froster-monitor: Not idle: MEM% {proc.info["memory_percent"]}')
+                #    return False
 
         # Write idle state and read consecutive idle hours
+        print(f'froster-monitor: Idle state detected')
         return self._monitor_save_idle_state(True, min_idle_cnt)
 
     def _monitor_save_idle_state(self, is_system_idle, min_idle_cnt):
@@ -3746,8 +3750,6 @@ class AWSBoto:
                             'froster_idle_state.txt')
         with open(IDLE_STATE_FILE, 'a') as file:
             file.write('1\n' if is_system_idle else '0\n')        
-        #if not os.path.exists(IDLE_STATE_FILE):
-        #    return False
         with open(IDLE_STATE_FILE, 'r') as file:
             states = file.readlines()        
         count = 0
@@ -4683,7 +4685,7 @@ def parse_arguments():
             '''))
     parser_restore.add_argument( '--ec2', '-e', dest='ec2', action='store_true', default=False,
         help="Restore folder on new EC2 instance instead of local machine")    
-    parser_restore.add_argument('--instance-type', dest='instancetype', action='store', default="",
+    parser_restore.add_argument('--instance-type', '-i', dest='instancetype', action='store', default="",
         help='The EC2 instance type is auto-selected, but you can pick any other type here')    
     parser_restore.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
         help="Monitor EC2 server for cost and idle time.")
