@@ -524,7 +524,11 @@ def subcmd_restore(args,cfg,arch,aws):
             aws.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
             aws.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
         ### this block may need to be moved to a function
-        cmdlist = [item for item in sys.argv if item != '--ec2']
+        argl == ['--ec2', '-e']
+        cmdlist = [item for item in sys.argv if item not in argl]
+        argl = ['--instance-type', '-i'] # if found remove option and next arg
+        cmdlist = [x for i, x in enumerate(cmdlist) if x \
+                   not in argl and (i == 0 or cmdlist[i-1] not in argl)]
         if not '--profile' in cmdlist and args.awsprofile:
             cmdlist.insert(1,'--profile')
             cmdlist.insert(2, args.awsprofile)
@@ -533,7 +537,7 @@ def subcmd_restore(args,cfg,arch,aws):
             folders = '" "'.join(args.folders)
             cmdline=f'{cmdline} "{folders}"'
         ### end block 
-        aws.ssh_execute('ec2-user', ip, f"{cmdline}")
+        aws.ssh_execute('ec2-user', ip, f'{cmdline}')
         print(f'{cmdline} executed on {ip}')
         aws.send_email_ses('', '', 'Froster restore on EC2', f'this command line was executed on host {ip}:\n{cmdline}')
     
@@ -3099,9 +3103,9 @@ class AWSBoto:
         # bash Miniconda3-latest-Linux-x86_64.sh -b
         curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
         froster config --monitor '{emailaddr}'
-        aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
-        aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        aws configure set region {self.cfg.aws_region}
+        aws configure --profile {self.cfg.awsprofile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
+        aws configure --profile {self.cfg.awsprofile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
+        aws configure --profile {self.cfg.awsprofile} set region {self.cfg.aws_region}
         #sudo aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         #sudo aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
         #sudo aws configure set region {self.cfg.aws_region}
