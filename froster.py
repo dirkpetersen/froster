@@ -524,7 +524,7 @@ def subcmd_restore(args,cfg,arch,aws):
             aws.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
             aws.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
         ### this block may need to be moved to a function
-        argl == ['--ec2', '-e']
+        argl = ['--ec2', '-e']
         cmdlist = [item for item in sys.argv if item not in argl]
         argl = ['--instance-type', '-i'] # if found remove option and next arg
         cmdlist = [x for i, x in enumerate(cmdlist) if x \
@@ -3106,9 +3106,6 @@ class AWSBoto:
         aws configure --profile {self.cfg.awsprofile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure --profile {self.cfg.awsprofile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
         aws configure --profile {self.cfg.awsprofile} set region {self.cfg.aws_region}
-        #sudo aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
-        #sudo aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        #sudo aws configure set region {self.cfg.aws_region}
         python3 -m pip install boto3  > /dev/null
         sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
