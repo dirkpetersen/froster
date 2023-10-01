@@ -44,7 +44,7 @@ def main():
     # Instantiate classes required by all functions         
     cfg = ConfigManager(args)
     arch = Archiver(args, cfg)
-    aws = AWSBoto(args, cfg)
+    aws = AWSBoto(args, cfg, arch)
 
     if args.subcmd in ['archive','delete','restore']:
         # remove folders that are not writable from args.folders
@@ -139,7 +139,7 @@ def subcmd_config(args, cfg, aws):
         # monitoring only setup, do not continue 
         fro = os.path.join(binfolder,'froster')
         cfg.write('general', 'email', args.monitor)
-        cfg.add_systemd_cron_job(f'{fro} restore --monitor','*') 
+        cfg.add_systemd_cron_job(f'{fro} restore --monitor','30') 
         return True
     print('\n*** Asking a few questions ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
@@ -453,7 +453,7 @@ def subcmd_archive(args,cfg,arch,aws):
 def subcmd_restore(args,cfg,arch,aws):
 
     global TABLECSV
-    global SELECTEDFILE    
+    global SELECTEDFILE
 
     if args.debug:
         print ("restore:",args.cores, args.awsprofile, args.noslurm, 
@@ -497,50 +497,9 @@ def subcmd_restore(args,cfg,arch,aws):
         return False
     
     if args.ec2:
-        # part 1, installing .....
-        prof = aws._ec2_create_iam_policy_roles_ec2profile()
-        # source = "CCCCCCC"
-        # sps = source.split('/', 1)
-        # bk = sps[0].replace(':s3:','')
-        # pr = f'{sps[1]}/' # trailing slash ensured 
-        s3size = 3 #aws.get_s3_data_size(bk, pr)
-        #print(f"Total data below {pr}' in bucket '{bk}': {s3size:.2f} GiB")
-        iid, ip = aws.ec2_create_instance(s3size, prof, cfg.awsprofile)
-        print(' Waiting for ssh host to become ready ...')
-        if not cfg.wait_for_ssh_ready(ip):
-            return False
-        ret = aws.ssh_upload('ec2-user', ip, 
-            aws.ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
-        print(ret.stdout, ret.stderr)
-        print(' Executing bootstrap script ... please wait ...')
-        ret = aws.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
-        print (ret.stdout)
-        archive_json = os.path.join(cfg.config_root, 'froster-archives.json')
-        ret = aws.ssh_upload('ec2-user', ip, archive_json, "~/.config/froster/")
-        print(ret.stdout, ret.stderr)
+        # run ec2_deploy(self, bucket='', prefix='', recursive=False, profile=None):
+        ret = aws.ec2_deploy(args.folders)
 
-        # part 2, restoring .....
-        for folder in args.folders:
-            aws.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
-            aws.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
-        ### this block may need to be moved to a function
-        argl = ['--ec2', '-e']
-        cmdlist = [item for item in sys.argv if item not in argl]
-        argl = ['--instance-type', '-i'] # if found remove option and next arg
-        cmdlist = [x for i, x in enumerate(cmdlist) if x \
-                   not in argl and (i == 0 or cmdlist[i-1] not in argl)]
-        if not '--profile' in cmdlist and args.awsprofile:
-            cmdlist.insert(1,'--profile')
-            cmdlist.insert(2, args.awsprofile)
-        cmdline = 'froster ' + " ".join(map(shlex.quote, cmdlist[1:])) #original cmdline
-        if not args.folders[0] in cmdline:
-            folders = '" "'.join(args.folders)
-            cmdline=f'{cmdline} "{folders}"'
-        ### end block 
-        aws.ssh_execute('ec2-user', ip, f'{cmdline}')
-        print(f'{cmdline} executed on {ip}')
-        aws.send_email_ses('', '', 'Froster restore on EC2', f'this command line was executed on host {ip}:\n{cmdline}')
-    
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
         # either no slurm or already running inside a slurm job 
         for fld in args.folders:
@@ -705,7 +664,8 @@ def subcmd_mount(args,cfg,arch,aws):
         return False
     
     if args.ec2:
-        #cfg.create_ec2_instance()
+
+        cfg.create_ec2_instance()
         return True
 
     hostname = platform.node()
@@ -1632,7 +1592,25 @@ class Archiver:
         data[path_name] = row_dict
         with open(self.archive_json, 'w') as file:
             json.dump(data, file, indent=4)
-
+    
+    def archive_get_bucket_info(self, path_name):
+        # returns bucket(str), prefix(str), recursive(bool), glacier(bool) 
+        recursive = False
+        glacier = False
+        rowdict = self.archive_json_get_row(path_name)
+        if rowdict == None:
+            return None, None, recursive
+        if 'archive_mode' in rowdict:
+            if rowdict['archive_mode'] == "Recursive":
+                recursive = True
+        s3_storage_class = rowdict['s3_storage_class']
+        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
+            glacier = True
+        sps = rowdict['archive_folder'].split('/', 1)
+        bucket = sps[0].replace(':s3:','')
+        prefix = f'{sps[1]}/' # trailing slash ensured
+        return bucket, prefix, recursive, glacier 
+    
     def archive_json_get_row(self, path_name):
         # get an archive record
         if not os.path.exists(self.archive_json):
@@ -2576,9 +2554,10 @@ class AWSBoto:
     # entries can be strings, lists that are written as 
     # multi-line files and dictionaries which are written to json
 
-    def __init__(self, args, cfg):
+    def __init__(self, args, cfg, arch):
         self.args = args
         self.cfg = cfg
+        self.arch = arch
         self.awsprofile = self.cfg.awsprofile
     
     def get_aws_regions(self, profile='default', provider='AWS'):
@@ -2769,12 +2748,13 @@ class AWSBoto:
             print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
             return False
     
-    def get_s3_data_size(self, bucket_name, prefix, profile=None):
-        """
-        Get the size of data in GiB in an S3 bucket below a certain prefix.
 
-        :param bucket_name: Name of the S3 bucket.
-        :param prefix: The prefix to filter the objects in the S3 bucket.
+    def _get_s3_data_size(self, folders, profile=None):
+        """
+        Get the size of data in GiB aggregated from multiple 
+        S3 buckets from froster archives identified by a 
+        list of folders 
+
         :return: Size of the data in GiB.
         """
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
@@ -2782,15 +2762,67 @@ class AWSBoto:
 
         # Initialize total size
         total_size_bytes = 0
-
-        # Use paginator to handle buckets with large number of objects
-        paginator = s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-            if "Contents" in page:  # Ensure there are objects under the specified prefix
-                for obj in page['Contents']:
-                    total_size_bytes += obj['Size']
+        
+        #bucket_name, prefix, recursive=False
+        for fld in folders:
+            recursive = False
+            bk, pr, rec, gla = self.arch.archive_get_bucket_info(fld)
+            # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
+            # Use paginator to handle buckets with large number of objects
+            paginator = s3.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=bk, Prefix=pr):
+                if "Contents" in page:  # Ensure there are objects under the specified prefix
+                    for obj in page['Contents']:
+                        key = obj['Key']
+                        if rec or (key.count('/') == pr.count('/') and key.startswith(pr)):
+                            total_size_bytes += obj['Size']
+        
         total_size_gib = total_size_bytes / (1024 ** 3)  # Convert bytes to GiB
         return total_size_gib
+
+    def ec2_deploy(self, folders, s3size=None, awsprofile=None):
+
+        if not awsprofile: 
+            awsprofile = self.cfg.awsprofile
+        if s3size != 0:
+            s3size = self._get_s3_data_size(folders, awsprofile)
+        print(f"Total data in all folders': {s3size:.2f} GiB") 
+        prof = self._ec2_create_iam_policy_roles_ec2profile()            
+        iid, ip = self._ec2_create_instance(s3size, prof, awsprofile)
+        print(' Waiting for ssh host to become ready ...')
+        if not self.cfg.wait_for_ssh_ready(ip):
+            return False
+        ret = self.ssh_upload('ec2-user', ip, 
+            self._ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
+        print(ret.stdout, ret.stderr)
+        print(' Executing bootstrap script ... please wait ...')
+        ret = self.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
+        print (ret.stdout)
+        archive_json = os.path.join(self.cfg.config_root, 'froster-archives.json')
+        ret = self.ssh_upload('ec2-user', ip, archive_json, "~/.config/froster/")
+        print(ret.stdout, ret.stderr)
+
+        # part 2, restoring .....
+        for folder in args.folders:
+            self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
+            self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
+        ### this block may need to be moved to a function
+        argl = ['--ec2', '-e']
+        cmdlist = [item for item in sys.argv if item not in argl]
+        argl = ['--instance-type', '-i'] # if found remove option and next arg
+        cmdlist = [x for i, x in enumerate(cmdlist) if x \
+                   not in argl and (i == 0 or cmdlist[i-1] not in argl)]
+        if not '--profile' in cmdlist and self.args.awsprofile:
+            cmdlist.insert(1,'--profile')
+            cmdlist.insert(2, self.args.awsprofile)
+        cmdline = 'froster ' + " ".join(map(shlex.quote, cmdlist[1:])) #original cmdline
+        if not self.args.folders[0] in cmdline:
+            folders = '" "'.join(self.args.folders)
+            cmdline=f'{cmdline} "{folders}"'
+        ### end block 
+        self.ssh_execute('ec2-user', ip, f"'{cmdline}'")
+        print(f'{cmdline} executed on {ip}')
+        self.send_email_ses('', '', 'Froster restore on EC2', f'this command line was executed on host {ip}:\n{cmdline}')
 
     def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
@@ -3088,7 +3120,7 @@ class AWSBoto:
         ''').strip()
         return userdata
     
-    def ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
+    def _ec2_user_space_script(self, instance_id='', bscript='~/bootstrap.sh'):
         # Define script that will be installed by ec2-user 
         emailaddr = self.cfg.read('general','email')
         #short_timezone = datetime.datetime.now().astimezone().tzinfo
@@ -3103,6 +3135,9 @@ class AWSBoto:
         # bash Miniconda3-latest-Linux-x86_64.sh -b
         curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
         froster config --monitor '{emailaddr}'
+        aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
+        aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
+        aws configure set region {self.cfg.aws_region}
         aws configure --profile {self.cfg.awsprofile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure --profile {self.cfg.awsprofile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
         aws configure --profile {self.cfg.awsprofile} set region {self.cfg.aws_region}
@@ -3111,7 +3146,7 @@ class AWSBoto:
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
         ''').strip()
     
-    def ec2_create_instance(self, required_space, iamprofile=None, profile=None):
+    def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
         # to avoid egress we are creating an EC2 instance 
         # with ephemeral (local) disk for a temporary restore 
         # 
