@@ -1595,7 +1595,7 @@ class Archiver:
         recursive = False
         glacier = False
         rowdict = self.archive_json_get_row(path_name)
-        self.csg.printdbg(__name__,f'path: {path_name} rowdict: {rowdict}')
+        self.cfg.printdbg(__name__,f'path: {path_name} rowdict: {rowdict}')
         if rowdict == None:
             return None, None, recursive, glacier
         if 'archive_mode' in rowdict:
