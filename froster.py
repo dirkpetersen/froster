@@ -2590,7 +2590,7 @@ class AWSBoto:
         buckets = list(set(buckets)) # remove dups
         for bucket in buckets:
             if not self.check_bucket_access(bucket, readwrite):
-                print (f' You have no {myaccess} access to bucket "{bucket}!"')
+                print (f' You have no {myaccess} access to bucket "{bucket}" !')
                 sufficient = False
         return sufficient
 
@@ -2600,7 +2600,7 @@ class AWSBoto:
             print('You have not yet configured an S3 bucket name. Please run "froster config" first')
             sys.exit(1)    
         if not self._check_s3_credentials(profile):
-            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
+            print('_check_s3_credentials failed. Please edit file ~/.aws/credentials')
             return False
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
@@ -2732,22 +2732,24 @@ class AWSBoto:
             return False            
         return True
     
-    def _check_s3_credentials(self, profile=None, verbose=False):        
+    def _check_s3_credentials(self, profile=None, verbose=False):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        #try:
+        if verbose or self.args.debug:
+            print(f'  Checking credentials for profile "{profile}" ... ', end='')            
+        ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+        s3_client = session.client('s3', endpoint_url=ep_url)            
+        s3_client.list_buckets()
+        if verbose or self.args.debug:
+            print('Done.')
+        return True
         try:
-            if verbose:
-                print(f'  Checking credentials for profile "{profile}" ... ', end='')
-            session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-            ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
-            s3_client = session.client('s3', endpoint_url=ep_url)            
-            s3_client.list_buckets()
-            if verbose:
-                print('Done.')
-            return True
+            pass
         except botocore.exceptions.NoCredentialsError:
             print("No AWS credentials found. Please check your access key and secret key.")
         except botocore.exceptions.EndpointConnectionError:
             print("Unable to connect to the AWS S3 endpoint. Please check your internet connection.")
-        except ClientError as e:
+        except botocore.exceptions.ClientError as e:
             error_code = e.response.get('Error', {}).get('Code')
             #error_code = e.response['Error']['Code']             
             if error_code == 'RequestTimeTooSkewed':
@@ -2767,7 +2769,7 @@ class AWSBoto:
             print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
             return False
         except Exception as e:
-            print(f"An unexpected error occurred while validating credentials for profile {profile}: {e}")
+            print(f"An unexpected in _check_s3_credentials with profile {profile}: {e}")
             return False
     
 
@@ -3306,7 +3308,7 @@ class AWSBoto:
     def ec2_terminate_instance(self, ip, profile=None):
         # terminate instance  
         # with ephemeral (local) disk for a temporary restore 
-        
+
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()        
         ec2 = session.client('ec2')
         #ips = self.ec2_list_ips(self, 'Name', 'FrosterSelfDestruct')    
@@ -3315,23 +3317,26 @@ class AWSBoto:
             'Name': 'network-interface.addresses.association.public-ip',
             'Values': [ip]
         }]
-        try:
-            response = ec2.describe_instances(Filters=filters)        
-        except botocore.exceptions.ClientError as e: 
-            print(f'Error: {e}')
-            return False
-        # Check if any instances match the criteria
-        instances = [instance for reservation in response['Reservations'] for instance in reservation['Instances']]        
-        if not instances:
-            print(f"No EC2 instance found with public IP: {ip}")
-            return 
-        # Extract instance ID from the instance
-        instance_id = instances[0]['InstanceId']
-        
+
+        if not ip.startswith('i-'): # this an ip and not an instance ID
+            try:
+                response = ec2.describe_instances(Filters=filters)        
+            except botocore.exceptions.ClientError as e: 
+                print(f'Error: {e}')
+                return False
+            # Check if any instances match the criteria
+            instances = [instance for reservation in response['Reservations'] for instance in reservation['Instances']]        
+            if not instances:
+                print(f"No EC2 instance found with public IP: {ip}")
+                return 
+            # Extract instance ID from the instance
+            instance_id = instances[0]['InstanceId']
+        else:    
+            instance_id = ip
         # Terminate the instance
         ec2.terminate_instances(InstanceIds=[instance_id])
         
-        print(f"EC2 Instance {instance_id} with public IP {ip} is being terminated !")
+        print(f"EC2 Instance {instance_id} ({ip}) is being terminated !")
 
     def ec2_list_instances(self, tag_name, tag_value, profile=None):
         """
@@ -4403,15 +4408,17 @@ class ConfigManager:
                 print("  No endpoint_url found in aws profile:", profile)
             return None
         
-    def _get_aws_s3_session_endpoint_url(self, profile=None):
+    def _get_aws_s3_session_endpoint_url(self, profile=None):        
         # retrieve endpoint url through boto API, not configparser
-        #import botocore.session
-        #session = botocore.session.Session(profile=profile)
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        import botocore.session  # only botocore Session object has attribute 'full_config'
+        if not profile:
+            profile = self.awsprofile        
+        session = botocore.session.Session(profile=profile) if profile else botocore.session.Session()        
         config = session.full_config
         s3_config = config["profiles"][profile].get("s3", {})
         endpoint_url = s3_config.get("endpoint_url", None)
-        #print('*** endpoint url ***:', endpoint_url)
+        if self.args.debug:
+            print('*** endpoint url ***:', endpoint_url)
         return endpoint_url
 
     def get_aws_region(self, profile=None):
