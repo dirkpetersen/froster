@@ -2842,7 +2842,7 @@ class AWSBoto:
             cmdline=f'{cmdline} "{folders}"'
         ### end block 
         self.ssh_execute('ec2-user', ip, f"'{cmdline}'")
-        print(f'{cmdline} executed on {ip}')
+        print(f"'{cmdline}' executed on {ip}")
         self.send_email_ses('', '', 'Froster restore on EC2', f'this command line was executed on host {ip}:\n{cmdline}')
 
     def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
@@ -3386,6 +3386,8 @@ class AWSBoto:
                 print(f'Error executing "{cmd}."')
         else:
             subprocess.run(cmd, shell=True, capture_output=False, text=True)
+        if self.args.debug:
+            print(f'ssh command line: {cmd}')  
         return None
                 
     def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
