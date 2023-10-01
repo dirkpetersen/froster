@@ -1595,8 +1595,9 @@ class Archiver:
         recursive = False
         glacier = False
         rowdict = self.archive_json_get_row(path_name)
+        self.csg.printdbg(__name__,f'path: {path_name} rowdict: {rowdict}')
         if rowdict == None:
-            return None, None, recursive
+            return None, None, recursive, glacier
         if 'archive_mode' in rowdict:
             if rowdict['archive_mode'] == "Recursive":
                 recursive = True
@@ -1606,7 +1607,7 @@ class Archiver:
         sps = rowdict['archive_folder'].split('/', 1)
         bucket = sps[0].replace(':s3:','')
         prefix = f'{sps[1]}/' # trailing slash ensured
-        return bucket, prefix, recursive, glacier 
+        return bucket, prefix, recursive, glacier
     
     def archive_json_get_row(self, path_name):
         # get an archive record
@@ -4066,6 +4067,10 @@ class ConfigManager:
             return os.path.join(section_path, entry)
         else:
             return os.path.join(self.config_root, entry)
+        
+    def printdbg(self, *args):
+        if self.args.debug:
+            print(' DBG:',args)
 
     def prompt(self, question, defaults=None, type_check=None):
         # Prompts for user input and writes it to config. 
