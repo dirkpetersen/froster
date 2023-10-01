@@ -493,7 +493,7 @@ def subcmd_restore(args,cfg,arch,aws):
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
         return False    
-    if not check_bucket_access_folders(args.folders):
+    if not aws.check_bucket_access_folders(args.folders):
         return False
     
     if args.ec2:
@@ -611,7 +611,7 @@ def subcmd_delete(args,cfg,arch,aws):
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
         return False
-    if not check_bucket_access_folders(args.folders):
+    if not aws.check_bucket_access_folders(args.folders):
         return False
 
     for fld in args.folders:
@@ -660,7 +660,7 @@ def subcmd_mount(args,cfg,arch,aws):
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
         return False
-    if not check_bucket_access_folders(args.folders):
+    if not aws.check_bucket_access_folders(args.folders):
         return False
     
     if args.ec2:
