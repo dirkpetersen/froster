@@ -2589,7 +2589,7 @@ class AWSBoto:
             buckets.append(bucket)
         buckets = list(set(buckets)) # remove dups
         for bucket in buckets:
-            if not check_bucket_access(bucket, readwrite):
+            if not self.check_bucket_access(bucket, readwrite):
                 print (f' You have no {myaccess} access to bucket "{bucket}!"')
                 sufficient = False
         return sufficient
