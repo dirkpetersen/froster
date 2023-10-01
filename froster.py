@@ -406,7 +406,7 @@ def subcmd_archive(args,cfg,arch,aws):
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
         return False
-    if not aws.check_bucket_access(cfg.bucket):
+    if not aws.check_bucket_access(cfg.bucket, readwrite=True):
         return False
 
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
@@ -492,8 +492,8 @@ def subcmd_restore(args,cfg,arch,aws):
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
-        return False
-    if not aws.check_bucket_access(cfg.bucket):
+        return False    
+    if not check_bucket_access_folders(args.folders):
         return False
     
     if args.ec2:
@@ -505,7 +505,7 @@ def subcmd_restore(args,cfg,arch,aws):
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
             print (f'Restoring folder {fld}, please wait ...', flush=True)
-            # check if triggered a restore from glacier and other conditions 
+            # check if triggered a restore from glacier and other conditions
             if arch.restore(fld) > 0:
                 if shutil.which('sbatch') and \
                         args.noslurm == False and \
@@ -611,7 +611,7 @@ def subcmd_delete(args,cfg,arch,aws):
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
         return False
-    if not aws.check_bucket_access(cfg.bucket):
+    if not check_bucket_access_folders(args.folders):
         return False
 
     for fld in args.folders:
@@ -660,11 +660,10 @@ def subcmd_mount(args,cfg,arch,aws):
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
         return False
-    if not aws.check_bucket_access(cfg.bucket):
+    if not check_bucket_access_folders(args.folders):
         return False
     
     if args.ec2:
-
         cfg.create_ec2_instance()
         return True
 
@@ -1389,9 +1388,6 @@ class Archiver:
         rowdict = self.archive_json_get_row(folder)
         if rowdict == None:
             return False
-        if 'archive_mode' in rowdict:
-            if rowdict['archive_mode'] == "Recursive":
-                recursive = True
 
         tail=''
         if folder != rowdict['local_folder']:
@@ -1409,12 +1405,13 @@ class Archiver:
         target = folder
         s3_storage_class = rowdict['s3_storage_class']
         
-        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
-            sps = source.split('/', 1)
-            bk = sps[0].replace(':s3:','')
-            pr = f'{sps[1]}/' # trailing slash ensured 
-            trig, rest, done = self._glacier_restore(bk, pr, 
-                    self.args.days, self.args.retrieveopt, recursive)
+        buc, pre, recur, isglacier = self.archive_get_bucket_info(source)
+        if isglacier:
+            #sps = source.split('/', 1)
+            #bk = sps[0].replace(':s3:','')
+            #pr = f'{sps[1]}/' # trailing slash ensured 
+            trig, rest, done = self._glacier_restore(buc, pre, 
+                    self.args.days, self.args.retrieveopt, recur)
             print ('Triggered Glacier retrievals:',len(trig))
             print ('Currently retrieving from Glacier:',len(rest))
             print ('Not in Glacier:',len(done))
@@ -2560,11 +2557,11 @@ class AWSBoto:
         self.arch = arch
         self.awsprofile = self.cfg.awsprofile
     
-    def get_aws_regions(self, profile='default', provider='AWS'):
+    def get_aws_regions(self, profile=None, provider='AWS'):
         # returns a list of AWS regions 
         if provider == 'AWS':
             try:
-                session = boto3.Session(profile_name=profile)
+                session = boto3.Session(profile_name=profile) if profile else boto3.Session()
                 regions = session.get_available_regions('ec2')
                 # make the list a little shorter 
                 regions = [i for i in regions if not i.startswith('ap-')]
@@ -2579,20 +2576,40 @@ class AWSBoto:
             return ['us-or', 'us-va', 'us-la', '']
         elif provider == 'Ceph':
             return ['default-placement', 'us-east-1', '']
-                
-    def check_bucket_access(self, bucket_name, profile='default'):
-        from botocore.exceptions import ClientError
+
+    def check_bucket_access_folders(self, folders, readwrite=False):
+        # check all the buckets that have been used for archiving 
+        sufficient = True
+        myaccess = 'read'
+        if readwrite:
+            myaccess = 'write'
+        buckets = []
+        for folder in folders:
+            bucket, *_ = self.arch.archive_get_bucket_info(folder)
+            buckets.append(bucket)
+        buckets = list(set(buckets)) # remove dups
+        for bucket in buckets:
+            if not check_bucket_access(bucket, readwrite):
+                print (f' You have no {myaccess} access to bucket "{bucket}!"')
+                sufficient = False
+        return sufficient
+
+    def check_bucket_access(self, bucket_name, readwrite=False, profile=None):
+        
+        if not bucket_name:
+            print('You have not yet configured an S3 bucket name. Please run "froster config" first')
+            sys.exit(1)    
         if not self._check_s3_credentials(profile):
             print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
             return False
-        session = boto3.Session(profile_name=profile)
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
         s3 = session.client('s3', endpoint_url=ep_url)
         
         try:
             # Check if bucket exists
             s3.head_bucket(Bucket=bucket_name)
-        except ClientError as e:
+        except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == '403':
                 print(f"Error: Access denied to bucket {bucket_name} for profile {self.awsprofile}. Check your permissions.")
@@ -2603,9 +2620,12 @@ class AWSBoto:
                 print(f"Error accessing bucket {bucket_name} in profile {self.awsprofile}: {e}")
             return False
         except Exception as e:
-            print(f"An unexpected error occurred for profile {self.awsprofile}: {e}")
+            print(f"An unexpected error in function check_bucket_access for profile {self.awsprofile}: {e}")
             return False
 
+        if not readwrite:
+            return True
+        
         # Test write access by uploading a small test file
         try:
             test_object_key = "test_write_access.txt"
@@ -2619,15 +2639,18 @@ class AWSBoto:
         except ClientError as e:
             print(f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
             return False
+        
+        
+####
 
-    def create_s3_bucket(self, bucket_name, profile='default'):
-        from botocore.exceptions import BotoCoreError, ClientError      
+
+    def create_s3_bucket(self, bucket_name, profile=None):   
         if not self._check_s3_credentials(profile, verbose=True):
             print(f"Cannot create bucket '{bucket_name}' with these credentials")
             print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
             return False 
         region = self.get_aws_region(profile)
-        session = boto3.Session(profile_name=profile)
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
         s3_client = session.client('s3', endpoint_url=ep_url)        
         existing_buckets = s3_client.list_buckets()
@@ -2647,9 +2670,9 @@ class AWSBoto:
                     Bucket=bucket_name,
                     )              
             print(f"Created S3 Bucket '{bucket_name}'")
-        except BotoCoreError as e:
+        except botocore.exceptions.BotoCoreError as e:
             print(f"BotoCoreError: {e}")
-        except ClientError as e:
+        except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'InvalidBucketName':
                 print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
@@ -2705,25 +2728,24 @@ class AWSBoto:
             else:
                 print(f"ClientError: {e}")                        
         except Exception as e:            
-            print(f"An unexpected error occurred: {e}")
+            print(f"An unexpected error occurred in create_s3_bucket: {e}")
             return False            
         return True
     
-    def _check_s3_credentials(self, profile='default', verbose=False):
-        from botocore.exceptions import NoCredentialsError, EndpointConnectionError, ClientError
+    def _check_s3_credentials(self, profile=None, verbose=False):        
         try:
             if verbose:
                 print(f'  Checking credentials for profile "{profile}" ... ', end='')
-            session = boto3.Session(profile_name=profile)
+            session = boto3.Session(profile_name=profile) if profile else boto3.Session()
             ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
             s3_client = session.client('s3', endpoint_url=ep_url)            
             s3_client.list_buckets()
             if verbose:
                 print('Done.')
             return True
-        except NoCredentialsError:
+        except botocore.exceptions.NoCredentialsError:
             print("No AWS credentials found. Please check your access key and secret key.")
-        except EndpointConnectionError:
+        except botocore.exceptions.EndpointConnectionError:
             print("Unable to connect to the AWS S3 endpoint. Please check your internet connection.")
         except ClientError as e:
             error_code = e.response.get('Error', {}).get('Code')
@@ -2765,16 +2787,15 @@ class AWSBoto:
         
         #bucket_name, prefix, recursive=False
         for fld in folders:
-            recursive = False
-            bk, pr, rec, gla = self.arch.archive_get_bucket_info(fld)
+            buc, pre, recur, _ = self.arch.archive_get_bucket_info(fld)
             # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
             # Use paginator to handle buckets with large number of objects
             paginator = s3.get_paginator('list_objects_v2')
-            for page in paginator.paginate(Bucket=bk, Prefix=pr):
+            for page in paginator.paginate(Bucket=buc, Prefix=pre):
                 if "Contents" in page:  # Ensure there are objects under the specified prefix
                     for obj in page['Contents']:
                         key = obj['Key']
-                        if rec or (key.count('/') == pr.count('/') and key.startswith(pr)):
+                        if recur or (key.count('/') == pre.count('/') and key.startswith(pre)):
                             total_size_bytes += obj['Size']
         
         total_size_gib = total_size_bytes / (1024 ** 3)  # Convert bytes to GiB
@@ -2786,7 +2807,7 @@ class AWSBoto:
             awsprofile = self.cfg.awsprofile
         if s3size != 0:
             s3size = self._get_s3_data_size(folders, awsprofile)
-        print(f"Total data in all folders': {s3size:.2f} GiB") 
+        print(f"Total data in all folders: {s3size:.2f} GiB") 
         prof = self._ec2_create_iam_policy_roles_ec2profile()            
         iid, ip = self._ec2_create_instance(s3size, prof, awsprofile)
         print(' Waiting for ssh host to become ready ...')
@@ -4380,19 +4401,20 @@ class ConfigManager:
                 print("  No endpoint_url found in aws profile:", profile)
             return None
         
-    def _get_aws_s3_session_endpoint_url(self, profile='default'):
+    def _get_aws_s3_session_endpoint_url(self, profile=None):
         # retrieve endpoint url through boto API, not configparser
-        import botocore.session
-        session = botocore.session.Session(profile=profile)
+        #import botocore.session
+        #session = botocore.session.Session(profile=profile)
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         config = session.full_config
         s3_config = config["profiles"][profile].get("s3", {})
         endpoint_url = s3_config.get("endpoint_url", None)
         #print('*** endpoint url ***:', endpoint_url)
         return endpoint_url
 
-    def get_aws_region(self, profile='default'):
-        try:
-            session = boto3.Session(profile_name=profile)
+    def get_aws_region(self, profile=None):
+        try:            
+            session = boto3.Session(profile_name=profile) if profile else boto3.Session()
             if self.args.debug:
                 print(f'* get_aws_region for profile {profile}:', session.region_name)
             return session.region_name
