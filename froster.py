@@ -1564,8 +1564,9 @@ class Archiver:
         recursive = False
         glacier = False
         rowdict = self.archive_json_get_row(path_name)
-        self.cfg.printdbg(inspect.currentframe(),f'path: {path_name} rowdict: {rowdict}')
+        self.cfg.printdbg(f'path: {path_name} rowdict: {rowdict}')
         if rowdict == None:
+            self.cfg.printdbg('rowdict is None, why???')
             return None, None, recursive, glacier
         if 'archive_mode' in rowdict:
             if rowdict['archive_mode'] == "Recursive":
@@ -4032,11 +4033,12 @@ class ConfigManager:
         else:
             return os.path.join(self.config_root, entry)
         
-    def printdbg(self, *args):
+    def printdbg(self, *args, **kwargs):
+        # use inspect to get the name of the calling function
         if self.args.debug:
             current_frame = inspect.currentframe()
-            calling_function = current_frame.f_back.f_code.co_name
-            print(f' DBG {calling_function}():',args)
+            calling_function = current_frame.f_back.f_code.co_name 
+            print(f' DBG {calling_function}():', args, kwargs)
 
     def prompt(self, question, defaults=None, type_check=None):
         # Prompts for user input and writes it to config. 
