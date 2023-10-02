@@ -1,14 +1,14 @@
 #! /usr/bin/env python3
 
 """
-Froster (almost) automates the challening task of 
-archiving many Terabytes of data on HPC systems
+Froster automates much of the challening tasks when 
+archiving many Terabytes of data on large (HPC) systems.
 """
 # internal modules
 import sys, os, argparse, json, configparser, csv, platform, asyncio
 import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time
 import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex
-import shutil, tempfile, glob,  subprocess, itertools, socket
+import shutil, tempfile, glob,  subprocess, itertools, socket, inspect
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
@@ -293,8 +293,7 @@ def subcmd_config(args, cfg, aws):
 
 def subcmd_index(args,cfg,arch):
 
-    if args.debug:
-        print (" Command line:",args.cores, args.noslurm, 
+    cfg.printdbg(" Command line:", args.cores, args.noslurm, 
                 args.pwalkcsv, args.folders,flush=True)
 
     if not args.folders:
@@ -455,12 +454,10 @@ def subcmd_restore(args,cfg,arch,aws):
     global TABLECSV
     global SELECTEDFILE
 
-    if args.debug:
-        print ("restore:",args.cores, args.awsprofile, args.noslurm, 
-                args.days, args.retrieveopt, args.nodownload, args.folders)
+    cfg.printdbg ("restore:",args.cores, args.awsprofile, args.noslurm, 
+        args.days, args.retrieveopt, args.nodownload, args.folders)
     fld = '" "'.join(args.folders)
-    if args.debug:
-        print (f'default cmdline: froster restore "{fld}"')
+    cfg.printdbg(f'default cmdline: froster restore "{fld}"')
 
     # ********* 
     if args.monitor:
@@ -480,15 +477,13 @@ def subcmd_restore(args,cfg,arch,aws):
         if len(retline) < 2:
             print('Error: froster-archives table did not return result')
             return False
-        if args.debug:
-            print("dialog returns:",retline)
+        cfg.printdbg("dialog returns:",retline)
         args.folders.append(retline[0])
         if retline[2]: 
             cfg.awsprofile = retline[2]
             args.awsprofile = cfg.awsprofile
             cfg._set_env_vars(cfg.awsprofile)
-            if args.debug:
-                print("AWS profile:", cfg.awsprofile)
+            cfg.printdbg("AWS profile:", cfg.awsprofile)
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
@@ -535,8 +530,7 @@ def subcmd_restore(args,cfg,arch,aws):
                         cmdline = cmdline.replace('/froster.py ', '/froster ')
                     if not fld in cmdline:
                         cmdline=f'{cmdline} "{fld}"'
-                    if args.debug:
-                        print(f'Command line passed to Slurm:\n{cmdline}')
+                    cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
                     se.add_line(cmdline)
                     jobid = se.sbatch()
                     print(f'Submitted froster download job to run in 12 hours: {jobid}')
@@ -568,8 +562,7 @@ def subcmd_restore(args,cfg,arch,aws):
         if not args.folders[0] in cmdline:
             folders = '" "'.join(args.folders)
             cmdline=f'{cmdline} "{folders}"'
-        if args.debug:
-            print(f'Command line passed to Slurm:\n{cmdline}')
+        cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
         se.add_line(cmdline)
         jobid = se.sbatch()
         print(f'Submitted froster restore job: {jobid}')
@@ -582,11 +575,9 @@ def subcmd_delete(args,cfg,arch,aws):
     global TABLECSV
     global SELECTEDFILE    
     
-    if args.debug:
-        print ("delete:",args.awsprofile, args.folders)
+    cfg.printdbg ("delete:",args.awsprofile, args.folders)
     fld = '" "'.join(args.folders)
-    if args.debug:
-        print (f'default cmdline: froster.py delete "{fld}"')
+    cfg.printdbg(f'default cmdline: froster delete "{fld}"')
 
     if not args.folders:
         TABLECSV=arch.archive_json_get_csv(['local_folder','s3_storage_class', 'profile', 'archive_mode'])
@@ -600,8 +591,7 @@ def subcmd_delete(args,cfg,arch,aws):
         if len(retline) < 2:
             print('Error: froster-archives table did not return result')
             return False
-        if args.debug:
-            print("dialog returns:",retline)
+        cfg.printdbg("dialog returns:",retline)
         args.folders.append(retline[0])
         if retline[2]: 
             cfg.awsprofile = retline[2]
@@ -619,22 +609,17 @@ def subcmd_delete(args,cfg,arch,aws):
         # get archive storage location
         print (f'Deleting archived files in "{fld}", please wait ...', flush=True)
         if not arch.delete(fld):
-            if args.debug:
-                print(f'  Archiver.delete({fld}) returned False', flush=True)                
-
-
+            cfg.printdbg(f'  Archiver.delete({fld}) returned False', flush=True)
+            
 def subcmd_mount(args,cfg,arch,aws):
     
     global TABLECSV
     global SELECTEDFILE
 
-    if args.debug:
-        print ("mount:",args.awsprofile, args.mountpoint, args.folders)
+    cfg.printdbg ("mount:",args.awsprofile, args.mountpoint, args.folders)
     fld = '" "'.join(args.folders)
-
-    if args.debug:
-        print (f'default cmdline: froster mount "{fld}"')
-
+    cfg.printdbg(f'default cmdline: froster mount "{fld}"')
+    
     interactive=False
     if not args.folders:
         interactive=True
@@ -649,8 +634,7 @@ def subcmd_mount(args,cfg,arch,aws):
         if len(retline) < 2:
             print('Error: froster-archives table did not return result')
             return False
-        if args.debug:
-            print("dialog returns:",retline)
+        cfg.printdbg("dialog returns:",retline)
         args.folders.append(retline[0])
         if retline[2]: 
             cfg.awsprofile = retline[2]
@@ -801,8 +785,7 @@ class Archiver:
                     #    print (" Error: Either pass a folder or a --pwalk-csv file on the command line.")
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
                     mycmd = f'{self.cfg.binfolder}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
-                    if self.args.debug:
-                        print(f' Running {mycmd} ...', flush=True)
+                    self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
                     ret = subprocess.run(mycmd, shell=True, 
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if ret.returncode != 0:
@@ -816,8 +799,7 @@ class Archiver:
                 with tempfile.NamedTemporaryFile() as tmpfile3:
                     # removing all files from pwalk output, keep only folders
                     mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {tmpfile3.name}'
-                    if self.args.debug:
-                        print(f' Running {mycmd} ...', flush=True)
+                    self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
                     result = subprocess.run(mycmd, shell=True)
                     if result.returncode != 0:
                         print(f"Folder extraction failed: {mycmd}")
@@ -826,8 +808,7 @@ class Archiver:
                     # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
                     # pwalk does already output UTF-8, weird, probably duckdb error 
                     mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {tmpfile3.name} > {tmpfile.name}'
-                    if self.args.debug:
-                        print(f' Running {mycmd} ...', flush=True)
+                    self.cfg.printdbg(f' Running {mycmd} ...', flush=True)  
                     result = subprocess.run(mycmd, shell=True)
                     if result.returncode != 0:
                         print(f"File conversion failed: {mycmd}")
@@ -845,8 +826,7 @@ class Archiver:
                         WHERE pw_fcount > -1 AND pw_dirsum > 0
                         ORDER BY pw_dirsum Desc
                     """  # pw_dirsum > 1073741824
-            if self.args.debug:
-                print(f' Running SQL query on CSV file {tmpfile.name} ...', flush=True)
+            self.cfg.printdbg(f' Running SQL query on CSV file {tmpfile.name} ...', flush=True)
             rows = con.execute(sql_query).fetchall()
             # also query 'parent-inode' as pi,
             
@@ -860,8 +840,7 @@ class Archiver:
         numhotspots=0
 
         mycsv = self._get_hotspots_path(pwalkfolder)
-        if self.args.debug:
-            print(f' Running filter and write results to CSV file {mycsv} ...', flush=True)
+        self.cfg.printdbg(f' Running filter and write results to CSV file {mycsv} ...', flush=True)
 
         with tempfile.NamedTemporaryFile() as tmpcsv:
             with open(tmpcsv.name, 'w') as f:
@@ -916,8 +895,7 @@ class Archiver:
             their content. You will not be able to archive these
             folders until you have the permissions granted.
             '''), flush=True)
-        if self.args.debug:
-            print(' Done indexing!', flush=True)
+        self.cfg.printdbg(f' Done indexing {pwalkfolder}!', flush=True)
 
     def archive(self, folder, meta, isrecursive=False, issubfolder=False):
 
@@ -957,8 +935,7 @@ class Archiver:
                         '--exclude', '.froster-restored.md5sum', 
                         '--exclude', 'Where-did-the-files-go.txt'
                         )
-        if self.args.debug:
-            print('*** RCLONE copy ret ***:\n', ret, '\n')
+        self.cfg.printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
         #print ('Message:', ret['msg'].replace('\n',';'))
         if ret['stats']['errors'] > 0:
             print('Last Error:', ret['stats']['lastError'])
@@ -982,8 +959,7 @@ class Archiver:
         #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
 
         ret = rclone.checksum(hashfile,target,'--max-depth', '1')
-        if self.args.debug:
-            print('*** RCLONE checksum ret ***:\n', ret, '\n')
+        self.cfg.printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
         if ret['stats']['errors'] > 0:
             print('Last Error:', ret['stats']['lastError'])
             print('Checksum test was not successful.')
@@ -1277,8 +1253,7 @@ class Archiver:
                         '''))
                         continue
                 ret = rclone.checksum(hashfile,afolder,'--max-depth', '1')
-                if args.debug:
-                    print('*** RCLONE checksum ret ***:\n', ret, '\n')
+                self.cfg.printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
                 if ret['stats']['errors'] > 0:
                     print('Last Error:', ret['stats']['lastError'])
                     print('Checksum test was not successful.')
@@ -1297,8 +1272,7 @@ class Archiver:
                     if os.path.isfile(dpath) or os.path.islink(dpath):
                         os.remove(dpath)
                         deleted_files.append(dfile)
-                        if args.debug: 
-                            print(f"File '{dpath}' deleted successfully.")
+                        self.cfg.printdbg(f"File '{dpath}' deleted successfully.")
 
                 # if there is a restore that needs to be deleted a second time
                 # make sure that all files extracted from the archive are deleted again 
@@ -1355,8 +1329,8 @@ class Archiver:
             if os.path.isfile(fp) or os.path.islink(fp):
                 os.remove(fp)
                 deleted.append(f)
-        if self.args.debug:
-            print(f'  Files deleted in _delete_tar_content: {", ".join(deleted)}')
+        self.cfg.printdbg(f"  Files deleted in _delete_tar_content: {", ".join(deleted)}")
+
         return deleted
 
     def _get_tar_content(self,directory):
@@ -1378,8 +1352,7 @@ class Archiver:
                     if row['Tarred'] == 'Yes':
                         if not row['File'] in files:
                             files.append(row['File'])
-        if self.args.debug:
-            print(f'  Files founds in _get_tar_content: {", ".join(files)}')
+        self.cfg.printdbg(f"  Files founds in _get_tar_content: {", ".join(files)}")
         return files
 
     def restore(self, folder, recursive=False):
@@ -1431,8 +1404,7 @@ class Archiver:
             print (f'Copying files from archive to "{target}" ...')
             ret = rclone.copy(source,target,'--max-depth', '1')
             
-        if self.args.debug:
-            print('*** RCLONE copy ret ***:\n', ret, '\n')
+        self.cfg.printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
         #print ('Message:', ret['msg'].replace('\n',';'))
         if ret['stats']['errors'] > 0:
             print('Last Error:', ret['stats']['lastError'])
@@ -1487,8 +1459,7 @@ class Archiver:
                     return False
                 hashfile = os.path.join(restpath,'.froster-restored.md5sum')
                 ret = rclone.checksum(hashfile, source, '--max-depth', '1')
-                if self.args.debug:
-                    print('*** RCLONE checksum ret ***:\n', ret, '\n')
+                self.cfg.printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
                 if ret['stats']['errors'] > 0:
                     print('Last Error:', ret['stats']['lastError'])
                     print('Checksum test was not successful.')
@@ -1542,8 +1513,7 @@ class Archiver:
         try:
             return pwd.getpwuid(uid)[0]
         except:
-            if self.args.debug:
-                print(f'uid2user: Error converting uid {uid}')
+            self.cfg.printdbg(f'uid2user: Error converting uid {uid}')
             return uid
 
     def gid2group(self,gid):
@@ -1551,15 +1521,13 @@ class Archiver:
         try:
             return grp.getgrgid(gid)[0]
         except:
-            if self.args.debug:
-                print(f' gid2group: Error converting gid {gid}')
+            self.cfg.printdbg(f'gid2group: Error converting gid {gid}')
             return gid
 
     def daysago(self,unixtime):
         # how many days ago is this epoch time ?
         if not unixtime: 
-            if self.args.debug:
-                print(' daysago: an integer is required (got type NoneType)')
+            self.cfg.printdbg('daysago: an integer is required (got type NoneType)')
             return 0
         diff=datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
         return diff.days
@@ -1595,7 +1563,7 @@ class Archiver:
         recursive = False
         glacier = False
         rowdict = self.archive_json_get_row(path_name)
-        self.cfg.printdbg(__name__,f'path: {path_name} rowdict: {rowdict}')
+        self.cfg.printdbg(inspect.currentframe(),f'path: {path_name} rowdict: {rowdict}')
         if rowdict == None:
             return None, None, recursive, glacier
         if 'archive_mode' in rowdict:
@@ -1818,8 +1786,7 @@ class Archiver:
                         }
                     )
                     triggered_keys.append(object_key)
-                    if self.args.debug:
-                        print(f'Restore request initiated for {object_key} using {ret_opt} retrieval.')
+                    self.cfg.printdbg(f'Restore request initiated for {object_key} using {ret_opt} retrieval.')
                 except botocore.exceptions.ClientError as e:
                     if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
                         print(f'Restore is already in progress for {object_key}. Skipping...')
@@ -2062,8 +2029,7 @@ class Rclone:
 
         command = self._add_opt(command, '--verbose')
         command = self._add_opt(command, '--use-json-log')
-        if self.args.debug:
-            print("Rclone command:", " ".join(command))
+        self.cfg.printdbg('Rclone command:', " ".join(command))
         try:
             ret = subprocess.run(command, capture_output=True, text=True, env=self.cfg.envrn)
             if ret.returncode != 0:
@@ -2096,8 +2062,7 @@ class Rclone:
         #command = self._add_opt(command, '--verbose')
         #command = self._add_opt(command, '--use-json-log')
         cmdline=" ".join(command)
-        if self.args.debug:
-            print(f'Rclone command: "{cmdline}"')
+        self.cfg.printdbg('Rclone command:', cmdline)
         try:
             ret = subprocess.Popen(command, preexec_fn=os.setsid, stdin=subprocess.PIPE, 
                         stdout=subprocess.PIPE, text=True, env=self.cfg.envrn)
@@ -2657,8 +2622,7 @@ class AWSBoto:
         existing_buckets = s3_client.list_buckets()
         for bucket in existing_buckets['Buckets']:
             if bucket['Name'] == bucket_name:
-                if self.args.debug:
-                    print(f'S3 bucket {bucket_name} exists')
+                self.cfg.printdbg(f'S3 bucket {bucket_name} exists')
                 return True
         try:
             if region and region != 'default-placement':
@@ -2737,7 +2701,7 @@ class AWSBoto:
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         #try:
         if verbose or self.args.debug:
-            print(f'  Checking credentials for profile "{profile}" ... ', end='')            
+            self.cfg.printdbg(f'  Checking credentials for profile "{profile}" ... ', end='')            
         ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
         s3_client = session.client('s3', endpoint_url=ep_url)            
         s3_client.list_buckets()
@@ -3392,8 +3356,7 @@ class AWSBoto:
                 print(f'Error executing "{cmd}."')
         else:
             subprocess.run(cmd, shell=True, capture_output=False, text=True)
-        if self.args.debug:
-            print(f'ssh command line: {cmd}')  
+        self.cfg.printdbg(f'ssh command line: {cmd}')
         return None
                 
     def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
@@ -4070,7 +4033,9 @@ class ConfigManager:
         
     def printdbg(self, *args):
         if self.args.debug:
-            print(' DBG:',args)
+            current_frame = inspect.currentframe()
+            calling_function = current_frame.f_back.f_code.co_name
+            print(f' DBG {calling_function}():',args)
 
     def prompt(self, question, defaults=None, type_check=None):
         # Prompts for user input and writes it to config. 
