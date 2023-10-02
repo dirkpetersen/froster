@@ -1326,10 +1326,11 @@ class Archiver:
         deleted = []
         for f in files:
             fp = os.path.join(directory,f)
+
             if os.path.isfile(fp) or os.path.islink(fp):
                 os.remove(fp)
                 deleted.append(f)
-        self.cfg.printdbg(f"  Files deleted in _delete_tar_content: {", ".join(deleted)}")
+        self.cfg.printdbg(f'Files deleted in _delete_tar_content: {", ".join(deleted)}')
 
         return deleted
 
@@ -1352,7 +1353,7 @@ class Archiver:
                     if row['Tarred'] == 'Yes':
                         if not row['File'] in files:
                             files.append(row['File'])
-        self.cfg.printdbg(f"  Files founds in _get_tar_content: {", ".join(files)}")
+        self.cfg.printdbg(f'Files founds in _get_tar_content: {", ".join(files)}')
         return files
 
     def restore(self, folder, recursive=False):
