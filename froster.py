@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.8.5'
+__version__ = '0.8.6'
 
 def main():
         
@@ -494,6 +494,7 @@ def subcmd_restore(args,cfg,arch,aws):
     if args.ec2:
         # run ec2_deploy(self, bucket='', prefix='', recursive=False, profile=None):
         ret = aws.ec2_deploy(args.folders)
+        return True
 
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
         # either no slurm or already running inside a slurm job 
@@ -832,6 +833,10 @@ class Archiver:
             
             # Get the column names
             header = con.execute(sql_query).description
+            if args.pwalkcopy:
+                print(f' Copying {tmpfile.name} to {args.pwalkcopy}, please wait ... ', flush=True, end="")            
+                shutil.copyfile(tmpfile.name,args.pwalkcopy)
+                print('Done!', flush=True)')
 
         totalbytes=0
         agedbytes=[]
@@ -4628,6 +4633,11 @@ def parse_arguments():
              'you can enter a specific pwalk CSV file here and are not ' +
              'required to run the time consuming pwalk.' +
              '')
+    parser_index.add_argument('--pwalk-copy', '-y', dest='pwalkcopy', action='store', default='', 
+        help='Create this backup copy of a newly generated pwalk CSV file. ' +
+             'By default the pwalk csv file will only be gnerated in temp space ' +
+             'and then deleted.' +
+             '')    
     parser_index.add_argument('folders', action='store', default=[],  nargs='*',
         help='folders you would like to index (separated by space), ' +
                 'using the pwalk file system crawler ')
