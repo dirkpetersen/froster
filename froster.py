@@ -836,7 +836,7 @@ class Archiver:
             if args.pwalkcopy:
                 print(f' Copying {tmpfile.name} to {args.pwalkcopy}, please wait ... ', flush=True, end="")            
                 shutil.copyfile(tmpfile.name,args.pwalkcopy)
-                print('Done!', flush=True)')
+                print('Done!', flush=True)
 
         totalbytes=0
         agedbytes=[]
