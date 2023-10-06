@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.8.6'
+__version__ = '0.8.7'
 
 def main():
         
@@ -141,6 +141,11 @@ def subcmd_config(args, cfg, aws):
         cfg.write('general', 'email', args.monitor)
         cfg.add_systemd_cron_job(f'{fro} restore --monitor','30') 
         return True
+    
+    if args.index:
+        # only basic configuration required for indexing jobs
+        return True 
+
     print('\n*** Asking a few questions ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
 
@@ -4612,6 +4617,8 @@ def parse_arguments():
             Bootstrap the configurtion, install dependencies and setup your environment.
             You will need to answer a few questions about your cloud and hpc setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
+    parser_config.add_argument( '--index', '-i', dest='index', action='store_true', default=False,
+        help="configure froster for indexing only, don't ask addional questions.")
     parser_config.add_argument( '--monitor', '-m', dest='monitor', action='store', default='',
         metavar='<email@address.org>', help='setup froster as a monitoring cronjob ' +
         'on an ec2 instance and notify an email address')
