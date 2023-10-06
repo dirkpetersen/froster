@@ -866,8 +866,9 @@ class Archiver:
                 for r in rows:
                     row = list(r)
                     if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
+                        atime=self._get_newest_file_atime(row[5],row[1])
                         row[0]=self.uid2user(row[0])                        
-                        row[1]=self.daysago(self._get_newest_file_atime(row[5],row[1]))
+                        row[1]=self.daysago(atime)
                         row[2]=self.daysago(row[2])
                         row[3]=int(row[3])
                         row[4]=int(row[4])
@@ -876,11 +877,11 @@ class Archiver:
                         writer.writerow(row)
                         numhotspots+=1
                         totalbytes+=row[9]
-                    for i in range(0,len(daysaged)):
-                        if row[1] > daysaged[i]:
-                            if i == 0:
-                                self.cfg.printdbg(f'  {row[5]} has not been accessed for {row[1]} days', flush=True)
-                            agedbytes[i]+=row[9]
+                        for i in range(0,len(daysaged)):
+                            if row[1] > daysaged[i]:
+                                if i == 0:
+                                    self.cfg.printdbg(f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})', flush=True)
+                                agedbytes[i]+=row[9]
             if numhotspots > 0:
                 shutil.copyfile(tmpcsv.name,mycsv)
 
