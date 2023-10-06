@@ -803,6 +803,16 @@ class Archiver:
                 else:
                     pwalkcsv = self.args.pwalkcsv
                 with tempfile.NamedTemporaryFile() as tmpfile3:
+                    # copy/backup pwalk csv file to network location 
+                    if args.pwalkcopy:
+                        print(f' Copying and cleaning {pwalkcsv} to {args.pwalkcopy}, please wait ... ', flush=True, end="")
+                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalkcsv} > {args.pwalkcopy}'
+                        self.cfg.printdbg(f' Running {mycmd} ...', flush=True)  
+                        result = subprocess.run(mycmd, shell=True)
+                        print('Done!', flush=True)
+                        if result.returncode != 0:
+                            print(f"File conversion failed: {mycmd}")
+                            return False                        
                     # removing all files from pwalk output, keep only folders
                     mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {tmpfile3.name}'
                     self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
@@ -838,10 +848,6 @@ class Archiver:
             
             # Get the column names
             header = con.execute(sql_query).description
-            if args.pwalkcopy:
-                print(f' Copying {tmpfile.name} to {args.pwalkcopy}, please wait ... ', flush=True, end="")            
-                shutil.copyfile(tmpfile.name,args.pwalkcopy)
-                print('Done!', flush=True)
 
         totalbytes=0
         agedbytes=[]
