@@ -876,7 +876,7 @@ class Archiver:
                         writer.writerow(row)
                         numhotspots+=1
                         totalbytes+=row[9]
-                    for i in range(0,len(daysaged)):
+                    for i in range(0,len(daysaged)-1):
                         if row[1] > daysaged[i]:
                             agedbytes[i]+=row[9]
             if numhotspots > 0:
@@ -891,7 +891,7 @@ class Archiver:
                 '''), flush=True)
             lastagedbytes=0
             print(f'Histogram for {len(rows)} total folders processed:', flush=True)
-            for i in range(0,len(daysaged)):
+            for i in range(0,len(daysaged)-1):
                 if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
                     # dedented multi-line removing \n
                     print(textwrap.dedent(f'''  
