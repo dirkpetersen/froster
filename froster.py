@@ -62,7 +62,7 @@ def main():
     if args.subcmd in ['config', 'cnf']:
         subcmd_config(args, cfg, aws)
     elif args.subcmd in ['index', 'ind']:
-        subcmd_index(args, cfg, arch, aws)
+        subcmd_index(args, cfg, arch)
     elif args.subcmd in ['archive', 'arc']:
         subcmd_archive(args, cfg, arch, aws)
     elif args.subcmd in ['restore', 'rst']:
