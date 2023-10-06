@@ -878,8 +878,8 @@ class Archiver:
                         totalbytes+=row[9]
                     for i in range(0,len(daysaged)):
                         if row[1] > daysaged[i]:
-                                if i == 0:
-                                    self.cfg.printdbg(f'  {row[5]} has not been accessed for {row[1]} days', flush=True)
+                            if i == 0:
+                                self.cfg.printdbg(f'  {row[5]} has not been accessed for {row[1]} days', flush=True)
                             agedbytes[i]+=row[9]
             if numhotspots > 0:
                 shutil.copyfile(tmpcsv.name,mycsv)
