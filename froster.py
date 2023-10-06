@@ -876,8 +876,10 @@ class Archiver:
                         writer.writerow(row)
                         numhotspots+=1
                         totalbytes+=row[9]
-                    for i in range(0,len(daysaged)-1):
+                    for i in range(0,len(daysaged)):
                         if row[1] > daysaged[i]:
+                                if i == 0:
+                                    self.cfg.printdbg(f'  {row[5]} has not been accessed for {row[1]} days', flush=True)
                             agedbytes[i]+=row[9]
             if numhotspots > 0:
                 shutil.copyfile(tmpcsv.name,mycsv)
@@ -891,7 +893,7 @@ class Archiver:
                 '''), flush=True)
             lastagedbytes=0
             print(f'Histogram for {len(rows)} total folders processed:', flush=True)
-            for i in range(0,len(daysaged)-1):
+            for i in range(0,len(daysaged)):
                 if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
                     # dedented multi-line removing \n
                     print(textwrap.dedent(f'''  
