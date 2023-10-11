@@ -880,6 +880,7 @@ class Archiver:
                         for i in range(0,len(daysaged)):
                             if row[1] > daysaged[i]:
                                 if i == 0:
+                                    # Is this really 15 years ?
                                     self.cfg.printdbg(f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})', flush=True)
                                 agedbytes[i]+=row[9]
             if numhotspots > 0:
