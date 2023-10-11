@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.8.7'
+__version__ = '0.8.8'
 
 def main():
         
@@ -352,7 +352,7 @@ def subcmd_archive(args,cfg,arch,aws):
 
     if args.debug:
         print ("archive:",args.cores, args.awsprofile, args.noslurm,
-                args.larger, args.age, args.agemtime, args.folders)
+                args.larger, args.older, args.agemtime, args.folders)
     fld = '" "'.join(args.folders)
     if args.debug:
         print (f'default cmdline: froster.py archive "{fld}"')
@@ -2624,7 +2624,7 @@ class AWSBoto:
             s3.delete_object(Bucket=bucket_name, Key=test_object_key)
             #print(f"Successfully deleted test object from {bucket_name}")
             return True
-        except ClientError as e:
+        except botocore.exceptions.ClientError as e:
             print(f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
             return False
         
@@ -2637,7 +2637,7 @@ class AWSBoto:
             print(f"Cannot create bucket '{bucket_name}' with these credentials")
             print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
             return False 
-        region = self.get_aws_region(profile)
+        region = self.cfg.get_aws_region(profile)
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
         s3_client = session.client('s3', endpoint_url=ep_url)        
@@ -2700,7 +2700,7 @@ class AWSBoto:
                 ServerSideEncryptionConfiguration=encryption_configuration
             )            
             print(f"Applied AES256 encryption to S3 bucket '{bucket_name}'")    
-        except ClientError as e:
+        except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'InvalidBucketName':
                 print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
@@ -2721,17 +2721,17 @@ class AWSBoto:
     
     def _check_s3_credentials(self, profile=None, verbose=False):
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        #try:
-        if verbose or self.args.debug:
-            self.cfg.printdbg(f'  Checking credentials for profile "{profile}" ... ', end='')            
-        ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
-        s3_client = session.client('s3', endpoint_url=ep_url)            
-        s3_client.list_buckets()
-        if verbose or self.args.debug:
-            print('Done.')
-        return True
         try:
-            pass
+            if verbose or self.args.debug:
+                self.cfg.printdbg(f'  Checking credentials for profile "{profile}" ... ', end='')            
+            ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+            s3_client = session.client('s3', endpoint_url=ep_url)            
+            s3_client.list_buckets()
+            if verbose or self.args.debug:
+                print('Done.')                
+        #return True
+        #try:
+        #    pass
         except botocore.exceptions.NoCredentialsError:
             print("No AWS credentials found. Please check your access key and secret key.")
         except botocore.exceptions.EndpointConnectionError:
@@ -2756,10 +2756,10 @@ class AWSBoto:
             print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
             return False
         except Exception as e:
-            print(f"An unexpected in _check_s3_credentials with profile {profile}: {e}")
-            return False
+            print(f"An unexpected Error in _check_s3_credentials with profile {profile}: {e}")
+            sys.exit(1)
+        return True
     
-
     def _get_s3_data_size(self, folders, profile=None):
         """
         Get the size of data in GiB aggregated from multiple 
@@ -4381,8 +4381,10 @@ class ConfigManager:
             self.replicate_ini(f'profile {profile}',self.awsconfigfile,self.awsconfigfileshr)
         return True
     
-    def get_aws_s3_endpoint_url(self, profile='default'):
+    def get_aws_s3_endpoint_url(self, profile=None):
         # non boto3 method, use _get_aws_s3_session_endpoint_url instead
+        if not profile:
+            profile=self.awsprofile
         config = configparser.ConfigParser()
         config.read(os.path.expanduser('~/.aws/config'))
         prof = 'profile ' + profile
