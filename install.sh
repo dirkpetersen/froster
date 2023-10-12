@@ -68,10 +68,10 @@ mkdir -p ~/.local/bin
 export VIRTUAL_ENV_DISABLE_PROMPT=1
 # Check if 'ensurepip' is available, or use old virtualenv
 if python3 -c "import ensurepip" &> /dev/null; then
-    python3 -m venv ~/.local/share/froster
+  python3 -m venv ~/.local/share/froster
 else
-    python3 -m pip install --upgrade virtualenv
-    python3 -m virtualenv ~/.local/share/froster
+  python3 -m pip install --upgrade virtualenv
+  python3 -m virtualenv ~/.local/share/froster
 fi
 source ~/.local/share/froster/bin/activate
 echo "Done!"
@@ -84,6 +84,15 @@ echo "Done!"
 
 froster_update
 
+~/.local/bin/froster --help
+echo -e "\n\n  Froster installed! Run 'froster --help' or this order of commands:\n"
+echo "  froster config"
+echo "  froster index /your/folder"
+echo "  froster archive"
+                        
+deactivate
+
+# check if there is a folder in PATH inside my home directory 
 DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
 
 if [[ -d ${DIR_IN_PATH} ]]; then
@@ -92,15 +101,13 @@ if [[ -d ${DIR_IN_PATH} ]]; then
   fi
 else
   # "No folders in your home folder are in PATH, so unfortunately we need to clutter your ~/.bashrc
+  HOME=~
   if ! grep -q "export PATH=\$PATH:~/.local/bin" "${HOME}/.bashrc"; then
-      # Append the export statement to .bashrc
-      echo "export PATH=\$PATH:~/.local/bin" >> "${HOME}/.bashrc"
-      echo " ~/.local/bin added to PATH in .bashrc"
-      echo " Please logout/login again or run: source ~/.bashrc"
-  fi  
+    # Append the export statement to .bashrc
+    echo "export PATH=\$PATH:~/.local/bin" >> "${HOME}/.bashrc"
+    echo ""
+    echo " ~/.local/bin added to PATH in .bashrc"
+    echo " Please logout/login again or run: source ~/.bashrc"
+  fi
 fi
-froster --help
-echo -e "\n\n  Froster installed! Run 'froster --help' or this order of commands:\n"
-echo "  froster config"
-echo "  froster index /your/folder"
-echo "  froster archive"
+
