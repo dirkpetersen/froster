@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.8.8'
+__version__ = '0.8.9'
 
 def main():
         
@@ -2828,8 +2828,9 @@ class AWSBoto:
         cmdline = 'froster ' + " ".join(map(shlex.quote, cmdlist[1:])) #original cmdline
         if not self.args.folders[0] in cmdline:
             folders = '" "'.join(self.args.folders)
-            cmdline=f'{cmdline} "{folders}"'
+            cmdline=f'nohup {cmdline} "{folders}" &'
         ### end block 
+        print(f"Starting job '{cmdline}' on {ip} ... ")
         self.ssh_execute('ec2-user', ip, f"'{cmdline}'")
         print(f"'{cmdline}' executed on {ip}")
         self.send_email_ses('', '', 'Froster restore on EC2', f'this command line was executed on host {ip}:\n{cmdline}')
@@ -2855,6 +2856,12 @@ class AWSBoto:
                     policy_arn = policy['Arn']
                     break
             print(f'Policy {pol_name} already exists')
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+            else:
+                print(f'Client Error: {e}')
         except Exception as e:
             print('Other Error:', e)
         return policy_arn
@@ -2962,29 +2969,47 @@ class AWSBoto:
             )
         except iam.exceptions.EntityAlreadyExistsException:        
             print (f'Role {role_name} already exists.') 
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+            else:
+                print(f'Client Error: {e}')
         except Exception as e:            
-            print('Error:', e)
+            print('Other Error:', e)
         
         # 2. Attach permissions policies to the IAM role
         cost_explorer_policy = "arn:aws:iam::aws:policy/AWSBillingReadOnlyAccess"
         ses_policy = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
-        
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=cost_explorer_policy
-        )
-        
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=ses_policy
-        )
 
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=destruct_policy_arn
-        )
-
+        try:
         
+            iam.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=cost_explorer_policy
+            )
+            
+            iam.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=ses_policy
+            )
+
+            iam.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=destruct_policy_arn
+            )
+        except iam.exceptions.PolicyNotAttachableException as e:
+            print(f"Policy {e.policy_arn} is not attachable. Please check your permissions.")
+            return False
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+            else:
+                print(f'Client Error: {e}')
+        except Exception as e:
+            print('Other Error:', e)
+            return False
         # 3. Create an instance profile and associate it with the role
         instance_profile_name = "FrosterEC2Profile"
         try:
@@ -2998,8 +3023,15 @@ class AWSBoto:
         except iam.exceptions.EntityAlreadyExistsException:
             print (f'Profile {instance_profile_name} already exists.')
             return instance_profile_name
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+            else:
+                print(f'Client Error: {e}')
+            return None
         except Exception as e:            
-            print('Error:', e)
+            print('Other Error:', e)
             return None
         
         # Give AWS a moment to propagate the changes
@@ -3247,8 +3279,15 @@ class AWSBoto:
                     }
                 ]
             )[0]
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+            else:
+                print(f'Client Error: {e}')
+            sys.exit(1)
         except Exception as e:
-            print('Error: {e}')
+            print('Other Error: {e}')
             sys.exit(1)
     
         # Use a waiter to ensure the instance is running before trying to access its properties
@@ -3350,9 +3389,13 @@ class AWSBoto:
         # Make the describe instances call
         try:
             response = ec2.describe_instances(Filters=filters)        
-        except botocore.exceptions.ClientError as e: 
-            print(f'Error: {e}')
-            return []
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+            else:
+                print(f'Client Error: {e}')
+            return []            
         #An error occurred (AuthFailure) when calling the DescribeInstances operation: AWS was not able to validate the provided access credentials
         ilist = []    
         # Extract IP addresses
@@ -3431,19 +3474,40 @@ class AWSBoto:
         else:
             ses_verify_requests_sent.append(ret)
 
-        response = ses.list_verified_email_addresses()
-        verified_email_addr = response.get('VerifiedEmailAddresses', [])
+        verified_email_addr = []
+        try:
+            response = ses.list_verified_email_addresses()
+            verified_email_addr = response.get('VerifiedEmailAddresses', [])
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
+            else:
+                print(f'Client Error: {e}')
+        except Exception as e:
+            print(f'Other Error: {e}')
     
         checks = [sender, to]
         checks = list(set(checks)) # remove duplicates
         checked = []
 
-        for check in checks:
-            if check not in verified_email_addr and check not in ses_verify_requests_sent:
-                response = ses.verify_email_identity(EmailAddress=check)
-                checked.append(check)
-                print(f'{check} was used for the first time, verification email sent.')
-                print('Please have {check} check inbox and confirm email from AWS.\n')
+        try:
+            for check in checks:
+                if check not in verified_email_addr and check not in ses_verify_requests_sent:
+                    response = ses.verify_email_identity(EmailAddress=check)
+                    checked.append(check)
+                    print(f'{check} was used for the first time, verification email sent.')
+                    print('Please have {check} check inbox and confirm email from AWS.\n')
+
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
+            else:
+                print(f'Client Error: {e}')
+        except Exception as e:
+            print(f'Other Error: {e}')
+        
         self.cfg.write('cloud', 'ses_verify_requests_sent', checked)
         try:
             response = ses.send_email(
@@ -3464,11 +3528,16 @@ class AWSBoto:
             )
             print(f'Sent email "{subject}" to {to}!')
         except botocore.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == 'MessageRejected':
+            error_code = e.response['Error']['Code']
+            if error_code == 'MessageRejected':
                 print(f'Message was rejected, Error: {e}')
+            elif error_code == 'AccessDenied':
+                print(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
+            else:
+                print(f'Client Error: {e}')
             return False
         except Exception as e:
-            print(f'Error: {e}')
+            print(f'Other Error: {e}')
             return False
         return True
 
@@ -3568,7 +3637,7 @@ class AWSBoto:
         except iam.exceptions.InvalidInputException as e:
             print(f"Invalid input: {e}")
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"Other Error: {e}")
 
 
     def _ec2_create_iam_self_destruct_role(self, profile):
@@ -3641,7 +3710,7 @@ class AWSBoto:
         try:
             token_response = requests.put(token_url, headers=token_headers, timeout=2)
         except Exception as e:
-            print(f'Error: {e}')
+            print(f'Other Error: {e}')
             return ""
         token = token_response.text
 
@@ -3650,7 +3719,7 @@ class AWSBoto:
         try:
             response = requests.get(base_url + metadata_entry, headers=headers, timeout=2)
         except Exception as e:
-            print(f'Error: {e}')
+            print(f'Other Error: {e}')
             return ""            
 
         if response.status_code != 200:
@@ -3714,7 +3783,7 @@ class AWSBoto:
                 return True  # Users are logged in
             return False
         except Exception as e:
-            print(f'Error: {e}')
+            print(f'Other Error: {e}')
             return True
         
     def _monitor_is_idle(self, interval=60, min_idle_cnt=72):
