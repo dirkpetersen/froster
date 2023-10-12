@@ -1059,7 +1059,7 @@ class Archiver:
             cmdline += f'"{row[5]}" \\\n'
 
         print(f'\nRun this command to archive all selected folders in batch mode:\n')   
-        print(f'froster archive --dry-run \\\n{cmdline[:-3]}\n')
+        print(f'froster archive \\\n{cmdline[:-3]}\n') # add --dry-run later
         print(f'Total space to archive: {format(round(totalspace, 3),",")} GiB\n')
 
         # Don't forget to close the connection when done

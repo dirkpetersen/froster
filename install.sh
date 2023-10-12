@@ -91,11 +91,16 @@ if [[ -d ${DIR_IN_PATH} ]]; then
     ln -s ~/.local/bin/froster ${DIR_IN_PATH}/froster
   fi
 else
-  echo "No folders in PATH in your home folder. Please add ~/.local/bin to your PATH and try again."
+  # "No folders in your home folder are in PATH, so unfortunately we need to clutter your ~/.bashrc
+  if ! grep -q "export PATH=\$PATH:~/.local/bin" "${HOME}/.bashrc"; then
+      # Append the export statement to .bashrc
+      echo "export PATH=\$PATH:~/.local/bin" >> "${HOME}/.bashrc"
+      echo " ~/.local/bin added to PATH in .bashrc"
+      echo " Please logout/login again or run: source ~/.bashrc"
+  fi  
 fi
 froster --help
 echo -e "\n\n  Froster installed! Run 'froster --help' or this order of commands:\n"
 echo "  froster config"
 echo "  froster index /your/folder"
 echo "  froster archive"
-
