@@ -8,7 +8,7 @@ archiving many Terabytes of data on large (HPC) systems.
 import sys, os, argparse, json, configparser, csv, platform, asyncio
 import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time
 import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex
-import shutil, tempfile, glob,  subprocess, itertools, socket, inspect
+import shutil, tempfile, glob, subprocess, itertools, socket, inspect
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp
 # stuff from pypi
@@ -304,6 +304,7 @@ def subcmd_index(args,cfg,arch):
     if not args.folders:
         print('you must point to at least one folder in your command line')
         return False
+    args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
     if args.pwalkcsv and not os.path.exists(args.pwalkcsv):
         print(f'File "{args.pwalkcsv}" does not exist.')
         return False
@@ -406,7 +407,9 @@ def subcmd_archive(args,cfg,arch,aws):
             return False
         
         args.folders.append(retline[5])
-        
+    else:
+        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)                
+
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
         return False
@@ -489,6 +492,8 @@ def subcmd_restore(args,cfg,arch,aws):
             args.awsprofile = cfg.awsprofile
             cfg._set_env_vars(cfg.awsprofile)
             cfg.printdbg("AWS profile:", cfg.awsprofile)
+    else:
+        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
@@ -603,6 +608,8 @@ def subcmd_delete(args,cfg,arch,aws):
             cfg.awsprofile = retline[2]
             args.awsprofile = cfg.awsprofile
             cfg._set_env_vars(cfg.awsprofile)
+    else:
+        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
@@ -646,6 +653,8 @@ def subcmd_mount(args,cfg,arch,aws):
             cfg.awsprofile = retline[2]
             args.awsprofile = cfg.awsprofile
             cfg._set_env_vars(cfg.awsprofile)      
+    else:
+        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
@@ -696,7 +705,7 @@ def subcmd_umount(args, cfg):
     if len(mounts) == 0:
         print("No Rclone mounts on this computer.")
         return False
-    folders = args.folders
+    folders = cfg.replace_symlinks_with_realpaths(args.folders)
     if len(folders) == 0:
         TABLECSV="\n".join(mounts)
         TABLECSV="Mountpoint\n"+TABLECSV
@@ -1297,6 +1306,7 @@ class Archiver:
                 # if there is a restore that needs to be deleted a second time
                 # make sure that all files extracted from the archive are deleted again 
                 tarred_files = self._get_tar_content(root)
+                archived_files = []
                 if len(tarred_files) > 0:
                     archived_files = list(set(delete_files + tarred_files))
                 deleted_tar = self._delete_tar_content(root, tarred_files) 
@@ -4121,6 +4131,19 @@ class ConfigManager:
             return os.path.join(section_path, entry)
         else:
             return os.path.join(self.config_root, entry)
+
+    def replace_symlinks_with_realpaths(self, folders):
+        cleaned_folders = []        
+        for folder in folders:
+            try:
+                # Split the path into its components
+                folder = os.path.expanduser(folder)
+                #print('expanduser folder:', folder)
+                #print('real path:', os.path.realpath(folder))
+                cleaned_folders.append(os.path.realpath(folder))
+            except Exception as e:
+                print(f"Error processing '{folder}': {e}")           
+        return cleaned_folders            
         
     def printdbg(self, *args, **kwargs):
         # use inspect to get the name of the calling function
