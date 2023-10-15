@@ -4799,18 +4799,20 @@ def parse_arguments():
     parser_archive.add_argument('--larger', '-l', dest='larger', type=int, action='store', default=0, 
         help=textwrap.dedent(f'''
             Archive folders larger than <GiB>. This option
-            works in conjunction with --older <days>. If both
-            options are set froster will automatically archive
-            all folder meeting these criteria, without prompting.
+            works in conjunction with --older <days>. If both 
+            options are set froster will print a command that 
+            allows you to archive all matching folders at once.
         '''))
     parser_archive.add_argument('--older', '-o', dest='older', type=int, action='store', default=0, 
          help=textwrap.dedent(f'''
-            Archive folders older than <days>. This option
-            works in conjunction with --larger <GiB>. If both
-            options are set froster will automatically archive
-            all folder meeting these criteria without prompting.            
+            Archive folders that have not been accessed more than 
+            <days>. (optionally set --mtime to select folders that
+            have not been modified more than <days>). This option
+            works in conjunction with --larger <GiB>. If both 
+            options are set froster will print a command that 
+            allows you to archive all matching folders at once.
         '''))
-    parser_archive.add_argument( '--age-mtime', '-m', dest='agemtime', action='store_true', default=False,
+    parser_archive.add_argument( '--mtime', '-m', dest='agemtime', action='store_true', default=False,
         help="Use modified file time (mtime) instead of accessed time (atime)")
     parser_archive.add_argument( '--recursive', '-r', dest='recursive', action='store_true', default=False,
         help="Archive the current folder and all sub-folders")
