@@ -548,7 +548,7 @@ def subcmd_restore(args,cfg,arch,aws):
                     print(f'Check Job Output:')
                     print(f' tail -f froster-download-{label}-{jobid}.out')
                 else:
-                    print(f'\nGlacier retrievals pending, run this again in up to 12h\n')
+                    print(f'\nGlacier retrievals pending, run this again in 5-12 hours\n')
                                     
     else:
         se = SlurmEssentials(args, cfg)
@@ -670,6 +670,9 @@ def subcmd_mount(args,cfg,arch,aws):
     rclone = Rclone(args,cfg)
     for fld in args.folders:
         fld = fld.rstrip(os.path.sep)
+        if fld == os.path.realpath(os.getcwd()):
+            print(f' Cannot mount current working directory {fld}')
+            continue
         # get archive storage location
         rowdict = arch.archive_json_get_row(fld)
         if rowdict == None:
@@ -779,7 +782,7 @@ class Archiver:
         self.url = 'https://api.reporter.nih.gov/v2/projects/search'
         self.grants = []
 
-    def index(self, pwalkfolder):
+    def index(self, pwalkfolder): 
 
         # move down to class 
         daysaged=[5475,3650,1825,1095,730,365,90,30]
@@ -961,7 +964,8 @@ class Archiver:
         print ('  Copying files to archive ... ', end="")
         ret = rclone.copy(source,target,'--max-depth', '1', '--links',
                         '--exclude', '.froster.md5sum', 
-                        '--exclude', '.froster-restored.md5sum', 
+                        '--exclude', '.froster-restored.md5sum',
+                        '--exclude', 'Froster.allfiles.csv', 
                         '--exclude', 'Where-did-the-files-go.txt'
                         )
         self.cfg.printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
@@ -985,7 +989,17 @@ class Archiver:
         #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019, 
         #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found', 
         #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0, 
-        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}        
+        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}   
+        
+
+        # upload of Froster.allfiles.csv to INTELLIGENT_TIERING 
+        # 
+        allf_s = os.path.join(source,'Froster.allfiles.csv')
+        allf_d = os.path.join(self.cfg.archiveroot, 
+                            source.lstrip(os.path.sep),
+                            'Froster.allfiles.csv')
+        if os.path.exists(allf_s):
+            self._upload_file_to_s3(allf_s, self.cfg.bucket, allf_d)
 
         ret = rclone.checksum(hashfile,target,'--max-depth', '1')
         self.cfg.printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
@@ -1144,7 +1158,7 @@ class Archiver:
             tar_path=os.path.join(root,'Froster.smallfiles.tar')
             csv_path=os.path.join(root,'Froster.allfiles.csv')
             if os.path.exists(tar_path):
-                print('{tar_path} alreadly exists, skipping folder {root}')
+                print(f'Froster.smallfiles.tar alreadly exists, skipping folder {root}')
                 continue
             if not self._is_small_file_in_dir(root,smallsize):
                 continue             
@@ -1409,7 +1423,7 @@ class Archiver:
         target = folder
         s3_storage_class = rowdict['s3_storage_class']
         
-        buc, pre, recur, isglacier = self.archive_get_bucket_info(source)
+        buc, pre, recur, isglacier = self.archive_get_bucket_info(target)
         if isglacier:
             #sps = source.split('/', 1)
             #bk = sps[0].replace(':s3:','')
@@ -1596,7 +1610,6 @@ class Archiver:
         rowdict = self.archive_json_get_row(path_name)
         self.cfg.printdbg(f'path: {path_name} rowdict: {rowdict}')
         if rowdict == None:
-            self.cfg.printdbg('rowdict is None, why???')
             return None, None, recursive, glacier
         if 'archive_mode' in rowdict:
             if rowdict['archive_mode'] == "Recursive":
@@ -1612,6 +1625,7 @@ class Archiver:
     def archive_json_get_row(self, path_name):
         # get an archive record
         if not os.path.exists(self.archive_json):
+            self.cfg.printdbg(f'archive_json_get_row: {self.archive_json} does not exist')
             return None
         with open(self.archive_json, 'r') as file:            
             try:
@@ -1633,6 +1647,7 @@ class Archiver:
                 if trypath in data:
                      data[trypath]['subdir'] = path_name
                      return data[trypath]
+            self.cfg.printdbg(f'archive_json_get_row: {path_name} not found in {self.archive_json}')
             return None
 
     def archive_json_get_csv(self, columns):
@@ -1841,6 +1856,22 @@ class Archiver:
         s3 = boto3.resource('s3')
         s3.Bucket(bucket_name).download_file(object_key, local_path)
         print(f'Downloaded {object_key} to {local_path}.')
+
+    def _upload_file_to_s3(self, filename, bucket, object_name=None, profile=None):
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        s3 = session.client('s3')
+        # If S3 object_name was not specified, use the filename
+        if object_name is None:
+            object_name = os.path.basename(filename)
+        try:
+            # Upload the file with Intelligent-Tiering storage class
+            s3.upload_file(filename, bucket, object_name, ExtraArgs={'StorageClass': 'INTELLIGENT_TIERING'})
+            self.cfg.printdbg(f"File {object_name} uploaded to Intelligent-Tiering storage class!")
+            #print(f"File {filename} uploaded successfully to Intelligent-Tiering storage class!")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return False
+        return True
 
     # initiate_restore(bucket_name, object_key, restore_days)    
     # while not check_restore_status(bucket_name, object_key):
@@ -4012,6 +4043,8 @@ class AWSBoto:
 
         return monthly_cost, monthly_unit, daily_costs_by_instance, user_monthly_cost, \
                user_monthly_unit, user_daily_cost, user_daily_unit, user_name
+    
+
 
 class ConfigManager:
     # we write all config entries as files to '~/.config'
@@ -4032,9 +4065,10 @@ class ConfigManager:
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
         self.awsconfigfileshr = os.path.join(self.config_root, 'aws_config')
         self.bucket = self.read('general','bucket')
+        self.archiveroot = self.read('general','archiveroot')
         self.archivepath = os.path.join( 
              self.bucket,
-             self.read('general','archiveroot'))
+             self.archiveroot,)
         self.awsprofile = os.getenv('AWS_PROFILE', 'default')
         profs = self.get_aws_profiles()
         if "aws" in profs:
