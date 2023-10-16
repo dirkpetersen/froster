@@ -1265,11 +1265,11 @@ class Archiver:
 
         tail=''
         if folder != rowdict['local_folder']:
-            # try to restore from subdir, we need to check if archived recursively
+            # try to delete from subdir, we need to check if archived recursively
             if not recursive:
                 print(textwrap.dedent(f'''\n
-                    You are trying to restore a sub folder but the parent archive 
-                    was not saved recursively. You can try restoring this folder:
+                    You are trying to remove a sub folder but the parent archive 
+                    was not saved recursively. You can try remove this folder:
                     {rowdict['local_folder']}
                     '''))
                 return False
@@ -1406,9 +1406,12 @@ class Archiver:
         rowdict = self.archive_json_get_row(folder)
         if rowdict == None:
             return False
-
         tail=''
+        if 'archive_mode' in rowdict:
+            if rowdict['archive_mode'] == "Recursive":
+                recursive = True        
         if folder != rowdict['local_folder']:
+            self.cfg.printdbg(f"rowdict[local_folder]: {rowdict['local_folder']}")
             # try to restore from subdir, we need to check if archived recursively
             if not recursive:
                 print(textwrap.dedent(f'''\n
@@ -1421,18 +1424,18 @@ class Archiver:
 
         source = rowdict['archive_folder']+tail+'/'
         target = folder
-        s3_storage_class = rowdict['s3_storage_class']
-        
+               
         buc, pre, recur, isglacier = self.archive_get_bucket_info(target)
         if isglacier:
             #sps = source.split('/', 1)
             #bk = sps[0].replace(':s3:','')
             #pr = f'{sps[1]}/' # trailing slash ensured 
-            trig, rest, done = self._glacier_restore(buc, pre, 
+            trig, rest, done, notg = self._glacier_restore(buc, pre, 
                     self.args.days, self.args.retrieveopt, recur)
             print ('Triggered Glacier retrievals:',len(trig))
             print ('Currently retrieving from Glacier:',len(rest))
-            print ('Not in Glacier:',len(done))
+            print ('Retrieved from Glacier:',len(done))
+            print ('Not in Glacier:',len(notg))
             if len(trig) > 0 or len(rest) > 0:
                 # glacier is still ongoing, return # of pending ops                
                 return len(trig)+len(rest)
@@ -1531,6 +1534,85 @@ class Archiver:
                 continue
         return True
 
+    def _glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk", recursive=False):
+        #this is dropping back to default creds, need to fix
+        #print("AWS_ACCESS_KEY_ID:", os.environ['AWS_ACCESS_KEY_ID'])
+        #print("AWS_PROFILE:", os.environ['AWS_PROFILE'])
+        glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
+        try:
+            # not needed here as profile comes from env
+            #session = boto3.Session(profile_name=profile)
+            #s3 = session.client('s3')
+            s3 = boto3.client('s3')
+            paginator = s3.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f"Access denied for bucket '{bucket}'")
+                print('Check your permissions and/or credentials.')
+            else:
+                print(f"An error occurred: {e}")
+            return [], [], []
+        triggered_keys = []
+        restoring_keys = []
+        restored_keys = []
+        not_glacier_keys = []
+        for page in pages:
+            if not 'Contents' in page:
+                continue
+            for obj in page['Contents']:
+                object_key = obj['Key']
+                # Check if there are additional slashes after the prefix,
+                # indicating that the object is in a subfolder.
+                remaining_path = object_key[len(prefix):]
+                if '/' in remaining_path and not recursive:
+                    continue
+                header = s3.head_object(Bucket=bucket, Key=object_key)
+                if 'StorageClass' in header:
+                    if not header['StorageClass'] in glacier_classes:
+                        not_glacier_keys.append(object_key)
+                        continue
+                else:
+                    continue 
+                if 'Restore' in header:
+                    if 'ongoing-request="true"' in header['Restore']:
+                        restoring_keys.append(object_key)
+                        continue
+                if 'Restore' in header:
+                    if 'ongoing-request="false"' in header['Restore']:
+                        restored_keys.append(object_key)
+                        continue
+                try:
+                    s3.restore_object(
+                        Bucket=bucket,
+                        Key=object_key,
+                        RestoreRequest={
+                            'Days': keep_days,
+                            'GlacierJobParameters': {
+                                'Tier': ret_opt
+                            }
+                        }
+                    )
+                    triggered_keys.append(object_key)
+                    self.cfg.printdbg(f'Restore request initiated for {object_key} using {ret_opt} retrieval.')
+                except botocore.exceptions.ClientError as e:
+                    if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
+                        print(f'Restore is already in progress for {object_key}. Skipping...')
+                        restoring_keys.append(object_key)
+                    else:
+                        print(f'Error occurred for {object_key}: {e}')                    
+                except:
+                    print(f'Restore request for {object_key} failed.')
+        return triggered_keys, restoring_keys, restored_keys, not_glacier_keys
+
+    # def _glacier_restore_status(self, bucket_name, object_key):
+    #     s3 = boto3.client('s3')
+    #     response = s3.head_object(Bucket=bucket_name, Key=object_key)
+    #     print('head response', response)
+    #     if 'Restore' in response:
+    #         return response['Restore'].find('ongoing-request="false"') > -1
+    #     return False
     
     def md5sumex(self, file_path):
         try:
@@ -1603,12 +1685,12 @@ class Archiver:
         with open(self.archive_json, 'w') as file:
             json.dump(data, file, indent=4)
     
-    def archive_get_bucket_info(self, path_name):
+    def archive_get_bucket_info(self, folder):
         # returns bucket(str), prefix(str), recursive(bool), glacier(bool) 
         recursive = False
         glacier = False
-        rowdict = self.archive_json_get_row(path_name)
-        self.cfg.printdbg(f'path: {path_name} rowdict: {rowdict}')
+        rowdict = self.archive_json_get_row(folder)
+        self.cfg.printdbg(f'path: {folder} rowdict: {rowdict}')
         if rowdict == None:
             return None, None, recursive, glacier
         if 'archive_mode' in rowdict:
@@ -1779,78 +1861,6 @@ class Archiver:
     #             yield prefix['Prefix']
 
 
-    def _glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk", recursive=False):
-        #this is dropping back to default creds, need to fix
-        #print("AWS_ACCESS_KEY_ID:", os.environ['AWS_ACCESS_KEY_ID'])
-        #print("AWS_PROFILE:", os.environ['AWS_PROFILE'])
-        glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
-        try:
-            # not needed here as profile comes from env
-            #session = boto3.Session(profile_name=profile)
-            #s3 = session.client('s3')
-            s3 = boto3.client('s3')
-            paginator = s3.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'AccessDenied':
-                print(f"Access denied for bucket '{bucket}'")
-                print('Check your permissions and/or credentials.')
-            else:
-                print(f"An error occurred: {e}")
-            return [], [], []
-        triggered_keys = []
-        restoring_keys = []
-        restored_keys = []
-        for page in pages:
-            for obj in page['Contents']:
-                object_key = obj['Key']
-                # Check if there are additional slashes after the prefix,
-                # indicating that the object is in a subfolder.
-                remaining_path = object_key[len(prefix):]
-                if '/' in remaining_path and not recursive:
-                    continue
-                header = s3.head_object(Bucket=bucket, Key=object_key)
-                if 'StorageClass' in header:
-                    if not header['StorageClass'] in glacier_classes:
-                        restored_keys.append(object_key)
-                        continue
-                else:
-                    continue 
-                if 'Restore' in header:
-                    if 'ongoing-request="true"' in header['Restore']:
-                        restoring_keys.append(object_key)
-                        continue
-                try:
-                    s3.restore_object(
-                        Bucket=bucket,
-                        Key=object_key,
-                        RestoreRequest={
-                            'Days': keep_days,
-                            'GlacierJobParameters': {
-                                'Tier': ret_opt
-                            }
-                        }
-                    )
-                    triggered_keys.append(object_key)
-                    self.cfg.printdbg(f'Restore request initiated for {object_key} using {ret_opt} retrieval.')
-                except botocore.exceptions.ClientError as e:
-                    if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
-                        print(f'Restore is already in progress for {object_key}. Skipping...')
-                        restoring_keys.append(object_key)
-                    else:
-                        print(f'Error occurred for {object_key}: {e}')                    
-                except:
-                    print(f'Restore request for {object_key} failed.')
-        return triggered_keys, restoring_keys, restored_keys
-
-    # def _glacier_restore_status(self, bucket_name, object_key):
-    #     s3 = boto3.client('s3')
-    #     response = s3.head_object(Bucket=bucket_name, Key=object_key)
-    #     print('head response', response)
-    #     if 'Restore' in response:
-    #         return response['Restore'].find('ongoing-request="false"') > -1
-    #     return False
 
     def download_restored_file(self, bucket_name, object_key, local_path):
         s3 = boto3.resource('s3')
@@ -2784,6 +2794,7 @@ class AWSBoto:
                 print(f"The time difference between S3 storage and your computer is too high:\n{e}")
             elif error_code == 'InvalidAccessKeyId':                
                 print(f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
+                print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
             elif error_code == 'SignatureDoesNotMatch':                
                 if "Signature expired" in str(e): 
                     print(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
@@ -2791,10 +2802,11 @@ class AWSBoto:
                 else:
                     print(f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")         
             elif error_code == 'InvalidClientTokenId':
-                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")                
+                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
+                print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")                
             else:
                 print(f"Error validating credentials for profile {profile}: {e}")
-            print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
+                print(f"Fix your credentials in ~/.aws/credentials for profile {profile}")
             return False
         except Exception as e:
             print(f"An unexpected Error in _check_s3_credentials with profile {profile}: {e}")

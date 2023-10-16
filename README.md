@@ -377,12 +377,12 @@ dp@grammy:~$ froster restore
 Restoring folder /home/dp/csv, please wait ...
 Triggered Glacier retrievals: 3
 Currently retrieving from Glacier: 0
+Retrieved from Glacier: 0
 Not in Glacier: 0
-
-Glacier retrievals pending, run this again in up to 12h
+Glacier retrievals pending, run this again in 5-12h
 ```
 
-If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved, the restore to the original folder location will proceed. 
+If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved (which means both "Triggered Glacier retrievals" and "Currently retrieving from Glacier" show 0) the restore to the original folder location will proceed. 
 
 ```
 dp@grammy:~$ froster restore
