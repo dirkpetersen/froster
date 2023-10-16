@@ -480,6 +480,33 @@ froster archive --nih
 
 You can search multiple times. Once you found the grant you are looking for hit TAB and use the allow keys to select the grant and confirm with enter
 
+#### Restore to cloud machine 
+
+In some cases you may want to restore rarely needed data from Glacier to a cloud machine on EC2. The most frequent use case is to save AWS Egress fees. Use the --ec2 option with the restore sub-command to create a new ec2 instance with enough local disk space to restore your data there: `froster restore --ec2 ~/archtest/data1`
+
+```
+dp@grammy:~$ froster restore --ec2 ~/archtest/data1
+Total data in all folders: 0.00 GiB
+Policy FrosterSelfDestructPolicy already exists
+Role FrosterEC2Role already exists.
+Profile FrosterEC2Profile already exists.
+Chosen Instance: t3a.micro
+Using Image ID: ami-0a6c63f0325635301
+IAM Instance profile: FrosterEC2Profile.
+Launching instance i-08028464562bbxxxx ... please wait ...
+|████████████████████████████████████████████████--| 96.7%
+Security Group "sg-0b648aca16f7c5efd" attached.
+Instance IP: 34.222.33.xxx
+ Waiting for ssh host to become ready ...
+ will execute 'froster restore /home/dp/archtest/data1' on 34.222.33.xxx ...
+ Warning: Permanently added '34.222.33.xxx' (ECDSA) to the list of known hosts.
+ Executed bootstrap and restore script ... you may have to wait a while ...
+ but you can already login using "froster ssh"
+Sent email "Froster restore on EC2" to dp@domain.edu!
+```
+
+After the instance is created simply run `froster ssh` or `froster ssh <ip-address>` to login to the EC2 instance you created. Once logged in, use the up-arrow key to list the folder where data should be restored to.
+
 ## Command line help 
 
 Each of the sub commands has a help option, for example `froster archive --help`

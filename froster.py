@@ -2882,13 +2882,16 @@ class AWSBoto:
         ### end block 
 
         print(f" will execute '{cmdline}' on {ip} ... ")
-        bootstrap_restore += '\n' + cmdline        
+        bootstrap_restore += '\n' + cmdline
+        # once retrieved from Glacier we need to restore this 5 and 12 hours from now 
+        bootstrap_restore += '\n' + f'echo "{cmdline}" | at now + 5 hours'
+        bootstrap_restore += '\n' + f'echo "{cmdline}" | at now + 12 hours'
         ret = self.ssh_upload('ec2-user', ip,
             bootstrap_restore, "bootstrap.sh", is_string=True)
         if ret.stdout or ret.stderr:
             print(ret.stdout, ret.stderr)
         ret = self.ssh_execute('ec2-user', ip, 
-            'nohup bash bootstrap.sh < /dev/null >/dev/null 2>&1 &')
+            'nohup bash bootstrap.sh < /dev/null > bootstrap.out 2>&1 &')
         if ret.stdout or ret.stderr:
             print(ret.stdout, ret.stderr)
         print(' Executed bootstrap and restore script ... you may have to wait a while ...')
@@ -3222,15 +3225,15 @@ class AWSBoto:
         #! /bin/bash
         dnf check-update
         dnf update -y
-        dnf install -y gcc vim wget python3-pip python3-psutil
+        dnf install -y at gcc vim wget python3-pip python3-psutil
         hostnamectl set-hostname froster
         timedatectl set-timezone '{long_timezone}'
         loginctl enable-linger ec2-user
+        systemctl start atd
         dnf upgrade
-        dnf install -y mc R
+        dnf install -y mc git R
         dnf group install -y 'Development Tools'
         dnf install -y https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.06.2-561-x86_64.rpm
-        #echo 'export AWS_DEFAULT_REGION={self.cfg.aws_region}' >> ~/.bashrc
         ''').strip()
         return userdata
     
@@ -3245,6 +3248,7 @@ class AWSBoto:
         sleep 3 # give us some time to upload json to ~/.config/froster
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo '#export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
+        echo '#export AWS_DEFAULT_REGION={self.cfg.aws_region}' >> ~/.bashrc
         echo '#export TZ={long_timezone}' >> ~/.bashrc
         cd /tmp
         curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
@@ -3261,6 +3265,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
+        echo 'conda deactivate' >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
