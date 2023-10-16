@@ -3260,6 +3260,7 @@ class AWSBoto:
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
+        ~/miniconda3/bin/conda init bash
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
@@ -3372,8 +3373,11 @@ class AWSBoto:
             'Key': 'INSTANCE_ID',
             'Value': instance_id
         }
-        ec2.create_tags(Resources=[instance_id], Tags=[tag])
-
+        try:
+            ec2.create_tags(Resources=[instance_id], Tags=[tag])
+        except Exception as e:
+            print('Error creating Tags: {e}')
+            
         print(f'Launching instance {instance_id} ... please wait ...')    
         
         max_wait_time = 300  # seconds
@@ -3393,6 +3397,7 @@ class AWSBoto:
                 continue
         print('')
         instance.reload()        
+
         grpid = self._ec2_create_and_attach_security_group(instance_id, profile)
         if grpid:
             print(f'Security Group "{grpid}" attached.') 
