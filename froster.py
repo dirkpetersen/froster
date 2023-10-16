@@ -2855,20 +2855,17 @@ class AWSBoto:
         print(' Waiting for ssh host to become ready ...')
         if not self.cfg.wait_for_ssh_ready(ip):
             return False
-        ret = self.ssh_upload('ec2-user', ip, 
-            self._ec2_user_space_script(iid), "bootstrap.sh", is_string=True)
-        print(ret.stdout, ret.stderr)
-        print(' Executing bootstrap script ... please wait ...')
-        ret = self.ssh_execute('ec2-user', ip, 'bash bootstrap.sh')
-        print (ret.stdout)
-        archive_json = os.path.join(self.cfg.config_root, 'froster-archives.json')
-        ret = self.ssh_upload('ec2-user', ip, archive_json, "~/.config/froster/")
-        print(ret.stdout, ret.stderr)
 
-        # part 2, restoring .....
+        bootstrap_restore = self._ec2_user_space_script(iid)
+
+        # part 2, prep restoring .....
         for folder in args.folders:
-            self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
-            self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
+            bootstrap_restore += f'\nsudo mkdir -p "{folder}"'
+            bootstrap_restore += f'\nsudo chown ec2-user "{folder}"'
+
+            #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
+            #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
+
         ### this block may need to be moved to a function
         argl = ['--ec2', '-e']
         cmdlist = [item for item in sys.argv if item not in argl]
@@ -2881,11 +2878,33 @@ class AWSBoto:
         cmdline = 'froster ' + " ".join(map(shlex.quote, cmdlist[1:])) #original cmdline
         if not self.args.folders[0] in cmdline:
             folders = '" "'.join(self.args.folders)
-            cmdline=f'nohup {cmdline} "{folders}" &'
+            cmdline=f'{cmdline} "{folders}"'
         ### end block 
-        print(f"Starting job '{cmdline}' on {ip} ... ")
-        self.ssh_execute('ec2-user', ip, f"'{cmdline}'")
-        print(f"'{cmdline}' executed on {ip}")
+
+        print(f" will execute '{cmdline}' on {ip} ... ")
+        bootstrap_restore += '\n' + cmdline        
+        ret = self.ssh_upload('ec2-user', ip,
+            bootstrap_restore, "bootstrap.sh", is_string=True)
+        if ret.stdout or ret.stderr:
+            print(ret.stdout, ret.stderr)
+        ret = self.ssh_execute('ec2-user', ip, 
+            'nohup bash bootstrap.sh < /dev/null >/dev/null 2>&1 &')
+        if ret.stdout or ret.stderr:
+            print(ret.stdout, ret.stderr)
+        print(' Executed bootstrap and restore script ... you may have to wait a while ...')
+        print(' but you can already login using "froster ssh"')
+
+        os.system(f'echo "ls -l {self.args.folders[0]}" >> ~/.bash_history')
+        ret = self.ssh_upload('ec2-user', ip,
+            "~/.bash_history", ".bash_history")
+        if ret.stdout or ret.stderr:
+            print(ret.stdout, ret.stderr)
+
+        archive_json = os.path.join(self.cfg.config_root, 'froster-archives.json')
+        ret = self.ssh_upload('ec2-user', ip, archive_json, "~/.config/froster/")
+        if ret.stdout or ret.stderr:
+            print(ret.stdout, ret.stderr)        
+
         self.send_email_ses('', '', 'Froster restore on EC2', f'this command line was executed on host {ip}:\n{cmdline}')
 
     def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
@@ -3222,12 +3241,12 @@ class AWSBoto:
         long_timezone = self.cfg.get_time_zone()
         return textwrap.dedent(f'''
         #! /bin/bash
+        mkdir -p ~/.config/froster
+        sleep 3 # give us some time to upload json to ~/.config/froster
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo '#export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
         echo '#export TZ={long_timezone}' >> ~/.bashrc
         cd /tmp
-        # curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-        # bash Miniconda3-latest-Linux-x86_64.sh -b
         curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
         froster config --monitor '{emailaddr}'
         aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
@@ -3239,6 +3258,8 @@ class AWSBoto:
         python3 -m pip install boto3  > /dev/null
         sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
+        curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        bash Miniconda3-latest-Linux-x86_64.sh -b
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
