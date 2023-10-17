@@ -27,6 +27,7 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
     * [Tarring small files](#tarring-small-files)
     * [NIH Life Science metadata](#nih-life-sciences-metadata)
 * [Command line help](#command-line-help)
+* [Troubleshooting](#troubleshooting)
 * [Commercial Solutions](#commercial-solutions)
 
 ## Problem 
@@ -354,15 +355,21 @@ Archive location: :s3:froster/archive/home/dp/csv
 Archive profile (~/.aws): default
 Archiver: username@domain.edu
 Archive Tool: https://github.com/dirkpetersen/froster
+Restore command: froster restore "/home/dp/csv"
 Deletion date: 2023-04-19 20:55:15.701141
 
-Files deleted:
-myfile3.csv
-myfile1.csv
-myfile2.csv
+First 10 files archived:
+myfile3.csv, myfile1.csv, myfile2.csv
+
+First 10 files deleted this time:
+myfile3.csv, myfile1.csv, myfile2.csv
+
+Please see more metadata in Froster.allfiles.csv
+
+
 ```
 
-Shortly after a folder has been deleted you need to grab a single file from the archive. For this you simply execute `froster mount` and select the folder you would like to access. Now you can copy single files or access them with your existing pipelines. Use `froster umount` to unmount the folder.
+Shortly after a folder has been deleted you need to see what file names you have in the archive. For this you simply execute `froster mount` and select the folder you would like to access. Froster will mount the bucket location at the folder that was deleted. You can see the file and folder names along with their modification dates. You can also view the file Froster.allfiles.csv with any editor. This file contains the metadata of all files in the folders including the ones that have been tarred up in a .tar archive. If you not used DEEP_ARCHIVE or GLACIER as S3 archive tiers, you can also copy individual files or access them with your existing pipelines. Use `froster umount` to unmount the folder.
 
 ```
 froster mount
@@ -382,7 +389,7 @@ Not in Glacier: 0
 Glacier retrievals pending, run this again in 5-12h
 ```
 
-If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved (which means both "Triggered Glacier retrievals" and "Currently retrieving from Glacier" show 0) the restore to the original folder location will proceed. 
+If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved (which means both "Triggered Glacier retrievals" and "Currently retrieving from Glacier" show 0) the restore to the original folder location will proceed. As an alternative to running `froster restore` a second time you can use `froster mount` which allows you to access individual files once they have been retrieved from Glacier.
 
 ```
 dp@grammy:~$ froster restore
@@ -426,7 +433,7 @@ with 6 hotspots >= 1 GiB
 with a total disk use of 0.08 TiB
 
 Histogram for 37111 total folders processed:
-0.013 TiB have not been accessed for 5475 days (or 15.0 years)
+0.013 TiB have not been accessed for 365 days (or 1.0 years)
 0.028 TiB have not been accessed for 30 days (or 0.1 years)
 2023-04-20 08:29:11-07:00 rmdir-scratch.sh info: Preparing to clean scratch space for job 22218558
 2023-04-20 08:29:11-07:00 rmdir-scratch.sh info: Deleting directory /mnt/scratch/22218558 for job 22218558
@@ -507,11 +514,18 @@ Sent email "Froster restore on EC2" to dp@domain.edu!
 
 After the instance is created simply run `froster ssh` or `froster ssh <ip-address>` to login to the EC2 instance you created. Once logged in, use the up-arrow key to list the folder where data should be restored to.
 
+
+## Troubleshooting 
+
+### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
+
+This error can occur when using `froster restore --ec2`. To resolve this problem delete or rename the ssh key `~/.config/froster/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
+
 ## Command line help 
 
 Each of the sub commands has a help option, for example `froster archive --help`
  
-#### froster --help
+### froster --help
 
 ```
 dp@grammy:~$ froster
@@ -559,7 +573,7 @@ or you can use one of these:
   'froster delete', 'froster mount' or 'froster restore'
 ```
 
-#### froster config --help
+### froster config --help
  
 ```
 dp@grammy:~$ froster config  --help
@@ -575,7 +589,7 @@ optional arguments:
                         setup froster as a monitoring cronjob on an ec2 instance and notify an email address
 ```
 
-#### froster index --help
+### froster index --help
  
 ```
 dp@grammy:~$ froster index  --help
@@ -592,7 +606,7 @@ optional arguments:
                         Create this backup copy of a newly generated pwalk CSV file. By default the pwalk csv file will only be gnerated in temp space and then deleted.
 ```
  
-#### froster archive --help
+### froster archive --help
 
 ```
 dp@grammy:~$ froster archive --help
@@ -625,7 +639,7 @@ optional arguments:
   --nih, -n             Search and Link Metadata from NIH Reporter
 ```
 
-#### froster delete --help
+### froster delete --help
  
 ```
 usage: froster delete [-h] [folders ...]
@@ -637,7 +651,7 @@ optional arguments:
   -h, --help  show this help message and exit
 ```
 
-#### froster mount --help
+### froster mount --help
 
 ```
 froster mount --help
@@ -654,7 +668,7 @@ optional arguments:
   --unmount, -u         unmount instead of mount, you can also use the umount sub command instead.
 ```
 
-#### froster restore --help
+### froster restore --help
  
 ```
 froster restore --help
@@ -690,7 +704,7 @@ optional arguments:
   --no-download, -l     skip download to local storage after retrieval from Glacier
 ```
 
-#### froster ssh --help  (froster scp --help)
+### froster ssh --help  (froster scp --help)
 
 ```
 dp@grammy:~$ froster ssh  --help
