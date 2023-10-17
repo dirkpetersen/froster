@@ -26,6 +26,7 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
     * [Recursive operations](#recursive-operations)
     * [Tarring small files](#tarring-small-files)
     * [NIH Life Science metadata](#nih-life-sciences-metadata)
+    * [Restore to cloud machine (EC2)](#restore-to-cloud-machine)
 * [Command line help](#command-line-help)
 * [Troubleshooting](#troubleshooting)
 * [Commercial Solutions](#commercial-solutions)
@@ -514,7 +515,7 @@ Instance IP: 34.222.33.xxx
 Sent email "Froster restore on EC2" to dp@domain.edu!
 ```
 
-After the instance is created simply run `froster ssh` or `froster ssh <ip-address>` to login to the EC2 instance you created. Once logged in, use the up-arrow key to list the folder where data should be restored to.
+After the instance is created simply run `froster ssh` to login to the last EC2 instance you created or (if you have created multiple machines) `froster ssh <ip-address>`. Once logged in, use the up-arrow key to list the folder where data should be restored to. (Note the data may not be there yet)
 
 
 ## Troubleshooting 
