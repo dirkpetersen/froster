@@ -2934,7 +2934,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+                self.cfg.printdbg(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
         except Exception as e:
@@ -3047,7 +3047,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+                self.cfg.printdbg(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
         except Exception as e:            
@@ -3079,7 +3079,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+                self.cfg.printdbg(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
         except Exception as e:
@@ -3101,7 +3101,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+                self.cfg.printdbg(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
             return None
@@ -3265,7 +3265,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
-        #echo 'conda deactivate' >> ~/.bashrc
+        echo 'echo "type \"conda deactivate\" lo leave current conda environment"' >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
@@ -3381,7 +3381,7 @@ class AWSBoto:
         try:
             ec2.create_tags(Resources=[instance_id], Tags=[tag])
         except Exception as e:
-            print('Error creating Tags: {e}')
+            self.cfg.printdbg('Error creating Tags: {e}')
             
         print(f'Launching instance {instance_id} ... please wait ...')    
         
@@ -3476,7 +3476,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
+                self.cfg.printdbg(f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
             return []            
@@ -3565,7 +3565,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
+                self.cfg.printdbg(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
             else:
                 print(f'Client Error: {e}')
         except Exception as e:
@@ -3586,7 +3586,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
+                self.cfg.printdbg(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
             else:
                 print(f'Client Error: {e}')
         except Exception as e:
@@ -3616,7 +3616,7 @@ class AWSBoto:
             if error_code == 'MessageRejected':
                 print(f'Message was rejected, Error: {e}')
             elif error_code == 'AccessDenied':
-                print(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
+                self.cfg.printdbg(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
             else:
                 print(f'Client Error: {e}')
             return False
