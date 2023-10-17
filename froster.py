@@ -3265,7 +3265,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
-        echo 'conda deactivate' >> ~/.bashrc
+        #echo 'conda deactivate' >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
