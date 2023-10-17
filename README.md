@@ -366,13 +366,13 @@ myfile3.csv, myfile1.csv, myfile2.csv
 
 Please see more metadata in Froster.allfiles.csv
 
-
 ```
 
-Shortly after a folder has been deleted you need to see what file names you have in the archive. For this you simply execute `froster mount` and select the folder you would like to access. Froster will mount the bucket location at the folder that was deleted. You can see the file and folder names along with their modification dates. You can also view the file Froster.allfiles.csv with any editor. This file contains the metadata of all files in the folders including the ones that have been tarred up in a .tar archive. If you not used DEEP_ARCHIVE or GLACIER as S3 archive tiers, you can also copy individual files or access them with your existing pipelines. Use `froster umount` to unmount the folder.
+After a folder has been deleted and you wish to view the file names in the archive, simply execute `froster mount`. Then, select the folder you want to access. Froster will then mount the bucket location to the folder that was deleted. This allows you to see file and folder names, along with their modification dates. Additionally, you can view the `Froster.allfiles.csv` file using any editor. This particular file contains metadata for all files in the folders, including those archived in a .tar format. If you haven't used the DEEP_ARCHIVE or GLACIER S3 archive tiers, you can also copy individual files or access them through your existing pipelines. Remember to use froster umount to unmount the folder when done.
 
 ```
 froster mount
+froster umount
 ```
 
 After a while you may want to restore the data. Again, you forgot the actual folder location and invoke `froster restore` without the folder argument to see the same dialog with a list of achived folders. Select a folder and hit "Enter" to restore immediatelty.
@@ -389,7 +389,7 @@ Not in Glacier: 0
 Glacier retrievals pending, run this again in 5-12h
 ```
 
-If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved (which means both "Triggered Glacier retrievals" and "Currently retrieving from Glacier" show 0) the restore to the original folder location will proceed. As an alternative to running `froster restore` a second time you can use `froster mount` which allows you to access individual files once they have been retrieved from Glacier.
+If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved (which means both "Triggered Glacier retrievals" and "Currently retrieving from Glacier" show 0) the restore to the original folder location will proceed. As an alternative to running `froster restore` a second time, you can use `froster mount` which allows you to access individual files once they have been retrieved from Glacier.
 
 ```
 dp@grammy:~$ froster restore
@@ -439,7 +439,7 @@ Histogram for 37111 total folders processed:
 2023-04-20 08:29:11-07:00 rmdir-scratch.sh info: Deleting directory /mnt/scratch/22218558 for job 22218558
 ```
 
-now we run the `froster archive` command without entering folder names on the command line. We created a csv folder for testing that contains 3 csv files with a total of about 1.1 GiB data. We pick this csv folder. It shows that it has been accessed 0 days ago because we just created it.  
+now we run the `froster archive` command without entering folder names on the command line. We just created a csv folder for testing that contains 3 csv files with a total of about 1.1 GiB data. We pick this csv folder. It shows that it has been accessed 0 days ago (column AccD) because we just created it.  
 
 
 ![image](https://user-images.githubusercontent.com/1427719/233419009-6a375fe4-541d-4ac6-9ba3-7916b89eabb1.png)
@@ -452,6 +452,8 @@ Check Job Output:
  tail -f froster-archive-+home+gscratch+dpcri+csv-22218563.out
 ```
 
+Once the archive job has completed you should receive an email from your Slurm system.
+
 ### Special use cases
 
 #### Recursive operations
@@ -463,14 +465,14 @@ However, you can use the `archive --recursive` option with the archive command t
 
 Folders with large amounts of small files have always been problematic to manage as they can degrade the metadata performance of a storage system and copying many of them is very slow. Since Glacier objects have an overhead of 40K per uploaded file, storage consumption can get quickly out of hand if not properly managed as a folder with 1 million tiny files would require an addional 40GB storage capacity.
 
-Froster addresses this by moving all small files < 1 MiB to to a Tar archive called Froster.smallfiles.tar in each folder. 
- All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. The user does not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3 like objectstore after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](https://cyberduck.io) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata including the ones that were tarred to provide addional transparency
+Froster addresses this by moving all small files < 1 MiB to to a Tar archive called Froster.smallfiles.tar in each folder.
+All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. The user does not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3 like objectstore after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](https://cyberduck.io) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata including the ones that were tarred to provide addional transparency.
  
- To avoid tarring you can set max_small_file_size_kib to 0 using this command. The default is 1024 (KiB) or you can use the `archive --notar` option.
+To avoid tarring you can set max_small_file_size_kib to 0 using this command. The default is 1024 (KiB) or you can use the `archive --notar` option.
 
- ```
- echo 0 > ~/.config/froster/general/max_small_file_size_kib
- ```
+```
+echo 0 > ~/.config/froster/general/max_small_file_size_kib
+```
 
 #### NIH Life Sciences metadata
 

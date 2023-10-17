@@ -186,10 +186,6 @@ def subcmd_config(args, cfg, aws):
                                 'archive|general|archiveroot','string')
     s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
                                 'DEEP_ARCHIVE|general|s3_storage_class','string')
-    #aws_profile =  cfg.prompt('Please enter the AWS profile in ~/.aws',
-    #                          'default|general|aws_profile','string')
-    #aws_region =  cfg.prompt('Please enter your AWS region for S3',
-    #                         'us-west-2|general|aws_region','string')
 
     # if there is a shared ~/.aws/config copy it over
     if cfg.config_root_local != cfg.config_root:
@@ -3265,7 +3261,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
-        echo "echo \"type 'conda deactivate' lo leave current conda environment\"" >> ~/.bashrc
+        echo "echo \"type 'conda deactivate' to leave current conda environment\"" >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
