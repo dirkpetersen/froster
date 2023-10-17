@@ -2362,7 +2362,7 @@ class SlurmEssentials:
                 print(os.path.join(self.config_root,'hpc','slurm_lscratch'))
             else:
                 raise RuntimeError(f"Error running sbatch: {result.stderr.strip()}")
-            sys.exit()
+            sys.exit(1)
         job_id = int(result.stdout.split()[-1])
         if args.debug:
             oscript.seek(0)
