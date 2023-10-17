@@ -80,9 +80,9 @@ def args_version(cfg):
     print(f'Froster version: {__version__}')
     print(f'Python version:\n{sys.version}')
     try:
-        print('Pwalk version:', subprocess.run([cfg.binfolder, 'pwalk', '--version'], 
+        print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolder, 'pwalk'), '--version'], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])        
-        print('Rclone version:', subprocess.run([cfg.binfolder, 'rclone', '--version'], 
+        print('Rclone version:', subprocess.run([os.path.join(cfg.binfolder, 'rclone'), '--version'], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
     except FileNotFoundError as e:
         print(f'Error: {e}')
