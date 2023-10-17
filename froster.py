@@ -3265,7 +3265,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
-        echo 'echo "type \"conda deactivate\" lo leave current conda environment"' >> ~/.bashrc
+        echo 'echo "type \'conda deactivate\' lo leave current conda environment"' >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
@@ -3290,18 +3290,13 @@ class AWSBoto:
                            't3a.micro': 5,
                            }
         
-        # if not self._ec2_create_iam_self_destruct_role(profile):
-        #     return False
-            
-        #if not self._ec2
-
         session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         ec2 = session.resource('ec2')
         client = session.client('ec2')
         
         chosen_instance_type = None
         for itype, space in instance_types.items():
-            if space > 1.3 * required_space:
+            if space > 1.5 * required_space:
                 chosen_instance_type = itype
 
         if self.args.instancetype:
@@ -3617,6 +3612,8 @@ class AWSBoto:
                 print(f'Message was rejected, Error: {e}')
             elif error_code == 'AccessDenied':
                 self.cfg.printdbg(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
+                if not args.debug:
+                    print (' Cannot use SES email features: AccessDenied')                
             else:
                 print(f'Client Error: {e}')
             return False
