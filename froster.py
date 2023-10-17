@@ -38,13 +38,13 @@ def main():
               'froster delete', 'froster mount' or 'froster restore'
             '''))
 
-    if args.version:
-        args_version()
-
     # Instantiate classes required by all functions         
     cfg = ConfigManager(args)
     arch = Archiver(args, cfg)
     aws = AWSBoto(args, cfg, arch)
+
+    if args.version:
+        args_version(cfg)
 
     if args.subcmd in ['archive','delete','restore']:
         # remove folders that are not writable from args.folders
@@ -76,13 +76,13 @@ def main():
     elif args.subcmd in ['ssh', 'scp']: #or args.unmount:
         subcmd_ssh(args, cfg, aws)
 
-def args_version():
+def args_version(cfg):
     print(f'Froster version: {__version__}')
     print(f'Python version:\n{sys.version}')
     try:
-        print('Pwalk version:', subprocess.run(['pwalk', '--version'], 
+        print('Pwalk version:', subprocess.run([cfg.binfolder, 'pwalk', '--version'], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])        
-        print('Rclone version:', subprocess.run(['rclone', '--version'], 
+        print('Rclone version:', subprocess.run([cfg.binfolder, 'rclone', '--version'], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
     except FileNotFoundError as e:
         print(f'Error: {e}')
