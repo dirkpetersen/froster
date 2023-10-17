@@ -3265,7 +3265,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
-        echo 'echo "type \'conda deactivate\' lo leave current conda environment"' >> ~/.bashrc
+        echo "echo \"type 'conda deactivate' lo leave current conda environment\"" >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
@@ -3613,7 +3613,7 @@ class AWSBoto:
             elif error_code == 'AccessDenied':
                 self.cfg.printdbg(f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
                 if not args.debug:
-                    print (' Cannot use SES email features: AccessDenied')                
+                    print (' Cannot use SES email features to send you status messages: AccessDenied')                
             else:
                 print(f'Client Error: {e}')
             return False
