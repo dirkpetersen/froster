@@ -30,6 +30,7 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
 * [Command line help](#command-line-help)
 * [Troubleshooting](#troubleshooting)
 * [Commercial Solutions](#commercial-solutions)
+* [Discontinuing Froster](#discontinuing-froster)
 
 ## Problem 
 
@@ -54,12 +55,12 @@ There were three motivations behind the creation of `Froster`:
    ![image](https://user-images.githubusercontent.com/1427719/230824467-6a6e5873-5a48-4656-8d75-42133a60ba30.png)
 1. All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. You can also [avoid tarring](#tarring-small-files) 
 1. We pass the folder to [Rclone](https://rclone.org) to execute a copy job in the background.
-1. Many researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long-running data copy jobs, and Slurm can automatically re-run copy jobs that failed. Users can also use the `--no-slurm` option to execute the job in the foreground. This is the default if Slurm is not installed on the Linux machine.
+1. Many researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long-running data copy jobs, and Slurm can automatically re-run copy jobs that failed. Researchers can also use the `--no-slurm` option to execute the job in the foreground. This is the default if Slurm is not installed on the Linux machine.
 1. Prior to copying, we place files with checksums (e.g., `.froster.md5sum`) in the folders to be archived. This allows for an easy subsequent checksum comparison, providing the user with evidence that all data was correctly archived (through size and md5sum comparisons).
 1. After files have been deleted from the source folder, we place a file named `Where-did-the-files-go.txt` in the source folder. This file describes where the data was archived, along with instructions on how to retrieve the data.
 1. Optionally allow `archive --recursive` to enable archiving of entire folder trees (CLI only option). [More details here](#recursive-operations).
 1. Optionally link to NIH metadata with the `archive --nih` option to link to life sciences research projects [More details here](#nih-life-sciences-metadata).
-
+1. Optionally restore to a cloud machine (EC2 instance) with the `restore --ec2` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12).
 
 ## Preparing Froster 
 
@@ -467,7 +468,7 @@ However, you can use the `archive --recursive` option with the archive command t
 Folders with large amounts of small files have always been problematic to manage as they can degrade the metadata performance of a storage system and copying many of them is very slow. Since Glacier objects have an overhead of 40K per uploaded file, storage consumption can get quickly out of hand if not properly managed as a folder with 1 million tiny files would require an addional 40GB storage capacity.
 
 Froster addresses this by moving all small files < 1 MiB to to a Tar archive called Froster.smallfiles.tar in each folder.
-All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. The user does not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3 like objectstore after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](https://cyberduck.io) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata including the ones that were tarred to provide addional transparency.
+All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. The user does not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3 like objectstore after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](https://cyberduck.io/download/) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata including the ones that were tarred to provide addional transparency.
  
 To avoid tarring you can set max_small_file_size_kib to 0 using this command. The default is 1024 (KiB) or you can use the `archive --notar` option.
 
@@ -517,6 +518,13 @@ Sent email "Froster restore on EC2" to dp@domain.edu!
 
 After the instance is created simply run `froster ssh` to login to the last EC2 instance you created or (if you have created multiple machines) `froster ssh <ip-address>`. Once logged in, use the up-arrow key to list the folder where data should be restored to. (Note the data may not be there yet)
 
+#### More detailed file system analysis 
+
+`froster index` runs pwalk to create a large csv file with all file system information but this file is immedatly 
+
+```
+froster index --pwalk-copy ~/my_department.csv /shared/my_department
+```
 
 ## Troubleshooting 
 
@@ -727,3 +735,9 @@ optional arguments:
 
 You can self-install Froster in a few seconds without requiring root access and you can collaborate well in small teams. However, since Froster requires you having write access to all folders and files you manage, it will not scale to many users. If you are rather looking for a feature rich software managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com).
 Froster is a good on-ramp to Starfish. If many users in your organization end up using Froster, it is time considering Starfish as an alternative but if fewer than a handful users find Froster useful, you may be able to defer your Starfish project until you have a critical mass. You can access many advanced Starfish features through a web browser while Froster has a simple CLI/TUI interface.
+
+## Discontinuing Froster  
+
+All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While Glacier and Rclone will likely still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone, the AWS CLI, or [Cyberduck](https://cyberduck.io/download/) to retrieve your data as it is kept in its original format.   
+
+Alternatively, the shell script `froster-restore.sh` simplifies this process, driving RClone with the appropriate settings. Using the command `froster-restore.sh list`, you can view all folders archived in the JSON database `foster-archives.json` (default location: `~/.config/froster/`). To restore a specific folder, simply use the command followed by the desired path, for example: `froster-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `froster-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs.
