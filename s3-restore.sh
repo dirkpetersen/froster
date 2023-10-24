@@ -4,6 +4,8 @@
 # Use this script if you find that Froster is not working or no longer 
 # maintained. The only dependencies of this script are rclone and jq.
 # This script should work until the end of times !
+# 
+# Report issues here: https://github.com/dirkpetersen/froster/issues
 
 export RCLONE_S3_PROFILE=aws # or ${AWS_PROFILE} or change this to the AWS profile you want to use
 export RCLONE_S3_REGION=us-west-2 # or change this to the AWS region you want to use
@@ -49,7 +51,7 @@ if [[ $1 == "list" ]] || [[ -z $1 ]] ; then
 fi
 
 FLD=$1
-FLD="${FLD%/}"
+FLD="${FLD%/}" # remove trailing slash if any
 if ! echo "${FOLDERS}" | grep -q "^${FLD}$"; then
   echo "Folder ${FLD}" not found in DB
   exit 1
@@ -107,8 +109,8 @@ if [[ "${S3_CLASS}" == "GLACIER" ]] || [[ "${S3_CLASS}" == "DEEP_ARCHIVE" ]]; th
     fi
   fi
   if [[ "${ARCHIVE_MODE}" == "Recursive" ]]; then # --max-depth does not seem to work with backend restore-status, fix later
-    rclone backend restore-status ${DEPTH} ${ARCHIVE_FOLDER} > ~/.rclone-glacier-restore-status.json
-    status_list=$(jq -r .[].RestoreStatus.IsRestoreInProgress ~/.rclone-glacier-restore-status.json)
+    rclone backend restore-status ${DEPTH} ${ARCHIVE_FOLDER} > ~/.rclone-glacier-restore.json
+    status_list=$(jq -r .[].RestoreStatus.IsRestoreInProgress ~/.rclone-glacier-restore.json)
     if echo "$status_list" | grep -xq "true"; then
       echo "Retrieve Status: Glacier restore still in progress, try 5-12 hours after restore was initiated."
       exit 1
@@ -123,7 +125,11 @@ fi
 
 ## Restoring from S3 to local folder
 echo "Restoring from ${ARCHIVE_FOLDER} to ${FLD} ..."
-rclone copy --progress --verbose ${ARCHIVE_FOLDER} ${FLD} ${DEPTH}
+rclone copy --checksum --progress --verbose ${ARCHIVE_FOLDER} ${FLD} ${DEPTH}
+
+## Comparing S3 with local folder 
+echo "Running Checksum comparison, hit ctrl+c to cancel ... "
+rclone check --verbose --exclude='.froster.md5sum' ${ARCHIVE_FOLDER} ${FLD} ${DEPTH}
 
 ## After restore we must check if there are any files to untar
 # Find all tar files and store them in an array

@@ -27,6 +27,8 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
     * [Tarring small files](#tarring-small-files)
     * [NIH Life Science metadata](#nih-life-sciences-metadata)
     * [Restore to cloud machine (EC2)](#restore-to-cloud-machine)
+    * [Using CyberDuck to browse Glacier](#using-cyberduck-to-browse-glacier)
+    * [More detailed file system analysis](#more-detailed-file-system-analysis)
 * [Command line help](#command-line-help)
 * [Troubleshooting](#troubleshooting)
 * [Commercial Solutions](#commercial-solutions)
@@ -518,13 +520,18 @@ Sent email "Froster restore on EC2" to dp@domain.edu!
 
 After the instance is created simply run `froster ssh` to login to the last EC2 instance you created or (if you have created multiple machines) `froster ssh <ip-address>`. Once logged in, use the up-arrow key to list the folder where data should be restored to. (Note the data may not be there yet)
 
+#### Using CyberDuck to browse Glacier
+
+[Cyberduck](https://cyberduck.io/download/) is a GUI tool to browse, upload and transfer data from AWS S3/Glacier. When creating a new Bookmark, pick the `S3 (with timestamps)` service. If it does not show up in the list pick `More Options...` at the bottom of the list and then search for `timestamps` in Profiles. This ensures that you can see the original modification date of the uploaded files while browsing and not the date they were uploaded to S3/Glacier. All files called `Froster.allfiles.csv` are not stored in Glacier but S3 and you can just mark the file and hit the `Edit` button in the toolbar or run ctrl+k to open that file with the default tool for csv files on your computer (this is often Excel)
+
 #### More detailed file system analysis 
 
-`froster index` runs pwalk to create a large csv file with all file system information but this file is immedatly 
+`froster index` runs pwalk to create a large csv file with all file system information but this file is immedatly deleted after running index and all detailed file information ist lost. You can save that original file (warning: it can be huge) using the `--pwalk-copy` option and then analyse that data later. 
 
 ```
 froster index --pwalk-copy ~/my_department.csv /shared/my_department
 ```
+
 
 ## Troubleshooting 
 
@@ -738,6 +745,6 @@ Froster is a good on-ramp to Starfish. If many users in your organization end up
 
 ## Discontinuing Froster  
 
-All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While Glacier and Rclone will likely still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone, the AWS CLI, or [Cyberduck](https://cyberduck.io/download/) to retrieve your data as it is kept in its original format.   
+All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While AWS Glacier and Rclone will still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone or [Cyberduck](https://cyberduck.io/download/) (for smaller amounts of data) to retrieve your data, as it is kept in its original format.   
 
-Alternatively, the shell script `froster-restore.sh` simplifies this process, driving RClone with the appropriate settings. Using the command `froster-restore.sh list`, you can view all folders archived in the JSON database `foster-archives.json` (default location: `~/.config/froster/`). To restore a specific folder, simply use the command followed by the desired path, for example: `froster-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `froster-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs.
+Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database `foster-archives.json` (default location: `~/.config/froster/`). To restore a specific folder, simply use the command followed by the desired path, for example: `s3-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `s3-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs. Note: You may have to change the AWS profile in `s3-restore.sh` to a profile you find under `~/.aws`
