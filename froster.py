@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.5'
+__version__ = '0.9.0.6'
 
 def main():
         
@@ -3227,10 +3227,11 @@ class AWSBoto:
         loginctl enable-linger ec2-user
         systemctl start atd
         dnf upgrade
-        dnf install -y mc git docker
+        dnf install -y mc git docker lua lux-posix lua-devel tcl-devel
         dnf group install -y 'Development Tools'
-        #dnf install -y R
-        #dnf install -y https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.06.2-561-x86_64.rpm
+        wget wget https://sourceforge.net/projects/lmod/files/Lmod-8.7.tar.bz2
+        tar -xjf Lmod-8.7.tar.bz2
+        cd Lmod-8.7 && ./configure && make install
         ''').strip()
         return userdata
     
@@ -3278,7 +3279,8 @@ class AWSBoto:
         conda run bash -c "~/miniconda3/bin/jupyter-lab --ip=$(get-local-ip) --no-browser --autoreload --notebook-dir=~ > ~/.jupyter.log 2>&1" &
         sleep 60
         sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/.jupyter.log > ~/.jupyter-public.log
-        echo 'echo ""' >> ~/.bashrc
+        echo 'source /usr/local/lmod/lmod/init/bash' >> ~/.bashrc
+        echo "" >> ~/.bash_profile
         echo 'echo "Access JupyterLab:"' >> ~/.bash_profile
         url=$(tail -n 7 ~/.jupyter-public.log | grep $(get-public-ip) |  tr -d ' ')
         echo "echo \\" $url\\"" >> ~/.bash_profile
