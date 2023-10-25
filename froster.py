@@ -3267,16 +3267,17 @@ class AWSBoto:
         ~/miniconda3/bin/conda init bash
         echo '#! /bin/bash' > ~/.local/bin/get-public-ip
         echo 'ETOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")' >> ~/.local/bin/get-public-ip
-        #cp -f ~/.local/bin/get-public-ip ~/.local/bin/get-local-ip
+        cp -f ~/.local/bin/get-public-ip ~/.local/bin/get-local-ip
         echo 'curl -sH "X-aws-ec2-metadata-token: $ETOKEN" http://169.254.169.254/latest/meta-data/public-ipv4' >> ~/.local/bin/get-public-ip
-        #echo 'curl -sH "X-aws-ec2-metadata-token: $ETOKEN" http://169.254.169.254/latest/meta-data/local-ipv4' >> ~/.local/bin/get-local-ip
+        echo 'curl -sH "X-aws-ec2-metadata-token: $ETOKEN" http://169.254.169.254/latest/meta-data/local-ipv4' >> ~/.local/bin/get-local-ip
         chmod +x ~/.local/bin/get-public-ip
-        #chmod +x ~/.local/bin/get-local-ip
+        chmod +x ~/.local/bin/get-local-ip
         ~/miniconda3/bin/conda install -y jupyterlab
         ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > ~/jupyter.log 2>&1 &
         sleep 60
-        sed "s/$(hostname -I)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log        
-        echo ""
+        sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log
+        echo 'echo ""' >> ~/.bashrc
+        echo 'printf "Access JupyterLab:"' >> ~/.bashrc
         echo "tail -n 7 ~/jupyter-public.log | grep $(get-public-ip)" >> ~/.bashrc
         echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bashrc
         ''').strip()
