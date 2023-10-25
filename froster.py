@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.4'
+__version__ = '0.9.0.5'
 
 def main():
         
@@ -3265,6 +3265,7 @@ class AWSBoto:
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
         source ~/.bashrc
+        conda activate
         echo '#! /bin/bash' > ~/.local/bin/get-public-ip
         echo 'ETOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")' >> ~/.local/bin/get-public-ip
         cp -f ~/.local/bin/get-public-ip ~/.local/bin/get-local-ip
@@ -3274,14 +3275,14 @@ class AWSBoto:
         chmod +x ~/.local/bin/get-local-ip
         ~/miniconda3/bin/conda install -y jupyterlab
         ~/miniconda3/bin/conda install -y -c r r-irkernel r # R kernel and R for Jupyter
-        ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > ~/jupyter.log 2>&1 &
+        conda run bash -c "~/miniconda3/bin/jupyter-lab --ip=$(get-local-ip) --no-browser --autoreload --notebook-dir=~ > ~/.jupyter.log 2>&1" &
         sleep 60
-        sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log
+        sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/.jupyter.log > ~/.jupyter-public.log
         echo 'echo ""' >> ~/.bashrc
-        echo 'echo "Access JupyterLab:"' >> ~/.bashrc
-        url=$(tail -n 7 ~/jupyter-public.log | grep $(get-public-ip) |  tr -d ' ')
-        echo "echo \\" $url\\"" >> ~/.bashrc
-        echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bashrc
+        echo 'echo "Access JupyterLab:"' >> ~/.bash_profile
+        url=$(tail -n 7 ~/.jupyter-public.log | grep $(get-public-ip) |  tr -d ' ')
+        echo "echo \\" $url\\"" >> ~/.bash_profile
+        echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bash_profile
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
