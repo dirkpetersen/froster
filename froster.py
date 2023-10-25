@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.2'
+__version__ = '0.9.0.3'
 
 def main():
         
@@ -3264,6 +3264,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
+        ~/miniconda3/bin/conda activate
         echo '#! /bin/bash' > ~/.local/bin/get-public-ip
         echo 'ETOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")' >> ~/.local/bin/get-public-ip
         cp -f ~/.local/bin/get-public-ip ~/.local/bin/get-local-ip
@@ -3272,8 +3273,8 @@ class AWSBoto:
         chmod +x ~/.local/bin/get-public-ip
         chmod +x ~/.local/bin/get-local-ip
         ~/miniconda3/bin/conda install -y jupyterlab
+        ~/miniconda3/bin/conda install -y -c r r-irkernel r # R kernel and R for Jupyter
         ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > ~/jupyter.log 2>&1 &
-        ~/miniconda3/bin/conda install -y -c r r-irkernel r   # R kernel for Jupyter
         sleep 60
         sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log
         echo 'echo ""' >> ~/.bashrc
