@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.1'
+__version__ = '0.9.0.2'
 
 def main():
         
@@ -3273,7 +3273,7 @@ class AWSBoto:
         chmod +x ~/.local/bin/get-local-ip
         ~/miniconda3/bin/conda install -y jupyterlab
         ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > ~/jupyter.log 2>&1 &
-        # ~/miniconda3/bin/conda install -y -c r r-irkernel   # R kernel for Jupyter
+        ~/miniconda3/bin/conda install -y -c r r-irkernel r   # R kernel for Jupyter
         sleep 60
         sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log
         echo 'echo ""' >> ~/.bashrc
