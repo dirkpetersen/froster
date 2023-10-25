@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.8'
+__version__ = '0.9.0.9'
 
 def main():
         
@@ -2856,12 +2856,12 @@ class AWSBoto:
 
         # part 2, prep restoring .....
         for folder in args.folders:
-            rfolder = os.path.join(os.path.sep, 'restored', folder)
+            rfolder = os.path.join(os.path.sep, 'restored', folder[1:])
             bootstrap_restore += f'\nsudo mkdir -p "{rfolder}"'
             bootstrap_restore += f'\nsudo chown ec2-user "{rfolder}"'
-            bootstrap_restore += f'\nln -s "{rfolder}" ~/rstr-$(basename "{folder}")'
-            bootstrap_restore += f'\nmkdir -p "$(dirname "{folder}")'
-            bootstrap_restore += f'\nln -s "{rfolder}" "{folder}")'
+            bootstrap_restore += f'\nln -s "{rfolder}" ~/rstrd-$(basename "{folder}")'
+            bootstrap_restore += f'\nmkdir -p $(dirname "{folder}")'
+            bootstrap_restore += f'\nln -s "{rfolder}" "{folder}"'
 
             #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
             #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
@@ -3238,6 +3238,7 @@ class AWSBoto:
         dnf upgrade
         dnf install -y mc git docker lua lua-posix lua-devel tcl-devel
         dnf group install -y 'Development Tools'
+        cd /tmp
         wget https://sourceforge.net/projects/lmod/files/Lmod-8.7.tar.bz2
         tar -xjf Lmod-8.7.tar.bz2
         cd Lmod-8.7 && ./configure && make install        
