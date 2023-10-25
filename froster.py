@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.7'
+__version__ = '0.9.0.8'
 
 def main():
         
@@ -2856,8 +2856,12 @@ class AWSBoto:
 
         # part 2, prep restoring .....
         for folder in args.folders:
-            bootstrap_restore += f'\nsudo mkdir -p "{folder}"'
-            bootstrap_restore += f'\nsudo chown ec2-user "{folder}"'
+            rfolder = os.path.join(os.path.sep, 'restored', folder)
+            bootstrap_restore += f'\nsudo mkdir -p "{rfolder}"'
+            bootstrap_restore += f'\nsudo chown ec2-user "{rfolder}"'
+            bootstrap_restore += f'\nln -s "{rfolder}" ~/rstr-$(basename "{folder}")'
+            bootstrap_restore += f'\nmkdir -p "$(dirname "{folder}")'
+            bootstrap_restore += f'\nln -s "{rfolder}" "{folder}")'
 
             #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
             #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
@@ -3219,8 +3223,13 @@ class AWSBoto:
         long_timezone = self.cfg.get_time_zone()
         userdata = textwrap.dedent(f'''
         #! /bin/bash
+        bigdisk=$(lsblk --fs --json | jq -r '.blockdevices[] | select(.children == null and .fstype == null) | .name')
+        mkfs -t xfs /dev/$bigdisk
+        mkdir /restored
+        mount /dev/$bigdisk /restored
+        chown ec2-user /restored
         dnf check-update
-        dnf update -y
+        dnf update -y                                   
         dnf install -y at gcc vim wget python3-pip python3-psutil
         hostnamectl set-hostname froster
         timedatectl set-timezone '{long_timezone}'
@@ -3231,7 +3240,7 @@ class AWSBoto:
         dnf group install -y 'Development Tools'
         wget https://sourceforge.net/projects/lmod/files/Lmod-8.7.tar.bz2
         tar -xjf Lmod-8.7.tar.bz2
-        cd Lmod-8.7 && ./configure && make install
+        cd Lmod-8.7 && ./configure && make install        
         ''').strip()
         return userdata
     
