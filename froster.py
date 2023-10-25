@@ -3273,10 +3273,11 @@ class AWSBoto:
         chmod +x ~/.local/bin/get-public-ip
         #chmod +x ~/.local/bin/get-local-ip
         ~/miniconda3/bin/conda install -y jupyterlab
-        ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > jupyter.log 2>&1 &
+        ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > ~/jupyter.log 2>&1 &
         sleep 5
+        sed "s/$(hostname -I)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log
+        jup=$(tail -n 7 ~/jupyter-public.log)
         echo ""
-        jup=$(tail -n 7 jupyter.log | grep $(hostname -I))
         echo $jup
         echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bashrc
         ''').strip()
