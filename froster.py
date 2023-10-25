@@ -3227,10 +3227,10 @@ class AWSBoto:
         loginctl enable-linger ec2-user
         systemctl start atd
         dnf upgrade
-        dnf install -y mc git
+        dnf install -y mc git docker
         dnf group install -y 'Development Tools'
-        dnf install -y docker R        
-        dnf install -y https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.06.2-561-x86_64.rpm
+        #dnf install -y R
+        #dnf install -y https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.06.2-561-x86_64.rpm
         ''').strip()
         return userdata
     
@@ -3273,6 +3273,7 @@ class AWSBoto:
         chmod +x ~/.local/bin/get-local-ip
         ~/miniconda3/bin/conda install -y jupyterlab
         ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > ~/jupyter.log 2>&1 &
+        # ~/miniconda3/bin/conda install -y -c r r-irkernel   # R kernel for Jupyter
         sleep 60
         sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log
         echo 'echo ""' >> ~/.bashrc
