@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.3'
+__version__ = '0.9.0.4'
 
 def main():
         
@@ -3264,7 +3264,7 @@ class AWSBoto:
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
-        ~/miniconda3/bin/conda activate
+        source ~/.bashrc
         echo '#! /bin/bash' > ~/.local/bin/get-public-ip
         echo 'ETOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")' >> ~/.local/bin/get-public-ip
         cp -f ~/.local/bin/get-public-ip ~/.local/bin/get-local-ip
