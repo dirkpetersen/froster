@@ -2880,8 +2880,8 @@ class AWSBoto:
         print(f" will execute '{cmdline}' on {ip} ... ")
         bootstrap_restore += '\n' + cmdline
         # once retrieved from Glacier we need to restore this 5 and 12 hours from now 
-        bootstrap_restore += '\n' + f'echo "{cmdline}" | at now + 5 hours'
-        bootstrap_restore += '\n' + f'echo "{cmdline}" | at now + 12 hours'
+        bootstrap_restore += '\n' + f"echo '{cmdline}' | at now + 5 hours"
+        bootstrap_restore += '\n' + f"echo '{cmdline}' | at now + 12 hours"
         ret = self.ssh_upload('ec2-user', ip,
             bootstrap_restore, "bootstrap.sh", is_string=True)
         if ret.stdout or ret.stderr:
@@ -3248,9 +3248,9 @@ class AWSBoto:
         echo '#export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
         echo '#export AWS_DEFAULT_REGION={self.cfg.aws_region}' >> ~/.bashrc
         echo '#export TZ={long_timezone}' >> ~/.bashrc
-        echo 'alias singularity="apptainer"' >> ~/.bashrc
+        echo '#alias singularity="apptainer"' >> ~/.bashrc
         cd /tmp
-        curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash > /dev/null
+        curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash 
         froster config --monitor '{emailaddr}'
         aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
@@ -3258,13 +3258,23 @@ class AWSBoto:
         aws configure --profile {self.cfg.awsprofile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure --profile {self.cfg.awsprofile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
         aws configure --profile {self.cfg.awsprofile} set region {self.cfg.aws_region}
-        python3 -m pip install boto3  > /dev/null
+        python3 -m pip install boto3
         sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
+        curl -s https://raw.githubusercontent.com/apptainer/apptainer/main/tools/install-unprivileged.sh | bash -s - ~/.local
         curl -OkL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         bash Miniconda3-latest-Linux-x86_64.sh -b
         ~/miniconda3/bin/conda init bash
-        echo "echo \"type 'conda deactivate' to leave current conda environment\"" >> ~/.bashrc
+        echo '#! /bin/bash' > ~/.local/bin/get-public-ip
+        echo 'ETOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")' >> ~/.local/bin/get-public-ip
+        #cp -f ~/.local/bin/get-public-ip ~/.local/bin/get-local-ip
+        echo 'curl -sH "X-aws-ec2-metadata-token: $ETOKEN" http://169.254.169.254/latest/meta-data/public-ipv4' >> ~/.local/bin/get-public-ip
+        #echo 'curl -sH "X-aws-ec2-metadata-token: $ETOKEN" http://169.254.169.254/latest/meta-data/local-ipv4' >> ~/.local/bin/get-local-ip
+        chmod +x ~/.local/bin/get-public-ip
+        #chmod +x ~/.local/bin/get-local-ip
+        ~/miniconda3/bin/conda install -y jupyterlab
+         ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > jupyter.log 2>&1 &
+        echo 'echo "type \"conda deactivate\" to leave current conda environment"' >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
