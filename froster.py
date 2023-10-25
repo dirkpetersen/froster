@@ -3273,8 +3273,12 @@ class AWSBoto:
         chmod +x ~/.local/bin/get-public-ip
         #chmod +x ~/.local/bin/get-local-ip
         ~/miniconda3/bin/conda install -y jupyterlab
-         ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > jupyter.log 2>&1 &
-        echo 'echo "type \"conda deactivate\" to leave current conda environment"' >> ~/.bashrc
+        ~/miniconda3/bin/jupyter-lab --ip $(hostname -I) --no-browser --autoreload > jupyter.log 2>&1 &
+        sleep 5
+        echo ""
+        jup=$(tail -n 7 jupyter.log | grep $(hostname -I))
+        echo $jup
+        echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bashrc
         ''').strip()
     
     def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
