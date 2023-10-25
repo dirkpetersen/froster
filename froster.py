@@ -3279,7 +3279,7 @@ class AWSBoto:
         echo 'echo ""' >> ~/.bashrc
         echo 'echo "Access JupyterLab:"' >> ~/.bashrc
         url=$(tail -n 7 ~/jupyter-public.log | grep $(get-public-ip) |  tr -d ' ')
-        echo "echo \" $url\"" >> ~/.bashrc
+        echo "echo \\" $url\\"" >> ~/.bashrc
         echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bashrc
         ''').strip()
     
