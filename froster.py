@@ -3277,8 +3277,9 @@ class AWSBoto:
         sleep 60
         sed "s/$(get-local-ip)/$(get-public-ip)/g" ~/jupyter.log > ~/jupyter-public.log
         echo 'echo ""' >> ~/.bashrc
-        echo 'printf "Access JupyterLab:"' >> ~/.bashrc
-        echo "tail -n 7 ~/jupyter-public.log | grep $(get-public-ip)" >> ~/.bashrc
+        echo 'echo "Access JupyterLab:"' >> ~/.bashrc
+        url=$(tail -n 7 ~/jupyter-public.log | grep $(get-public-ip) |  tr -d ' ')
+        echo "echo \" $url\"" >> ~/.bashrc
         echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bashrc
         ''').strip()
     
