@@ -3227,10 +3227,9 @@ class AWSBoto:
         loginctl enable-linger ec2-user
         systemctl start atd
         dnf upgrade
-        dnf install -y mc git R
+        dnf install -y mc git
         dnf group install -y 'Development Tools'
-        dnf install -y docker R
-        dnf install -y https://github.com/apptainer/apptainer/releases/download/v1.2.4/apptainer-suid-1.2.4-1.x86_64.rpm
+        dnf install -y docker R        
         dnf install -y https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.06.2-561-x86_64.rpm
         ''').strip()
         return userdata
