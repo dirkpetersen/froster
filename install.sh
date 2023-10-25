@@ -9,7 +9,12 @@ froster_update() {
   curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
         -o ~/.local/bin/froster
 
-  chmod +x ~/.local/bin/froster  
+  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/s3-restore.sh \
+        -o ~/.local/bin/s3-restore.sh
+
+  chmod +x ~/.local/bin/froster
+  chmod +x ~/.local/bin/s3-restore.sh
+
 }
 echo ""
 umask 0002
@@ -27,6 +32,7 @@ if [[ -z ${P3} ]]; then
   echo "python3 could not be found, please install Python >= 3.${PMIN} first"
   exit
 fi
+python3 -m pip --disable-pip-version-check install --upgrade --user visidata
 if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
   echo "Python >= 3.${PMIN} required and your default ${P3} is too old."
   printf "Trying to load Python through the modules system ... "
@@ -50,6 +56,7 @@ if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False
     echo "Done!"
   fi
 fi
+python3 -m pip --disable-pip-version-check install --upgrade --user visidata
 ### Fixing a potentially broken LD_LIBRARY_PATH
 P3=$(which python3)
 P3=$(readlink -f ${P3})
@@ -73,6 +80,7 @@ else
   python3 -m pip install --upgrade virtualenv
   python3 -m virtualenv ~/.local/share/froster
 fi
+###
 source ~/.local/share/froster/bin/activate
 echo "Done!"
 echo "Installing packages required by Froster ... "
