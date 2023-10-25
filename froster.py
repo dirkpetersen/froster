@@ -2857,10 +2857,10 @@ class AWSBoto:
         # part 2, prep restoring .....
         for folder in args.folders:
             rfolder = os.path.join(os.path.sep, 'restored', folder[1:])
-            bootstrap_restore += f'\nsudo mkdir -p "{rfolder}"'
-            bootstrap_restore += f'\nsudo chown ec2-user "{rfolder}"'
+            bootstrap_restore += f'\nmkdir -p "{rfolder}"'            
             bootstrap_restore += f'\nln -s "{rfolder}" ~/rstrd-$(basename "{folder}")'
-            bootstrap_restore += f'\nmkdir -p $(dirname "{folder}")'
+            bootstrap_restore += f'\nsudo mkdir -p $(dirname "{folder}")'
+            bootstrap_restore += f'\nsudo chown ec2-user $(dirname "{folder}")'
             bootstrap_restore += f'\nln -s "{rfolder}" "{folder}"'
 
             #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
