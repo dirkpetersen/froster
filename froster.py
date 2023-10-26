@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.15'
+__version__ = '0.9.0.16'
 
 def main():
         
@@ -3337,6 +3337,8 @@ class AWSBoto:
         ec2 = session.resource('ec2')
         client = session.client('ec2')
         
+        if required_space > 1:
+            required_space = required_space + 5 # avoid low disk space in micro instances
         chosen_instance_type = None
         for itype, space in instance_types.items():
             if space > 1.5 * required_space:
