@@ -532,13 +532,9 @@ In some cases you may want to restore rarely needed data from Glacier to a cloud
 
 ```
 dp@grammy:~$ froster restore --ec2 ~/archtest/data1
-Total data in all folders: 0.00 GiB
-Policy FrosterSelfDestructPolicy already exists
-Role FrosterEC2Role already exists.
-Profile FrosterEC2Profile already exists.
-Chosen Instance: t3a.micro
+Total data in all folders: 1.30 GiB
+Chosen Instance: c5ad.large
 Using Image ID: ami-0a6c63f0325635301
-IAM Instance profile: FrosterEC2Profile.
 Launching instance i-08028464562bbxxxx ... please wait ...
 |████████████████████████████████████████████████--| 96.7%
 Security Group "sg-0b648aca16f7c5efd" attached.
@@ -551,7 +547,35 @@ Instance IP: 34.222.33.xxx
 Sent email "Froster restore on EC2" to dp@domain.edu!
 ```
 
-After the instance is created simply run `froster ssh` to login to the last EC2 instance you created or (if you have created multiple machines) `froster ssh <ip-address>`. Once logged in, use the up-arrow key to list the folder where data should be restored to. (Note the data may not be there yet)
+After the instance is created simply run `froster ssh` to login to the last EC2 instance you created or (if you have created multiple machines) `froster ssh <ip-address>`. Once logged in, use the up-arrow key to list the folder where data should be restored to. (Note the data may not be there yet). The environment you find has Conda (with Pytohn and R) as well as Docker and Apptainer/Singularity installed. 
+
+```
+dp@grammy:~$ froster ssh
+Connecting to 34.222.33.xxx ...
+
+   ,     #_
+   ~\_  ####_
+  ~~  \_#####\
+  ~~     \###|
+  ~~       \#/ ___   Amazon Linux 2023 (ECS Optimized)
+   ~~       V~' '->
+    ~~~         /
+      ~~._.   _/
+         _/ _/
+       _/m/'
+
+For documentation, visit http://aws.amazon.com/documentation/ecs
+Last login: Thu Oct 26 09:41:12 2023 from 137.53.221.46
+Access JupyterLab:
+ http://44.234.45.15:8888/lab?token=d453d8aec274c43eb703031c97xxxxxxxxxxxxxxxxxxxx
+type "conda deactivate" to leave current conda environment
+(base) ec2-user@froster:~$
+```
+
+In addition you can click the link (often ctrl+click) to a Jupyter Lab Notebook which has Python and R Kernels installed. You will find a symbolic link starting 'restored-' in your home directory that points to your data. How should this EC2 instance be configured? Please [participate in this discussion](https://github.com/dirkpetersen/froster/discussions/12) 
+
+![image](https://github.com/dirkpetersen/froster/assets/1427719/1837511c-69ec-4b90-b408-a34833c3a68d)
+
 
 #### Using CyberDuck to browse Glacier
 
