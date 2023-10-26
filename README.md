@@ -557,6 +557,9 @@ After the instance is created simply run `froster ssh` to login to the last EC2 
 
 [Cyberduck](https://cyberduck.io/download/) is a GUI tool to browse, upload and transfer data from AWS S3/Glacier. When creating a new Bookmark, pick the `S3 (with timestamps)` service. If it does not show up in the list pick `More Options...` at the bottom of the list and then search for `timestamps` in Profiles. This ensures that you can see the original modification date of the uploaded files while browsing and not the date they were uploaded to S3/Glacier. All files called `Froster.allfiles.csv` are not stored in Glacier but S3 and you can just mark the file and hit the `Edit` button in the toolbar or run ctrl+k to open that file with the default tool for csv files on your computer (this is often Excel)
 
+![image](https://github.com/dirkpetersen/froster/assets/1427719/48f0e21b-1717-4f9a-9fd5-b3bed110487e)
+
+
 #### More detailed file system analysis 
 
 `froster index` runs pwalk to create a large csv file with all file system information but this file is immedatly deleted after running index and all detailed file information ist lost. You can save that original file (warning: it can be huge) using the `--pwalk-copy` option and then analyse that data later. You can then use visidata (command: vd) to view the csv file (hit q to quit visidata)
