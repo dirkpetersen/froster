@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.11'
+__version__ = '0.9.0.12'
 
 def main():
         
@@ -2864,14 +2864,13 @@ class AWSBoto:
         for folder in args.folders:
             refolder = os.path.join(os.path.sep, 'restored', folder[1:])
             bootstrap_restore += f'\nmkdir -p "{refolder}"'            
-            bootstrap_restore += f'\nln -s "{refolder}" ~/rstrd-$(basename "{folder}")'
+            bootstrap_restore += f'\nln -s "{refolder}" ~/restored-$(basename "{folder}")'
             bootstrap_restore += f'\nsudo mkdir -p $(dirname "{folder}")'
             bootstrap_restore += f'\nsudo chown ec2-user $(dirname "{folder}")'
             bootstrap_restore += f'\nln -s "{refolder}" "{folder}"'
 
             #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
             #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')
-        self.cfg.printdbg(f'ec2_deploy: refolder:"{refolder}" folder:"{folder}"') 
 
         ### this block may need to be moved to a function
         argl = ['--ec2', '-e']
@@ -3238,13 +3237,13 @@ class AWSBoto:
         chown ec2-user /restored                                   
         dnf check-update
         dnf update -y                                   
-        dnf install -y at gcc vim wget python3-pip python3-psutil
+        dnf install -y at gcc vim wget python3-pip python3-psutil 
         hostnamectl set-hostname froster
         timedatectl set-timezone '{long_timezone}'
         loginctl enable-linger ec2-user
         systemctl start atd
         dnf upgrade
-        dnf install -y mc git docker lua lua-posix lua-devel tcl-devel
+        dnf install -y mc git docker lua lua-posix lua-devel tcl-devel nodejs-npm
         dnf group install -y 'Development Tools'
         cd /tmp
         wget https://sourceforge.net/projects/lmod/files/Lmod-8.7.tar.bz2
@@ -4449,12 +4448,15 @@ class ConfigManager:
             timer_file.write(TIMER_CONTENT)
 
         # Reload systemd and enable/start timer
+        curr=os.getcwd()
         try:
+            os.chdir(user_systemd_dir)
             os.system("systemctl --user daemon-reload")            
             os.system("systemctl --user enable froster-monitor.service")
             os.system("systemctl --user enable froster-monitor.timer")            
             os.system("systemctl --user start froster-monitor.timer")            
             print("Systemd froster-monitor.timer cron job started!")
+            os.chdir(curr)
         except Exception as e:
             print(f'Could not add systemd scheduler job, Error: {e}')
 
