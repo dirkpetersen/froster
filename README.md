@@ -31,7 +31,7 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
     * [Using CyberDuck to browse Glacier](#using-cyberduck-to-browse-glacier)
     * [More detailed file system analysis](#more-detailed-file-system-analysis)
 * [Command line help](#command-line-help)
-* [Troubleshooting](#troubleshooting)
+* [FAQ and Troubleshooting](#faq-and-troubleshooting)
 * [Commercial Solutions](#commercial-solutions)
 * [Discontinuing Froster](#discontinuing-froster)
 
@@ -593,11 +593,16 @@ froster index --pwalk-copy ~/my_department.csv /shared/my_department
 vd ~/my_department.csv
 ```
 
-## Troubleshooting 
+## FAQ and Troubleshooting
 
 ### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
 
 This error can occur when using `froster restore --ec2`. To resolve this problem delete or rename the ssh key `~/.config/froster/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
+
+### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
+
+Today Froster only supports S3 compatible stores, but it could be adopted to support more as it is using rclone underneath which supports almost everything. The annoying thing with end user file sharing services such as Drive/OneDrive/Sharepoint is that you need to have an oauth authentication token and this needs to be re-generated often. This is not user friendly on an HPC machine without GUI and web browser and on a standard linux machine it is still not super smooth. 
+Another adjustment needed: you have perhaps seen that the tool creates a tar file for each directory. Currently only files < 1MB are tarred up (this can be changed). At least for Sharepoint one wants to create larger tar archives as the number of total files is limited in Sharepoint. If you are interested in this please submit an issue. 
 
 ## Command line help 
 
