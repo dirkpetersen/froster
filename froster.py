@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.14'
+__version__ = '0.9.0.15'
 
 def main():
         
@@ -4455,7 +4455,6 @@ class ConfigManager:
             timer_file.write(TIMER_CONTENT)
 
         # Reload systemd and enable/start timer
-        curr=os.getcwd()
         try:
             os.chdir(user_systemd_dir)
             os.system("systemctl --user daemon-reload")            
@@ -4463,7 +4462,6 @@ class ConfigManager:
             os.system("systemctl --user enable froster-monitor.timer")            
             os.system("systemctl --user start froster-monitor.timer")            
             print("Systemd froster-monitor.timer cron job started!")
-            os.chdir(curr)
         except Exception as e:
             print(f'Could not add systemd scheduler job, Error: {e}')
 
