@@ -565,9 +565,9 @@ Connecting to 34.222.33.xxx ...
        _/m/'
 
 For documentation, visit http://aws.amazon.com/documentation/ecs
-Last login: Thu Oct 26 09:41:12 2023 from 137.53.221.46
+Last login: Thu Oct 26 09:41:12 2023 from xxx.xxx.221.46
 Access JupyterLab:
- http://44.234.45.15:8888/lab?token=d453d8aec274c43eb703031c97xxxxxxxxxxxxxxxxxxxx
+ http://34.222.33.xxx:8888/lab?token=d453d8aec274c43eb703031c97xxxxxxxxxxxxxxxxxxxx
 type "conda deactivate" to leave current conda environment
 (base) ec2-user@froster:~$
 ```
