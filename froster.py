@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.12'
+__version__ = '0.9.0.13'
 
 def main():
         
@@ -3229,11 +3229,18 @@ class AWSBoto:
         long_timezone = self.cfg.get_time_zone()
         userdata = textwrap.dedent(f'''
         #! /bin/bash
-        dnf install -y gcc
-        bigdisk=$(lsblk --fs --json | jq -r '.blockdevices[] | select(.children == null and .fstype == null) | .name')
-        mkfs -t xfs /dev/$bigdisk
+        dnf install -y gcc mdadm
+        bigdisks=$(lsblk --fs --json | jq -r '.blockdevices[] | select(.children == null and .fstype == null) | .name')
+        numdisk=$(echo $bigdisks | wc -w)
         mkdir /restored
-        mount /dev/$bigdisk /restored
+        if [[ $numdisk -gt 1 ]]; then
+          #for d in $bigdisk; do echo "moin:$d"; done
+          #mdadm --create /dev/md0 --level=0 --raid-devices=$numdisk /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1
+          #mkfs -t xfs /dev/md0
+         mount /dev/md0 /restored
+        else
+          #mkfs -t xfs /dev/$bigdisks                                      
+          #mount /dev/$bigdisks /restored
         chown ec2-user /restored                                   
         dnf check-update
         dnf update -y                                   
