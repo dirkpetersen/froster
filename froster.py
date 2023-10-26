@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.10'
+__version__ = '0.9.0.11'
 
 def main():
         
@@ -489,7 +489,9 @@ def subcmd_restore(args,cfg,arch,aws):
             cfg._set_env_vars(cfg.awsprofile)
             cfg.printdbg("AWS profile:", cfg.awsprofile)
     else:
-        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+        pass
+        # we actually want to support symlinks
+        #args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
@@ -605,7 +607,9 @@ def subcmd_delete(args,cfg,arch,aws):
             args.awsprofile = cfg.awsprofile
             cfg._set_env_vars(cfg.awsprofile)
     else:
-        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+        pass
+        # we actually want to support symlinks
+        #args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
@@ -650,7 +654,9 @@ def subcmd_mount(args,cfg,arch,aws):
             args.awsprofile = cfg.awsprofile
             cfg._set_env_vars(cfg.awsprofile)      
     else:
-        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+        pass
+        # we actually want to support symlinks
+        #args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
     if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
         print(f'Profile "{args.awsprofile}" not found.')
@@ -2865,8 +2871,7 @@ class AWSBoto:
 
             #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
             #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')
-            self.cfg.printdbg(f'ec2_deploy: refolder:"{refolder}" folder:"{folder}"') 
-
+        self.cfg.printdbg(f'ec2_deploy: refolder:"{refolder}" folder:"{folder}"') 
 
         ### this block may need to be moved to a function
         argl = ['--ec2', '-e']
@@ -4239,7 +4244,7 @@ class ConfigManager:
             return os.path.join(self.config_root, entry)
 
     def replace_symlinks_with_realpaths(self, folders):
-        cleaned_folders = []        
+        cleaned_folders = []
         for folder in folders:
             try:
                 # Split the path into its components
@@ -4249,6 +4254,7 @@ class ConfigManager:
                 cleaned_folders.append(os.path.realpath(folder))
             except Exception as e:
                 print(f"Error processing '{folder}': {e}")           
+        self.printdbg('cleaned_folders:', cleaned_folders)
         return cleaned_folders            
         
     def printdbg(self, *args, **kwargs):
