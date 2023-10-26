@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.9'
+__version__ = '0.9.0.10'
 
 def main():
         
@@ -481,7 +481,7 @@ def subcmd_restore(args,cfg,arch,aws):
         if len(retline) < 2:
             print('Error: froster-archives table did not return result')
             return False
-        cfg.printdbg("dialog returns:",retline)
+        cfg.printdbg("subcmd_restore dialog returns:",retline)
         args.folders.append(retline[0])
         if retline[2]: 
             cfg.awsprofile = retline[2]
@@ -2632,7 +2632,7 @@ class AWSBoto:
     def check_bucket_access(self, bucket_name, readwrite=False, profile=None):
         
         if not bucket_name:
-            print('You have not yet configured an S3 bucket name. Please run "froster config" first')
+            print('check_bucket_access: bucket_name empty. You may have not yet configured a S3 bucket name. Please run "froster config" first')
             sys.exit(1)    
         if not self._check_s3_credentials(profile):
             print('_check_s3_credentials failed. Please edit file ~/.aws/credentials')
@@ -2856,15 +2856,17 @@ class AWSBoto:
 
         # part 2, prep restoring .....
         for folder in args.folders:
-            rfolder = os.path.join(os.path.sep, 'restored', folder[1:])
-            bootstrap_restore += f'\nmkdir -p "{rfolder}"'            
-            bootstrap_restore += f'\nln -s "{rfolder}" ~/rstrd-$(basename "{folder}")'
+            refolder = os.path.join(os.path.sep, 'restored', folder[1:])
+            bootstrap_restore += f'\nmkdir -p "{refolder}"'            
+            bootstrap_restore += f'\nln -s "{refolder}" ~/rstrd-$(basename "{folder}")'
             bootstrap_restore += f'\nsudo mkdir -p $(dirname "{folder}")'
             bootstrap_restore += f'\nsudo chown ec2-user $(dirname "{folder}")'
-            bootstrap_restore += f'\nln -s "{rfolder}" "{folder}"'
+            bootstrap_restore += f'\nln -s "{refolder}" "{folder}"'
 
             #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
-            #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')        
+            #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')
+            self.cfg.printdbg(f'ec2_deploy: refolder:"{refolder}" folder:"{folder}"') 
+
 
         ### this block may need to be moved to a function
         argl = ['--ec2', '-e']
@@ -3223,11 +3225,12 @@ class AWSBoto:
         long_timezone = self.cfg.get_time_zone()
         userdata = textwrap.dedent(f'''
         #! /bin/bash
+        dnf install -y gcc
         bigdisk=$(lsblk --fs --json | jq -r '.blockdevices[] | select(.children == null and .fstype == null) | .name')
         mkfs -t xfs /dev/$bigdisk
         mkdir /restored
         mount /dev/$bigdisk /restored
-        chown ec2-user /restored
+        chown ec2-user /restored                                   
         dnf check-update
         dnf update -y                                   
         dnf install -y at gcc vim wget python3-pip python3-psutil

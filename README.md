@@ -22,6 +22,7 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
 * [Using Froster](#using-froster)    
   * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
+    * [Picking old and large data](#picking-old-and-large-data)
   * [Special use cases](#special-use-cases)
     * [Recursive operations](#recursive-operations)
     * [Tarring small files](#tarring-small-files)
@@ -37,7 +38,7 @@ curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | ba
 ## Problem 
 
 This problem may have already been addressed many times, but I've yet to find an easy, open-source solution for large-scale archiving intended to free up disk space on a primary storage system. Researchers, who may have hundreds of terabytes or even petabytes of data, need to decide what to archive and where to archive it. Archiving processes can stretch on for days and are susceptible to failure. These processes must be able to resume automatically until completion, and need to be validated (for instance, through a checksum comparison with the source). Additionally, it's crucial to maintain some metadata regarding when the archiving occurred, where the data was transferred to, and the original location of the data.
-A specific issue with AWS Glacier is its current implementation as a backend to S3. Only the Glacier features that S3 does not support necessitate the use of a special Glacier API. This fact is often not well documented in many how-to guides.
+A specific issue with AWS Glacier is its current implementation as a backend to S3. Only the Glacier features that S3 does not support necessitate the use of a special Glacier API. This fact is often not well documented in how-to guides.
 
 ### Motivation 
 
@@ -384,9 +385,6 @@ The `visidata` tool can display but also manipulate csv files:
 ![image](https://github.com/dirkpetersen/froster/assets/1427719/279103d4-50c5-4393-9dec-66976922d79a)
 
 
-
-
-
 After a while you may want to restore the data. Again, you forgot the actual folder location and invoke `froster restore` without the folder argument to see the same dialog with a list of achived folders. Select a folder and hit "Enter" to restore immediatelty.
 
  
@@ -466,6 +464,33 @@ Check Job Output:
 
 Once the archive job has completed you should receive an email from your Slurm system.
 
+#### Picking old and large data 
+
+Now let's take it to the next level. Small datasets are not really worth archiving as the cost of storing them is low .... and if we started archiving data that was just used last week, some users would get really angry with us. This means our task is pretty clear: First we are looking for datasets that are large and old. In the example below we want to identify datasets that have not been touched in 3 years (1095 days) and that are larger than 1 TiB (1024 GiB without subfolders). We are executing `froster archive --older 1095 --larger 1024`. As you can see, this produces an output command that you can copy and paste directly into the shell of your HPC login node to submit an archiving batch job. In this case you will save more than 50 TiB of disk space with a few seconds of labor even though the archiving job may take days to run. 
+
+```
+froster archive --older 1095 --larger 1024
+
+Processing hotspots file /home/users/dp/.config/froster/hotspots/@XxxxermanLab.csv!
+
+Run this command to archive all selected folders in batch mode:
+
+froster archive \
+"/home/groups/XxxxermanLab/xxxriti/tabulation-virus2" \
+"/home/groups/XxxxermanLab/xxxsojd/KIR6.2_collaboration" \
+"/home/groups/XxxxermanLab/xxxtofia/ER-alpha/WildType_Estradiol_Pose1_BrokenH12_WExplore" \
+"/home/groups/XxxxermanLab/xxxriti/estrogen-receptor" \
+"/home/groups/XxxxermanLab/xxxsojd/covid_we_data" \
+"/home/groups/XxxxermanLab/xxxsojd/covid_data/we_data" \
+"/home/groups/XxxxermanLab/xxxtossh/lc8-allostery-study/gromacs/7D35/7D35-comparison/singly-bound-structure/md_5us" \
+"/home/groups/XxxxermanLab/xxxtossh/lc8-allostery-study/gromacs/7D35/7D35-comparison/doubly-bound-structure/md_5us" \
+"/home/groups/XxxxermanLab/xxxtossh/lc8-allostery-study/gromacs/7D35/7D35-comparison/apo-structure/md_5us" \
+"/home/groups/XxxxermanLab/xxxperma/cell/live_cell/mcf10a/batch_17nov20/wctm/17nov20" \
+"/home/groups/XxxxermanLab/xxxperma/cell/live_cell/mcf10a/ligcomb_17jun21"
+
+Total space to archive: 54,142 GiB
+```
+
 ### Special use cases
 
 #### Recursive operations
@@ -478,7 +503,7 @@ However, you can use the `archive --recursive` option with the archive command t
 Folders with large amounts of small files have always been problematic to manage as they can degrade the metadata performance of a storage system and copying many of them is very slow. Since Glacier objects have an overhead of 40K per uploaded file, storage consumption can get quickly out of hand if not properly managed as a folder with 1 million tiny files would require an addional 40GB storage capacity.
 
 Froster addresses this by moving all small files < 1 MiB to to a Tar archive called Froster.smallfiles.tar in each folder.
-All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. The user does not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3 like objectstore after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](https://cyberduck.io/download/) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata including the ones that were tarred to provide addional transparency.
+Froster.smallfiles.tar is created prior to uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. You do not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3 like objectstore after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](#using-cyberduck-to-browse-glacier) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata including the ones that were tarred to provide addional transparency.
  
 To avoid tarring you can set max_small_file_size_kib to 0 using this command. The default is 1024 (KiB) or you can use the `archive --notar` option.
 
