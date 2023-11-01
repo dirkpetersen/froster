@@ -3,7 +3,7 @@
 Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster crawls your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. To install froster run: 
 
 ```
-curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
 
 ```
 
@@ -72,13 +72,13 @@ There were three motivations behind the creation of `Froster`:
 Just pipe this curl command to bash to install: 
 
 ```
-curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
 ```
 
 and if you have recently installed it with all dependencies and just would like to update the core software, you just run with `update` argument which will only take a second:
 
 ```
-curl https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- update
+curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- update
 ```
 
 ### configuring 
@@ -453,6 +453,9 @@ now we run the `froster archive` command without entering folder names on the co
 
 
 ![image](https://user-images.githubusercontent.com/1427719/233419009-6a375fe4-541d-4ac6-9ba3-7916b89eabb1.png)
+
+
+![image](https://github.com/dirkpetersen/froster/assets/1427719/c772cbe3-8329-4c55-9611-7bb1e152c67e)
 
 
 ```
