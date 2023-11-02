@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.16'
+__version__ = '0.9.0.17'
 
 def main():
         
@@ -3237,7 +3237,7 @@ class AWSBoto:
           mdadm --create /dev/md0 --level=0 --raid-devices=$numdisk $bigdisks
           mkfs -t xfs /dev/md0
           mount /dev/md0 /restored
-        else
+        elif [[ $numdisk -eq 1 ]]; then
           mkfs -t xfs $bigdisks
           mount $bigdisks /restored
         fi
