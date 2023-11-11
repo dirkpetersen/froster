@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.17'
+__version__ = '0.9.0.18'
 
 def main():
         
@@ -329,7 +329,7 @@ def subcmd_index(args,cfg,arch):
         se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time=1-0')
+        se.add_line(f'#SBATCH --time=7-0')
         #se.add_line(f'ml python')
         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
         cmdline = cmdline.replace('/froster.py ', '/froster ')
