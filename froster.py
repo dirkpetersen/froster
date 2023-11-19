@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.18'
+__version__ = '0.9.0.19'
 
 def main():
         
@@ -80,9 +80,9 @@ def args_version(cfg):
     print(f'Froster version: {__version__}')
     print(f'Python version:\n{sys.version}')
     try:
-        print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolder, 'pwalk'), '--version'], 
+        print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])        
-        print('Rclone version:', subprocess.run([os.path.join(cfg.binfolder, 'rclone'), '--version'], 
+        print('Rclone version:', subprocess.run([os.path.join(cfg.binfolderx, 'rclone'), '--version'], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
     except FileNotFoundError as e:
         print(f'Error: {e}')
@@ -94,31 +94,31 @@ def subcmd_config(args, cfg, aws):
     # arguments are Class instances passed from main
 
     first_time=True
-    binfolder = cfg.read('general', 'binfolder')
-    if not binfolder:
-        binfolder = f'{cfg.home_dir}/.local/bin'
-        if not os.path.exists(binfolder):
-            os.makedirs(binfolder, mode=0o775)
-        cfg.write('general', 'binfolder', binfolder)
+    if not cfg.binfolder:
+        cfg.binfolder = '~/.local/bin'
+        cfg.binfolderx = os.path.expanduser(cfg.binfolder)
+        if not os.path.exists(cfg.binfolderx):
+            os.makedirs(cfg.binfolderx, mode=0o775)
+        cfg.write('general', 'binfolder', cfg.binfolder)
     else:
         first_time=False
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    if not os.path.exists(os.path.join(binfolder,'pwalk')):
+    if not os.path.exists(os.path.join(cfg.binfolderx,'pwalk')):
         print(" Installing pwalk ...", flush=True)        
         cfg.copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools', 
                 'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk', 
-                'pwalk', binfolder)
+                'pwalk', cfg.binfolderx)
 
     if not cfg.read('general', 'no-rclone-download'):
-        if os.path.exists(os.path.join(binfolder,'rclone')):
-            if os.path.exists(os.path.join(binfolder,'bak.rclone')):
-                os.remove(os.path.join(binfolder,'bak.rclone'))
-            os.rename(os.path.join(binfolder,'rclone'),os.path.join(binfolder,'bak.rclone'))
+        if os.path.exists(os.path.join(cfg.binfolderx,'rclone')):
+            if os.path.exists(os.path.join(cfg.binfolderx,'bak.rclone')):
+                os.remove(os.path.join(cfg.binfolderx,'bak.rclone'))
+            os.rename(os.path.join(cfg.binfolderx,'rclone'),os.path.join(cfg.binfolderx,'bak.rclone'))
         print(" Installing rclone ... please wait ... ", end='', flush=True)
         rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
         cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
-                            '/rclone-v*/',binfolder)
+                            '/rclone-v*/',cfg.binfolderx)
         print("Done!",flush=True)
 
     # Basic setup, focus the indexer on larger folders and file sizes
@@ -137,7 +137,7 @@ def subcmd_config(args, cfg, aws):
 
     if args.monitor:
         # monitoring only setup, do not continue 
-        fro = os.path.join(binfolder,'froster')
+        fro = os.path.join(cfg.binfolderx,'froster')
         cfg.write('general', 'email', args.monitor)
         cfg.add_systemd_cron_job(f'{fro} restore --monitor','30') 
         return True
@@ -176,6 +176,8 @@ def subcmd_config(args, cfg, aws):
 
     if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?','yes'):
         cfg.write('general', 'prompt_nih_reporter', 'yes')
+    else:
+        cfg.write('general', 'prompt_nih_reporter', 'no')
 
     print("")
 
@@ -804,7 +806,7 @@ class Archiver:
                     #if not pwalkfolder:
                     #    print (" Error: Either pass a folder or a --pwalk-csv file on the command line.")
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
-                    mycmd = f'{self.cfg.binfolder}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
+                    mycmd = f'{self.cfg.binfolderx}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
                     self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
                     ret = subprocess.run(mycmd, shell=True, 
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -2086,7 +2088,7 @@ class Rclone:
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
-        self.rc = os.path.join(self.cfg.binfolder,'rclone')
+        self.rc = os.path.join(self.cfg.binfolderx,'rclone')
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -4143,8 +4145,9 @@ class ConfigManager:
         self.home_dir = os.path.expanduser('~')
         self.config_root_local = os.path.join(self.home_dir, '.config', 'froster')
         self.config_root = self._get_config_root()
-        self.binfolder = self.read('general', 'binfolder')
-        self.nih = self.read('general', 'prompt_nih_reporter')        
+        self.binfolder = self.read('general', 'binfolder').replace(self.home_dir,'~')
+        self.binfolderx = os.path.expanduser(self.binfolder)
+        self.nih = self.read('general', 'prompt_nih_reporter')
         self.homepaths = self._get_home_paths()
         self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
         self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
