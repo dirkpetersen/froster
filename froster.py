@@ -10,7 +10,7 @@ import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time
 import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex
 import shutil, tempfile, glob, subprocess, itertools, socket, inspect
 if sys.platform.startswith('linux'):
-    import getpass, pwd, grp
+    import getpass, pwd, grp, stat
 # stuff from pypi
 import requests, duckdb, boto3, botocore, psutil
 from textual import on, work
@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.23'
+__version__ = '0.9.0.24'
 
 def main():
         
@@ -78,8 +78,8 @@ def main():
 
 def args_version(cfg):
     print(f'Froster version: {__version__}')
-    print(f'Froster script: {os.path.abspath(__file__)}')
-    print(f'Froster config: {cfg.config_root}')
+    print(f'   Script: {os.path.abspath(__file__)}')
+    print(f'   Config dir: {cfg.config_root}')
     print(f'Python version:\n{sys.version}')
     try:
         print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'], 
@@ -171,6 +171,7 @@ def subcmd_config(args, cfg, aws):
     try:
         os.chmod(cfg.config_root, 0o2775)
     except:
+        print(f'Could not set permissions on {cfg.config_root}!')
         pass
 
     # domain-name not needed right now
@@ -300,6 +301,8 @@ def subcmd_config(args, cfg, aws):
     x = cfg.prompt('What is the local scratch root ?',
                         '/mnt/scratch|hpc|lscratch_root','string') # add slurm jobid at the end
     
+    cfg.fix_permissions(cfg.config_root)
+
     print('\nDone!\n')
 
 def subcmd_index(args,cfg,arch):
@@ -4551,6 +4554,28 @@ class ConfigManager:
         if self.args.debug:
             print(f"Ini-section copied from {src_file} to {dest_file}")
             print(f"Missing entries in source from destination copied back to {src_file}")
+
+    def fix_permissions(self, root_dir):
+        def add_permissions(path):
+            try:
+                # Get the current permissions of the file or directory
+                current_permissions = stat.S_IMODE(os.lstat(path).st_mode)               
+                # Add write permission for group and read permission for others
+                new_permissions = current_permissions | stat.S_IWGRP | stat.S_IROTH
+                # Set the new permissions
+                os.chmod(path, new_permissions)
+            except OSError as e:
+                print(f"Error updating permissions for {path}: {e}")
+
+        # Walk through the directory tree
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            # Update permissions for each directory
+            add_permissions(dirpath)
+
+            # Update permissions for each file
+            for filename in filenames:
+                filepath = os.path.join(dirpath, filename)
+                add_permissions(filepath)
 
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
