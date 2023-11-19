@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.19'
+__version__ = '0.9.0.20'
 
 def main():
         
@@ -174,7 +174,8 @@ def subcmd_config(args, cfg, aws):
     emailstr = emailaddr.replace('@','-')
     emailstr = emailstr.replace('.','-')
 
-    if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?','yes'):
+    do_prompt = cfg.read('general', 'prompt_nih_reporter', 'yes')
+    if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?', do_prompt):
         cfg.write('general', 'prompt_nih_reporter', 'yes')
     else:
         cfg.write('general', 'prompt_nih_reporter', 'no')
@@ -4688,10 +4689,10 @@ class ConfigManager:
             else:
                 entry_file.write(value)
 
-    def read(self, section, entry):
+    def read(self, section, entry, default=""):
         entry_path = self._get_entry_path(section, entry)
         if not os.path.exists(entry_path):
-            return ""
+            return default
             #raise FileNotFoundError(f'Config entry "{entry}" in section "{section}" not found.')
         with open(entry_path, 'r') as entry_file:
             try:
@@ -4699,13 +4700,18 @@ class ConfigManager:
             except json.JSONDecodeError:
                 pass
             except:
-                print('Error in ConfigManager.read()')
+                print('Error in ConfigManager.read(), returning default')
+                return default
         with open(entry_path, 'r') as entry_file:
+            try:
                 content = entry_file.read().splitlines()
                 if len(content) == 1:
                     return content[0].strip()
                 else:
                     return content
+            except:
+                print('Error in ConfigManager.read(), returning default')
+                return default
 
     def delete(self, section, entry):
         entry_path = self._get_entry_path(section, entry)
