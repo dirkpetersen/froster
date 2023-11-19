@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.21'
+__version__ = '0.9.0.23'
 
 def main():
         
@@ -78,6 +78,8 @@ def main():
 
 def args_version(cfg):
     print(f'Froster version: {__version__}')
+    print(f'Froster script: {os.path.abspath(__file__)}')
+    print(f'Froster config: {cfg.config_root}')
     print(f'Python version:\n{sys.version}')
     try:
         print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'], 
@@ -114,15 +116,17 @@ def subcmd_config(args, cfg, aws):
                 'pwalk', cfg.binfolderx)
 
     if not cfg.read('general', 'no-rclone-download'):
-        if os.path.exists(os.path.join(cfg.binfolderx,'rclone')):
-            if os.path.exists(os.path.join(cfg.binfolderx,'bak.rclone')):
-                os.remove(os.path.join(cfg.binfolderx,'bak.rclone'))
-            os.rename(os.path.join(cfg.binfolderx,'rclone'),os.path.join(cfg.binfolderx,'bak.rclone'))
-        print(" Installing rclone ... please wait ... ", end='', flush=True)
-        rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-        cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
-                            '/rclone-v*/',cfg.binfolderx)
-        print("Done!",flush=True)
+        rclonepath=os.path.join(cfg.binfolderx,'rclone')
+        if not cfg.was_file_modified_in_last_24h(rclonepath):
+            if os.path.exists(rclonepath):
+                if os.path.exists(os.path.join(cfg.binfolderx,'bak.rclone')):
+                    os.remove(os.path.join(cfg.binfolderx,'bak.rclone'))
+                os.rename(rclonepath,os.path.join(cfg.binfolderx,'bak.rclone'))
+            print(" Installing rclone ... please wait ... ", end='', flush=True)
+            rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+            cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
+                                '/rclone-v*/',cfg.binfolderx)
+            print("Done!",flush=True)
 
     # Basic setup, focus the indexer on larger folders and file sizes
     if not cfg.read('general', 'max_small_file_size_kib'):
@@ -149,7 +153,7 @@ def subcmd_config(args, cfg, aws):
         # only basic configuration required for indexing jobs
         return True 
 
-    print('\n*** Asking a few questions ***')
+    print(f'\n*** Asking a few questions  ({cfg.config_root}) ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
 
     # determine if we need to move the (shared) config to a new folder 
@@ -4257,6 +4261,24 @@ class ConfigManager:
             return os.path.join(section_path, entry)
         else:
             return os.path.join(self.config_root, entry)
+
+
+    def was_file_modified_in_last_24h(self, file_path):
+        """
+        Check if the file at the given path was modified in the last 24 hours.        
+        :param file_path: Path to the file to check.
+        :return: True if the file was modified in the last 24 hours, False otherwise.
+        """
+        try:
+            # Get the current time and the last modification time of the file
+            current_time = time.time()
+            last_modified_time = os.path.getmtime(file_path)
+
+            # Check if the file was modified in the last 24 hours (24 hours = 86400 seconds)
+            return (current_time - last_modified_time) < 86400
+        except FileNotFoundError:
+            # If the file does not exist, return False
+            return False
 
     def replace_symlinks_with_realpaths(self, folders):
         cleaned_folders = []
