@@ -100,22 +100,14 @@ echo "  froster archive"
                         
 deactivate
 
-# check if there is a folder in PATH inside my home directory 
-DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
+# check if there is a folder in PATH inside my home directory, deactivated 
+#DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
 
-if [[ -d ${DIR_IN_PATH} ]]; then
-  if ! [[ -e ${DIR_IN_PATH}/froster ]]; then
-    ln -s ~/.local/bin/froster ${DIR_IN_PATH}/froster
-  fi
+if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+  echo " ~/local/bin is in PATH, you can start 'froster'" 
 else
-  # "No folders in your home folder are in PATH, so unfortunately we need to clutter your ~/.bashrc
-  HOME=~
-  if ! grep -q "export PATH=\$PATH:~/.local/bin" "${HOME}/.bashrc"; then
-    # Append the export statement to .bashrc
-    echo "export PATH=\$PATH:~/.local/bin" >> "${HOME}/.bashrc"
-    echo ""
-    echo " ~/.local/bin added to PATH in .bashrc"
-    echo " Please logout/login again or run: source ~/.bashrc"
-  fi
+  echo "export PATH=\$PATH:~/.local/bin" >> "${HOME}/.bashrc"
+  echo ""
+  echo " ~/.local/bin added to PATH in .bashrc"
+  echo " Please logout/login again or run: source ~/.bashrc"
 fi
-
