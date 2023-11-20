@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.31'
+__version__ = '0.9.0.32'
 
 def main():
         
@@ -4807,9 +4807,9 @@ class ConfigManager:
             # Get the group ID of the folder
             gid = os.stat(cfgfolder).st_gid
             # Get the group name from the group ID
-            group_name = grp.getgrgid(gid)
-            if group_name == self.whoami:
-                print(f'  Group and user name should not be the same for {cfgfolder}.')
+            pgroup = grp.getgrgid(gid)            
+            if pgroup.gr_name == self.whoami:
+                print(f'  Group ({pgroup.gr_name}) and user name ({self.whoami}) should not be the same for {cfgfolder}.')
                 return False
             else:
                 # set the correct permission for the folder including setgid to make sure that the group is inherited 
