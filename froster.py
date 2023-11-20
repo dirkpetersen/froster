@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.24'
+__version__ = '0.9.0.25'
 
 def main():
         
@@ -4725,19 +4725,31 @@ class ConfigManager:
         return current_tz_str
         
     def write(self, section, entry, value):
-        entry_path = self._get_entry_path(section, entry)
-        os.makedirs(os.path.dirname(entry_path), exist_ok=True)
-        if value == '""':
-            os.remove(entry_path)
-            return
-        with open(entry_path, 'w') as entry_file:
-            if isinstance(value, list):
-                for item in value:
-                    entry_file.write(f"{item}\n")
-            elif isinstance(value, dict):
-                json.dump(value, entry_file)
-            else:
-                entry_file.write(value)
+        try:
+            entry_path = self._get_entry_path(section, entry)
+            os.makedirs(os.path.dirname(entry_path), exist_ok=True)
+            if value == '""':
+                if os.path.exists(entry_path):  # Check if file exists before trying to remove
+                    os.remove(entry_path)
+                return
+            with open(entry_path, 'w') as entry_file:
+                if isinstance(value, list):
+                    for item in value:
+                        entry_file.write(f"{item}\n")
+                elif isinstance(value, dict):
+                    json.dump(value, entry_file)
+                else:
+                    entry_file.write(value)
+        except OSError as e:
+            # Handle file operation errors (like permission issues, file not found, etc.)
+            print(f"Please ask your Data Steward to add group permissions. File operation error: {e}")
+        except TypeError as e:
+            # Handle issues with the type of 'value'
+            print(f"Type error: {e}")
+        except Exception as e:
+            # Handle any other unexpected errors
+            print(f"An unexpected error occurred: {e}")
+
 
     def read(self, section, entry, default=""):
         entry_path = self._get_entry_path(section, entry)
