@@ -5,10 +5,10 @@ Froster automates much of the challening tasks when
 archiving many Terabytes of data on large (HPC) systems.
 """
 # internal modules
-import sys, os, argparse, json, configparser, csv, platform, asyncio
-import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time
-import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex
-import shutil, tempfile, glob, subprocess, itertools, socket, inspect
+import sys, os, argparse, json, configparser, csv, platform, asyncio, stat
+import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time, platform
+import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex,  glob
+import shutil, tempfile, subprocess, itertools, socket, inspect
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp, stat
 # stuff from pypi
@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.27'
+__version__ = '0.9.0.28'
 
 def main():
         
@@ -125,7 +125,10 @@ def subcmd_config(args, cfg, aws):
                     os.remove(os.path.join(cfg.binfolderx,'bak.rclone'))
                 os.rename(rclonepath,os.path.join(cfg.binfolderx,'bak.rclone'))
             print(" Installing rclone ... please wait ... ", end='', flush=True)
-            rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+            if platform.machine() in ['arm64', 'aarch64']:
+                rclone_url = 'https://downloads.rclone.org/rclone-current-linux-arm64.zip'
+            else:
+                rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
             cfg.copy_binary_from_zip_url(rclone_url, 'rclone', 
                                 '/rclone-v*/',cfg.binfolderx)
             print("Done!",flush=True)
@@ -172,8 +175,9 @@ def subcmd_config(args, cfg, aws):
     # set the correct permission for cfg.config_root 
     try:
         os.chmod(cfg.config_root, 0o2775)
+        #this will fail for non-owner users.
     except:
-        print(f'Could not set permissions on {cfg.config_root}!')
+        #print(f'Could not set permissions on {cfg.config_root}!')
         pass
 
     # domain-name not needed right now
