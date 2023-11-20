@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.38'
+__version__ = '0.9.0.39'
 
 def main():
         
@@ -180,8 +180,7 @@ def subcmd_config(args, cfg, aws):
             args.cfgfolder = cfg.prompt('Enter the path to a shared config folder:')
     elif args.cfgfolder:
         movecfg=True
-    if movecfg:
-        cfg.create_aws_configs()
+    if movecfg:        
         if cfg.move_config(args.cfgfolder):
             print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
         else:
@@ -213,10 +212,11 @@ def subcmd_config(args, cfg, aws):
     s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
                             'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class','string')
 
+    cfg.create_aws_configs()
     # if there is a shared ~/.aws/config copy it over
     if cfg.config_root_local != cfg.config_root:
         cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
-    cfg.create_aws_configs()
+    
 
     aws_region = cfg.get_aws_region('aws')
     if not aws_region:
