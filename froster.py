@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.36'
+__version__ = '0.9.0.37'
 
 def main():
         
@@ -181,6 +181,7 @@ def subcmd_config(args, cfg, aws):
     elif args.cfgfolder:
         movecfg=True
     if movecfg:
+        cfg.create_aws_configs()
         if cfg.move_config(args.cfgfolder):
             print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
         else:
