@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.40'
+__version__ = '0.9.0.41'
 
 def main():
         
@@ -4588,7 +4588,7 @@ class ConfigManager:
                 # Set the new permissions
                 os.chmod(path, new_permissions)
             except OSError as e:
-                self.cfg.printdbg(f"Error updating permissions for {path}: {e}")
+                self.printdbg(f"Error updating permissions for {path}: {e}")
 
         # Walk through the directory tree
         for dirpath, dirnames, filenames in os.walk(root_dir):
