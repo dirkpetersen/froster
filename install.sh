@@ -104,10 +104,11 @@ deactivate
 #DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
 
 if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
-  echo " ~/local/bin is in PATH, you can start 'froster'" 
+  echo ""
+  #echo "  ~/local/bin is in PATH, you can start 'froster'" 
 else
   echo "export PATH=\$PATH:~/.local/bin" >> "${HOME}/.bashrc"
   echo ""
-  echo " ~/.local/bin added to PATH in .bashrc"
-  echo " Please logout/login again or run: source ~/.bashrc"
+  echo "  ~/.local/bin added to PATH in .bashrc"
+  echo "  Please logout/login again or run: source ~/.bashrc"
 fi

@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.30'
+__version__ = '0.9.0.31'
 
 def main():
         
@@ -195,9 +195,10 @@ def subcmd_config(args, cfg, aws):
     bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
                         f'froster-{emailstr}|general|bucket','string')
     archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
-                                'archive|general|archiveroot','string')
+                                'archive|general|archiveroot','string') 
+    
     s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
-                                'DEEP_ARCHIVE|general|s3_storage_class','string')
+                            'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class','string')
 
     # if there is a shared ~/.aws/config copy it over
     if cfg.config_root_local != cfg.config_root:
@@ -4327,14 +4328,19 @@ class ConfigManager:
         if not question.endswith(':'):
             question += ':'
         question = f"*** {question} ***"
+        defaultlist = []
         if isinstance(defaults, list):
+            defaultlist = defaults
+        elif defaults.split('|')[0].split(','):
+            defaultlist = defaults.split('|')[0].split(',')
+        if len(defaultlist) > 1:
             print(question)
-            for i, option in enumerate(defaults, 1):
+            for i, option in enumerate(defaultlist, 1):
                 print(f'  ({i}) {option}')           
             while True:
                 selected = input("  Enter the number of your selection: ")
-                if selected.isdigit() and 1 <= int(selected) <= len(defaults):
-                    return defaults[int(selected) - 1]
+                if selected.isdigit() and 1 <= int(selected) <= len(defaultlist):
+                    return defaultlist[int(selected) - 1]
                 else:
                     print("  Invalid selection. Please enter a number from the list.")
         elif defaults is not None:
