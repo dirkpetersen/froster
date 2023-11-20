@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.33'
+__version__ = '0.9.0.34'
 
 def main():
         
@@ -4332,7 +4332,7 @@ class ConfigManager:
         defaultlist = []
         if isinstance(defaults, list):
             defaultlist = defaults
-        elif defaults.split('|')[0].split(','):
+        elif defaults:
             defaultlist = defaults.split('|')[0].split(',')
         if len(defaultlist) > 1:
             print(question)
