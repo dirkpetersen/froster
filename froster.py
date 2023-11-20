@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.26'
+__version__ = '0.9.0.27'
 
 def main():
         
@@ -96,6 +96,7 @@ def subcmd_config(args, cfg, aws):
     # arguments are Class instances passed from main
 
     first_time=True
+    binfolder = cfg.binfolder
     if not cfg.binfolder:
         cfg.binfolder = '~/.local/bin'
         cfg.binfolderx = os.path.expanduser(cfg.binfolder)
@@ -106,7 +107,8 @@ def subcmd_config(args, cfg, aws):
             cfg.binfolder = cfg.binfolder.replace(cfg.home_dir, '~')
         cfg.binfolderx = os.path.expanduser(cfg.binfolder)
         first_time=False
-    cfg.write('general', 'binfolder', cfg.binfolder)
+    if binfolder != cfg.binfolder:
+        cfg.write('general', 'binfolder', cfg.binfolder)
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     if not os.path.exists(os.path.join(cfg.binfolderx,'pwalk')):
