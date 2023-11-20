@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.28'
+__version__ = '0.9.0.30'
 
 def main():
         
@@ -145,8 +145,8 @@ def subcmd_config(args, cfg, aws):
 
     # general setup 
     defdom = cfg.get_domain_name()
-    whoami = getpass.getuser()
-
+    whoami = cfg.whoami
+    
     if args.monitor:
         # monitoring only setup, do not continue 
         fro = os.path.join(cfg.binfolderx,'froster')
@@ -171,14 +171,9 @@ def subcmd_config(args, cfg, aws):
     if movecfg:
         if cfg.move_config(args.cfgfolder):
             print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
-
-    # set the correct permission for cfg.config_root 
-    try:
-        os.chmod(cfg.config_root, 0o2775)
-        #this will fail for non-owner users.
-    except:
-        #print(f'Could not set permissions on {cfg.config_root}!')
-        pass
+        else:
+            print(f'  ERROR: Could not move config folder to {args.cfgfolder}')
+            return False
 
     # domain-name not needed right now
     #domain = cfg.prompt('Enter your domain name:',
@@ -755,15 +750,16 @@ def subcmd_ssh(args, cfg, aws):
         return True        
     if args.terminate:
         aws.ec2_terminate_instance(args.terminate)
-        return True        
-    myhost = cfg.read('cloud', 'ec2_last_instance')        
+        return True
+    if args.sshargs:
+        myhost, remote_path = args.sshargs[0].split(':')
+    else:
+        myhost = cfg.read('cloud', 'ec2_last_instance')
     if ips and not myhost in ips:
         print(f'{myhost} is no longer running, replacing with {ips[-1]}')
         myhost = ips[-1]
         #cfg.write('cloud', 'ec2_last_instance', myhost)
     if args.subcmd == 'ssh':
-        if args.sshargs:
-            myhost = args.sshargs[0]
         print(f'Connecting to {myhost} ...')
         aws.ssh_execute('ec2-user', myhost)
         return True
@@ -4187,6 +4183,7 @@ class ConfigManager:
         if not self._set_env_vars(self.awsprofile):
             self.awsprofile = ''
         self.ssh_key_name = 'froster-ec2'
+        self.whoami = getpass.getuser()
         
     def _set_env_vars(self, profile):
         
@@ -4797,6 +4794,26 @@ class ConfigManager:
         os.rmdir(section_path)
 
     def move_config(self,cfgfolder):
+        if not os.path.isdir(cfgfolder):
+            print(f'{cfgfolder} is not a directory')
+            return False
+        else:
+            # Get the group ID of the folder
+            gid = os.stat(cfgfolder).st_gid
+            # Get the group name from the group ID
+            group_name = grp.getgrgid(gid)
+            if group_name == self.whoami:
+                print(f'  Group and user name should not be the same for {cfgfolder}.')
+                return False
+            else:
+                # set the correct permission for the folder including setgid to make sure that the group is inherited 
+                try:
+                    os.chmod(cfgfolder, 0o2775)
+                    #this will fail for non-owner users.
+                except Exception as e:
+                    print(f"  Could not set permissions on {cfgfolder} :\n{e}")                    
+                    return False
+                
         if not cfgfolder and self.config_root == self.config_root_local:
                 cfgfolder = self.prompt("Please enter the root where folder .config/froster will be created.", 
                                     os.path.expanduser('~'))
