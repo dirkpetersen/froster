@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.34'
+__version__ = '0.9.0.35'
 
 def main():
         
@@ -4258,6 +4258,12 @@ class ConfigManager:
                         print (f"Please remove file {rootfile} to continue with a single user config.")
                         sys.exit(1)
                         #raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
+        elif self.args.cfgfolder:
+            binfolder = os.path.join(self.args.cfgfolder, '.config','froster','general','binfolder')
+            if os.path.exists(binfolder):
+                theroot = os.path.join(self.args.cfgfolder, '.config','froster')
+                with open(rootfile, 'w') as myfile:
+                    myfile.write(theroot)            
         return theroot
 
     def _get_section_path(self, section):
