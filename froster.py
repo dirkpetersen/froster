@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.37'
+__version__ = '0.9.0.38'
 
 def main():
         
@@ -4171,6 +4171,7 @@ class ConfigManager:
         self.args = args
         self.home_dir = os.path.expanduser('~')
         self.config_root_local = os.path.join(self.home_dir, '.config', 'froster')
+        os.makedirs(self.config_root_local, exist_ok=True)
         self.config_root = self._get_config_root()
         self.binfolder = self.read('general', 'binfolder').replace(self.home_dir,'~')
         self.binfolderx = os.path.expanduser(self.binfolder)
