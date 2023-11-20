@@ -580,11 +580,20 @@ In addition you can click the link (often ctrl+click) to a Jupyter Lab Notebook 
 ![image](https://github.com/dirkpetersen/froster/assets/1427719/1837511c-69ec-4b90-b408-a34833c3a68d)
 
 
-#### Using CyberDuck to browse Glacier
+#### Using desktop tools to browse S3 Glacier
 
+##### Cyberduck
 [Cyberduck](https://cyberduck.io/download/) is a GUI tool to browse, upload and transfer data from AWS S3/Glacier. When creating a new Bookmark, pick the `S3 (with timestamps)` service. If it does not show up in the list pick `More Options...` at the bottom of the list and then search for `timestamps` in Profiles. This ensures that you can see the original modification date of the uploaded files while browsing and not the date they were uploaded to S3/Glacier. All files called `Froster.allfiles.csv` are not stored in Glacier but S3 and you can just mark the file and hit the `Edit` button in the toolbar or run ctrl+k to open that file with the default tool for csv files on your computer (this is often Excel)
 
 ![image](https://github.com/dirkpetersen/froster/assets/1427719/48f0e21b-1717-4f9a-9fd5-b3bed110487e)
+
+##### Cloudberry Explorer
+
+Select Amazon S3
+![image](https://github.com/dirkpetersen/froster/assets/1427719/71ac8ba9-15d3-4763-b044-73ccd69579ba)
+
+Enter your credentials and picked your preferred region under advanced 
+![image](https://github.com/dirkpetersen/froster/assets/1427719/88b14c0c-2c00-4518-a9ab-48f2a96d8d4e)
 
 
 #### More detailed file system analysis 
