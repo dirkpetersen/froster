@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.35'
+__version__ = '0.9.0.36'
 
 def main():
         
@@ -95,6 +95,17 @@ def subcmd_config(args, cfg, aws):
     # configure user and / or team settings 
     # arguments are Class instances passed from main
 
+    if args.cfgfolder:
+        binfolder = os.path.join(args.cfgfolder, '.config','froster','general','binfolder')
+        if os.path.exists(binfolder):
+            theroot = os.path.join(args.cfgfolder, '.config','froster')
+            config_root_file = os.path.join(cfg.config_root_local,'config_root')            
+            with open(config_root_file, 'w') as myfile:
+                myfile.write(theroot)
+            cfg.config_root = theroot
+            print(f'  Config folder set to {cfg.config_root}, please restart froster without config folder argument.')
+            return True
+            
     first_time=True
     binfolder = cfg.binfolder
     if not cfg.binfolder:
@@ -4257,13 +4268,7 @@ class ConfigManager:
                     if not self.ask_yes_no(f'{rootfile} points to a shared config that does not exist. Do you want to configure {theroot} now?'):
                         print (f"Please remove file {rootfile} to continue with a single user config.")
                         sys.exit(1)
-                        #raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
-        elif self.args.cfgfolder:
-            binfolder = os.path.join(self.args.cfgfolder, '.config','froster','general','binfolder')
-            if os.path.exists(binfolder):
-                theroot = os.path.join(self.args.cfgfolder, '.config','froster')
-                with open(rootfile, 'w') as myfile:
-                    myfile.write(theroot)            
+                        #raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')     
         return theroot
 
     def _get_section_path(self, section):
