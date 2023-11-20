@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.32'
+__version__ = '0.9.0.33'
 
 def main():
         
@@ -166,6 +166,7 @@ def subcmd_config(args, cfg, aws):
     if first_time and args.cfgfolder == '' and cfg.config_root == cfg.config_root_local:
         if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', 'no'):
             movecfg=True
+            args.cfgfolder = cfg.prompt('Enter the path to a shared config folder:')
     elif args.cfgfolder:
         movecfg=True
     if movecfg:
