@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.25'
+__version__ = '0.9.0.26'
 
 def main():
         
@@ -4743,6 +4743,7 @@ class ConfigManager:
         except OSError as e:
             # Handle file operation errors (like permission issues, file not found, etc.)
             print(f"Please ask your Data Steward to add group permissions. File operation error: {e}")
+            sys.exit(1)
         except TypeError as e:
             # Handle issues with the type of 'value'
             print(f"Type error: {e}")
