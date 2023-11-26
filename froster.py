@@ -3395,7 +3395,7 @@ class AWSBoto:
             os.makedirs(os.path.join(self.cfg.config_root,'cloud'),exist_ok=True)            
             with open(key_path, 'w') as key_file:
                 key_file.write(key_pair.key_material)
-            os.chmod(key_path, 0o600)  # Set file permission to 600
+        os.chmod(key_path, 0o600)  # Set file permission to 600
 
         imageid = self._ec2_get_latest_amazon_linux2_ami(profile)
         print(f'Using Image ID: {imageid}')
