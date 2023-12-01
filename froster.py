@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.41'
+__version__ = '0.9.0.42'
 
 def main():
         
@@ -1796,15 +1796,18 @@ class Archiver:
             if self.args.debug and not self.args.pwalkcsv:
                 print(f" Invalid folder path: {folder_path}")
             return folder_atime
-        last_accessed_time = None
-        #last_accessed_file = None
-        for file_name in os.listdir(folder_path):
+        last_accessed_time = None        
+        try:
+            subobjects=os.listdir(folder_path)
+        except Exception as e:
+            print(f'Error accessing folder {folder_path}:\n{e}')
+            return folder_atime
+        for file_name in subobjects:
             file_path = os.path.join(folder_path, file_name)
             if os.path.isfile(file_path):
                 accessed_time = os.path.getatime(file_path)
                 if last_accessed_time is None or accessed_time > last_accessed_time:
                     last_accessed_time = accessed_time
-                    #last_accessed_file = file_path
         if last_accessed_time == None:
             last_accessed_time = folder_atime
         return last_accessed_time
