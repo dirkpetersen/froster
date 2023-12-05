@@ -1137,7 +1137,7 @@ class Archiver:
             reader = csv.DictReader(file)
             print("count len")
             mylen = sum(1 for row in reader)
-            print("create progress bar")
+            print(f"create progress bar with len {mylen}")
             progress = self._create_progress_bar(mylen)
             for row in reader:
                 ret = self.test_write(row['Folder'])
@@ -1147,7 +1147,9 @@ class Archiver:
         with open(user_csv, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
             writer.writeheader()
-            writer.writerows(writable_folders)            
+            writer.writerows(writable_folders)
+
+        time.sleep(10)   
         return user_csv
 
     def test_write(self, directory):
