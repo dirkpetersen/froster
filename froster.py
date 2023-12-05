@@ -823,15 +823,12 @@ class Archiver:
     
         # Connect to an in-memory DuckDB instance
         con = duckdb.connect(':memory:')
-        #con.execute('PRAGMA experimental_parallel_csv=TRUE;') # now standard 
         con.execute(f'PRAGMA threads={self.args.cores};')
 
         locked_dirs = ''
         with tempfile.NamedTemporaryFile() as tmpfile:
             with tempfile.NamedTemporaryFile() as tmpfile2:
                 if not self.args.pwalkcsv:
-                    #if not pwalkfolder:
-                    #    print (" Error: Either pass a folder or a --pwalk-csv file on the command line.")
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
                     mycmd = f'{self.cfg.binfolderx}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}' # 2> {tmpfile2.name}.err'
                     self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
@@ -840,7 +837,7 @@ class Archiver:
                     if ret.returncode != 0:
                         print(f'pwalk run failed: {mycmd} Error:\n{ret.stderr}')
                         return False
-                    lines = ret.stderr.decode('utf-8').splitlines()
+                    lines = ret.stderr.decode('utf-8', errors='ignore').splitlines()
                     locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l]) 
                     pwalkcsv = tmpfile2.name
                 else:
@@ -2287,7 +2284,7 @@ class Rclone:
             command = ['pgrep', process]
         try:
             output = subprocess.check_output(command)
-            pids = [int(pid) for pid in output.decode().split('\n') if pid]
+            pids = [int(pid) for pid in output.decode(errors='ignore').split('\n') if pid]
             return pids
         except subprocess.CalledProcessError:
             # No rclone processes found
@@ -3935,7 +3932,7 @@ class AWSBoto:
     def _monitor_users_logged_in(self):
         """Check if any users are logged in."""
         try:
-            output = subprocess.check_output(['who']).decode('utf-8')
+            output = subprocess.check_output(['who']).decode('utf-8', errors='ignore')
             if output:
                 print('froster-monitor: Not idle, logged in:', output)
                 return True  # Users are logged in
