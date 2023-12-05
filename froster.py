@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.48'
+__version__ = '0.9.0.49'
 
 def main():
         
@@ -432,7 +432,13 @@ def subcmd_archive(args,cfg,arch,aws):
             print (f'You can start this process later by using this command:\n  froster archive "{retline[5]}"')
             return False
         
+        badfiles = arch.cannot_read_files(retline[5])
+        if badfiles:
+            print(f'  Cannot read these files in folder {retline[5]}: {", ".join(badfiles)}')
+            return False
+        
         args.folders.append(retline[5])
+
     else:
         args.folders = cfg.replace_symlinks_with_realpaths(args.folders)                
 
@@ -1248,7 +1254,7 @@ class Archiver:
             file_path = os.path.join(directory, filename)
             # Check if it's a file and not readable
             if os.path.isfile(file_path) and not self.can_read_file(file_path):
-                unreadable_files.append(file_path)
+                unreadable_files.append(filename)
         return unreadable_files
 
     def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
