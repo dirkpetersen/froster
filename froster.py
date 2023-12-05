@@ -8,7 +8,7 @@ archiving many Terabytes of data on large (HPC) systems.
 import sys, os, argparse, json, configparser, csv, platform, asyncio, stat
 import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time, platform
 import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex,  glob
-import shutil, tempfile, subprocess, itertools, socket, inspect
+import shutil, tempfile, subprocess, itertools, socket, inspect, uuid
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp, stat
 # stuff from pypi
@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.43'
+__version__ = '0.9.0.45'
 
 def main():
         
@@ -79,7 +79,7 @@ def main():
 def args_version(cfg):
     print(f'Froster version: {__version__}')
     print(f'   Script: {os.path.abspath(__file__)}')
-    print(f'   Config dir: {cfg.config_root}')
+    print(f'   Config dir: {cfg.config_root.replace("/.config/froster","")}')
     print(f'Python version:\n{sys.version}')
     try:
         print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'], 
@@ -349,7 +349,7 @@ def subcmd_index(args,cfg,arch):
         label=arch._get_hotspots_file(args.folders[0]).replace('.csv','')
         label=label.replace(' ','_')
         shortlabel=os.path.basename(args.folders[0])
-        myjobname=f'froster:index:{shortlabel}'            
+        myjobname=f'froster:index:{shortlabel}'
         email=cfg.read('general', 'email')
         se.add_line(f'#SBATCH --job-name={myjobname}')
         se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
@@ -413,6 +413,8 @@ def subcmd_archive(args,cfg,arch,aws):
         elif args.larger > 0 or args.older > 0:
             print('You need to combine both "--older <days> and --larger <GiB> options')
             return
+        
+        SELECTEDFILE = arch.get_user_hotspot(SELECTEDFILE)
         app = TableHotspots()
         retline=app.run()
         #print('Retline:', retline)
@@ -1117,9 +1119,32 @@ class Archiver:
         conn.close()
 
         return True
+    
+    def get_user_hotspot(self, hotspot_csv):
+        # Reduce a hotspots file to the folders that the user has write access to
+        base, extension = hotspot_csv.rsplit('.', 1)
+        user_csv = f'{base}.{self.cfg.whoami}.{extension}'        
+        if os.path.exists(user_csv):
+            current_time = time.time()
+            creation_time = os.path.getctime(user_csv)
+            if current_time - creation_time < 86400:  # 24 hours in seconds
+                print(f"File {user_csv} already exists and is less than 24 hours old. Skipping creation.")
+                return user_csv
+        writable_folders = []
+        with open(hotspot_csv, mode='r', newline='') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                ret = self.test_write(row['Folder'])
+                if ret != 13 and ret != 2:
+                    writable_folders.append(row)
+        with open(user_csv, mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            writer.writerows(writable_folders)            
+        return user_csv
 
     def test_write(self, directory):
-        testpath=os.path.join(directory,'.froster.test')
+        testpath=os.path.join(directory,f'.froster.test.{self.cfg.whoami}')
         try:
             with open(testpath, "w") as f:
                 f.write('just a test')
