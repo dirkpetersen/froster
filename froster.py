@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.47'
+__version__ = '0.9.0.48'
 
 def main():
         
@@ -425,7 +425,7 @@ def subcmd_archive(args,cfg,arch,aws):
             return False
         
         if retline[-1]:
-            if cfg.nih or args.nih:
+            if cfg.nih == 'yes' or args.nih:
                 app = TableNIHGrants()
                 archmeta=app.run()
         else:
@@ -970,6 +970,11 @@ class Archiver:
             print('  You need to manually rename the file before you can proceed.')
             print('  Without a valid ".froster.md5sum" in a folder you will not be able to use "froster" for restores')
             return False
+        
+        badfiles = self.cannot_read_files(source)
+        if badfiles:
+            print(f'  Cannot read these files in folder {source}: {", ".join(badfiles)}')
+            return False
 
         if not self.args.notar:
             ret=self._tar_small_files(source,self.thresholdKB)
@@ -1235,6 +1240,16 @@ class Archiver:
                    is_444
         return can_read
 
+    def cannot_read_files(self, directory):
+        # List to hold files that cannot be read
+        unreadable_files = []
+        # Iterate over all files in the given directory
+        for filename in os.listdir(directory):
+            file_path = os.path.join(directory, filename)
+            # Check if it's a file and not readable
+            if os.path.isfile(file_path) and not self.can_read_file(file_path):
+                unreadable_files.append(file_path)
+        return unreadable_files
 
     def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in self._walker(directory):
