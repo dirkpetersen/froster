@@ -1147,7 +1147,8 @@ class Archiver:
                 ret = self.test_write(row['Folder'])
                 if ret != 13 and ret != 2:
                     writable_folders.append(row)
-                progress(l)
+                    progress(l)
+                #progress(reader.line_num)
         print('Writing new user hotspots, folders with write permissions ...')
         with open(user_csv, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
