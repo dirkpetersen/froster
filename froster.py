@@ -1130,18 +1130,18 @@ class Archiver:
             if current_time - creation_time < 86400:  # 24 hours in seconds
                 print(f"File {user_csv} already exists and is less than 24 hours old. Skipping creation.")
                 return user_csv
-        writable_folders = []
-        print("Open CSV")
+        writable_folders = []        
         with open(hotspot_csv, mode='r', newline='') as file:
-            print("Open dict reader")
             reader = csv.DictReader(file)
-            print("count len")
             mylen = sum(1 for row in reader)
+            if mylen > MAXHOTSPOTS:
+                mylen = MAXHOTSPOTS
             file.seek(0)
             reader = csv.DictReader(file)            
-            print(f"create progress bar with len {mylen}")
             progress = self._create_progress_bar(mylen)
             for row in reader:
+                if reader.line_num > mylen:
+                    break
                 ret = self.test_write(row['Folder'])
                 if ret != 13 and ret != 2:
                     writable_folders.append(row)
