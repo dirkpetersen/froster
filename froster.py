@@ -211,6 +211,8 @@ def subcmd_config(args, cfg, aws):
     
     s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
                             'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class','string')
+    cfg.write('general', 's3_storage_class', s3_storage_class)
+    
 
     cfg.create_aws_configs()
     # if there is a shared ~/.aws/config copy it over
@@ -1050,7 +1052,7 @@ class Archiver:
             return False
 
         # If success, write metadata to froster-archives.json database
-        s3_storage_class=os.getenv('RCLONE_S3_STORAGE_CLASS','STANDARD')
+        s3_storage_class=os.getenv('RCLONE_S3_STORAGE_CLASS','INTELLEGENT_TIERING')
         timestamp=datetime.datetime.now().isoformat()
         archive_mode="Single"
         if isrecursive:
