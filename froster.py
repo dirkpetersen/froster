@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.42'
+__version__ = '0.9.0.43'
 
 def main():
         
@@ -148,7 +148,7 @@ def subcmd_config(args, cfg, aws):
     if not cfg.read('general', 'max_small_file_size_kib'):
         cfg.write('general', 'max_small_file_size_kib', '1024')
     if not cfg.read('general', 'min_index_folder_size_gib'):
-        cfg.write('general', 'min_index_folder_size_gib', "10")
+        cfg.write('general', 'min_index_folder_size_gib', "1")
     if not cfg.read('general', 'min_index_folder_size_avg_mib'):
         cfg.write('general', 'min_index_folder_size_avg_mib', "10")
     if not cfg.read('general', 'max_hotspots_display_entries'):
