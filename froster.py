@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.45'
+__version__ = '0.9.0.46'
 
 def main():
         
@@ -1183,6 +1183,31 @@ class Archiver:
             if iteration == max_value: 
                 print()
         return show_progress_bar
+    
+    def can_delete_file(self, file_path):
+        # Check if file exists
+        if not os.path.exists(file_path):
+            return False
+        # Getting the status of the file
+        file_stat = os.stat(file_path)
+        # Getting the current user and group IDs
+        current_uid = os.getuid()
+        current_gid = os.getgid()
+        # Checking if the user is the owner
+        is_owner = file_stat.st_uid == current_uid
+        # Checking if the user is in the file's group
+        is_group_member = file_stat.st_gid == current_gid or \
+                          any(grp.getgrgid(g).gr_gid == file_stat.st_gid for g in os.getgroups())
+        # Extracting permission bits
+        permissions = file_stat.st_mode
+        # Checking for group write permission
+        has_group_write_permission = bool(permissions & stat.S_IWGRP)
+        # Checking for '666' or '777' permissions
+        is_666_or_777 = permissions & 0o666 == 0o666 or permissions & 0o777 == 0o777
+        # Determining if the user can delete the file
+        can_delete = is_owner or (is_group_member and has_group_write_permission) or is_666_or_777
+        return can_delete
+
 
     def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in self._walker(directory):
@@ -1251,10 +1276,11 @@ class Archiver:
                         tarred="No"
                         if size < smallsize*1024:
                             # add to tar file
-                            tar.add(file_path, arcname=filen)
-                            # remove original file
-                            os.remove(file_path)
-                            tarred="Yes"
+                            if self.can_delete_file(file_path):
+                                tar.add(file_path, arcname=filen)
+                                # remove original file
+                                os.remove(file_path)
+                                tarred="Yes"
                         writer.writerow([filen, size, mdate, adate, tarred])
                 print('Done.')
             except PermissionError as e:
