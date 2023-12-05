@@ -1137,6 +1137,8 @@ class Archiver:
             reader = csv.DictReader(file)
             print("count len")
             mylen = sum(1 for row in reader)
+            file.seek(0)
+            reader = csv.DictReader(file)            
             print(f"create progress bar with len {mylen}")
             progress = self._create_progress_bar(mylen)
             for row in reader:
