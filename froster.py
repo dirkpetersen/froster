@@ -1130,6 +1130,7 @@ class Archiver:
             if current_time - creation_time < 86400:  # 24 hours in seconds
                 print(f"File {user_csv} already exists and is less than 24 hours old. Skipping creation.")
                 return user_csv
+        print('Filtering hotspots for folders with write permissions ...')
         writable_folders = []        
         with open(hotspot_csv, mode='r', newline='') as file:
             reader = csv.DictReader(file)
@@ -1140,12 +1141,14 @@ class Archiver:
             reader = csv.DictReader(file)            
             progress = self._create_progress_bar(mylen)
             for row in reader:
-                if reader.line_num > mylen:
+                l = len(writable_folders)
+                if l > mylen:
                     break
                 ret = self.test_write(row['Folder'])
                 if ret != 13 and ret != 2:
                     writable_folders.append(row)
-                progress(reader.line_num)
+                progress(l)
+        print('Writing new user hotspots, folders with write permissions ...')
         with open(user_csv, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
             writer.writeheader()
