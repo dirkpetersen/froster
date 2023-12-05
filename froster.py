@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.46'
+__version__ = '0.9.0.47'
 
 def main():
         
@@ -1208,6 +1208,33 @@ class Archiver:
         can_delete = is_owner or (is_group_member and has_group_write_permission) or is_666_or_777
         return can_delete
 
+    def can_read_file(self, file_path):
+        # Check if file exists
+        if not os.path.exists(file_path):
+            return False
+        # Getting the status of the file
+        file_stat = os.stat(file_path)
+        # Getting the current user and group IDs
+        current_uid = os.getuid()
+        current_gid = os.getgid()
+        # Checking if the user is the owner
+        is_owner = file_stat.st_uid == current_uid
+        # Checking if the user is in the file's group
+        is_group_member = file_stat.st_gid == current_gid
+        # Extracting permission bits
+        permissions = file_stat.st_mode
+        # Checking for owner read permission
+        has_owner_read_permission = bool(permissions & stat.S_IRUSR)
+        # Checking for group read permission
+        has_group_read_permission = bool(permissions & stat.S_IRGRP)
+        # Checking for '444' (read permission for everyone)
+        is_444 = permissions & 0o444 == 0o444
+        # Determining if the user can read the file
+        can_read = (is_owner and has_owner_read_permission) or \
+                   (is_group_member and has_group_read_permission) or \
+                   is_444
+        return can_read
+
 
     def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in self._walker(directory):
@@ -1221,6 +1248,9 @@ class Archiver:
                         tasks = {}
                         for filen in files:
                             file_path = os.path.join(root, filen)
+                            if not self.can_read_file(file_path):
+                                print(f'  Cannot add {file_path} to {hash_file} due to permissions, skipping ...')
+                                continue
                             if os.path.isfile(file_path) and \
                                     filen != os.path.basename(hash_file) and \
                                     filen != "Where-did-the-files-go.txt" and \
