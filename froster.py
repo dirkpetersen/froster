@@ -1122,40 +1122,33 @@ class Archiver:
     
     def get_user_hotspot(self, hotspot_csv):
         # Reduce a hotspots file to the folders that the user has write access to
-        base, extension = hotspot_csv.rsplit('.', 1)
-        user_csv = f'{base}.{self.cfg.whoami}.{extension}'        
+        hsdir, hsfile = os.path.split(hotspot_csv)
+        hsdiruser = os.path.join(hsdir, self.cfg.whoami)
+        os.makedirs(hsdiruser, exist_ok=True)
+        user_csv = os.path.join(hsdiruser, hsfile)        
         if os.path.exists(user_csv):
             current_time = time.time()
-            creation_time = os.path.getctime(user_csv)
-            if current_time - creation_time < 86400:  # 24 hours in seconds
-                print(f"File {user_csv} already exists and is less than 24 hours old. Skipping creation.")
+            if os.path.getctime(user_csv) > os.path.getctime(hotspot_csv):
+                # print(f"File {user_csv} already exists and is newer than {hotspot_csv}.")
                 return user_csv
         print('Filtering hotspots for folders with write permissions ...')
         writable_folders = []        
         with open(hotspot_csv, mode='r', newline='') as file:
             reader = csv.DictReader(file)
             mylen = sum(1 for row in reader)
-            if mylen > MAXHOTSPOTS:
-                mylen = MAXHOTSPOTS
             file.seek(0)
-            reader = csv.DictReader(file)            
+            reader = csv.DictReader(file)
             progress = self._create_progress_bar(mylen)
             for row in reader:
-                l = len(writable_folders)
-                if l > mylen:
-                    break
                 ret = self.test_write(row['Folder'])
                 if ret != 13 and ret != 2:
                     writable_folders.append(row)
-                    progress(l)
-                #progress(reader.line_num)
+                progress(reader.line_num)
         print('Writing new user hotspots, folders with write permissions ...')
         with open(user_csv, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
             writer.writeheader()
             writer.writerows(writable_folders)
-
-        time.sleep(10)   
         return user_csv
 
     def test_write(self, directory):
