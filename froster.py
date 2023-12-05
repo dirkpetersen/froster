@@ -1133,10 +1133,12 @@ class Archiver:
         writable_folders = []
         with open(hotspot_csv, mode='r', newline='') as file:
             reader = csv.DictReader(file)
+            progress = self._create_progress_bar(len(reader))
             for row in reader:
                 ret = self.test_write(row['Folder'])
                 if ret != 13 and ret != 2:
                     writable_folders.append(row)
+                progress(reader.line_num)
         with open(user_csv, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
             writer.writeheader()
@@ -1164,6 +1166,17 @@ class Archiver:
             else:
                 print(f"An unexpected error occurred in {directory}:\n{e}")
                 return False
+            
+    def _create_progress_bar(self, max_value):
+        def show_progress_bar(iteration):
+            percent = ("{0:.1f}").format(100 * (iteration / float(max_value)))
+            length = 50  # adjust as needed for the bar length
+            filled_length = int(length * iteration // max_value)
+            bar = "█" * filled_length + '-' * (length - filled_length)
+            print(f'\r|{bar}| {percent}%', end='\r')
+            if iteration == max_value: 
+                print()
+        return show_progress_bar
 
     def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
         for root, dirs, files in self._walker(directory):
