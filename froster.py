@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.50'
+__version__ = '0.9.0.51'
 
 def main():
         
@@ -307,13 +307,15 @@ def subcmd_config(args, cfg, aws):
     se = SlurmEssentials(args, cfg)
     parts = se.get_allowed_partitions_and_qos()
 
-    slurm_partition =  cfg.prompt('Please select Slurm partition you would like to use',
+    slurm_partition =  cfg.prompt('Please select the Slurm partition for jobs up to 7 days',
                                 list(parts.keys()))
-    slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
+    cfg.write('hpc', 'slurm_partition', slurm_partition)
+    #slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
 
-    slurm_qos =  cfg.prompt('Please select Slurm QOS you would like to use',
+    slurm_qos =  cfg.prompt('Please select the Slurm QOS for jobs up to 7 days',
                                 parts[slurm_partition])
-    slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
+    cfg.write('hpc', 'slurm_qos', slurm_qos)
+    #slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
     
     print('\n*** And finally a few questions how your HPC uses local scratch space ***')
     print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
@@ -371,6 +373,10 @@ def subcmd_index(args,cfg,arch):
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
         se.add_line(f'#SBATCH --time=7-0')
+        if se.partiton:
+            se.add_line(f'#SBATCH --partition={se.partiton}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')
         #se.add_line(f'ml python')
         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
         cmdline = cmdline.replace('/froster.py ', '/froster ')
@@ -484,7 +490,11 @@ def subcmd_archive(args,cfg,arch,aws):
         se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time=1-0')            
+        se.add_line(f'#SBATCH --time=7-0')
+        if se.partiton:
+            se.add_line(f'#SBATCH --partition={se.partiton}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')        
         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
         if not "--profile" in cmdline and args.awsprofile:            
             cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
@@ -580,7 +590,11 @@ def subcmd_restore(args,cfg,arch,aws):
                     se.add_line(f'#SBATCH --output=froster-download-{label}-%J.out')
                     se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
                     se.add_line(f'#SBATCH --mail-user={email}')
-                    se.add_line(f'#SBATCH --time=1-0')
+                    se.add_line(f'#SBATCH --time=7-0')
+                    if se.partiton:
+                        se.add_line(f'#SBATCH --partition={se.partiton}')
+                    if se.qos:
+                        se.add_line(f'#SBATCH --qos={se.qos}')                    
                     cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
                     if not "--profile" in cmdline and args.awsprofile:            
                         cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
@@ -611,7 +625,11 @@ def subcmd_restore(args,cfg,arch,aws):
         se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time=1-0')            
+        se.add_line(f'#SBATCH --time=7-0')
+        if se.partiton:
+            se.add_line(f'#SBATCH --partition={se.partiton}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')        
         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline            
         if not "--profile" in cmdline and args.awsprofile:            
             cmdline = cmdline.replace('/froster.py ', f'/froster --profile {args.awsprofile} ')
@@ -2469,6 +2487,8 @@ class SlurmEssentials:
         self.jobs = []
         self.job_info = {}
         self.whoami = os.getlogin()
+        self.partiton = cfg.read('hpc', 'slurm_partiton')
+        self.qos = cfg.read('hpc', 'slurm_qos')
         self._add_lines_from_cfg()
 
     def add_line(self, line):
