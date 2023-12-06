@@ -304,6 +304,17 @@ def subcmd_config(args, cfg, aws):
         
         aws.create_s3_bucket(bucket, prof)
 
+    se = SlurmEssentials(args, cfg)
+    parts = se.get_allowed_partitions_and_qos()
+
+    slurm_partition =  cfg.prompt('Please select Slurm partition you would like to use',
+                                parts.keys())
+    slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
+
+    slurm_qos =  cfg.prompt('Please select Slurm QOS you would like to use',
+                                parts[slurm_partition])
+    slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
+    
     print('\n*** And finally a few questions how your HPC uses local scratch space ***')
     print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
     print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
@@ -2457,6 +2468,7 @@ class SlurmEssentials:
         self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
         self.jobs = []
         self.job_info = {}
+        self.whoami = os.getlogin()
         self._add_lines_from_cfg()
 
     def add_line(self, line):
@@ -2574,6 +2586,100 @@ class SlurmEssentials:
             key, value = field.split('=', 1)
             job_info[key] = value
         return job_info
+    
+    def _parse_tabular_data(self, data_str, separator="|"):
+        """Parse data (e.g. acctmgr) presented in a tabular format into a list of dictionaries."""
+        lines = data_str.strip().splitlines()
+        headers = lines[0].split(separator)
+        data = []
+        for line in lines[1:]:
+            values = line.split(separator)
+            data.append(dict(zip(headers, values)))
+        return data
+
+    def _parse_partition_data(self, data_str):
+        """Parse data presented in a tabular format into a list of dictionaries."""
+        lines = data_str.strip().split('\n')
+        # Parse each line into a dictionary
+        partitions = []
+        for line in lines:
+            parts = line.split()
+            partition_dict = {}
+            for part in parts:
+                key, value = part.split("=", 1)
+                partition_dict[key] = value
+            partitions.append(partition_dict)
+        return partitions
+
+    def _get_user_groups(self):
+        """Get the groups the current Unix user is a member of."""
+        groups = [grp.getgrgid(gid).gr_name for gid in os.getgroups()]
+        return groups    
+
+    def _get_output(self, command):
+        """Execute a shell command and return its output."""
+        result = subprocess.run(command, shell=True, text=True, 
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            raise RuntimeError(f"Error running {command}: {result.stderr.strip()}")        
+        return result.stdout.strip()
+    
+    def _get_default_account(self):
+        return self._get_output(f'sacctmgr --noheader --parsable2 show user {self.whoami} format=DefaultAccount')
+    
+    def _get_associations(self):
+        mystr = self._get_output(f"sacctmgr show associations where user={self.whoami} format=Account,QOS --parsable2")        
+        asso = {item['Account']: item['QOS'].split(",") for item in self._parse_tabular_data(mystr) if 'Account' in item}
+        return asso
+    
+    def get_allowed_partitions_and_qos(self, account=None):
+        """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
+        bacc=os.environ.get('SBATCH_ACCOUNT', '')
+        account = bacc if bacc else account
+        sacc=os.environ.get('SLURM_ACCOUNT', '')
+        account = sacc if sacc else account
+        allowed_partitions = {}
+        partition_str = self._get_output("scontrol show partition --oneliner")
+        partitions = self._parse_partition_data(partition_str)
+        user_groups = self._get_user_groups()
+        if account is None:
+            account = self._get_default_account()
+        for partition in partitions:
+            pname=partition['PartitionName']
+            add_partition = False
+            if partition.get('State', '') != 'UP':
+                continue
+            if any(group in user_groups for group in partition.get('DenyGroups', '').split(',')):
+                continue
+            if account in partition.get('DenyAccounts', '').split(','):            
+                continue
+            allowedaccounts=partition.get('AllowAccounts', '').split(',')
+            if allowedaccounts != ['']:
+                if account in allowedaccounts or 'ALL' in allowedaccounts:
+                    add_partition = True
+            elif any(group in user_groups for group in partition.get('AllowGroups', '').split(',')):
+                add_partition = True
+            elif partition.get('AllowGroups', '') == 'ALL':
+                add_partition = True
+            if add_partition:
+                p_deniedqos = partition.get('DenyQos', '').split(',')            
+                p_allowedqos = partition.get('AllowQos', '').split(',')            
+                associations=self._get_associations()
+                account_qos = associations.get(account, [])
+                if p_deniedqos != ['']:
+                    allowed_qos = [q for q in account_qos if q not in p_deniedqos]
+                    #print(f"p_deniedqos: allowed_qos in {pname}:", allowed_qos) 
+                elif p_allowedqos == ['ALL']:
+                    allowed_qos = account_qos
+                    #print(f"p_allowedqos = ALL in {pname}:", allowed_qos)                 
+                elif p_allowedqos != ['']:
+                    allowed_qos = [q for q in account_qos if q in p_allowedqos]
+                    #print(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos) 
+                else:
+                    allowed_qos = []
+                    #print(f"p_allowedqos = [] in {pname}:", allowed_qos)     
+                allowed_partitions[pname] = allowed_qos
+        return allowed_partitions
 
     def display_job_info(self):
         print(self.job_info)
