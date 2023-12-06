@@ -3,13 +3,13 @@
 PMIN="8" # python3 minor version = 3.8)
 
 froster_update() {
-  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py \
+  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py?token=$(date +%s) \
         -o ~/.local/bin/froster.py
 
-  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster \
+  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster?token=$(date +%s) \
         -o ~/.local/bin/froster
 
-  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/s3-restore.sh \
+  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/s3-restore.sh?token=$(date +%s) \
         -o ~/.local/bin/s3-restore.sh
 
   chmod +x ~/.local/bin/froster

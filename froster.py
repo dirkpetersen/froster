@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.53'
+__version__ = '0.9.0.54'
 
 def main():
         
@@ -310,16 +310,19 @@ def subcmd_config(args, cfg, aws):
     if shutil.which('scontrol') and shutil.which('sacctmgr'):
         se = SlurmEssentials(args, cfg)
         parts = se.get_allowed_partitions_and_qos()
+        print('')
 
-        slurm_partition =  cfg.prompt('Please select the Slurm partition for jobs up to 7 days',
+        slurm_partition =  cfg.prompt('Please select the Slurm partition for jobs that last up to 7 days.',
                                     list(parts.keys()))
         cfg.write('hpc', 'slurm_partition', slurm_partition)
         #slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
+        print('')
 
-        slurm_qos =  cfg.prompt('Please select the Slurm QOS for jobs up to 7 days',
+        slurm_qos =  cfg.prompt('Please select the Slurm QOS for jobs that last up to 7 days.',
                                     parts[slurm_partition])
         cfg.write('hpc', 'slurm_qos', slurm_qos)
         #slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
+        print('')
 
     if shutil.which('sbatch'):
         print('\n*** And finally a few questions how your HPC uses local scratch space ***')
@@ -811,7 +814,11 @@ def subcmd_ssh(args, cfg, aws):
         aws.ec2_terminate_instance(args.terminate)
         return True
     if args.sshargs:
-        myhost, remote_path = args.sshargs[0].split(':')
+        if ':' in args.sshargs[0]:
+            myhost, remote_path = args.sshargs[0].split(':')
+        else:
+            myhost = args.sshargs[0]
+            remote_path = ''
     else:
         myhost = cfg.read('cloud', 'ec2_last_instance')
     if ips and not myhost in ips:
