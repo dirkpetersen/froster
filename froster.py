@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.54'
+__version__ = '0.9.0.55'
 
 def main():
         
@@ -78,8 +78,9 @@ def main():
 
 def args_version(cfg):
     print(f'Froster version: {__version__}')
-    print(f'   Script: {os.path.abspath(__file__)}')
-    print(f'   Config dir: {cfg.config_root.replace("/.config/froster","")}')
+    print(f'  The Script: {os.path.abspath(__file__)}')
+    print(f'  Config dir: {cfg.config_root.replace("/.config/froster","")}')
+    print(f'  Profs .aws: {", ".join(cfg.get_aws_profiles())}')
     print(f'Python version:\n{sys.version}')
     try:
         print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'], 
@@ -4909,20 +4910,24 @@ class ConfigManager:
 
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
-        config = configparser.ConfigParser()        
-        # Read the AWS config file ---- optional, we only require a creds file
-        if os.path.exists(self.awsconfigfile):
-            config.read(self.awsconfigfile)        
-        # Read the AWS credentials file
-        if os.path.exists(self.awscredsfile):
-            config.read(self.awscredsfile)        
-        # Get the list of profiles
-        profiles = []
-        for section in config.sections():
-            profile_name = section.replace("profile ", "") #.replace("default", "default")
-            profiles.append(profile_name)
-        # convert list to set and back to list to remove dups
-        return list(set(profiles))
+        try:
+            config = configparser.ConfigParser()        
+            # Read the AWS config file ---- optional, we only require a creds file
+            if os.path.exists(self.awsconfigfile):
+                config.read(self.awsconfigfile)        
+            # Read the AWS credentials file
+            if os.path.exists(self.awscredsfile):
+                config.read(self.awscredsfile)        
+            # Get the list of profiles
+            profiles = []
+            for section in config.sections():
+                profile_name = section.replace("profile ", "") #.replace("default", "default")
+                profiles.append(profile_name)
+            # convert list to set and back to list to remove dups
+            return list(set(profiles))
+        except Exception as e:
+            #print(f'Error: {e}')
+            return []
 
     def create_aws_configs(self,access_key=None, secret_key=None, region=None):
 
