@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.49'
+__version__ = '0.9.0.50'
 
 def main():
         
@@ -308,7 +308,7 @@ def subcmd_config(args, cfg, aws):
     parts = se.get_allowed_partitions_and_qos()
 
     slurm_partition =  cfg.prompt('Please select Slurm partition you would like to use',
-                                parts.keys())
+                                list(parts.keys()))
     slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
 
     slurm_qos =  cfg.prompt('Please select Slurm QOS you would like to use',
