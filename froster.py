@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.51'
+__version__ = '0.9.0.53'
 
 def main():
         
@@ -94,6 +94,8 @@ def args_version(cfg):
 def subcmd_config(args, cfg, aws):
     # configure user and / or team settings 
     # arguments are Class instances passed from main
+
+    cfg.fix_tree_permissions(cfg.config_root)
 
     if args.cfgfolder:
         binfolder = os.path.join(args.cfgfolder, '.config','froster','general','binfolder')
@@ -218,7 +220,8 @@ def subcmd_config(args, cfg, aws):
     # if there is a shared ~/.aws/config copy it over
     if cfg.config_root_local != cfg.config_root:
         cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
-    
+
+
 
     aws_region = cfg.get_aws_region('aws')
     if not aws_region:
@@ -304,34 +307,37 @@ def subcmd_config(args, cfg, aws):
         
         aws.create_s3_bucket(bucket, prof)
 
-    se = SlurmEssentials(args, cfg)
-    parts = se.get_allowed_partitions_and_qos()
+    if shutil.which('scontrol') and shutil.which('sacctmgr'):
+        se = SlurmEssentials(args, cfg)
+        parts = se.get_allowed_partitions_and_qos()
 
-    slurm_partition =  cfg.prompt('Please select the Slurm partition for jobs up to 7 days',
-                                list(parts.keys()))
-    cfg.write('hpc', 'slurm_partition', slurm_partition)
-    #slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
+        slurm_partition =  cfg.prompt('Please select the Slurm partition for jobs up to 7 days',
+                                    list(parts.keys()))
+        cfg.write('hpc', 'slurm_partition', slurm_partition)
+        #slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
 
-    slurm_qos =  cfg.prompt('Please select the Slurm QOS for jobs up to 7 days',
-                                parts[slurm_partition])
-    cfg.write('hpc', 'slurm_qos', slurm_qos)
-    #slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
-    
-    print('\n*** And finally a few questions how your HPC uses local scratch space ***')
-    print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
-    print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
+        slurm_qos =  cfg.prompt('Please select the Slurm QOS for jobs up to 7 days',
+                                    parts[slurm_partition])
+        cfg.write('hpc', 'slurm_qos', slurm_qos)
+        #slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
 
-    # setup local scratch spaces, the defauls are OHSU specific 
-    x = cfg.prompt('How do you request local scratch from Slurm?',
-                        '--gres disk:1024|hpc|slurm_lscratch','string') # get 1TB scratch space
-    x = cfg.prompt('Is there a user script that provisions local scratch?',
-                        'mkdir-scratch.sh|hpc|lscratch_mkdir','string') # optional
-    x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
-                        'rmdir-scratch.sh|hpc|lscratch_rmdir','string') # optional
-    x = cfg.prompt('What is the local scratch root ?',
-                        '/mnt/scratch|hpc|lscratch_root','string') # add slurm jobid at the end
-    
-    cfg.fix_permissions(cfg.config_root)
+    if shutil.which('sbatch'):
+        print('\n*** And finally a few questions how your HPC uses local scratch space ***')
+        print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
+        print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
+
+        # setup local scratch spaces, the defauls are OHSU specific 
+        x = cfg.prompt('How do you request local scratch from Slurm?',
+                            '--gres disk:1024|hpc|slurm_lscratch','string') # get 1TB scratch space
+        x = cfg.prompt('Is there a user script that provisions local scratch?',
+                            'mkdir-scratch.sh|hpc|lscratch_mkdir','string') # optional
+        x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
+                            'rmdir-scratch.sh|hpc|lscratch_rmdir','string') # optional
+        x = cfg.prompt('What is the local scratch root ?',
+                            '/mnt/scratch|hpc|lscratch_root','string') # add slurm jobid at the end
+
+    print(f'\nChecked permissions in {cfg.config_root}')
+    cfg.fix_tree_permissions(cfg.config_root)
 
     print('\nDone!\n')
 
@@ -1186,7 +1192,6 @@ class Archiver:
                 if ret != 13 and ret != 2:
                     writable_folders.append(row)
                 progress(reader.line_num)
-        print('Writing new user hotspots, folders with write permissions ...')
         with open(user_csv, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
             writer.writeheader()
@@ -2486,7 +2491,6 @@ class SlurmEssentials:
         self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
         self.jobs = []
         self.job_info = {}
-        self.whoami = os.getlogin()
         self.partiton = cfg.read('hpc', 'slurm_partiton')
         self.qos = cfg.read('hpc', 'slurm_qos')
         self._add_lines_from_cfg()
@@ -2645,10 +2649,10 @@ class SlurmEssentials:
         return result.stdout.strip()
     
     def _get_default_account(self):
-        return self._get_output(f'sacctmgr --noheader --parsable2 show user {self.whoami} format=DefaultAccount')
+        return self._get_output(f'sacctmgr --noheader --parsable2 show user {self.cfg.whoami} format=DefaultAccount')
     
     def _get_associations(self):
-        mystr = self._get_output(f"sacctmgr show associations where user={self.whoami} format=Account,QOS --parsable2")        
+        mystr = self._get_output(f"sacctmgr show associations where user={self.cfg.whoami} format=Account,QOS --parsable2")        
         asso = {item['Account']: item['QOS'].split(",") for item in self._parse_tabular_data(mystr) if 'Account' in item}
         return asso
     
@@ -3644,7 +3648,12 @@ class AWSBoto:
             os.makedirs(os.path.join(self.cfg.config_root,'cloud'),exist_ok=True)            
             with open(key_path, 'w') as key_file:
                 key_file.write(key_pair.key_material)
-        os.chmod(key_path, 0o600)  # Set file permission to 600
+            os.chmod(key_path, 0o640)  # Set file permission to 600
+        
+        mykey_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
+        if not os.path.exists(mykey_path):
+            shutil.copyfile(key_path,mykey_path)
+            os.chmod(mykey_path, 0o600)  # Set file permission to 600
 
         imageid = self._ec2_get_latest_amazon_linux2_ami(profile)
         print(f'Using Image ID: {imageid}')
@@ -3808,11 +3817,22 @@ class AWSBoto:
                        instance['InstanceType']]
                 ilist.append(row)                
         return ilist
+    
+    def _ssh_get_key_path(self):
+        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        mykey_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
+        if not os.path.exists(key_path):
+            print(f'{key_path} does not exist. Please create it by launching "froster restore --ec2"')
+            sys.exit
+        if not os.path.exists(mykey_path):
+            shutil.copyfile(key_path,mykey_path)
+            os.chmod(mykey_path, 0o600)  # Set file permission to 600
+        return mykey_path
 
     def ssh_execute(self, user, host, command=None):
         """Execute an SSH command on the remote server."""
         SSH_OPTIONS = "-o StrictHostKeyChecking=no"
-        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        key_path = self._ssh_get_key_path()
         cmd = f"ssh {SSH_OPTIONS} -i '{key_path}' {user}@{host}"
         if command:
             cmd += f" '{command}'"
@@ -3829,7 +3849,7 @@ class AWSBoto:
     def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
         """Upload a file to the remote server using SCP."""
         SSH_OPTIONS = "-o StrictHostKeyChecking=no"
-        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        key_path = self._ssh_get_key_path()
         if is_string:
             # the local_path is actually a string that needs to go into temp file 
             with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp:
@@ -3848,7 +3868,7 @@ class AWSBoto:
     def ssh_download(self, user, host, remote_path, local_path):
         """Upload a file to the remote server using SCP."""
         SSH_OPTIONS = "-o StrictHostKeyChecking=no"
-        key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
+        key_path = self._ssh_get_key_path()
         cmd = f"scp {SSH_OPTIONS} -i '{key_path}' {user}@{host}:{remote_path} {local_path}"        
         try:
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -4533,6 +4553,58 @@ class ConfigManager:
             return os.path.join(self.config_root, entry)
 
 
+    def fix_tree_permissions(self, target_dir):
+        try:
+            if not os.path.isdir(target_dir):
+                print(f"Error: '{target_dir}' is not a directory", file=sys.stderr)
+                return False
+            # Get the group ID of the target directory
+            gid = os.stat(target_dir).st_gid
+            for root, dirs, files in os.walk(target_dir):
+                # Check and change the group of the directory
+                self.fix_permissions_if_needed(root, gid)
+                # Check and change the group of each file in the directory
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    self.fix_permissions_if_needed(file_path, gid)
+            return True
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return False
+
+    def fix_permissions_if_needed(self, path, gid=None):
+        # setgid, g+rw, o+r and optionally enforce gid (group)
+        # fix: different setup mey be needed to handle symlinks 
+        try:
+            current_mode = os.stat(path).st_mode
+            new_mode = current_mode | 0o664 # Add user rw, group rw and others read # 0o060 | 0o004
+            if new_mode != current_mode:
+                if not path.endswith('.pem'):  #new_mode = current_mode | 0o7077 # clear group and other permission                 
+                    os.chmod(path, new_mode)
+                    print(f"  Changed permissions of '{path}' from {oct(current_mode)} to {oct(new_mode)}")
+                    current_mode = os.stat(path).st_mode
+            if os.path.isdir(path):
+                new_mode = current_mode | 0o2000
+                if new_mode != current_mode:  # Check if setgid bit is not set
+                    os.chmod(path, new_mode)
+                    current_mode = os.stat(path).st_mode
+                    print(f"  Set setgid bit on directory '{path}'")
+                new_mode = current_mode | 0o0111
+                if new_mode != current_mode:  # Check if execute bit is set on dirs
+                    os.chmod(path, new_mode)
+                    print(f"  Set execute bits on directory '{path}'")
+            current_gid = os.stat(path).st_gid
+            if not gid:
+                gid = current_gid
+            if current_gid != gid:
+                current_group_name = grp.getgrgid(current_gid).gr_name
+                os.chown(path, -1, gid)  # -1 means don't change the user
+                print(f"  Changed group of '{path}' from '{current_group_name}' to '{grp.getgrgid(gid).gr_name}'")
+            return True
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)    
+            return False
+
     def was_file_modified_in_last_24h(self, file_path):
         """
         Check if the file at the given path was modified in the last 24 hours.        
@@ -4827,27 +4899,6 @@ class ConfigManager:
             print(f"Ini-section copied from {src_file} to {dest_file}")
             print(f"Missing entries in source from destination copied back to {src_file}")
 
-    def fix_permissions(self, root_dir):
-        def add_permissions(path):
-            try:
-                # Get the current permissions of the file or directory
-                current_permissions = stat.S_IMODE(os.lstat(path).st_mode)               
-                # Add write permission for group and read permission for others
-                new_permissions = current_permissions | stat.S_IWGRP | stat.S_IROTH
-                # Set the new permissions
-                os.chmod(path, new_permissions)
-            except OSError as e:
-                self.printdbg(f"Error updating permissions for {path}: {e}")
-
-        # Walk through the directory tree
-        for dirpath, dirnames, filenames in os.walk(root_dir):
-            # Update permissions for each directory
-            add_permissions(dirpath)
-
-            # Update permissions for each file
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
-                add_permissions(filepath)
 
     def get_aws_profiles(self):
         # get the full list of profiles from ~/.aws/ profile folder
