@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.57'
+__version__ = '0.9.0.58'
 
 def main():
         
@@ -1248,7 +1248,7 @@ class Archiver:
         if not os.path.exists(file_path):
             return False
         # Getting the status of the file
-        file_stat = os.stat(file_path)
+        file_stat = os.lstat(file_path)
         # Getting the current user and group IDs
         current_uid = os.getuid()
         current_gid = os.getgid()
@@ -1272,7 +1272,7 @@ class Archiver:
         if not os.path.exists(file_path):
             return False
         # Getting the status of the file
-        file_stat = os.stat(file_path)
+        file_stat = os.lstat(file_path)
         # Getting the current user and group IDs
         current_uid = os.getuid()
         current_gid = os.getgid()
@@ -1363,7 +1363,7 @@ class Archiver:
                 with tarfile.open(tar_path, "w") as tar, open(csv_path, 'w', newline='') as f:
                     writer = csv.writer(f)
                     # write the header
-                    writer.writerow(["File", "Size(bytes)", "Date-Modified", "Date-Accessed", "Tarred"])
+                    writer.writerow(["File", "Size(bytes)", "Date-Modified", "Date-Accessed", "Owner", "Group", "Permissions", "Tarred"])
                     for filen in files:
                         file_path = os.path.join(root, filen)
                         # check if file is larger than X MB
@@ -1371,8 +1371,12 @@ class Archiver:
                         # get last modified and accessed dates 
                         mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
                         adate = datetime.datetime.fromtimestamp(atime).strftime('%Y-%m-%d %H:%M:%S')
-                        # write file info to the csv file
+                        # ownership and permissions
+                        owner = self.uid2user(os.lstat(file_path).st_uid)
+                        group = self.gid2group(os.lstat(file_path).st_gid)
+                        permissions = os.lstat(file_path).st_mode
                         tarred="No"
+                        # write file info to the csv file
                         if size < smallsize*1024:
                             # add to tar file
                             if self.can_delete_file(file_path):
@@ -1380,7 +1384,7 @@ class Archiver:
                                 # remove original file
                                 os.remove(file_path)
                                 tarred="Yes"
-                        writer.writerow([filen, size, mdate, adate, tarred])
+                        writer.writerow([filen, size, mdate, adate, owner, group, permissions, tarred])
                 print('Done.')
             except PermissionError as e:
                 if e.errno == 13:  # Check if error number is 13 (Permission denied)
@@ -2365,7 +2369,7 @@ class Rclone:
         mountpoint = mountpoint.rstrip(os.path.sep)
         command = [self.rc, 'mount'] + list(args)
         try:
-            current_permissions = os.stat(mountpoint).st_mode
+            current_permissions = os.lstat(mountpoint).st_mode
             new_permissions = (current_permissions & ~0o07) | 0o05
             os.chmod(mountpoint, new_permissions)            
         except:
@@ -4525,7 +4529,7 @@ class ConfigManager:
                 print(f"Error: '{target_dir}' is not a directory", file=sys.stderr)
                 return False
             # Get the group ID of the target directory
-            gid = os.stat(target_dir).st_gid
+            gid = os.lstat(target_dir).st_gid
             for root, dirs, files in os.walk(target_dir):
                 # Check and change the group of the directory
                 self.fix_permissions_if_needed(root, gid)
@@ -4542,24 +4546,24 @@ class ConfigManager:
         # setgid, g+rw, o+r and optionally enforce gid (group)
         # fix: different setup mey be needed to handle symlinks 
         try:
-            current_mode = os.stat(path).st_mode
+            current_mode = os.lstat(path).st_mode
             new_mode = current_mode | 0o664 # Add user rw, group rw and others read # 0o060 | 0o004
             if new_mode != current_mode:
                 if not path.endswith('.pem'):  #new_mode = current_mode | 0o7077 # clear group and other permission                 
                     os.chmod(path, new_mode)
                     print(f"  Changed permissions of '{path}' from {oct(current_mode)} to {oct(new_mode)}")
-                    current_mode = os.stat(path).st_mode
+                    current_mode = os.lstat(path).st_mode
             if os.path.isdir(path):
                 new_mode = current_mode | 0o2000
                 if new_mode != current_mode:  # Check if setgid bit is not set
                     os.chmod(path, new_mode)
-                    current_mode = os.stat(path).st_mode
+                    current_mode = os.lstat(path).st_mode
                     print(f"  Set setgid bit on directory '{path}'")
                 new_mode = current_mode | 0o0111
                 if new_mode != current_mode:  # Check if execute bit is set on dirs
                     os.chmod(path, new_mode)
                     print(f"  Set execute bits on directory '{path}'")
-            current_gid = os.stat(path).st_gid
+            current_gid = os.lstat(path).st_gid
             if not gid:
                 gid = current_gid
             if current_gid != gid:
@@ -5085,7 +5089,7 @@ class ConfigManager:
             return False
         else:
             # Get the group ID of the folder
-            gid = os.stat(cfgfolder).st_gid
+            gid = os.lstat(cfgfolder).st_gid
             # Get the group name from the group ID
             pgroup = grp.getgrgid(gid)            
             if pgroup.gr_name == self.whoami:
