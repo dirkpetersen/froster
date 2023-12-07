@@ -8,7 +8,7 @@ archiving many Terabytes of data on large (HPC) systems.
 import sys, os, argparse, json, configparser, csv, platform, asyncio, stat
 import urllib3, datetime, tarfile, zipfile, textwrap, tarfile, time, platform
 import concurrent.futures, hashlib, fnmatch, io, math, signal, shlex,  glob
-import shutil, tempfile, subprocess, itertools, socket, inspect, uuid
+import shutil, tempfile, subprocess, itertools, socket, inspect
 if sys.platform.startswith('linux'):
     import getpass, pwd, grp, stat
 # stuff from pypi
@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.56'
+__version__ = '0.9.0.57'
 
 def main():
         
@@ -1179,33 +1179,36 @@ class Archiver:
     
     def get_user_hotspot(self, hotspot_csv):
         # Reduce a hotspots file to the folders that the user has write access to
-        hsdir, hsfile = os.path.split(hotspot_csv)
-        hsdiruser = os.path.join(hsdir, self.cfg.whoami)
-        os.makedirs(hsdiruser, exist_ok=True)
-        user_csv = os.path.join(hsdiruser, hsfile)        
-        if os.path.exists(user_csv):
-            if os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
-                # print(f"File {user_csv} already exists and is newer than {hotspot_csv}.")
-                return user_csv
-        print('Filtering hotspots for folders with write permissions ...')
-        writable_folders = []        
-        with open(hotspot_csv, mode='r', newline='') as file:
-            reader = csv.DictReader(file)
-            mylen = sum(1 for row in reader)
-            file.seek(0)
-            reader = csv.DictReader(file)
-            progress = self._create_progress_bar(mylen)
-            for row in reader:
-                ret = self.test_write(row['Folder'])
-                if ret != 13 and ret != 2:
-                    writable_folders.append(row)
-                progress(reader.line_num)
-            print(mylen,reader.line_num)
-        with open(user_csv, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
-            writer.writeheader()
-            writer.writerows(writable_folders)
-        return user_csv
+        try:
+            hsdir, hsfile = os.path.split(hotspot_csv)
+            hsdiruser = os.path.join(hsdir, self.cfg.whoami)
+            os.makedirs(hsdiruser, exist_ok=True)
+            user_csv = os.path.join(hsdiruser, hsfile)        
+            if os.path.exists(user_csv):
+                if os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
+                    # print(f"File {user_csv} already exists and is newer than {hotspot_csv}.")
+                    return user_csv
+            print('Filtering hotspots for folders with write permissions ...')
+            writable_folders = []        
+            with open(hotspot_csv, mode='r', newline='') as file:
+                reader = csv.DictReader(file)
+                mylen = sum(1 for row in reader)
+                file.seek(0)
+                reader = csv.DictReader(file)
+                progress = self._create_progress_bar(mylen+1)
+                for row in reader:
+                    ret = self.test_write(row['Folder'])
+                    if ret != 13 and ret != 2:
+                        writable_folders.append(row)
+                    progress(reader.line_num)
+            with open(user_csv, mode='w', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
+                writer.writeheader()
+                writer.writerows(writable_folders)
+            return user_csv
+        except Exception as e:
+            print(f"Error in get_user_hotspot:\n{e}")
+            return False
 
     def test_write(self, directory):
         testpath=os.path.join(directory,f'.froster.test.{self.cfg.whoami}')
@@ -2121,6 +2124,12 @@ class ScreenConfirm(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Vertical():
+
+            # badfiles = arch.cannot_read_files(retline[5])
+            # if badfiles:
+            #     print(f'  Cannot read these files in folder {retline[5]}: {", ".join(badfiles)}')
+            #     return False
+
             yield Label("Do you want to start this archiving job now?")
             with Horizontal():
                 yield Button("Continue", id="continue")
@@ -2157,7 +2166,7 @@ class TableHotspots(App[list]):
 
     def accept_answer(self, answer: str) -> None:
         # adds yesno answer as last element in list 
-        if answer == 'continue':
+        if answer == 'continue':            
             self.exit(self.myrow+[True])
         elif answer == 'quit':
             self.exit(self.myrow+[False])
