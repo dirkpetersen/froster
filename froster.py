@@ -1356,14 +1356,16 @@ class Archiver:
             if os.path.exists(tar_path):
                 print(f'Froster.smallfiles.tar alreadly exists, skipping folder {root}')
                 continue
-            if not self._is_small_file_in_dir(root,smallsize):
-                continue             
+            # create a csv file even if there are no small files
+            #if not self._is_small_file_in_dir(root,smallsize):
+            #    continue             
             try:
                 print(f'  Creating Froster.smallfiles.tar ... ', end='')
+                didtar=False
                 with tarfile.open(tar_path, "w") as tar, open(csv_path, 'w', newline='') as f:
                     writer = csv.writer(f)
                     # write the header
-                    writer.writerow(["File", "Size(bytes)", "Date-Modified", "Date-Accessed", "Owner", "Group", "Permissions", "Tarred"])
+                    writer.writerow(["File", "Size(bytes)", "Date-Modified", "Date-Accessed", "Owner", "Group", "Permissions", "Tarred"])                    
                     for filen in files:
                         file_path = os.path.join(root, filen)
                         # check if file is larger than X MB
@@ -1381,11 +1383,16 @@ class Archiver:
                             # add to tar file
                             if self.can_delete_file(file_path):
                                 tar.add(file_path, arcname=filen)
+                                didtar=True
                                 # remove original file
                                 os.remove(file_path)
                                 tarred="Yes"
                         writer.writerow([filen, size, mdate, adate, owner, group, permissions, tarred])
-                print('Done.')
+                if didtar:
+                    print('Done.')
+                else:
+                    os.remove(tar_path)
+                    print('Canceled.')
             except PermissionError as e:
                 if e.errno == 13:  # Check if error number is 13 (Permission denied)
                     print("Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
