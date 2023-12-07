@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.55'
+__version__ = '0.9.0.56'
 
 def main():
         
@@ -978,6 +978,7 @@ class Archiver:
                                 agedbytes[i]+=row[9]
             if numhotspots > 0:
                 shutil.copyfile(tmpcsv.name,mycsv)
+                self.get_user_hotspot(mycsv) # filter hotspots file for folders to which the current user has write access 
 
         if numhotspots > 0:
             # dedented multi-line retaining \n
@@ -1183,8 +1184,7 @@ class Archiver:
         os.makedirs(hsdiruser, exist_ok=True)
         user_csv = os.path.join(hsdiruser, hsfile)        
         if os.path.exists(user_csv):
-            current_time = time.time()
-            if os.path.getctime(user_csv) > os.path.getctime(hotspot_csv):
+            if os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
                 # print(f"File {user_csv} already exists and is newer than {hotspot_csv}.")
                 return user_csv
         print('Filtering hotspots for folders with write permissions ...')
@@ -1200,6 +1200,7 @@ class Archiver:
                 if ret != 13 and ret != 2:
                     writable_folders.append(row)
                 progress(reader.line_num)
+            print(mylen,reader.line_num)
         with open(user_csv, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
             writer.writeheader()
