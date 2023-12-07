@@ -1802,14 +1802,6 @@ class Archiver:
                 except:
                     print(f'Restore request for {object_key} failed.')
         return triggered_keys, restoring_keys, restored_keys, not_glacier_keys
-
-    # def _glacier_restore_status(self, bucket_name, object_key):
-    #     s3 = boto3.client('s3')
-    #     response = s3.head_object(Bucket=bucket_name, Key=object_key)
-    #     print('head response', response)
-    #     if 'Restore' in response:
-    #         return response['Restore'].find('ongoing-request="false"') > -1
-    #     return False
     
     def md5sumex(self, file_path):
         try:
@@ -2048,20 +2040,7 @@ class Archiver:
                         'mount_source': mount_source,
                     })
         return mountinfo_list
-        
-
-    # def _s3_dir_walk(self, bucket, prefix, profile='default'):
-    #     session = boto3.Session(profile_name=profile)
-    #     s3_client = session.client('s3')
-    #     paginator = s3_client.get_paginator('list_objects_v2')
-    #     if not prefix.endswith('/'):
-    #         prefix += '/'
-    #     for result in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter='/'):
-    #         for prefix in result.get('CommonPrefixes', []):
-    #             yield prefix['Prefix']
-
-
-
+    
     def download_restored_file(self, bucket_name, object_key, local_path):
         s3 = boto3.resource('s3')
         s3.Bucket(bucket_name).download_file(object_key, local_path)
@@ -2082,12 +2061,6 @@ class Archiver:
             print(f"An error occurred: {e}")
             return False
         return True
-
-    # initiate_restore(bucket_name, object_key, restore_days)    
-    # while not check_restore_status(bucket_name, object_key):
-    #     print('Waiting for restoration to complete...')
-    #     time.sleep(60)  # Wait 60 seconds before checking again
-    # download_restored_file(bucket_name, object_key, local_path)
 
 
 class ScreenConfirm(ModalScreen[bool]):
@@ -2366,8 +2339,6 @@ class Rclone:
             return stats[-1] # return the stats
         else:
             return []
-    
-        #b'{"level":"warning","msg":"Time may be set wrong - time from \\"posix-dp.s3.us-west-2.amazonaws.com\\" is -9m17.550965814s different from this computer","source":"fshttp/http.go:200","time":"2023-04-16T14:40:47.44907-07:00"}'    
 
     def checksum(self, md5file, dst, *args):
         #checksum md5 ./tests/.froster.md5sum
@@ -2393,12 +2364,7 @@ class Rclone:
         if not url.endswith('/'): url+'/'
         mountpoint = mountpoint.rstrip(os.path.sep)
         command = [self.rc, 'mount'] + list(args)
-        # might use older rclone, if fuse3 is not installed
-        #if os.path.isfile('/usr/bin/rclone'):
-        #    command = ['/usr/bin/rclone', 'mount'] + list(args)            
-        #command.append('--daemon') # not reliable, just starting background process
         try:
-            #os.chmod(mountpoint, 0o2775)
             current_permissions = os.stat(mountpoint).st_mode
             new_permissions = (current_permissions & ~0o07) | 0o05
             os.chmod(mountpoint, new_permissions)            
@@ -2549,16 +2515,6 @@ class SlurmEssentials:
         reordered_script.write(self.cfg.read('hpc','lscratch_rmdir'))
         reordered_script.seek(0)
         return reordered_script
-
-        # # Example usage:
-        # script_buffer = StringIO("""#!/bin/bash
-        # echo "Hello, SLURM!"
-        # #SBATCH --job-name=my_job
-        # #SBATCH --output=my_output.log
-        # echo "This is a test job."
-        # """.strip())
-        # reordered_script = reorder_sbatch_lines(script_buffer)
-        # print(reordered_script.getvalue())
 
     def sbatch(self):
         script = io.StringIO()
@@ -2725,7 +2681,6 @@ class SlurmEssentials:
 
     def display_job_info(self):
         print(self.job_info)
-
 
 class NIHReporter:
     # if we use --nih as an argument we query NIH Reporter
@@ -2980,11 +2935,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             print(f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
             return False
-        
-        
-####
-
-
+            
     def create_s3_bucket(self, bucket_name, profile=None):   
         if not self._check_s3_credentials(profile, verbose=True):
             print(f"Cannot create bucket '{bucket_name}' with these credentials")
@@ -3168,9 +3119,6 @@ class AWSBoto:
             bootstrap_restore += f'\nsudo mkdir -p $(dirname "{folder}")'
             bootstrap_restore += f'\nsudo chown ec2-user $(dirname "{folder}")'
             bootstrap_restore += f'\nln -s "{refolder}" "{folder}"'
-
-            #self.ssh_execute('ec2-user', ip, f'sudo mkdir -p "{folder}"')
-            #self.ssh_execute('ec2-user', ip, f'sudo chown ec2-user "{folder}"')
 
         ### this block may need to be moved to a function
         argl = ['--ec2', '-e']
@@ -5061,9 +5009,6 @@ class ConfigManager:
             timezone_path = os.path.realpath("/etc/localtime")
             # Extract the time zone string by stripping off the prefix of the zoneinfo path
             current_tz_str = timezone_path.split("zoneinfo/")[-1]
-            #import zoneinfo 
-            #current_tz = zoneinfo.ZoneInfo(current_tz_str)\
-            #current_time = datetime.datetime.now(current_tz)
         except Exception as e:
             print(f'Error: {e}')
             current_tz_str = 'America/Los_Angeles'
@@ -5095,7 +5040,6 @@ class ConfigManager:
         except Exception as e:
             # Handle any other unexpected errors
             print(f"An unexpected error occurred: {e}")
-
 
     def read(self, section, entry, default=""):
         entry_path = self._get_entry_path(section, entry)
@@ -5244,15 +5188,6 @@ class ConfigManager:
                 os.chmod(os.path.join(targetfolder, binary), 0o775)
             else:    
                 print(f'Failed copying {binary} to {targetfolder}')
-
-
-# class SubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
-#     def _format_action(self, action):
-#         parts = super(argparse.RawDescriptionHelpFormatter, self)._format_action(action)
-#         if action.nargs == argparse.PARSER:
-#             parts = "\n".join(parts.split("\n")[1:])
-#         return parts
-
 
 def parse_arguments():
     """
@@ -5426,23 +5361,9 @@ def parse_arguments():
         help="List running Froster EC2 instances")        
     parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='', 
         metavar='<hostname>', help='Terminate EC2 instance with this public IP Address.')    
-    # parser_ssh.add_argument('--key', '-k', dest='key', action='store', default='', 
-    #     help='pick a custom ssh key for your connection')
     parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
         help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
                '')
-
-    # # # ***
-    # # # monitoring for EC2 hosts    
-    # parser_mon = subparsers.add_parser('mon', aliases=['ec2'],
-    #     help=argparse.SUPPRESS) # , formatter_class=SubcommandHelpFormatter
-    # parser_mon.add_argument( '--test', '-l', dest='test', action='store_true', default=argparse.SUPPRESS,
-    #     help=argparse.SUPPRESS)        
-    # parser_mon.add_argument('--test2', '-t', dest='test2', action='store', default=argparse.SUPPRESS, 
-    #     help=argparse.SUPPRESS)
-    # parser_mon.add_argument('ec2host', action='store', default=argparse.SUPPRESS, nargs='?',
-    #     help=argparse.SUPPRESS)
-
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stdout)               
