@@ -1374,7 +1374,7 @@ class Archiver:
                         # ownership and permissions
                         owner = self.uid2user(os.lstat(file_path).st_uid)
                         group = self.gid2group(os.lstat(file_path).st_gid)
-                        permissions = os.lstat(file_path).st_mode
+                        permissions = oct(os.lstat(file_path).st_mode)
                         tarred="No"
                         # write file info to the csv file
                         if size < smallsize*1024:
