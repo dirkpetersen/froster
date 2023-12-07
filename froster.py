@@ -1020,7 +1020,7 @@ class Archiver:
         if os.path.isfile(os.path.join(source,".froster.md5sum")):
             print(f'  The hashfile ".froster.md5sum" already exists in {source} from a previous archiving process.')
             print('  You need to manually rename the file before you can proceed.')
-            print('  Without a valid ".froster.md5sum" in a folder you will not be able to use "froster" for restores')
+            print('')
             return False
         
         badfiles = self.cannot_read_files(source)
