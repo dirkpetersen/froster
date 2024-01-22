@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.58'
+__version__ = '0.9.0.60'
 
 def main():
         
@@ -212,7 +212,8 @@ def subcmd_config(args, cfg, aws):
     archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
                                 'archive|general|archiveroot','string') 
     
-    s3_storage_class =  cfg.prompt('Please confirm/edit the AWS S3 Storage class',
+    cls = cfg.read('general', 's3_storage_class')
+    s3_storage_class =  cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
                             'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class','string')
     cfg.write('general', 's3_storage_class', s3_storage_class)
     
@@ -221,7 +222,6 @@ def subcmd_config(args, cfg, aws):
     # if there is a shared ~/.aws/config copy it over
     if cfg.config_root_local != cfg.config_root:
         cfg.replicate_ini('ALL',cfg.awsconfigfileshr,cfg.awsconfigfile)
-
 
 
     aws_region = cfg.get_aws_region('aws')
@@ -458,12 +458,13 @@ def subcmd_archive(args,cfg,arch,aws):
                 app = TableNIHGrants()
                 archmeta=app.run()
         else:
-            print (f'You can start this process later by using this command:\n  froster archive "{retline[5]}"')
+            print (f'\nYou can start this archive process later by using this command:\n  froster archive "{retline[5]}"')
+            print (f'\n... or if you like to include all subfolders run:\n  froster archive --recursive "{retline[5]}"\n')
             return False
         
         badfiles = arch.cannot_read_files(retline[5])
         if badfiles:
-            print(f'  Cannot read these files in folder {retline[5]}: {", ".join(badfiles)}')
+            print(f'  Cannot read files in folder  {retline[5]}, for example:\n  {", ".join(badfiles[:10])}')
             return False
         
         args.folders.append(retline[5])
@@ -480,6 +481,9 @@ def subcmd_archive(args,cfg,arch,aws):
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
+            if args.reset:
+                ret = arch.reset_folder(fld, args.recursive)
+                continue
             if args.recursive:
                 print (f'Archiving folder {fld} and subfolders, please wait ...', flush=True)
                 arch.archive_recursive(fld, archmeta)
@@ -1022,7 +1026,11 @@ class Archiver:
             print('  You need to manually rename the file before you can proceed.')
             print('')
             return False
-        
+
+        if not [f for f in os.listdir(source) if os.path.isfile(os.path.join(source, f))]:
+            print (f"  Folder {source} is empty.")
+            #return False
+
         badfiles = self.cannot_read_files(source)
         if badfiles:
             print(f'  Cannot read these files in folder {source}: {", ".join(badfiles)}')
@@ -1354,7 +1362,7 @@ class Archiver:
             tar_path=os.path.join(root,'Froster.smallfiles.tar')
             csv_path=os.path.join(root,'Froster.allfiles.csv')
             if os.path.exists(tar_path):
-                print(f'Froster.smallfiles.tar alreadly exists, skipping folder {root}')
+                print(f'Froster.smallfiles.tar alreadly exists in {root}')
                 continue
             # create a csv file even if there are no small files
             #if not self._is_small_file_in_dir(root,smallsize):
@@ -1368,6 +1376,8 @@ class Archiver:
                     writer.writerow(["File", "Size(bytes)", "Date-Modified", "Date-Accessed", "Owner", "Group", "Permissions", "Tarred"])                    
                     for filen in files:
                         file_path = os.path.join(root, filen)
+                        if file_path == csv_path:
+                            continue
                         # check if file is larger than X MB
                         size, mtime, atime =  self._get_file_stats(file_path)
                         # get last modified and accessed dates 
@@ -1431,6 +1441,48 @@ class Archiver:
                 print(f"An unexpected error occurred:\n{e}")
                 return False
         return True
+
+    def reset_folder(self, directory, recursive=False):
+        # Remove all froster artifacts from a folder and untar small files
+        for root, dirs, files in self._walker(directory):
+            if not recursive and root != directory:
+                break
+            try:
+                print(f'  Resetting folder {root} ... ', end='')
+                min_metafiles = ['Froster.allfiles.csv', '.froster.md5sum', 'Where-did-the-files-go.txt']
+                if set(min_metafiles).issubset(set(files)):
+                    if len(files) <= 5:
+                        print(f'  There are only {len(files)} files in {root}, please reset it manually ...')
+                        continue
+                tar_path=os.path.join(root, 'Froster.smallfiles.tar')
+                if os.path.exists(tar_path):
+                    print(f'  Untarring Froster.smallfiles.tar ... ', end='')
+                    with tarfile.open(tar_path, "r") as tar:
+                        tar.extractall(path=root)
+                    os.remove(tar_path)
+                csv_path=os.path.join(root, 'Froster.allfiles.csv')
+                if os.path.exists(csv_path):
+                    if os.path.getsize(csv_path) < 100:
+                        os.remove(csv_path)                
+                delfiles = ['.froster.md5sum', '.froster-restored.md5sum', 'Where-did-the-files-go.txt']                
+                for d in delfiles:
+                    delfile=os.path.join(root, d)
+                    if os.path.exists(delfile):
+                        os.remove(delfile)
+                print('Done.')
+
+            except PermissionError as e:
+                if e.errno == 13:  # Check if error number is 13 (Permission denied)
+                    print("Permission denied in _reset_folder.")
+                    return 13
+                else:
+                    print(f"An unexpected PermissionError occurred in _reset_folder:\n{e}")            
+                    return False
+            except Exception as e:
+                print(f"An unexpected error occurred in _reset_folder:\n{e}")
+                return False
+        return True
+
     
     def _is_small_file_in_dir(self, dir, small=1024):
         # Get all files in the specified directory
@@ -2114,11 +2166,11 @@ class ScreenConfirm(ModalScreen[bool]):
             #     print(f'  Cannot read these files in folder {retline[5]}: {", ".join(badfiles)}')
             #     return False
 
-            yield Label("Do you want to start this archiving job now?")
+            yield Label("Do you want to start this archiving job now?\nChoose 'Quit' if you would like to archive recursively")
             with Horizontal():
-                yield Button("Continue", id="continue")
-                yield Button("Quit", id="quit")
-                yield Button("Return", id="return")
+                yield Button("Start Job", id="continue")
+                yield Button("Back to List", id="return")
+                yield Button("Quit to CLI", id="quit")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         #self.dismiss(result=event.button.id == "continue")
@@ -2292,6 +2344,7 @@ class Rclone:
 
         command = self._add_opt(command, '--verbose')
         command = self._add_opt(command, '--use-json-log')
+
         self.cfg.printdbg('Rclone command:', " ".join(command))
         try:
             ret = subprocess.run(command, capture_output=True, text=True, env=self.cfg.envrn)
@@ -2318,7 +2371,8 @@ class Rclone:
             return ret.stdout.strip(), ret.stderr.strip()
 
         except Exception as e:
-            print (f'Rclone Error: {str(e)}')
+            print (f'\nRclone Error in _run_rc: {str(e)}, command run:')
+            print(f" ".join(command))            
             return None, str(e)
 
     def _run_bk(self, command):
@@ -2348,8 +2402,12 @@ class Rclone:
         stats, ops = self._parse_log(err) 
         if stats:
             return stats[-1] # return the stats
-        else:
-            return []
+        else:            
+            st = {}
+            st['stats'] = {}
+            st['stats']['errors'] = 1
+            st['stats']['lastError'] = err
+            return st
 
     def checksum(self, md5file, dst, *args):
         #checksum md5 ./tests/.froster.md5sum
@@ -5286,6 +5344,9 @@ def parse_arguments():
         help="Use modified file time (mtime) instead of accessed time (atime)")
     parser_archive.add_argument( '--recursive', '-r', dest='recursive', action='store_true', default=False,
         help="Archive the current folder and all sub-folders")
+    parser_archive.add_argument( '--reset', '-s', dest='reset', action='store_true', default=False,
+        help="This will not download any data, but recusively reset a folder from previous (e.g. failed) " +
+              "archiving attempt. It will delete .froster.md5sum and extract Froster.smallfiles.tar")    
     parser_archive.add_argument( '--no-tar', '-t', dest='notar', action='store_true', default=False,
         help="Do not move small files to tar file before archiving")  
     parser_archive.add_argument( '--nih', '-n', dest='nih', action='store_true', default=False,
