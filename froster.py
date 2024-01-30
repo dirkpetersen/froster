@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.60'
+__version__ = '0.9.0.61'
 
 def main():
         
@@ -83,13 +83,17 @@ def args_version(cfg):
     print(f'  Profs .aws: {", ".join(cfg.get_aws_profiles())}')
     print(f'Python version:\n{sys.version}')
     try:
-        print('Pwalk version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'], 
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])        
-        print('Rclone version:', subprocess.run([os.path.join(cfg.binfolderx, 'rclone'), '--version'], 
+        print('* Pwalk ----- ')
+        print('  Binary:', shutil.which('pwalk'))
+        print('  Version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'], 
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])
+        print('* Rclone ---- ')        
+        print('  Binary:', shutil.which('rclone'))        
+        print('  Version:', subprocess.run([os.path.join(cfg.binfolderx, 'rclone'), '--version'], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
     except FileNotFoundError as e:
         print(f'Error: {e}')
-        return False
+        return False    
     return True
     
 def subcmd_config(args, cfg, aws):
@@ -312,14 +316,18 @@ def subcmd_config(args, cfg, aws):
         se = SlurmEssentials(args, cfg)
         parts = se.get_allowed_partitions_and_qos()
         print('')
-
-        slurm_partition =  cfg.prompt('Please select the Slurm partition for jobs that last up to 7 days.',
+        
+        mydef = cfg.read('hpc', 'slurm_partition')
+        if mydef: mydef = f' (now: {mydef})'
+        slurm_partition =  cfg.prompt(f'Please select the Slurm partition for jobs that last up to 7 days.{mydef}',
                                     list(parts.keys()))
         cfg.write('hpc', 'slurm_partition', slurm_partition)
         #slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
         print('')
 
-        slurm_qos =  cfg.prompt('Please select the Slurm QOS for jobs that last up to 7 days.',
+        mydef = cfg.read('hpc', 'slurm_qos')
+        if mydef: mydef = f' (now: {mydef})'
+        slurm_qos =  cfg.prompt(f'Please select the Slurm QOS for jobs that last up to 7 days.{mydef}',
                                     parts[slurm_partition])
         cfg.write('hpc', 'slurm_qos', slurm_qos)
         #slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
@@ -464,7 +472,7 @@ def subcmd_archive(args,cfg,arch,aws):
         
         badfiles = arch.cannot_read_files(retline[5])
         if badfiles:
-            print(f'  Cannot read files in folder  {retline[5]}, for example:\n  {", ".join(badfiles[:10])}')
+            print(f'  Cannot read {len(badfiles)} files in folder {retline[5]}, for example:\n  {", ".join(badfiles[:10])}')
             return False
         
         args.folders.append(retline[5])
@@ -477,6 +485,28 @@ def subcmd_archive(args,cfg,arch,aws):
         return False
     if not aws.check_bucket_access(cfg.bucket, readwrite=True):
         return False
+    
+    # if recursive archiving, check if we can read all files
+    if args.recursive:
+        isbad = False
+        for fld in args.folders:
+        ### check for bad files first
+            print(f'Checking access to files in folder tree "{fld}" ... ', flush=True)
+            for root, dirs, files in arch._walker(fld):
+                print(f'  Folder "{root}" ... ', flush=True)
+                badfiles = arch.cannot_read_files(root)
+                if badfiles:
+                    isbad = True
+                    print(f'  Error: Cannot read {len(badfiles)} files in folder, for example:\n  {", ".join(badfiles[:10])}', flush=True)
+                for dir in dirs:
+                    dirpath=os.path.join(root,dir)
+                    ret = arch.test_write(dirpath)
+                    if ret==13 or ret == 2:
+                        print(f'  Cannot write to sub-folder {dir}', flush=True)
+                        isbad = True
+        if isbad:
+            print(f'Error: Cannot archive folder(s) resursively, fix some permissions first.', flush=True)
+            return False
 
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
         for fld in args.folders:
@@ -485,10 +515,12 @@ def subcmd_archive(args,cfg,arch,aws):
                 ret = arch.reset_folder(fld, args.recursive)
                 continue
             if args.recursive:
-                print (f'Archiving folder {fld} and subfolders, please wait ...', flush=True)
-                arch.archive_recursive(fld, archmeta)
+                print (f'Archiving folder "{fld}" and subfolders, please wait ...', flush=True)
+                if not arch.archive_recursive(fld, archmeta):
+                    if args.debug:
+                        print(f'  Archiver.archive_recursive({fld}) returned False', flush=True)
             else:
-                print (f'Archiving folder {fld} (no subfolders), please wait ...', flush=True)
+                print (f'Archiving folder "{fld}" (no subfolders), please wait ...', flush=True)
                 arch.archive(fld, archmeta)
     else:
         se = SlurmEssentials(args, cfg)
@@ -1028,12 +1060,12 @@ class Archiver:
             return False
 
         if not [f for f in os.listdir(source) if os.path.isfile(os.path.join(source, f))]:
-            print (f"  Folder {source} is empty.")
-            #return False
+            print ("    Folder is empty, skipping")
+            return True
 
         badfiles = self.cannot_read_files(source)
         if badfiles:
-            print(f'  Cannot read these files in folder {source}: {", ".join(badfiles)}')
+            print(f'  Cannot read {len(badfiles)} files in folder, for example:\n  {", ".join(badfiles[:10])}')
             return False
 
         if not self.args.notar:
@@ -1254,6 +1286,8 @@ class Archiver:
     def can_delete_file(self, file_path):
         # Check if file exists
         if not os.path.exists(file_path):
+            if self.args.debug:
+                print(f'File {file_path} does not exist.')
             return False
         # Getting the status of the file
         file_stat = os.lstat(file_path)
@@ -1267,12 +1301,24 @@ class Archiver:
                           any(grp.getgrgid(g).gr_gid == file_stat.st_gid for g in os.getgroups())
         # Extracting permission bits
         permissions = file_stat.st_mode
+        # Checking for owner write permission
+        has_owner_write_permission = bool(permissions & stat.S_IWUSR)
         # Checking for group write permission
         has_group_write_permission = bool(permissions & stat.S_IWGRP)
         # Checking for '666' or '777' permissions
         is_666_or_777 = permissions & 0o666 == 0o666 or permissions & 0o777 == 0o777
         # Determining if the user can delete the file
-        can_delete = is_owner or (is_group_member and has_group_write_permission) or is_666_or_777
+        can_delete = (is_owner and has_owner_write_permission) or \
+                     (is_group_member and has_group_write_permission) or \
+                      is_666_or_777
+        if self.args.debug:
+            print ('\ncan_delete_file ?:', file_path, flush=True)
+            print ('  is_owner:', is_owner, flush=True)
+            print ('  has_owner_write_permission:', has_owner_write_permission, flush=True)            
+            print ('  is_group_member:', is_group_member, flush=True)
+            print ('  has_group_write_permission:', has_group_write_permission, flush=True)
+            print ('  is_666_or_777:', is_666_or_777, flush=True)                        
+            print ('  can_delete:', can_delete, flush=True)
         return can_delete
 
     def can_read_file(self, file_path):
@@ -1287,7 +1333,8 @@ class Archiver:
         # Checking if the user is the owner
         is_owner = file_stat.st_uid == current_uid
         # Checking if the user is in the file's group
-        is_group_member = file_stat.st_gid == current_gid
+        is_group_member = file_stat.st_gid == current_gid or \
+                          any(grp.getgrgid(g).gr_gid == file_stat.st_gid for g in os.getgroups())
         # Extracting permission bits
         permissions = file_stat.st_mode
         # Checking for owner read permission
@@ -1300,17 +1347,28 @@ class Archiver:
         can_read = (is_owner and has_owner_read_permission) or \
                    (is_group_member and has_group_read_permission) or \
                    is_444
+        if self.args.debug:
+            print ('\ncan_read_file ?:', file_path, flush=True)
+            print ('  is_owner:', is_owner, flush=True)
+            print ('  has_owner_read_permission:', has_owner_read_permission, flush=True)                
+            print ('  is_group_member:', is_group_member, flush=True)
+            print ('  has_group_read_permission:', has_group_read_permission, flush=True)
+            print ('  is_444:', is_444, flush=True)                        
+            print ('  can_read:', can_read, flush=True)        
         return can_read
 
     def cannot_read_files(self, directory):
         # List to hold files that cannot be read
         unreadable_files = []
         # Iterate over all files in the given directory
-        for filename in os.listdir(directory):
-            file_path = os.path.join(directory, filename)
-            # Check if it's a file and not readable
-            if os.path.isfile(file_path) and not self.can_read_file(file_path):
-                unreadable_files.append(filename)
+        try:
+            for filename in os.listdir(directory):
+                file_path = os.path.join(directory, filename)
+                # Check if it's a file and not readable
+                if os.path.isfile(file_path) and not self.can_read_file(file_path):
+                    unreadable_files.append(filename)
+        except PermissionError as e:
+            print(f"  An unexpected PermissionError occurred:\n{e}")
         return unreadable_files
 
     def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
@@ -1402,7 +1460,7 @@ class Archiver:
                     print('Done.')
                 else:
                     os.remove(tar_path)
-                    print('Canceled.')
+                    print('No small files to tar.')
             except PermissionError as e:
                 if e.errno == 13:  # Check if error number is 13 (Permission denied)
                     print("Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
