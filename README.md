@@ -77,8 +77,12 @@ Just pipe this curl command to bash to install:
 curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
 ```
 
-and if you have recently installed it with all dependencies and just would like to update the core software, you just run with `update` argument which will only take a second:
+and if you have recently installed it with all dependencies and just would like to update the core software, you just run with `update` argument which will only take a second, you can use 2 options
 
+```
+froster update 
+```
+or
 ```
 curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- update
 ```
