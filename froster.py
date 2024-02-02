@@ -508,7 +508,7 @@ def subcmd_archive(args,cfg,arch,aws):
             print(f'Error: Cannot archive folder(s) resursively, fix some permissions first.', flush=True)
             return False
 
-    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+    if not shutil.which('sbatch') or args.noslurm or args.reset or os.getenv('SLURM_JOB_ID'):
         for fld in args.folders:
             fld = fld.rstrip(os.path.sep)
             if args.reset:
