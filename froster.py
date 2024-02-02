@@ -391,8 +391,8 @@ def subcmd_index(args,cfg,arch):
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
         se.add_line(f'#SBATCH --time=7-0')
-        if se.partiton:
-            se.add_line(f'#SBATCH --partition={se.partiton}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
         if se.qos:
             se.add_line(f'#SBATCH --qos={se.qos}')
         #se.add_line(f'ml python')
@@ -452,6 +452,12 @@ def subcmd_archive(args,cfg,arch,aws):
             return
         
         SELECTEDFILE = arch.get_user_hotspot(SELECTEDFILE)
+        # print('SELECTEDFILE:', SELECTEDFILE)
+        # fh = open(SELECTEDFILE, 'r')
+        # rows = csv.reader(fh)
+        # for row in rows:
+        #     print(row)        
+        # time.sleep(10)
         app = TableHotspots()
         retline=app.run()
         #print('Retline:', retline)
@@ -537,8 +543,8 @@ def subcmd_archive(args,cfg,arch,aws):
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
         se.add_line(f'#SBATCH --time=7-0')
-        if se.partiton:
-            se.add_line(f'#SBATCH --partition={se.partiton}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
         if se.qos:
             se.add_line(f'#SBATCH --qos={se.qos}')        
         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
@@ -637,8 +643,8 @@ def subcmd_restore(args,cfg,arch,aws):
                     se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
                     se.add_line(f'#SBATCH --mail-user={email}')
                     se.add_line(f'#SBATCH --time=7-0')
-                    if se.partiton:
-                        se.add_line(f'#SBATCH --partition={se.partiton}')
+                    if se.partition:
+                        se.add_line(f'#SBATCH --partition={se.partition}')
                     if se.qos:
                         se.add_line(f'#SBATCH --qos={se.qos}')                    
                     cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline
@@ -672,8 +678,8 @@ def subcmd_restore(args,cfg,arch,aws):
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
         se.add_line(f'#SBATCH --time=7-0')
-        if se.partiton:
-            se.add_line(f'#SBATCH --partition={se.partiton}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
         if se.qos:
             se.add_line(f'#SBATCH --qos={se.qos}')        
         cmdline = " ".join(map(shlex.quote, sys.argv)) #original cmdline            
@@ -1278,7 +1284,8 @@ class Archiver:
             length = 50  # adjust as needed for the bar length
             filled_length = int(length * iteration // max_value)
             bar = "█" * filled_length + '-' * (length - filled_length)
-            print(f'\r|{bar}| {percent}%', end='\r')
+            if sys.stdin.isatty():
+                print(f'\r|{bar}| {percent}%', end='\r')
             if iteration == max_value: 
                 print()
         return show_progress_bar
@@ -2255,6 +2262,8 @@ class TableHotspots(App[list]):
         table = self.query_one(DataTable)
         fh = open(SELECTEDFILE, 'r')
         rows = csv.reader(fh)
+        print(rows)
+        time.sleep(5)
         table.add_columns(*next(rows))
         table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
@@ -2602,7 +2611,7 @@ class SlurmEssentials:
         self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
         self.jobs = []
         self.job_info = {}
-        self.partiton = cfg.read('hpc', 'slurm_partiton')
+        self.partition = cfg.read('hpc', 'slurm_partition')
         self.qos = cfg.read('hpc', 'slurm_qos')
         self._add_lines_from_cfg()
 
@@ -3593,7 +3602,8 @@ class AWSBoto:
             length = 50  # adjust as needed for the bar length
             filled_length = int(length * iteration // max_value)
             bar = "█" * filled_length + '-' * (length - filled_length)
-            print(f'\r|{bar}| {percent}%', end='\r')
+            if sys.stdin.isatty():
+                print(f'\r|{bar}| {percent}%', end='\r')
             if iteration == max_value: 
                 print()
 
