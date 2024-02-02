@@ -452,12 +452,6 @@ def subcmd_archive(args,cfg,arch,aws):
             return
         
         SELECTEDFILE = arch.get_user_hotspot(SELECTEDFILE)
-        # print('SELECTEDFILE:', SELECTEDFILE)
-        # fh = open(SELECTEDFILE, 'r')
-        # rows = csv.reader(fh)
-        # for row in rows:
-        #     print(row)        
-        # time.sleep(10)
         app = TableHotspots()
         retline=app.run()
         #print('Retline:', retline)
@@ -2262,8 +2256,6 @@ class TableHotspots(App[list]):
         table = self.query_one(DataTable)
         fh = open(SELECTEDFILE, 'r')
         rows = csv.reader(fh)
-        print(rows)
-        time.sleep(5)
         table.add_columns(*next(rows))
         table.add_rows(itertools.islice(rows,MAXHOTSPOTS))
 
