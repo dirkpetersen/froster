@@ -1,11 +1,11 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
-Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster crawls your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. To install froster run: 
+Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster crawls your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. To install or update froster run:
 
 ```
 curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
-
 ```
+or  `froster update`
 
 ## Table of Contents
 
@@ -39,14 +39,14 @@ curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh |
 
 ## Problem 
 
-This problem may have already been addressed many times, but I've yet to find an easy, open-source solution for large-scale archiving intended to free up disk space on a primary storage system. Researchers, who may have hundreds of terabytes or even petabytes of data, need to decide what to archive and where to archive it. Archiving processes can stretch on for days and are susceptible to failure. These processes must be able to resume automatically until completion, and need to be validated (for instance, through a checksum comparison with the source). Additionally, it's crucial to maintain some metadata regarding when the archiving occurred, where the data was transferred to, and the original location of the data.
-A specific issue with AWS Glacier is its current implementation as a backend to S3. Only the Glacier features that S3 does not support necessitate the use of a special Glacier API. This fact is often not well documented in how-to guides.
+We have yet to find an easy to use, open-source solution for large-scale archiving intended to free up disk space on a primary storage system. Researchers, who may have hundreds of terabytes or even petabytes of data, need to decide what to archive and where to archive it. Archiving processes can stretch on for days and are susceptible to failure. These processes must be able to resume automatically until completion, and need to be validated (for instance, through a checksum comparison with the source). Additionally, it's crucial to maintain some metadata regarding when the archiving occurred, where the data was transferred to, and the original location of the data to be able to restore it quickly.
+A specific issue with AWS Glacier is its current implementation as a backend to S3. Only the Glacier features that S3 does not support require the use of a special Glacier API. This fact is often not well documented in how-to guides.
 
 ### Motivation 
 
 There were three motivations behind the creation of `Froster`:
 
-- We were working with researchers to optimize their archiving processes. In doing so, we wanted to understand user workflows and identify the essential metadata to be captured. Thanks to Froster's compact codebase, it can be easily adapted to various needs. Metadata could potentially be captured through an additional web interface. However, a web system often requires IT support and an extra layer of authentication. It might be simpler to gather such information through a [Textual TUI interface](https://www.textualize.io/projects/). A first [demo of this option is here](#nih-life-sciences-metadata). The insights gained through working with `Froster` will likely guide the development or acquisition of more robust tools in the future. 
+- We were working with researchers to optimize their archiving processes. In doing so, we wanted to understand user workflows and identify the essential metadata to be captured. Thanks to Froster's compact codebase, it can be easily adapted to various needs. Metadata could potentially be captured through an additional web interface. However, a web system often requires IT support and an extra layer of authentication. It might be simpler to gather such information through a [Textual TUI interface](https://www.textualize.io/projects/). A first [demo of this option is here](#nih-life-sciences-metadata). The insights gained through working with `Froster` will likely guide the development or acquisition of more advanced tools in the future. 
 
 - HPC users often find AWS Glacier inaccessible or complex and have a preception that it is expensive because of Egress fees. This is despite evidence that most data for most research users has not been touched in years. It seems that it is very difficult to build an on premises archive solution with a lower TCO than AWS Glacier or similar offerings from other cloud providers such as IDrive E2 
 
@@ -54,8 +54,8 @@ There were three motivations behind the creation of `Froster`:
 
 ## Design 
 
-1. First, we need to crawl the file system that likely has billions of files to find data that is actually worth archiving. For this, we use the well-known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all discovered file metadata.
-1. Our focus is on archiving folders rather than individual files, as data that resides in the same folder typically belongs together. To this end, we filter the pwalk's CSV file with [DuckDB](https://duckdb.org), yielding a new list (CSV) of the largest folders sorted by size. (We call this a `Hotspots` file)
+1. First, we may need to crawl the file system that sometimes has billions of files to find data that is actually worth archiving. For this, Froster uses the well-known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all discovered file metadata.
+1. Our focus is on archiving folders rather than individual files, as data that resides in the same folder typically belongs together. To this end, we filter the pwalk's CSV file with [DuckDB](https://duckdb.org), and get a new list (CSV) of the largest folders sorted by size. (We call this a `Hotspots` file)
 1. We pass this new list (CSV) to an interactive tool based on [Textual](https://textual.textualize.io/), which displays a table of folders alongside their total size in GiB, their average file sizes in MiB (MiBAvg), as well as their age in days since last accessed (AccD) and modified (ModD). Users can scroll down and right using the mouse, and hitting enter will trigger the archiving of the selected folder.
    ![image](https://user-images.githubusercontent.com/1427719/230824467-6a6e5873-5a48-4656-8d75-42133a60ba30.png)
 1. All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. You can also [avoid tarring](#tarring-small-files) 
@@ -65,7 +65,7 @@ There were three motivations behind the creation of `Froster`:
 1. After files have been deleted from the source folder, we place a file named `Where-did-the-files-go.txt` in the source folder. This file describes where the data was archived, along with instructions on how to retrieve the data.
 1. Optionally allow `archive --recursive` to enable archiving of entire folder trees (CLI only option). [More details here](#recursive-operations).
 1. Optionally link to NIH metadata with the `archive --nih` option to link to life sciences research projects [More details here](#nih-life-sciences-metadata).
-1. Optionally restore to a cloud machine (EC2 instance) with the `restore --ec2` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12).
+1. Optionally restore to a cloud machine (AWS EC2 instance) with the `restore --aws` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12).
 
 ## Preparing Froster 
 
@@ -77,12 +77,12 @@ Just pipe this curl command to bash to install:
 curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
 ```
 
-and if you have recently installed it with all dependencies and just would like to update the core software, you just run with `update` argument which will only take a second, you can use 2 options
+and if you have recently installed it with all dependencies and just would like to update the core software, you can use 2 options
 
 ```
 froster update 
 ```
-or
+or if you are updating from an older version from 2023
 ```
 curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- update
 ```
@@ -537,10 +537,10 @@ You can search multiple times. Once you found the grant you are looking for hit 
 
 #### Restore to cloud machine 
 
-In some cases you may want to restore rarely needed data from Glacier to a cloud machine on EC2. The most frequent use case is to save AWS Egress fees. Use the --ec2 option with the restore sub-command to create a new ec2 instance with enough local disk space to restore your data there: `froster restore --ec2 ~/archtest/data1`
+In some cases you may want to restore rarely needed data from Glacier to a cloud machine on EC2. The most frequent use case is to save AWS Egress fees. Use the --aws option with the restore sub-command to create a new ec2 instance with enough local disk space to restore your data there: `froster restore --aws ~/archtest/data1`
 
 ```
-dp@grammy:~$ froster restore --ec2 ~/archtest/data1
+dp@grammy:~$ froster restore --aws ~/archtest/data1
 Total data in all folders: 1.30 GiB
 Chosen Instance: c5ad.large
 Using Image ID: ami-0a6c63f0325635301
@@ -622,7 +622,7 @@ vd ~/my_department.csv
 
 ### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
 
-This error can occur when using `froster restore --ec2`. To resolve this problem delete or rename the ssh key `~/.config/froster/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
+This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.config/froster/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
 
 ### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
 
@@ -661,7 +661,7 @@ positional arguments:
     restore (rst)       Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need to download
                         all data to local storage after the restore is complete. Just use the mount sub
                         command.
-    ssh (scp)           Login to an AWS EC2 instance to which data was restored with the --ec2 option
+    ssh (scp)           Login to an AWS EC2 instance to which data was restored with the --aws option
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -763,7 +763,7 @@ optional arguments:
 
 ```
 froster mount --help
-usage: froster mount [-h] [--mount-point MOUNTPOINT] [--ec2] [--unmount] [folders ...]
+usage: froster mount [-h] [--mount-point MOUNTPOINT] [--aws] [--unmount] [folders ...]
 
 positional arguments:
   folders               archived folders (separated by space) which you would like to mount.
@@ -772,7 +772,7 @@ optional arguments:
   -h, --help            show this help message and exit
   --mount-point MOUNTPOINT, -m MOUNTPOINT
                         pick a custom mount point, this only works if you select a single folder.
-  --ec2, -e             Mount folder on new EC2 instance instead of local machine
+  --aws, -a             Mount folder on new EC2 instance instead of local machine
   --unmount, -u         unmount instead of mount, you can also use the umount sub command instead.
 ```
 
@@ -780,7 +780,7 @@ optional arguments:
  
 ```
 froster restore --help
-usage: froster restore [-h] [--days DAYS] [--retrieve-opt RETRIEVEOPT] [--ec2]
+usage: froster restore [-h] [--days DAYS] [--retrieve-opt RETRIEVEOPT] [--aws]
                        [--instance-type INSTANCETYPE] [--monitor] [--no-download]
                        [folders ...]
 
@@ -805,7 +805,7 @@ optional arguments:
                         In addition to the retrieval cost, AWS will charge you about
                         $10/TiB/month for the duration you keep the data in S3.
                         (Costs in Summer 2023)
-  --ec2, -e             Restore folder on new EC2 instance instead of local machine
+  --aws, -a             Restore folder on new EC2 instance instead of local machine
   --instance-type INSTANCETYPE, -i INSTANCETYPE
                         The EC2 instance type is auto-selected, but you can pick any other type here
   --monitor, -m         Monitor EC2 server for cost and idle time.
@@ -823,14 +823,14 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  --list, -l            List running Froster EC2 instances
+  --list, -l            List running Froster AWS EC2 instances
   --terminate <hostname>, -t <hostname>
-                        Terminate EC2 instance with this public IP Address or instance id
+                        Terminate AWS EC2 instance with this public IP Address or instance id
 ```
 
 ## Commercial solutions 
 
-You can self-install Froster in a few seconds without requiring root access and you can collaborate well in small teams. However, since Froster requires you having write access to all folders and files you manage, it will not scale to many users. If you are rather looking for a feature rich software managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com).
+You can self-install Froster in a few seconds without requiring root access and you can collaborate well in small teams. However, since Froster requires you having write access to all folders and at least read access to all files you manage, it will not scale to many users. If you are rather looking for a feature rich software managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com).
 Froster is a good on-ramp to Starfish. If many users in your organization end up using Froster, it is time considering Starfish as an alternative but if fewer than a handful users find Froster useful, you may be able to defer your Starfish project until you have a critical mass. You can access many advanced Starfish features through a web browser while Froster has a simple CLI/TUI interface.
 
 ## Discontinuing Froster  

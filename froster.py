@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.62'
+__version__ = '0.9.0.63'
 
 def main():
         
@@ -604,7 +604,7 @@ def subcmd_restore(args,cfg,arch,aws):
     if not aws.check_bucket_access_folders(args.folders):
         return False
     
-    if args.ec2:
+    if args.aws:
         # run ec2_deploy(self, bucket='', prefix='', recursive=False, profile=None):
         ret = aws.ec2_deploy(args.folders)
         return True
@@ -777,7 +777,7 @@ def subcmd_mount(args,cfg,arch,aws):
     if not aws.check_bucket_access_folders(args.folders):
         return False
     
-    if args.ec2:
+    if args.aws:
         cfg.create_ec2_instance()
         return True
 
@@ -841,7 +841,7 @@ def subcmd_ssh(args, cfg, aws):
     ips = [sublist[0] for sublist in ilist if sublist]
     if args.list:
         if ips:
-            print("Running EC2 Instances:")
+            print("Running AWS EC2 Instances:")
             for row in ilist:
                 print(' - '.join(row))        
         else:
@@ -898,6 +898,7 @@ class Archiver:
         x = self.cfg.read('general', 'max_hotspots_display_entries')
         global MAXHOTSPOTS
         MAXHOTSPOTS = int(x) if x else 5000
+        self.dirmetafiles = ['Froster.allfiles.csv', 'Froster.smallfiles.tar', '.froster.md5sum', '.froster-restored.md5sum', 'Where-did-the-files-go.txt']
         
         self.url = 'https://api.reporter.nih.gov/v2/projects/search'
         self.grants = []
@@ -996,9 +997,10 @@ class Archiver:
                     row = list(r)
                     if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
                         atime=self._get_newest_file_atime(row[5],row[1])
+                        mtime=self._get_newest_file_mtime(row[5],row[2])
                         row[0]=self.uid2user(row[0])                        
                         row[1]=self.daysago(atime)
-                        row[2]=self.daysago(row[2])
+                        row[2]=self.daysago(mtime)
                         row[3]=int(row[3])
                         row[4]=int(row[4])
                         row[6]=self.gid2group(row[6])
@@ -2083,6 +2085,8 @@ class Archiver:
             print(f'Error accessing folder {folder_path}:\n{e}')
             return folder_atime
         for file_name in subobjects:
+            if file_name in self.dirmetafiles:
+                continue    
             file_path = os.path.join(folder_path, file_name)
             if os.path.isfile(file_path):
                 accessed_time = os.path.getatime(file_path)
@@ -2091,6 +2095,31 @@ class Archiver:
         if last_accessed_time == None:
             last_accessed_time = folder_atime
         return last_accessed_time
+    
+    def _get_newest_file_mtime(self, folder_path, folder_mtime=None):
+        # Because the folder atime is reset when crawling we need
+        # to lookup the atime of the last modified file in this folder
+        if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
+            if self.args.debug and not self.args.pwalkcsv:
+                print(f" Invalid folder path: {folder_path}")
+            return folder_mtime
+        last_modified_time = None        
+        try:
+            subobjects=os.listdir(folder_path)
+        except Exception as e:
+            print(f'Error accessing folder {folder_path}:\n{e}')
+            return folder_mtime
+        for file_name in subobjects:
+            if file_name in self.dirmetafiles:
+                continue
+            file_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(file_path):
+                modified_time = os.path.getmtime(file_path)
+                if last_modified_time is None or modified_time > last_modified_time:
+                    last_modified_time = modified_time
+        if last_modified_time == None:
+            last_modified_time = folder_mtime
+        return last_modified_time
 
     def _get_hotspots_path(self,folder):
         # get a full path name of a new hotspots file
@@ -3010,12 +3039,16 @@ class AWSBoto:
         buckets = []
         for folder in folders:
             bucket, *_ = self.arch.archive_get_bucket_info(folder)
-            buckets.append(bucket)
+            if bucket:
+                buckets.append(bucket)
+            else:              
+                print(f'Error: No archive config found for folder {folder}')
+                sufficient = False
         buckets = list(set(buckets)) # remove dups
         for bucket in buckets:
             if not self.check_bucket_access(bucket, readwrite):
                 print (f' You have no {myaccess} access to bucket "{bucket}" !')
-                sufficient = False
+                sufficient = False        
         return sufficient
 
     def check_bucket_access(self, bucket_name, readwrite=False, profile=None):
@@ -3249,7 +3282,7 @@ class AWSBoto:
             bootstrap_restore += f'\nln -s "{refolder}" "{folder}"'
 
         ### this block may need to be moved to a function
-        argl = ['--ec2', '-e']
+        argl = ['--aws', '-a']
         cmdlist = [item for item in sys.argv if item not in argl]
         argl = ['--instance-type', '-i'] # if found remove option and next arg
         cmdlist = [x for i, x in enumerate(cmdlist) if x \
@@ -3917,7 +3950,7 @@ class AWSBoto:
         key_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}.pem')
         mykey_path = os.path.join(self.cfg.config_root,'cloud',f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
         if not os.path.exists(key_path):
-            print(f'{key_path} does not exist. Please create it by launching "froster restore --ec2"')
+            print(f'{key_path} does not exist. Please create it by launching "froster restore --aws"')
             sys.exit
         if not os.path.exists(mykey_path):
             shutil.copyfile(key_path,mykey_path)
@@ -5437,7 +5470,7 @@ def parse_arguments():
         '''), formatter_class=argparse.RawTextHelpFormatter) 
     parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='', 
         help='pick a custom mount point, this only works if you select a single folder.')
-    parser_mount.add_argument( '--ec2', '-e', dest='ec2', action='store_true', default=False,
+    parser_mount.add_argument( '--aws', '-a', dest='aws', action='store_true', default=False,
         help="Mount folder on new EC2 instance instead of local machine")    
     parser_mount.add_argument( '--unmount', '-u', dest='unmount', action='store_true', default=False,
         help="unmount instead of mount, you can also use the umount sub command instead.")
@@ -5471,8 +5504,8 @@ def parse_arguments():
             $10/TiB/month for the duration you keep the data in S3.
             (Costs in Summer 2023)
             '''))
-    parser_restore.add_argument( '--ec2', '-e', dest='ec2', action='store_true', default=False,
-        help="Restore folder on new EC2 instance instead of local machine")    
+    parser_restore.add_argument( '--aws', '-a', dest='aws', action='store_true', default=False,
+        help="Restore folder on new AWS EC2 instance instead of local machine")    
     parser_restore.add_argument('--instance-type', '-i', dest='instancetype', action='store', default="",
         help='The EC2 instance type is auto-selected, but you can pick any other type here')    
     parser_restore.add_argument( '--monitor', '-m', dest='monitor', action='store_true', default=False,
@@ -5487,12 +5520,12 @@ def parse_arguments():
        
     parser_ssh = subparsers.add_parser('ssh', aliases=['scp'],
         help=textwrap.dedent(f'''
-            Login to an AWS EC2 instance to which data was restored with the --ec2 option
+            Login to an AWS EC2 instance to which data was restored with the --aws option
         '''), formatter_class=argparse.RawTextHelpFormatter)
     parser_ssh.add_argument( '--list', '-l', dest='list', action='store_true', default=False,
-        help="List running Froster EC2 instances")        
+        help="List running Froster AWS EC2 instances")        
     parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='', 
-        metavar='<hostname>', help='Terminate EC2 instance with this public IP Address.')    
+        metavar='<hostname>', help='Terminate AWS EC2 instance with this public IP Address.')    
     parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
         help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
                '')
