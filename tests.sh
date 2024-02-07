@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# test script creates test data, runs through all froster
+# sub commands and removes data from bucket and /tmp
+
+
+set -e
 
 script_path="$(readlink -f "$0")"
 script_dir="$(dirname "$script_path")"
@@ -35,8 +40,8 @@ generate_test_data() {
 
         # Create a few sparse files
         for i in {1..3}; do
-            create_sparse_file "$dir/${prefix}_$(random_string)_medium_$i.bin" "1100K"
-            create_sparse_file "$dir/${prefix}_$(random_string)_small_$i.bin" "900K"
+            create_sparse_file "$dir/${prefix}_$(random_string)_medium_$i.out" "1100K"
+            create_sparse_file "$dir/${prefix}_$(random_string)_small_$i.out" "900K"
         done
 
         # Create an executable file
@@ -58,7 +63,7 @@ generate_test_data() {
     create_files_in_dir "$base_dir" "main"
 
     # Create a sparse large file and other files only in the first subdirectory
-    create_sparse_file "$subdir1/large_$(random_string).bin" "1G"
+    create_sparse_file "$subdir1/large_$(random_string).out" "1G"
     create_files_in_dir "$subdir1" "${subdir1_name}"
 
     # Create sparse files and an executable script in the second subdirectory
@@ -71,11 +76,33 @@ generate_test_data() {
 # Execute the function and capture the returned folder path
 created_folder=$(generate_test_data)
 
-#curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
 
-echo -e "\nData generated in: $created_folder"
+script_dir=~/.local/bin
+
+if ! [[ -f $script_dir/froster ]]; then
+  curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+fi
+
+testbucket='froster-'$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)
+echo "Using test bucket $testbucket"
+
+cfgbucket=''
+if [[ -f ~/.config/froster/general/bucket ]]; then
+  cfgbucket=$(cat ~/.config/froster/general/bucket)
+fi
+echo "$testbucket" > ~/.config/froster/general/bucket
+
+export RCLONE_S3_PROFILE=aws # or ${AWS_PROFILE} or change this to the AWS profile you want to use
+export RCLONE_S3_REGION=us-west-2 # or change this to the AWS region you want to use
+export RCLONE_S3_PROVIDER=AWS # or change this to another S3 provider (e.g. Ceph for on-premises)
+export RCLONE_S3_ENV_AUTH=true # use AWS environment variables and settings from ~/.aws
+
+rclone --log-level error mkdir ":s3:$testbucket"
+
 echo "Running in ${script_dir} ..."
 
+echo -e "\n*** froster config --index"
+${script_dir}/froster --no-slurm config --index
 echo -e "\n*** froster index $created_folder:"
 ${script_dir}/froster --no-slurm index "$created_folder"
 echo "*** froster archive $created_folder:"
@@ -85,9 +112,22 @@ ${script_dir}/froster --no-slurm delete "$created_folder"
 echo "*** froster mount $created_folder:"
 ${script_dir}/froster --no-slurm mount "$created_folder"
 echo "Wait 3 sec for mount to finish"
-sleep 3 
+sleep 3
 echo -e "\n*** froster umount $created_folder:"
 ${script_dir}/froster --no-slurm umount "$created_folder"
 echo -e "\n*** froster restore $created_folder:"
 ${script_dir}/froster --no-slurm restore "$created_folder"
+
+if [[ -n $cfgbucket ]]; then
+  echo "$cfgbucket" > ~/.config/froster/general/bucket
+fi
+
+echo "deleting bucket s3://$testbucket"
+rclone --log-level error purge ":s3:${testbucket}${created_folder}"
+# only deletes bucket if created_folder was the only content in bucket
+rclone --log-level error rmdirs ":s3:$testbucket"
+
+echo "deleting test data in $created_folder"
+
+rm -rf $created_folder
 
