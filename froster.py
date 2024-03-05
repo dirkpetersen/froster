@@ -21,7 +21,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button 
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.63'
+__version__ = '0.9.0.70'
 
 def main():
         
@@ -316,10 +316,18 @@ def subcmd_config(args, cfg, aws):
         se = SlurmEssentials(args, cfg)
         parts = se.get_allowed_partitions_and_qos()
         print('')
+
+        walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
+        cfg.write('hpc', 'slurm_walltime', walltime)
+        if '-' in walltime:
+            days, hours = walltime.split('-')
+        else:
+            days = 0
+            hours = walltime
         
         mydef = cfg.read('hpc', 'slurm_partition')
         if mydef: mydef = f' (now: {mydef})'
-        slurm_partition =  cfg.prompt(f'Please select the Slurm partition for jobs that last up to 7 days.{mydef}',
+        slurm_partition =  cfg.prompt(f'Please select the Slurm partition for jobs that last up to {days} days and {hours} hours.{mydef}',
                                     list(parts.keys()))
         cfg.write('hpc', 'slurm_partition', slurm_partition)
         #slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
@@ -327,7 +335,7 @@ def subcmd_config(args, cfg, aws):
 
         mydef = cfg.read('hpc', 'slurm_qos')
         if mydef: mydef = f' (now: {mydef})'
-        slurm_qos =  cfg.prompt(f'Please select the Slurm QOS for jobs that last up to 7 days.{mydef}',
+        slurm_qos =  cfg.prompt(f'Please select the Slurm QOS for jobs that last up to {days} days and {hours} days.{mydef}',
                                     parts[slurm_partition])
         cfg.write('hpc', 'slurm_qos', slurm_qos)
         #slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
@@ -390,7 +398,7 @@ def subcmd_index(args,cfg,arch):
         se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time=7-0')
+        se.add_line(f'#SBATCH --time={se.walltime}')
         if se.partition:
             se.add_line(f'#SBATCH --partition={se.partition}')
         if se.qos:
@@ -536,7 +544,7 @@ def subcmd_archive(args,cfg,arch,aws):
         se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time=7-0')
+        se.add_line(f'#SBATCH --time={se.walltime}')
         if se.partition:
             se.add_line(f'#SBATCH --partition={se.partition}')
         if se.qos:
@@ -636,7 +644,7 @@ def subcmd_restore(args,cfg,arch,aws):
                     se.add_line(f'#SBATCH --output=froster-download-{label}-%J.out')
                     se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
                     se.add_line(f'#SBATCH --mail-user={email}')
-                    se.add_line(f'#SBATCH --time=7-0')
+                    se.add_line(f'#SBATCH --time={se.walltime}')
                     if se.partition:
                         se.add_line(f'#SBATCH --partition={se.partition}')
                     if se.qos:
@@ -671,7 +679,7 @@ def subcmd_restore(args,cfg,arch,aws):
         se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')           
         se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time=7-0')
+        se.add_line(f'#SBATCH --time={se.walltime}')
         if se.partition:
             se.add_line(f'#SBATCH --partition={se.partition}')
         if se.qos:
@@ -2634,6 +2642,7 @@ class SlurmEssentials:
         self.job_info = {}
         self.partition = cfg.read('hpc', 'slurm_partition')
         self.qos = cfg.read('hpc', 'slurm_qos')
+        self.walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
         self._add_lines_from_cfg()
 
     def add_line(self, line):
