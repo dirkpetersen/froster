@@ -317,13 +317,14 @@ def subcmd_config(args, cfg, aws):
         parts = se.get_allowed_partitions_and_qos()
         print('')
 
-        walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
-        cfg.write('hpc', 'slurm_walltime', walltime)
-        if '-' in walltime:
-            days, hours = walltime.split('-')
+        slurm_walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
+        slurm_walltime =  cfg.prompt(f'Please confirm or set the Slurm --time (wall time as days-hours) for froster jobs', slurm_walltime)
+        cfg.write('hpc', 'slurm_walltime', slurm_walltime)
+        if '-' in slurm_walltime:
+            days, hours = slurm_walltime.split('-')
         else:
             days = 0
-            hours = walltime
+            hours = slurm_walltime
         
         mydef = cfg.read('hpc', 'slurm_partition')
         if mydef: mydef = f' (now: {mydef})'
