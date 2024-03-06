@@ -1,4 +1,4 @@
-name: test-github-actions
+name: froster-ubuntu-install
 run-name: Froster installs correctly in Ubuntu-latest
 on: [push]
 jobs:
