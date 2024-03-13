@@ -1,35 +1,247 @@
 #! /bin/bash
 
-ALTPYTHON=/home/exacloud/software/spack/opt/spack/linux-centos7-ivybridge/gcc-8.3.1/python-3.10.8-lgmermnb2kmzendjw24fftlpxwpaokdm/bin/python3
-PMIN="8" # python3 minor version = 3.8
+# Make sure script ends as soon as an error arises
+set -e
 
-script_path="$(readlink -f "$0")"
-script_dir="$(dirname "$script_path")"
-umask 0002
+#################
+### VARIABLES ###
+#################
 
-if [[ $1 == "update" ]]; then
-  curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?token=$(date +%s) | bash -s -- update
-  exit 0
-fi
-if [[ -d ~/.local/share/froster/bin ]]; then
-  export VIRTUAL_ENV_DISABLE_PROMPT=1
-  source ~/.local/share/froster/bin/activate
-  PY3=$(which python3)
-  PY3=$(readlink -f ${PY3})
-  unset LIBRARY_PATH PYTHONPATH
-  export LD_LIBRARY_PATH=${PY3%/bin/python3*}/lib:${LD_LIBRARY_PATH}
-  LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
-  python3 ${script_dir}/froster.py "$@"
+froster_path=${HOME}/.froster
+froster_backup_path=${HOME}/.froster.bak
+froster_bin_path=${froster_path}/bin
+
+froster_old_path=${HOME}/.local/share/froster
+froster_backup_old_path=${HOME}/.local/share/froster.bak
+
+# TODO: change this path to correct one before merging
+repository_path=https://raw.githubusercontent.com/victormachadoperez/froster/main
+
+#####################
+### ERROR HANDLER ###
+#####################
+
+# Define error handler function
+set -e
+
+trap 'catch $? $BASH_COMMAND' EXIT
+
+catch() {
+  if [ "$1" != "0" ]; then
+    # error handling goes here
+    echo "Error: $2: exit code $1"
+  fi
+}
+
+#################
+### FUNCTIONS ###
+#################
+
+# Check all needed dependencies to install froster
+check_dependencies() {
+
+  # Check if curl is installed
+  if [[ -z $(command -v curl) ]]; then
+    echo "Error: curl is not installed."
+    echo
+    echo "In most linux distros you can install curl by running the following commands:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install curl"
+    echo
+    exit 1
+  fi
+
+  # Check if python3 is installed
+  if [[ -z $(command -v python3) ]]; then
+    echo "Error: python3 is not installed."
+    echo
+    echo "Please install python v3.8 or greater."
+    echo "In most linux distros you can install the latest version of python3 by running the following commands:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install python3"
+    echo
+    exit 1
+  fi
+
+  # Check if version of python is equal or greater than python v3.8
+  if [[ $(python3 -c "import sys; print(sys.version_info >= (3,8))") == "False" ]]; then
+    echo "Error: python3 installed version is lower than python v3.8"
+    echo
+    echo "Please install python v3.8 or greater."
+    echo "In most linux distros you can install the latest version of python3 by running the following commands:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install python3"
+    echo
+    exit 1
+  fi
+
+  # Check if pip3 is installed
+  if [[ -z $(command -v pip3) ]]; then
+    echo "Error: pip3 is not installed."
+    echo
+    echo "Please install pip3."
+    echo "In most linux distros you can install the latest version of pip3 by running the following commands:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install python3-pip"
+    echo
+    exit 1
+  fi
+}
+
+# Backup older installations (if any)
+backup_old_installation() {
+
+  echo
+  echo "Backing up older froster installation..."
+
+  # Remove older installation backup (old path)
+  rm -rf ${froster_backup_old_path}
+
+  # Remove older installation backup (new path)
+  rm -rf ${froster_backup_path}
+
+  # Back up (if any) older froster installations (old path)
+  if [[ -d ${HOME}/.local/share/froster ]]; then
+    mv -f ${froster_old_path} ${froster_backup_path}
+  fi
+
+  # Remove old files (old path)
+  rm -f ${HOME}/.local/bin/froster
+  rm -f ${HOME}/.local/bin/froster.py
+  rm -f ${HOME}/.local/bin/s3-restore.py
+
+  # Back up (if any) older froster installations (new path)
+  if [[ -d ${froster_path} ]]; then
+    mv -f ${froster_path} ${froster_backup_path}
+  fi
+
+  echo "  ...older installation backup (if any): ${froster_backup_path} "
+}
+
+# Donwload froster files from repository
+download_froster() {
+
+  echo
+  echo "Downloading froster files..."
+
+  # Get the latest version of froster.py
+  curl -Ls ${repository_path}/froster.py?token=$(date +%s) \
+    -o ${froster_bin_path}/froster.py --create-dirs
+
+  # Get the latest version of froster.sh
+  curl -Ls ${repository_path}/froster?token=$(date +%s) \
+    -o ${froster_bin_path}/froster --create-dirs
+
+  # Get the latest version of restore.py
+  curl -Ls ${repository_path}/s3-restore.sh?token=$(date +%s) \
+    -o ${froster_bin_path}/s3-restore.sh --create-dirs
+
+  # Get the latest version of requirements.txt
+  curl -Ls ${repository_path}/requirements.txt?token=$(date +%s) \
+    -o ${froster_path}/requirements.txt --create-dirs
+
+  chmod +x ${froster_bin_path}/froster
+  chmod +x ${froster_bin_path}/s3-restore.sh
+
+  echo "  ...files downloaded"
+}
+
+# Install froster
+install_froster() {
+
+  # Create froster virtual environment
+  echo
+  echo "Creating froster's virtual environment... "
+  python3 -m venv ${froster_path}
+  echo "  ...virtual environment created"
+
+  # Activate froster virtual environment
+  echo
+  echo "Activating froster's virtual environment... "
+  source ${froster_bin_path}/activate
+  echo "  ...virtual environment activated"
+
+  echo
+  echo "Installing froster's requirements... "
+  python3 -m pip --disable-pip-version-check \
+    install --upgrade -r ${froster_path}/requirements.txt >/dev/null 2>&1
+  echo "  ...requirements installed"
+
+  # Deactivate virtual environment
+  echo
+  echo "Deactivating froster's virtual environment... "
   deactivate
-else
-  if [[ -e ${ALTPYTHON} ]]; then
-    ${ALTPYTHON} ${script_dir}/froster.py "$@"
+  echo "  ...virtual environment deactivated"
+}
+
+# Make sure froster binary files are in path
+froster_in_path() {
+
+  echo
+  echo "Adding ${froster_bin_path} folder to PATH..."
+
+  if [[ ":$PATH:" == *":${froster_bin_path}:"* ]]; then
+    echo "  ...already in PATH."
   else
-    # Check if we have at least the minimum Python version 
-    if [[ $(/usr/bin/python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "True" ]]; then
-      /usr/bin/python3 ${script_dir}/froster.py "$@"
+    # Create ${HOME}/.bashrc file if it does not exist
+    touch ${HOME}/.bashrc
+
+    # Add ${froster_bin_path} to PATH only when it's not already there
+    if ! grep -q froster "${HOME}/.bashrc"; then
+      echo "export PATH=\$PATH:${froster_bin_path}" >>"${HOME}/.bashrc"
+      echo "  ...${froster_bin_path} added to PATH in .bashrc"
     else
-      echo "Python version must be greater than or equal to 3.${PMIN}"
+      echo "  ...${froster_bin_path} already added in .bashrc"
     fi
   fi
+}
+
+############
+### CODE ###
+############
+
+# Always first thing to do is to check the dependencies
+check_dependencies
+
+# Check if argument is "install" or "update".
+# If so, download and install latest version of froster
+# Otherwise, execute the main script (froster.py)
+if [[ $1 == "install" || $1 == "update" ]]; then
+
+  echo
+  echo "Installing last version of froster..."
+
+  # Set rw permissions on anyone in file's group
+  umask 0002
+
+  # Backup old installation (if any)
+  backup_old_installation
+
+  # Download froster files
+  download_froster
+
+  # Installing froster
+  install_froster
+
+  # Make sure binary folder is in path
+  froster_in_path
+
+  echo
+  echo "Installation complete!"
+
+  echo
+  echo "Check out froster by running command:"
+  echo "  froster --help"
+  echo
+
+else
+
+  #TODO: Before execution check if python version has changed (do to updates/downgrades)
+  #      and reinstall virtual environment
+
+  # Pass any command to main script except "install" and "update"
+  source ${froster_bin_path}/activate
+  python3 ${froster_bin_path}/froster.py "$@"
+  deactivate
+
 fi

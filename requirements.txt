@@ -3,3 +3,4 @@ textual<0.60
 requests<2.40
 boto3<1.40
 psutil<6.0
+visidata
