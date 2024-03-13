@@ -15,7 +15,12 @@ froster_old_path=${HOME}/.local/share/froster
 froster_backup_old_path=${HOME}/.local/share/froster.bak
 
 # TODO: change this path to correct one before merging
-repository_path=https://raw.githubusercontent.com/HPCNow/froster/main
+froster_repository_path=https://raw.githubusercontent.com/HPCNow/froster/main
+
+# variables of pwalk third-party tool froster is using
+pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
+pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
+pwalk_path=filesystem-reporting-tools-${pwalk_commit}
 
 #####################
 ### ERROR HANDLER ###
@@ -86,6 +91,42 @@ check_dependencies() {
     echo
     exit 1
   fi
+
+  # Check if gcc is installed
+  if [[ -z $(command -v gcc) ]]; then
+    echo "Error: gcc is not installed."
+    echo
+    echo "Please install gcc."
+    echo "In most linux distros you can install the latest version of pip3 by running the following commands:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install gcc"
+    echo
+    exit 1
+  fi
+
+  # Check if lib32gcc-s1 is installed
+  if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
+    echo "Error: lib32gcc-s1 is not installed."
+    echo
+    echo "Please install lib32gcc-s1."
+    echo "In most linux distros you can install the latest version of pip3 by running the following commands:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install lib32gcc-s1"
+    echo
+    exit 1
+  fi
+}
+
+# Create froster's folder structure
+create_foster_folder_structure() {
+
+  echo
+  echo "Creating froster's folder structure..."
+
+  mkdir -p ${froster_path}
+  mkdir -p ${froster_bin_path}
+
+  echo "  ...folder structure created at ${froster_path} "
 }
 
 # Backup older installations (if any)
@@ -125,19 +166,19 @@ download_froster() {
   echo "Downloading froster files..."
 
   # Get the latest version of froster.py
-  curl -Ls ${repository_path}/froster.py?token=$(date +%s) \
+  curl -Ls ${froster_repository_path}/froster.py?token=$(date +%s) \
     -o ${froster_bin_path}/froster.py --create-dirs
 
   # Get the latest version of froster.sh
-  curl -Ls ${repository_path}/froster?token=$(date +%s) \
+  curl -Ls ${froster_repository_path}/froster?token=$(date +%s) \
     -o ${froster_bin_path}/froster --create-dirs
 
   # Get the latest version of restore.py
-  curl -Ls ${repository_path}/s3-restore.sh?token=$(date +%s) \
+  curl -Ls ${froster_repository_path}/s3-restore.sh?token=$(date +%s) \
     -o ${froster_bin_path}/s3-restore.sh --create-dirs
 
   # Get the latest version of requirements.txt
-  curl -Ls ${repository_path}/requirements.txt?token=$(date +%s) \
+  curl -Ls ${froster_repository_path}/requirements.txt?token=$(date +%s) \
     -o ${froster_path}/requirements.txt --create-dirs
 
   chmod +x ${froster_bin_path}/froster
@@ -161,8 +202,9 @@ install_froster() {
   source ${froster_bin_path}/activate
   echo "  ...virtual environment activated"
 
+  # Activate froster's python requirements
   echo
-  echo "Installing froster's requirements... "
+  echo "Installing froster's python requirements... "
   python3 -m pip --disable-pip-version-check \
     install --upgrade -r ${froster_path}/requirements.txt >/dev/null 2>&1
   echo "  ...requirements installed"
@@ -172,6 +214,21 @@ install_froster() {
   echo "Deactivating froster's virtual environment... "
   deactivate
   echo "  ...virtual environment deactivated"
+}
+
+# Install pwalk
+install_pwalk() {
+
+  echo
+  echo "Installing pwalk... "
+
+  # Gather pwalk repository files
+  curl -s -L ${pwalk_repository} | tar xzf -
+
+  #Compile pwalk tool and put exec file in froster's binaries folder
+  gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${froster_bin_path}/pwalk
+
+  echo "  ...pwalk installed"
 }
 
 # Make sure froster binary files are in path
@@ -214,6 +271,9 @@ if [[ $1 == "install" || $1 == "update" ]]; then
   # Set rw permissions on anyone in file's group
   umask 0002
 
+  # Create folder structure
+  create_foster_folder_structure
+
   # Backup old installation (if any)
   backup_old_installation
 
@@ -222,6 +282,9 @@ if [[ $1 == "install" || $1 == "update" ]]; then
 
   # Installing froster
   install_froster
+
+  # Installing pwalk
+  install_pwalk
 
   # Make sure binary folder is in path
   froster_in_path
