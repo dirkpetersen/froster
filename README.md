@@ -14,7 +14,7 @@ sudo apt-get install -y python3
 sudo apt-get install -y python3-pip
 sudo apt-get install -y python3-venv
 sudo apt-get install -y gcc
-sudo apt-get install -y lib32gcc-s1 
+sudo apt-get install -y lib32gcc-s1
 
 ```
 
