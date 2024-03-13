@@ -10,6 +10,6 @@ jobs:
       - run: python3 --version
       - run: pip --version
       - run: ./froster install
-      - run: froster --version
+      - run: ./froster --version
 
 
