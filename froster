@@ -15,7 +15,7 @@ froster_old_path=${HOME}/.local/share/froster
 froster_backup_old_path=${HOME}/.local/share/froster.bak
 
 # TODO: change this path to correct one before merging
-repository_path=https://raw.githubusercontent.com/victormachadoperez/froster/main
+repository_path=https://raw.githubusercontent.com/HPCNow/froster/main
 
 #####################
 ### ERROR HANDLER ###
