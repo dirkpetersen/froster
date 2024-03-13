@@ -9,7 +9,7 @@ jobs:
       - run: curl --version
       - run: python3 --version
       - run: pip --version
-      - run: ./install.sh
+      - run: ./froster install
       - run: froster --version
 
 
