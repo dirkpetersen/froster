@@ -15,7 +15,6 @@ import csv
 import platform
 import asyncio
 import stat
-import urllib3
 import datetime
 import tarfile
 import zipfile
@@ -199,24 +198,6 @@ def subcmd_config(args, cfg, aws):
         first_time = False
     if binfolder != cfg.binfolder:
         cfg.write('general', 'binfolder', cfg.binfolder)
-
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    if not cfg.read('general', 'no-rclone-download'):
-        rclonepath = os.path.join(cfg.binfolderx, 'rclone')
-        if not cfg.was_file_modified_in_last_24h(rclonepath):
-            if os.path.exists(rclonepath):
-                if os.path.exists(os.path.join(cfg.binfolderx, 'bak.rclone')):
-                    os.remove(os.path.join(cfg.binfolderx, 'bak.rclone'))
-                os.rename(rclonepath, os.path.join(
-                    cfg.binfolderx, 'bak.rclone'))
-            print(" Installing rclone ... please wait ... ", end='', flush=True)
-            if platform.machine() in ['arm64', 'aarch64']:
-                rclone_url = 'https://downloads.rclone.org/rclone-current-linux-arm64.zip'
-            else:
-                rclone_url = 'https://downloads.rclone.org/rclone-current-linux-amd64.zip'
-            cfg.copy_binary_from_zip_url(rclone_url, 'rclone',
-                                         '/rclone-v*/', cfg.binfolderx)
-            print("Done!", flush=True)
 
     # Basic setup, focus the indexer on larger folders and file sizes
     if not cfg.read('general', 'max_small_file_size_kib'):
@@ -5054,23 +5035,6 @@ class ConfigManager:
             print(f"Error: {e}", file=sys.stderr)
             return False
 
-    def was_file_modified_in_last_24h(self, file_path):
-        """
-        Check if the file at the given path was modified in the last 24 hours.        
-        :param file_path: Path to the file to check.
-        :return: True if the file was modified in the last 24 hours, False otherwise.
-        """
-        try:
-            # Get the current time and the last modification time of the file
-            current_time = time.time()
-            last_modified_time = os.path.getmtime(file_path)
-
-            # Check if the file was modified in the last 24 hours (24 hours = 86400 seconds)
-            return (current_time - last_modified_time) < 86400
-        except FileNotFoundError:
-            # If the file does not exist, return False
-            return False
-
     def replace_symlinks_with_realpaths(self, folders):
         cleaned_folders = []
         for folder in folders:
@@ -5658,40 +5622,6 @@ class ConfigManager:
                 s.close()
         print("Timeout reached without SSH server being ready.")
         return False
-
-    def copy_compiled_binary_from_github(self, user, repo, compilecmd, binary, targetfolder):
-        tarball_url = f"https://github.com/{user}/{repo}/archive/refs/heads/main.tar.gz"
-        response = requests.get(tarball_url, stream=True, allow_redirects=True)
-        response.raise_for_status()
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            reposfolder = os.path.join(tmpdirname,  f"{repo}-main")
-            with tarfile.open(fileobj=response.raw, mode="r|gz") as tar:
-                tar.extractall(path=tmpdirname)
-                reposfolder = os.path.join(tmpdirname,  f"{repo}-main")
-                os.chdir(reposfolder)
-                result = subprocess.run(compilecmd, shell=True)
-                if result.returncode == 0:
-                    print(f"Compilation successful: {compilecmd}")
-                    shutil.copy2(binary, targetfolder, follow_symlinks=True)
-                    if not os.path.exists(os.path.join(targetfolder, binary)):
-                        print(f'Failed copying {binary} to {targetfolder}')
-                else:
-                    print(f"Compilation failed: {compilecmd}")
-
-    def copy_binary_from_zip_url(self, zipurl, binary, subwildcard, targetfolder):
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            zip_file = os.path.join(tmpdirname,  "download.zip")
-            response = requests.get(zipurl, verify=False, allow_redirects=True)
-            with open(zip_file, 'wb') as f:
-                f.write(response.content)
-            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                zip_ref.extractall(tmpdirname)
-            binpath = glob.glob(f'{tmpdirname}{subwildcard}{binary}')[0]
-            shutil.copy2(binpath, targetfolder, follow_symlinks=True)
-            if os.path.exists(os.path.join(targetfolder, binary)):
-                os.chmod(os.path.join(targetfolder, binary), 0o775)
-            else:
-                print(f'Failed copying {binary} to {targetfolder}')
 
 
 def parse_arguments():

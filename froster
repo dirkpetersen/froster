@@ -222,6 +222,15 @@ install_pwalk() {
   echo "  ...pwalk installed"
 }
 
+# Install rclone
+install_rclone() {
+  echo
+  echo "Installing rclone..."
+  # Gather rclone file and execute install script
+  curl https://rclone.org/install.sh | sudo bash
+  echo "  ...rclone installed"
+}
+
 # Make sure froster binary files are in path
 froster_in_path() {
 
@@ -271,11 +280,14 @@ if [[ $1 == "install" || $1 == "update" ]]; then
   # Download froster files
   download_froster
 
-  # Installing froster
+  # Install froster
   install_froster
 
-  # Installing pwalk
+  # Install pwalk
   install_pwalk
+
+  # Install rclone
+  install_rclone
 
   # Make sure binary folder is in path
   froster_in_path
