@@ -224,10 +224,16 @@ install_pwalk() {
 
 # Install rclone
 install_rclone() {
+
   echo
   echo "Installing rclone..."
+
+  # Install zip extraction tool
+  sudo apt install unzip >/dev/null 2>&1
+
   # Gather rclone file and execute install script
-  curl https://rclone.org/install.sh | sudo bash
+  curl https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
+
   echo "  ...rclone installed"
 }
 
