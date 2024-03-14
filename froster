@@ -15,7 +15,7 @@ froster_old_path=${HOME}/.local/share/froster
 froster_backup_old_path=${HOME}/.local/share/froster.bak
 
 # TODO: change this path to correct one before merging
-froster_repository_path=https://raw.githubusercontent.com/HPCNow/froster/OSHU-40-pwalk-installation
+froster_repository_path=https://raw.githubusercontent.com/HPCNow/froster/develop
 
 # variables of pwalk third-party tool froster is using
 pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released

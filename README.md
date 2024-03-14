@@ -21,7 +21,7 @@ sudo apt-get install -y lib32gcc-s1
 To install Froster, execute the following command into your terminal:"
 
 ```
-curl -s https://raw.githubusercontent.com/HPCNow/froster/OSHU-40-pwalk-installation/froster | bash -s install && source ~/.bashrc
+curl -s https://raw.githubusercontent.com/HPCNow/froster/develop/froster | bash -s install && source ~/.bashrc
 ```
 
 
