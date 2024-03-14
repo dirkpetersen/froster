@@ -227,9 +227,9 @@ install_rclone() {
 
   # Install zip extraction tool
   echo
-  echo "Installing rclone..."
+  echo "Installing unzip..."
   sudo apt-get install unzip >/dev/null 2>&1
-  echo "  ...rclone installed"
+  echo "  ...unzip installed"
 
   # Gather rclone file and execute install script
   echo
