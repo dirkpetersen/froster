@@ -201,12 +201,6 @@ def subcmd_config(args, cfg, aws):
         cfg.write('general', 'binfolder', cfg.binfolder)
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    if not os.path.exists(os.path.join(cfg.binfolderx, 'pwalk')):
-        print(" Installing pwalk ...", flush=True)
-        cfg.copy_compiled_binary_from_github('fizwit', 'filesystem-reporting-tools',
-                                             'gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk',
-                                             'pwalk', cfg.binfolderx)
-
     if not cfg.read('general', 'no-rclone-download'):
         rclonepath = os.path.join(cfg.binfolderx, 'rclone')
         if not cfg.was_file_modified_in_last_24h(rclonepath):
