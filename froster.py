@@ -187,7 +187,7 @@ def subcmd_config(args, cfg, aws):
     first_time = True
     binfolder = cfg.binfolder
     if not cfg.binfolder:
-        cfg.binfolder = '~/.local/bin'
+        cfg.binfolder = '~/.froster/bin'
         cfg.binfolderx = os.path.expanduser(cfg.binfolder)
         if not os.path.exists(cfg.binfolderx):
             os.makedirs(cfg.binfolderx, mode=0o775)
