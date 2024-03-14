@@ -4,20 +4,6 @@ Froster is a user-friendly archiving tool for teams that move data between highe
 
 ## Installation
 
-Froster has prerequisites before installation.
-To install these prerequisites, please execute the following commands into your terminal."
-
-```
-sudo apt-get update
-sudo apt-get install -y curl
-sudo apt-get install -y python3
-sudo apt-get install -y python3-pip
-sudo apt-get install -y python3-venv
-sudo apt-get install -y gcc
-sudo apt-get install -y lib32gcc-s1
-
-```
-
 To install Froster, execute the following command into your terminal:"
 
 ```

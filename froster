@@ -15,7 +15,8 @@ froster_old_path=${HOME}/.local/share/froster
 froster_backup_old_path=${HOME}/.local/share/froster.bak
 
 # TODO: change this path to correct one before merging
-froster_repository_path=https://raw.githubusercontent.com/HPCNow/froster/develop
+current_branch=develop
+froster_repository_path=https://raw.githubusercontent.com/HPCNow/froster/${current_branch}
 
 # variables of pwalk third-party tool froster is using
 pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
@@ -42,30 +43,25 @@ catch() {
 ### FUNCTIONS ###
 #################
 
-# Check all needed dependencies to install froster
-check_dependencies() {
+# Check all needed apt dependencies to install froster
+check_apt_dependencies() {
 
   # Check if curl is installed
   if [[ -z $(command -v curl) ]]; then
-    echo "Error: curl is not installed."
     echo
-    echo "In most linux distros you can install curl by running the following commands:"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install curl"
-    echo
-    exit 1
+    echo "Installing curl..."
+    sudo apt-get update >/dev/null 2>&1
+    sudo apt-get install -y curl >/dev/null 2>&1
+    echo "  ...curl installed"
   fi
 
   # Check if python3 is installed
   if [[ -z $(command -v python3) ]]; then
-    echo "Error: python3 is not installed."
     echo
-    echo "Please install python v3.8 or greater."
-    echo "In most linux distros you can install the latest version of python3 by running the following commands:"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install python3"
-    echo
-    exit 1
+    echo "Installing python3..."
+    sudo apt-get update >/dev/null 2>&1
+    sudo apt-get install -y python3 >/dev/null 2>&1
+    echo "  ...python3 installed"
   fi
 
   # Check if version of python is equal or greater than python v3.8
@@ -82,38 +78,29 @@ check_dependencies() {
 
   # Check if pip3 is installed
   if [[ -z $(command -v pip3) ]]; then
-    echo "Error: pip3 is not installed."
     echo
-    echo "Please install pip3."
-    echo "In most linux distros you can install the latest version of pip3 by running the following commands:"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install python3-pip"
-    echo
-    exit 1
+    echo "Installing pip3..."
+    sudo apt-get update >/dev/null 2>&1
+    sudo apt-get install -y python3-pip >/dev/null 2>&1
+    echo "  ...pip3 installed"
   fi
 
   # Check if gcc is installed
   if [[ -z $(command -v gcc) ]]; then
-    echo "Error: gcc is not installed."
     echo
-    echo "Please install gcc."
-    echo "In most linux distros you can install the latest version of pip3 by running the following commands:"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install gcc"
-    echo
-    exit 1
+    echo "Installing gcc..."
+    sudo apt-get update >/dev/null 2>&1
+    sudo apt-get install -y gcc >/dev/null 2>&1
+    echo "  ...gcc installed"
   fi
 
   # Check if lib32gcc-s1 is installed
   if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
-    echo "Error: lib32gcc-s1 is not installed."
     echo
-    echo "Please install lib32gcc-s1."
-    echo "In most linux distros you can install the latest version of pip3 by running the following commands:"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install lib32gcc-s1"
-    echo
-    exit 1
+    echo "Installing lib32gcc-s1..."
+    sudo apt-get update >/dev/null 2>&1
+    sudo apt-get install -y lib32gcc-s1 >/dev/null 2>&1
+    echo "  ...lib32gcc-s1 installed"
   fi
 }
 
@@ -154,9 +141,10 @@ backup_old_installation() {
   # Back up (if any) older froster installations (new path)
   if [[ -d ${froster_path} ]]; then
     mv -f ${froster_path} ${froster_backup_path}
+    echo "  ...older installation backup at: ${froster_backup_path}"
+  else
+    echo "  ...no older froster installation found"
   fi
-
-  echo "  ...older installation backup (if any): ${froster_backup_path} "
 }
 
 # Donwload froster files from repository
@@ -226,7 +214,7 @@ install_pwalk() {
   curl -s -L ${pwalk_repository} | tar xzf -
 
   # Compile pwalk tool and put exec file in froster's binaries folder
-  gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${froster_bin_path}/pwalk
+  gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${froster_bin_path}/pwalk >/dev/null 2>&1
 
   # Delete downloaded pwalk files
   rm -rf ${pwalk_path}
@@ -260,8 +248,8 @@ froster_in_path() {
 ### CODE ###
 ############
 
-# Always first thing to do is to check the dependencies
-check_dependencies
+# Always first thing to do is to check apt dependencies
+check_apt_dependencies
 
 # Check if argument is "install" or "update".
 # If so, download and install latest version of froster
@@ -269,7 +257,7 @@ check_dependencies
 if [[ $1 == "install" || $1 == "update" ]]; then
 
   echo
-  echo "Installing last version of froster..."
+  echo "Installing latest version of froster..."
 
   # Set rw permissions on anyone in file's group
   umask 0002
