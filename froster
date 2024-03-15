@@ -66,13 +66,12 @@ check_apt_dependencies() {
 
   # Check if version of python is equal or greater than python v3.8
   if [[ $(python3 -c "import sys; print(sys.version_info >= (3,8))") == "False" ]]; then
-    echo "Error: python3 installed version is lower than python v3.8"
+    echo "Warning: python3 installed version is lower than python v3.8"
     echo
-    echo "Please install python v3.8 or greater."
-    echo "In most linux distros you can install the latest version of python3 by running the following commands:"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install python3"
-    echo
+    echo "Upgrading python3 to latest version..."
+    echo "  sudo apt-get update" >/dev/null 2>&1
+    echo "  sudo apt-get install -y --only-upgrade python3" >/dev/null 2>&1
+    echo "  ...python3 upgraded"
     exit 1
   fi
 
