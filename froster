@@ -279,11 +279,11 @@ if [[ $1 == "install" || $1 == "update" ]]; then
   # Set rw permissions on anyone in file's group
   umask 0002
 
-  # Create folder structure
-  create_foster_folder_structure
-
   # Backup old installation (if any)
   backup_old_installation
+
+  # Create folder structure
+  create_foster_folder_structure
 
   # Download froster files
   download_froster
