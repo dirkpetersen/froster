@@ -64,14 +64,7 @@ def main():
         pass
 
     if len(sys.argv) == 1:
-        print(textwrap.dedent(f'''\n
-            For example, use one of these commands:
-              froster config 
-              froster index /your/lab/root
-              froster archive
-            or you can use one of these: 
-              'froster delete', 'froster mount' or 'froster restore'
-            '''))
+        return True
 
     # Instantiate classes required by all functions
     cfg = ConfigManager(args)
