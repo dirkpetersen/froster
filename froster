@@ -233,7 +233,7 @@ install_rclone() {
   # Gather rclone file and execute install script
   echo
   echo "Installing rclone..."
-  curl https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
+  curl -s https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
   echo "  ...rclone installed"
 
 }
