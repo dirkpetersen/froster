@@ -452,11 +452,11 @@ def subcmd_archive(args,cfg,arch,aws):
             SELECTEDFILE = os.path.join(hsfolder, retline[0])
         else:
             SELECTEDFILE = os.path.join(hsfolder, csv_files[0])
-        if args.larger > 0 and args.older > 0:
+        if args.larger > 0 and (args.older > 0 or args.newer > 0):
             # implement archiving batchmode    
             arch.archive_batch() 
             return
-        elif args.larger > 0 or args.older > 0:
+        elif args.larger > 0 or args.older > 0 or args.newer > 0:
             print('You need to combine both "--older <days> and --larger <GiB> options')
             return
         
@@ -1211,7 +1211,14 @@ class Archiver:
         conn.execute(f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{SELECTEDFILE}')")
 
         # Now, you can run SQL queries on this virtual table
-        rows = conn.execute(f"SELECT * FROM hs WHERE {agefld} > {args.older} and GiB > {args.larger} ").fetchall()
+        if args.older > 0:
+            rows = conn.execute(f"SELECT * FROM hs WHERE {agefld} > {args.older} and GiB > {args.larger} ").fetchall()
+        elif args.newer > 0:
+            rows = conn.execute(f"SELECT * FROM hs WHERE {agefld} < {args.newer} and GiB > {args.larger} ").fetchall()
+        else:
+            print('You must either specify --older or --newer')
+            conn.close()
+            return False
 
         totalspace = 0
         cmdline = ""
@@ -5437,6 +5444,15 @@ def parse_arguments():
     parser_archive.add_argument('--older', '-o', dest='older', type=int, action='store', default=0, 
          help=textwrap.dedent(f'''
             Archive folders that have not been accessed more than 
+            <days>. (optionally set --mtime to select folders that
+            have not been modified more than <days>). This option
+            works in conjunction with --larger <GiB>. If both 
+            options are set froster will print a command that 
+            allows you to archive all matching folders at once.
+        '''))
+    parser_archive.add_argument('--newer', '-w', dest='newer', type=int, action='store', default=0, 
+         help=textwrap.dedent(f'''
+            Archive folders that have been accessed within the last 
             <days>. (optionally set --mtime to select folders that
             have not been modified more than <days>). This option
             works in conjunction with --larger <GiB>. If both 
