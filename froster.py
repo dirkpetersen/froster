@@ -61,11 +61,11 @@ __version__ = '0.9.0.70'
 class ConfigManager:
     # we write all config entries as files to '~/.froster/config'
     # to make it easier for bash users to read entries
-    # with a simple var=$(cat ~/.froster/config/section/entry)
+    # with a simple var=$(cat ~/.froster/config/config.ini)
     # entries can be strings, lists that are written as
     # multi-line files and dictionaries which are written to json
 
-    def __init__(self, args):
+    def __init__(self):
 
         # Expand the ~ symbols to user's home directory
         self.home_dir = os.path.expanduser('~')
@@ -185,6 +185,7 @@ class ConfigManager:
             with open(self.config_file, 'w') as config_file:
                 config.write(config_file)
 
+    # Representation of object. Returns all variables in the object
     def __repr__(self):
         return "<{klass} @{id:x} {attrs}>".format(
             klass=self.__class__.__name__,
@@ -194,6 +195,9 @@ class ConfigManager:
         )
 
     def _set_env_vars(self, profile):
+
+        # Create a ConfigParser object
+        config = configparser.ConfigParser()
 
         # Read the credentials file
         config.read(self.aws_credentials_file)
@@ -680,6 +684,10 @@ class ConfigManager:
             os.chmod(self.aws_credentials_file, 0o600)
 
     def set_aws_config(self, profile, key, value, service=''):
+
+        # Create a ConfigParser object
+        config = configparser.ConfigParser()
+
         if key == 'endpoint_url':
             if value.endswith('.amazonaws.com'):
                 return False
@@ -703,9 +711,13 @@ class ConfigManager:
         return True
 
     def get_aws_s3_endpoint_url(self, profile=None):
+
+        # Create a ConfigParser object
+        config = configparser.ConfigParser()
+
         # non boto3 method, use _get_aws_s3_session_endpoint_url instead
         if not profile:
-            profile = self.awsprofile
+            profile = self.aws_profile
         config.read(os.path.expanduser('~/.aws/config'))
         prof = 'profile ' + profile
         if profile == 'default':
@@ -725,9 +737,8 @@ class ConfigManager:
 
     def _get_aws_s3_session_endpoint_url(self, profile=None):
         # retrieve endpoint url through boto API, not configparser
-        import botocore.session  # only botocore Session object has attribute 'full_config'
         if not profile:
-            profile = self.awsprofile
+            profile = self.aws_profile
         session = botocore.session.Session(
             profile=profile) if profile else botocore.session.Session()
         config = session.full_config
@@ -931,17 +942,25 @@ class ConfigManager:
 
 
 class Archiver:
+
+    # TODO: Review this Archiver init
     def __init__(self, args, cfg):
         self.args = args
+
         self.cfg = cfg
+
         self.archive_json = os.path.join(
             cfg.shared_config_dir, 'froster-archives.json')
+
         x = self.cfg.read('general', 'max_small_file_size_kib')
         self.thresholdKB = int(x) if x else 1024
+
         x = self.cfg.read('general', 'min_index_folder_size_gib')
         self.thresholdGB = int(x) if x else 10
+
         x = self.cfg.read('general', 'min_index_folder_size_avg_mib')
         self.thresholdMB = int(x) if x else 10
+
         x = self.cfg.read('general', 'max_hotspots_display_entries')
         global MAXHOTSPOTS
         MAXHOTSPOTS = int(x) if x else 5000
@@ -1209,7 +1228,7 @@ class Archiver:
         #  'https://reporter.nih.gov/project-details/9331239', '12519577']
         dictrow = {'local_folder': source, 'archive_folder': target,
                    's3_storage_class': s3_storage_class,
-                   'profile': self.cfg.awsprofile, 'archive_mode': archive_mode,
+                   'profile': self.cfg.aws_profile, 'archive_mode': archive_mode,
                    'timestamp': timestamp, 'timestamp_archive': timestamp,
                    'user': getpass.getuser()
                    }
@@ -1749,7 +1768,7 @@ class Archiver:
                             f'The files in this folder have been moved to an archive!\n')
                         rme.write(f'\nArchive location: {afolder}\n')
                         rme.write(
-                            f'Archive profile (~/.aws): {self.cfg.awsprofile}\n')
+                            f'Archive profile (~/.aws): {self.cfg.aws_profile}\n')
                         rme.write(f'Archiver: {email}\n')
                         rme.write(
                             f'Archive tool: https://github.com/dirkpetersen/froster\n')
@@ -2327,17 +2346,12 @@ class Archiver:
 
 
 class AWSBoto:
-    # we write all config entries as files to '~/.config'
-    # to make it easier for bash users to read entries
-    # with a simple var=$(cat ~/.froster/config/section/entry)
-    # entries can be strings, lists that are written as
-    # multi-line files and dictionaries which are written to json
 
     def __init__(self, args, cfg, arch):
         self.args = args
         self.cfg = cfg
         self.arch = arch
-        self.awsprofile = self.cfg.awsprofile
+        self.aws_profile = self.cfg.aws_profile
 
     def check_s3_credentials(self, profile=None, verbose=False):
 
@@ -2458,18 +2472,18 @@ class AWSBoto:
             error_code = e.response['Error']['Code']
             if error_code == '403':
                 print(
-                    f"Error: Access denied to bucket {bucket_name} for profile {self.awsprofile}. Check your permissions.")
+                    f"Error: Access denied to bucket {bucket_name} for profile {self.aws_profile}. Check your permissions.")
             elif error_code == '404':
                 print(
-                    f"Error: Bucket {bucket_name} does not exist in profile {self.awsprofile}.")
+                    f"Error: Bucket {bucket_name} does not exist in profile {self.aws_profile}.")
                 print("run 'froster config' to create this bucket.")
             else:
                 print(
-                    f"Error accessing bucket {bucket_name} in profile {self.awsprofile}: {e}")
+                    f"Error accessing bucket {bucket_name} in profile {self.aws_profile}: {e}")
             return False
         except Exception as e:
             print(
-                f"An unexpected error in function check_bucket_access for profile {self.awsprofile}: {e}")
+                f"An unexpected error in function check_bucket_access for profile {self.aws_profile}: {e}")
             return False
 
         if not readwrite:
@@ -2488,7 +2502,7 @@ class AWSBoto:
             return True
         except botocore.exceptions.ClientError as e:
             print(
-                f"Error: cannot write to bucket {bucket_name} in profile {self.awsprofile}: {e}")
+                f"Error: cannot write to bucket {bucket_name} in profile {self.aws_profile}: {e}")
             return False
 
     def create_s3_bucket(self, bucket_name, profile=None):
@@ -2615,15 +2629,15 @@ class AWSBoto:
         total_size_gib = total_size_bytes / (1024 ** 3)  # Convert bytes to GiB
         return total_size_gib
 
-    def ec2_deploy(self, folders, s3size=None, awsprofile=None):
+    def ec2_deploy(self, folders, s3size=None, aws_profile=None):
 
-        if not awsprofile:
-            awsprofile = self.cfg.awsprofile
+        if not aws_profile:
+            aws_profile = self.cfg.aws_profile
         if s3size != 0:
-            s3size = self._get_s3_data_size(folders, awsprofile)
+            s3size = self._get_s3_data_size(folders, aws_profile)
         print(f"Total data in all folders: {s3size:.2f} GiB")
         prof = self._ec2_create_iam_policy_roles_ec2profile()
-        iid, ip = self._ec2_create_instance(s3size, prof, awsprofile)
+        iid, ip = self._ec2_create_instance(s3size, prof, aws_profile)
         print(' Waiting for ssh host to become ready ...')
         if not self.cfg.wait_for_ssh_ready(ip):
             return False
@@ -2645,9 +2659,9 @@ class AWSBoto:
         argl = ['--instance-type', '-i']  # if found remove option and next arg
         cmdlist = [x for i, x in enumerate(cmdlist) if x
                    not in argl and (i == 0 or cmdlist[i-1] not in argl)]
-        if not '--profile' in cmdlist and self.args.awsprofile:
+        if not '--profile' in cmdlist and self.args.aws_profile:
             cmdlist.insert(1, '--profile')
-            cmdlist.insert(2, self.args.awsprofile)
+            cmdlist.insert(2, self.args.aws_profile)
         cmdline = 'froster ' + \
             " ".join(map(shlex.quote, cmdlist[1:]))  # original cmdline
         if not self.args.folders[0] in cmdline:
@@ -3063,9 +3077,9 @@ class AWSBoto:
         aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
         aws configure set region {self.cfg.aws_region}
-        aws configure --profile {self.cfg.awsprofile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
-        aws configure --profile {self.cfg.awsprofile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        aws configure --profile {self.cfg.awsprofile} set region {self.cfg.aws_region}
+        aws configure --profile {self.cfg.aws_profile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
+        aws configure --profile {self.cfg.aws_profile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
+        aws configure --profile {self.cfg.aws_profile} set region {self.cfg.aws_region}
         python3 -m pip install boto3
         sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
@@ -5168,7 +5182,7 @@ def subcmd_archive(args, cfg, arch, aws):
     global SELECTEDFILE
 
     if args.debug:
-        print("archive:", args.cores, args.awsprofile, args.noslurm,
+        print("archive:", args.cores, args.aws_profile, args.noslurm,
               args.larger, args.older, args.agemtime, args.folders)
     fld = '" "'.join(args.folders)
     if args.debug:
@@ -5240,8 +5254,8 @@ def subcmd_archive(args, cfg, arch, aws):
     else:
         args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
+    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.aws_profile}" not found.')
         return False
     if not aws.check_bucket_access(cfg.bucket, readwrite=True):
         return False
@@ -5309,9 +5323,9 @@ def subcmd_archive(args, cfg, arch, aws):
         if se.qos:
             se.add_line(f'#SBATCH --qos={se.qos}')
         cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        if not "--profile" in cmdline and args.awsprofile:
+        if not "--profile" in cmdline and args.aws_profile:
             cmdline = cmdline.replace(
-                '/froster.py ', f'/froster --profile {args.awsprofile} ')
+                '/froster.py ', f'/froster --profile {args.aws_profile} ')
         else:
             cmdline = cmdline.replace('/froster.py ', '/froster ')
         if not args.folders[0] in cmdline:
@@ -5331,7 +5345,7 @@ def subcmd_restore(args, cfg, arch, aws):
     global TABLECSV
     global SELECTEDFILE
 
-    cfg.printdbg("restore:", args.cores, args.awsprofile, args.noslurm,
+    cfg.printdbg("restore:", args.cores, args.aws_profile, args.noslurm,
                  args.days, args.retrieveopt, args.nodownload, args.folders)
     fld = '" "'.join(args.folders)
     cfg.printdbg(f'default cmdline: froster restore "{fld}"')
@@ -5358,17 +5372,17 @@ def subcmd_restore(args, cfg, arch, aws):
         cfg.printdbg("subcmd_restore dialog returns:", retline)
         args.folders.append(retline[0])
         if retline[2]:
-            cfg.awsprofile = retline[2]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
-            cfg.printdbg("AWS profile:", cfg.awsprofile)
+            cfg.aws_profile = retline[2]
+            args.aws_profile = cfg.aws_profile
+            cfg._set_env_vars(cfg.aws_profile)
+            cfg.printdbg("AWS profile:", cfg.aws_profile)
     else:
         pass
         # we actually want to support symlinks
         # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
+    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.aws_profile}" not found.')
         return False
     if not aws.check_bucket_access_folders(args.folders):
         return False
@@ -5413,9 +5427,9 @@ def subcmd_restore(args, cfg, arch, aws):
                         se.add_line(f'#SBATCH --qos={se.qos}')
                     # original cmdline
                     cmdline = " ".join(map(shlex.quote, sys.argv))
-                    if not "--profile" in cmdline and args.awsprofile:
+                    if not "--profile" in cmdline and args.aws_profile:
                         cmdline = cmdline.replace(
-                            '/froster.py ', f'/froster --profile {args.awsprofile} ')
+                            '/froster.py ', f'/froster --profile {args.aws_profile} ')
                     else:
                         cmdline = cmdline.replace('/froster.py ', '/froster ')
                     if not fld in cmdline:
@@ -5451,9 +5465,9 @@ def subcmd_restore(args, cfg, arch, aws):
         if se.qos:
             se.add_line(f'#SBATCH --qos={se.qos}')
         cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        if not "--profile" in cmdline and args.awsprofile:
+        if not "--profile" in cmdline and args.aws_profile:
             cmdline = cmdline.replace(
-                '/froster.py ', f'/froster --profile {args.awsprofile} ')
+                '/froster.py ', f'/froster --profile {args.aws_profile} ')
         else:
             cmdline = cmdline.replace('/froster.py ', '/froster ')
         if not args.folders[0] in cmdline:
@@ -5472,7 +5486,7 @@ def subcmd_delete(args, cfg, arch, aws):
     global TABLECSV
     global SELECTEDFILE
 
-    cfg.printdbg("delete:", args.awsprofile, args.folders)
+    cfg.printdbg("delete:", args.aws_profile, args.folders)
     fld = '" "'.join(args.folders)
     cfg.printdbg(f'default cmdline: froster delete "{fld}"')
 
@@ -5492,16 +5506,16 @@ def subcmd_delete(args, cfg, arch, aws):
         cfg.printdbg("dialog returns:", retline)
         args.folders.append(retline[0])
         if retline[2]:
-            cfg.awsprofile = retline[2]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
+            cfg.aws_profile = retline[2]
+            args.aws_profile = cfg.aws_profile
+            cfg._set_env_vars(cfg.aws_profile)
     else:
         pass
         # we actually want to support symlinks
         # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
+    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.aws_profile}" not found.')
         return False
     if not aws.check_bucket_access_folders(args.folders):
         return False
@@ -5521,7 +5535,7 @@ def subcmd_mount(args, cfg, arch, aws):
     global TABLECSV
     global SELECTEDFILE
 
-    cfg.printdbg("mount:", args.awsprofile, args.mountpoint, args.folders)
+    cfg.printdbg("mount:", args.aws_profile, args.mountpoint, args.folders)
     fld = '" "'.join(args.folders)
     cfg.printdbg(f'default cmdline: froster mount "{fld}"')
 
@@ -5543,16 +5557,16 @@ def subcmd_mount(args, cfg, arch, aws):
         cfg.printdbg("dialog returns:", retline)
         args.folders.append(retline[0])
         if retline[2]:
-            cfg.awsprofile = retline[2]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
+            cfg.aws_profile = retline[2]
+            args.aws_profile = cfg.aws_profile
+            cfg._set_env_vars(cfg.aws_profile)
     else:
         pass
         # we actually want to support symlinks
         # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
+    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.aws_profile}" not found.')
         return False
     if not aws.check_bucket_access_folders(args.folders):
         return False
@@ -5676,8 +5690,6 @@ def subcmd_credentials(args, aws: AWSBoto):
     aws.check_bucket_access_folders(args.folders)
 
 
-
-
 def parse_arguments():
     """
     Gather command-line arguments.
@@ -5695,7 +5707,7 @@ def parse_arguments():
                         help="do not submit a Slurm job, execute in the foreground. ")
     parser.add_argument('-c', '--cores', dest='cores', action='store_true', default='4',
                         help='Number of cores to be allocated for the machine. (default=4)')
-    parser.add_argument('-p', '--profile', dest='awsprofile', action='store_true', default='',
+    parser.add_argument('-p', '--profile', dest='aws_profile', action='store_true', default='',
                         help='which AWS profile in ~/.aws/ should be used. default="aws"')
     parser.add_argument('-v', '--version', dest='version', action='store_true',
                         help='print froster and packages version info')
@@ -5879,10 +5891,7 @@ def main():
         pass
 
     # Init Config Manager
-    cfg = ConfigManager(args)
-
-    print(cfg)
-    exit(0)
+    cfg = ConfigManager()
 
     # Init Archiver
     arch = Archiver(args, cfg)
@@ -5890,7 +5899,7 @@ def main():
     # Init AWS Boto
     aws = AWSBoto(args, cfg, arch)
 
-    # Print current version of froster
+        # Print current version of froster
     if args.version:
         args_version()
         return True
