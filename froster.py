@@ -58,884 +58,876 @@ __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
 __version__ = '0.9.0.70'
 
 
-def args_version():
+class ConfigManager:
+    # we write all config entries as files to '~/.froster/config'
+    # to make it easier for bash users to read entries
+    # with a simple var=$(cat ~/.froster/config/section/entry)
+    # entries can be strings, lists that are written as
+    # multi-line files and dictionaries which are written to json
 
-    print(f'froster version {__version__}\n')
-    print(f'Packages version:')
-    print(f'    python v{platform.python_version()}')
+    def __init__(self, args):
 
-    print(f'''
-Authors:
-    Written by Dirk Petersen and Hpc Now Consulting SL
-          
-Repository:
-    https://github.com/dirkpetersen/froster
+        # Expand the ~ symbols to user's home directory
+        self.home_dir = os.path.expanduser('~')
 
+        # Froster's home directory
+        self.froster_dir = os.path.join(self.home_dir, '.froster')
 
-Copyright (C) 2024 Oregon Health & Science University (OSHU)
+        # Froster's configuration directory
+        self.config_dir = os.path.join(self.froster_dir, 'config')
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+        # Froster's configuration file
+        self.config_file = os.path.join(self.config_dir, 'config.ini')
 
-    http://www.apache.org/licenses/LICENSE-2.0
+        # Create a ConfigParser object
+        config = configparser.ConfigParser()
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-''')
+        # Check if there is a ~/.froster/config/config.ini file already
+        if (os.path.exists(self.config_file)):
 
-    # TODO: make a froster --info function with these old lines
-    # print(f'Froster version: {__version__}')
-    # print(f'  The Script: {os.path.abspath(__file__)}')
-    # print(f'  Config dir: {cfg.shared_config_dir.replace("~/.froster/config","")}')
-    # print(f'  Profs .aws: {", ".join(cfg.get_aws_profiles())}')
-    # print(f'Python version:\n{sys.version}')
-    # try:
-    #     print('* Pwalk ----- ')
-    #     print('  Binary:', shutil.which('pwalk'))
-    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'pwalk'), '--version'],
-    #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])
-    #     print('* Rclone ---- ')
-    #     print('  Binary:', shutil.which('rclone'))
-    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'rclone'), '--version'],
-    #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
-    # except FileNotFoundError as e:
-    #     print(f'Error: {e}')
-    #     return False
-    # return True
+            # Populate self variables using confing.ini file
+            config.read(self.config_file)
 
-# TODO: Check folder and variables being set here
+            # Froster's shared configuration dir
+            self.shared_config_dir = config.get(
+                'DEFAULT', 'shared_config_dir', fallback=None)
 
+            # Froster's shared configuration file
+            self.shared_config_file = config.get(
+                'DEFAULT', 'shared_config_file', fallback=None)
 
-def subcmd_config(args, cfg, aws):
-    # configure user and / or team settings
-    # arguments are Class instances passed from main
+            # TODO: If there is shared config file, read it and populate the variables
 
-    cfg.fix_tree_permissions(cfg.shared_config_dir)
+            # Froster's bin directory
+            self.bin_dir = config.get('DEFAULT', 'bin_dir', fallback=None)
 
-    # TODO: These line should'nt be necessary, but check them
-    # if args.cfgfolder:
-    #     bin_dir = os.path.join(
-    #         args.cfgfolder, '.config', 'froster', 'general', 'bin_dir')
-    #     if os.path.exists(bin_dir):
-    #         theroot = os.path.join(args.cfgfolder, '.config', 'froster')
-    #         shared_config_dir_file = os.path.join(
-    #             cfg.config_dir, 'shared_config_dirig_dirig_dir')
-    #         with open(shared_config_dir_file, 'w') as myfile:
-    #             myfile.write(theroot)
-    #         cfg.shared_config_dir = theroot
-    #         print(
-    #             f'  Config folder set to {cfg.shared_config_dir}, please restart froster without config folder argument.')
-    #         return True
+            # NIH Reporter API key
+            self.nih = config.get('DEFAULT', 'nih', fallback=None)
 
-    # first_time = True
-    # bin_dir = cfg.bin_dir
-    # if not cfg.bin_dir:
-    #     cfg.bin_dir = '~/.froster/bin'
-    #     cfg.bin_dir = os.path.expanduser(cfg.bin_dir)
-    #     if not os.path.exists(cfg.bin_dir):
-    #         os.makedirs(cfg.bin_dir, mode=0o775)
-    # else:
-    #     if cfg.bin_dir.startswith(cfg.home_dir):
-    #         cfg.bin_dir = cfg.bin_dir.replace(cfg.home_dir, '~')
-    #     cfg.bin_dir = os.path.expanduser(cfg.bin_dir)
-    #     first_time = False
-    # if bin_dir != cfg.bin_dir:
-    #     cfg.write('general', 'bin_dir', cfg.bin_dir)
+            # AWS directory
+            self.aws_dir = config.get('AWS', 'aws_dir', fallback=None)
 
-    # Basic setup, focus the indexer on larger folders and file sizes
-    if not cfg.read('general', 'max_small_file_size_kib'):
-        cfg.write('general', 'max_small_file_size_kib', '1024')
-    if not cfg.read('general', 'min_index_folder_size_gib'):
-        cfg.write('general', 'min_index_folder_size_gib', "1")
-    if not cfg.read('general', 'min_index_folder_size_avg_mib'):
-        cfg.write('general', 'min_index_folder_size_avg_mib', "10")
-    if not cfg.read('general', 'max_hotspots_display_entries'):
-        cfg.write('general', 'max_hotspots_display_entries', "5000")
+            # AWS credentials file
+            self.aws_credentials_file = config.get(
+                'AWS', 'aws_credentials_file', fallback=None)
 
-    # general setup
-    defdom = cfg.get_domain_name()
-    whoami = cfg.whoami
+            # AWS config file
+            self.aws_config_file = config.get(
+                'AWS', 'aws_config_file', fallback=None)
 
-    if args.monitor:
-        # monitoring only setup, do not continue
-        fro = os.path.join(cfg.bin_dir, 'froster')
-        cfg.write('general', 'email', args.monitor)
-        cfg.add_systemd_cron_job(f'{fro} restore --monitor', '30')
-        return True
+            # AWS profile
+            self.aws_profile = config.get('AWS', 'aws_profile', fallback=None)
 
-    if args.index:
-        # only basic configuration required for indexing jobs
-        return True
+            # Current S3 Bucket
+            self.current_bucket = config.get(
+                'AWS', 'current_bucket', fallback=None)
 
-    print(f'\n*** Asking a few questions  ({cfg.shared_config_dir}) ***')
-    print('*** For most you can just hit <Enter> to accept the default. ***\n')
-
-    # determine if we need to move the (shared) config to a new folder
-    movecfg = False
-
-    # TODO: check this
-    if args.cfgfolder == '' and cfg.shared_config_dir == cfg.config_dir:
-        if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', 'no'):
-            movecfg = True
-            # TODO: populate config.ini with the shared config folder
-            args.cfgfolder = cfg.prompt(
-                'Enter the path to a shared config folder:')
-    elif args.cfgfolder:
-        movecfg = True
-    if movecfg:
-        if cfg.move_config(args.cfgfolder):
-            print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
         else:
-            print(f'  ERROR: Could not move config folder to {args.cfgfolder}')
-            return False
+            # Create config directory
+            os.makedirs(self.config_dir, exist_ok=True)
 
-    # domain-name not needed right now
-    # domain = cfg.prompt('Enter your domain name:',
-    #                    f'{defdom}|general|domain','string')
-    emailaddr = cfg.prompt('Enter your email address:',
-                           f'{whoami}@{defdom}|general|email', 'string')
-    emailstr = emailaddr.replace('@', '-')
-    emailstr = emailstr.replace('.', '-')
+            # Add default section to config.ini file
+            config['DEFAULT'] = {}
 
-    do_prompt = cfg.read('general', 'prompt_nih_reporter', 'yes')
-    if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?', do_prompt):
-        cfg.write('general', 'prompt_nih_reporter', 'yes')
-    else:
-        cfg.write('general', 'prompt_nih_reporter', 'no')
+            # Froster's home directory
+            config['DEFAULT']['home_dir'] = self.home_dir
 
-    print("")
+            # Froster's directory
+            config['DEFAULT']['froster_dir'] = self.froster_dir
 
-    # cloud setup
-    bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
-                        f'froster-{emailstr}|general|bucket', 'string')
-    archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
-                             'archive|general|archiveroot', 'string')
+            # Froster's configuration directory
+            config['DEFAULT']['config_dir'] = self.config_dir
 
-    cls = cfg.read('general', 's3_storage_class')
-    s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
-                                  'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
-    cfg.write('general', 's3_storage_class', s3_storage_class)
+            # Froster's configuration file
+            config['DEFAULT']['config_file'] = self.config_file
 
-    cfg.create_aws_configs()
-    # TODO: check over this
-    # if there is a shared ~/.aws/config copy it over
-    if cfg.config_dir != cfg.shared_config_dir:
-        cfg.replicate_ini('ALL', cfg.aws_config_fileshr, cfg.aws_config_file)
+            # Froster's shared configuration dir
+            self.shared_config_dir = ''
+            config['DEFAULT']['shared_config_dir'] = self.shared_config_dir
 
-    aws_region = cfg.get_aws_region('aws')
-    if not aws_region:
-        aws_region = cfg.get_aws_region()
+            # Froster's shared configuration file
+            self.shared_config_file = ''
+            config['DEFAULT']['shared_config_file'] = self.shared_config_file
 
-    if not aws_region:
-        aws_region = cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
-                                aws.get_aws_regions())
-    aws_region = cfg.prompt(
-        'Please confirm/edit the AWS S3 region', aws_region)
+            # Froster's bin directory
+            self.bin_dir = os.path.join(self.froster_dir, 'bin')
+            config['DEFAULT']['bin_dir'] = self.bin_dir
 
-    # cfg.create_aws_configs(None, None, aws_region)
-    print(f"\n  Verify that bucket '{bucket}' is configured ... ")
+            # NIH Reporter API key
+            self.nih = ''
+            config['DEFAULT']['nih'] = self.nih
 
-    # for accessing glacier use one of these
-    allowed_aws_profiles = ['default', 'aws', 'AWS']
-    profmsg = 1
-    profs = cfg.get_aws_profiles()
+            # Add AWS section to config.ini file
+            config['AWS'] = {}
 
-    for prof in profs:
-        if prof in allowed_aws_profiles:
-            cfg.set_aws_config(prof, 'region', aws_region)
-            if prof == 'AWS' or prof == 'aws':
-                cfg.write('general', 'aws_profile', prof)
-            elif prof == 'default':
-                cfg.write('general', 'aws_profile', 'default')
-            aws.create_s3_bucket(bucket, prof)
+            # AWS directory
+            self.aws_dir = os.path.join(self.home_dir, '.aws')
+            config['AWS']['aws_dir'] = self.aws_dir
 
-    for prof in profs:
-        if prof in allowed_aws_profiles:
-            continue
-        if profmsg == 1:
-            print(
-                '\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
-            profmsg = 0
-        if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?', 'yes'):
-            continue
-        profile = {'name': '', 'provider': '', 'storage_class': ''}
-        pendpoint = ''
-        pregion = ''
-        pr = cfg.read('profiles', prof)
-        if isinstance(pr, dict):
-            profile = cfg.read('profiles', prof)
-        profile['name'] = prof
+            # AWS credentials file
+            self.aws_credentials_file = os.path.join(
+                self.aws_dir, 'credentials')
+            config['AWS']['aws_credentials_file'] = self.aws_credentials_file
 
-        if not profile['provider']:
-            profile['provider'] = ['AWS', 'GCS', 'Wasabi',
-                                   'IDrive', 'Ceph', 'Minio', 'Other']
-        profile['provider'] = \
-            cfg.prompt(
-                f'S3 Provider for profile "{prof}"', profile['provider'])
+            # AWS config file
+            self.aws_config_file = os.path.join(self.aws_dir, 'config')
+            config['AWS']['aws_config_file'] = self.aws_config_file
 
-        pregion = cfg.get_aws_region(prof)
-        if not pregion:
-            pregion = cfg.prompt('Please select the S3 region',
-                                 aws.get_aws_regions(prof, profile['provider']))
-        pregion = \
-            cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"', pregion)
-        if pregion:
-            cfg.set_aws_config(prof, 'region', pregion)
+            # AWS profile
+            self.aws_profile = ''
+            config['AWS']['aws_profile'] = self.aws_profile
 
-        if profile['provider'] != 'AWS':
-            if not pendpoint:
-                pendpoint = cfg.get_aws_s3_endpoint_url(prof)
-                if not pendpoint:
-                    if 'Wasabi' == profile['provider']:
-                        pendpoint = f'https://s3.{pregion}.wasabisys.com'
-                    elif 'GCS' == profile['provider']:
-                        pendpoint = 'https://storage.googleapis.com'
+            # Current S3 Bucket
+            self.current_bucket = ''
+            config['AWS']['current_bucket'] = self.current_bucket
 
-            pendpoint = \
-                cfg.prompt(
-                    f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)', pendpoint)
-            if pendpoint:
-                if not pendpoint.startswith('http'):
-                    pendpoint = 'https://' + pendpoint
-                cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
+            # Write these variables inside the config.ini file
+            with open(self.config_file, 'w') as config_file:
+                config.write(config_file)
 
-        if not profile['storage_class']:
-            if profile['provider'] == 'AWS':
-                profile['storage_class'] = s3_storage_class
-            else:
-                profile['storage_class'] = 'STANDARD'
+    def __repr__(self):
+        return "<{klass} @{id:x} {attrs}>".format(
+            klass=self.__class__.__name__,
+            id=id(self) & 0xFFFFFF,
+            attrs=" ".join("{}={!r}\n".format(k, v)
+                           for k, v in self.__dict__.items()),
+        )
 
-        if profile['provider']:
-            cfg.write('profiles', prof, profile)
-        else:
-            print(f'\nConfig for AWS profile "{prof}" was not saved.')
+    def _set_env_vars(self, profile):
 
-        aws.create_s3_bucket(bucket, prof)
+        # Read the credentials file
+        config.read(self.aws_credentials_file)
+        self.aws_region = self.get_aws_region(profile)
 
-    if shutil.which('scontrol') and shutil.which('sacctmgr'):
-        se = SlurmEssentials(args, cfg)
-        parts = se.get_allowed_partitions_and_qos()
-        print('')
-
-        slurm_walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
-        slurm_walltime = cfg.prompt(
-            f'Please confirm or set the Slurm --time (wall time as days-hours) for froster jobs', slurm_walltime)
-        cfg.write('hpc', 'slurm_walltime', slurm_walltime)
-        if '-' in slurm_walltime:
-            days, hours = slurm_walltime.split('-')
-        else:
-            days = 0
-            hours = slurm_walltime
-
-        mydef = cfg.read('hpc', 'slurm_partition')
-        if mydef:
-            mydef = f' (now: {mydef})'
-        slurm_partition = cfg.prompt(f'Please select the Slurm partition for jobs that last up to {days} days and {hours} hours.{mydef}',
-                                     list(parts.keys()))
-        cfg.write('hpc', 'slurm_partition', slurm_partition)
-        # slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
-        print('')
-
-        mydef = cfg.read('hpc', 'slurm_qos')
-        if mydef:
-            mydef = f' (now: {mydef})'
-        slurm_qos = cfg.prompt(f'Please select the Slurm QOS for jobs that last up to {days} days and {hours} days.{mydef}',
-                               parts[slurm_partition])
-        cfg.write('hpc', 'slurm_qos', slurm_qos)
-        # slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
-        print('')
-
-    if shutil.which('sbatch'):
-        print('\n*** And finally a few questions how your HPC uses local scratch space ***')
-        print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
-        print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
-
-        # setup local scratch spaces, the defauls are OHSU specific
-        x = cfg.prompt('How do you request local scratch from Slurm?',
-                       '--gres disk:1024|hpc|slurm_lscratch', 'string')  # get 1TB scratch space
-        x = cfg.prompt('Is there a user script that provisions local scratch?',
-                       'mkdir-scratch.sh|hpc|lscratch_mkdir', 'string')  # optional
-        x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
-                       'rmdir-scratch.sh|hpc|lscratch_rmdir', 'string')  # optional
-        x = cfg.prompt('What is the local scratch root ?',
-                       '/mnt/scratch|hpc|lscratch_root', 'string')  # add slurm jobid at the end
-
-    print(f'\nChecked permissions in {cfg.shared_config_dir}')
-    cfg.fix_tree_permissions(cfg.shared_config_dirig_dir)
-
-    print('\nDone!\n')
-
-
-def subcmd_index(args, cfg, arch):
-
-    cfg.printdbg(" Command line:", args.cores, args.noslurm,
-                 args.pwalkcsv, args.folders, flush=True)
-
-    if not args.folders:
-        print('you must point to at least one folder in your command line')
-        return False
-    args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
-    if args.pwalkcsv and not os.path.exists(args.pwalkcsv):
-        print(f'File "{args.pwalkcsv}" does not exist.')
-        return False
-
-    for fld in args.folders:
-        if not os.path.isdir(fld):
-            print(f'The folder {fld} does not exist.')
-            if not args.pwalkcsv:
-                return False
-
-    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
-        for fld in args.folders:
-            fld = fld.rstrip(os.path.sep)
-            print(f'Indexing folder {fld}, please wait ...', flush=True)
-            arch.index(fld)
-    else:
-        se = SlurmEssentials(args, cfg)
-        label = arch._get_hotspots_file(args.folders[0]).replace('.csv', '')
-        label = label.replace(' ', '_')
-        shortlabel = os.path.basename(args.folders[0])
-        myjobname = f'froster:index:{shortlabel}'
-        email = cfg.read('general', 'email')
-        se.add_line(f'#SBATCH --job-name={myjobname}')
-        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
-        se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
-        # se.add_line(f'ml python')
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        cmdline = cmdline.replace('/froster.py ', '/froster ')
-        if args.debug:
-            print(f'Command line passed to Slurm:\n{cmdline}')
-        se.add_line(cmdline)
-        jobid = se.sbatch()
-        print(f'Submitted froster indexing job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-index-{label}-{jobid}.out')
-
-
-def subcmd_archive(args, cfg, arch, aws):
-
-    global TABLECSV
-    global SELECTEDFILE
-
-    if args.debug:
-        print("archive:", args.cores, args.awsprofile, args.noslurm,
-              args.larger, args.older, args.agemtime, args.folders)
-    fld = '" "'.join(args.folders)
-    if args.debug:
-        print(f'default cmdline: froster.py archive "{fld}"')
-
-    archmeta = []
-    if not args.folders:
-        hsfolder = os.path.join(cfg.shared_config_dir, 'hotspots')
-        if not os.path.exists(hsfolder):
-            print("No folders to archive in arguments and no Hotspots CSV files found!")
-            print('Run: froster archive "/your/folder/to/archive"')
-            return False
-        csv_files = [f for f in os.listdir(
-            hsfolder) if fnmatch.fnmatch(f, '*.csv')]
-        if len(csv_files) == 0:
-            print("No folders to archive in arguments and no Hotspots CSV files found!")
-            print('Run: froster archive "/your/folder/to/archive"')
-            return False
-        # Sort the CSV files by their modification time in descending order (newest first)
-        csv_files.sort(key=lambda x: os.path.getmtime(
-            os.path.join(hsfolder, x)), reverse=True)
-        # if there are multiple files allow for selection
-        if len(csv_files) > 1:
-            TABLECSV = '"Select a Hotspot file"\n' + '\n'.join(csv_files)
-            app = TableArchive()
-            retline = app.run()
-            if not retline:
-                return False
-            SELECTEDFILE = os.path.join(hsfolder, retline[0])
-        else:
-            SELECTEDFILE = os.path.join(hsfolder, csv_files[0])
-        if args.larger > 0 and args.older > 0:
-            # implement archiving batchmode
-            arch.archive_batch()
-            return
-        elif args.larger > 0 or args.older > 0:
-            print('You need to combine both "--older <days> and --larger <GiB> options')
-            return
-
-        SELECTEDFILE = arch.get_user_hotspot(SELECTEDFILE)
-        app = TableHotspots()
-        retline = app.run()
-        # print('Retline:', retline)
-        if not retline:
-            return False
-        if len(retline) < 6:
-            print('Error: Hotspots table did not return all columns')
-            return False
-
-        if retline[-1]:
-            if cfg.nih == 'yes' or args.nih:
-                app = TableNIHGrants()
-                archmeta = app.run()
-        else:
-            print(
-                f'\nYou can start this archive process later by using this command:\n  froster archive "{retline[5]}"')
-            print(
-                f'\n... or if you like to include all subfolders run:\n  froster archive --recursive "{retline[5]}"\n')
-            return False
-
-        badfiles = arch.cannot_read_files(retline[5])
-        if badfiles:
-            print(
-                f'  Cannot read {len(badfiles)} files in folder {retline[5]}, for example:\n  {", ".join(badfiles[:10])}')
-            return False
-
-        args.folders.append(retline[5])
-
-    else:
-        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
-
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
-        return False
-    if not aws.check_bucket_access(cfg.bucket, readwrite=True):
-        return False
-
-    # if recursive archiving, check if we can read all files
-    if args.recursive:
-        isbad = False
-        for fld in args.folders:
-            # check for bad files first
-            print(
-                f'Checking access to files in folder tree "{fld}" ... ', flush=True)
-            for root, dirs, files in arch._walker(fld):
-                print(f'  Folder "{root}" ... ', flush=True)
-                badfiles = arch.cannot_read_files(root)
-                if badfiles:
-                    isbad = True
-                    print(
-                        f'  Error: Cannot read {len(badfiles)} files in folder, for example:\n  {", ".join(badfiles[:10])}', flush=True)
-                for dir in dirs:
-                    dirpath = os.path.join(root, dir)
-                    ret = arch.test_write(dirpath)
-                    if ret == 13 or ret == 2:
-                        print(
-                            f'  Cannot write to sub-folder {dir}', flush=True)
-                        isbad = True
-        if isbad:
-            print(
-                f'Error: Cannot archive folder(s) resursively, fix some permissions first.', flush=True)
-            return False
-
-    if not shutil.which('sbatch') or args.noslurm or args.reset or os.getenv('SLURM_JOB_ID'):
-        for fld in args.folders:
-            fld = fld.rstrip(os.path.sep)
-            if args.reset:
-                ret = arch.reset_folder(fld, args.recursive)
-                continue
-            if args.recursive:
+        if not config.has_section(profile):
+            if self.args.debug:
                 print(
-                    f'Archiving folder "{fld}" and subfolders, please wait ...', flush=True)
-                if not arch.archive_recursive(fld, archmeta):
-                    if args.debug:
-                        print(
-                            f'  Archiver.archive_recursive({fld}) returned False', flush=True)
-            else:
+                    f'~/.aws/credentials has no section for profile {profile}')
+            return False
+        if not config.has_option(profile, 'aws_access_key_id'):
+            if self.args.debug:
                 print(
-                    f'Archiving folder "{fld}" (no subfolders), please wait ...', flush=True)
-                arch.archive(fld, archmeta)
-    else:
-        se = SlurmEssentials(args, cfg)
-        label = args.folders[0].replace('/', '+')
-        label = label.replace(' ', '_')
-        shortlabel = os.path.basename(args.folders[0])
-        myjobname = f'froster:archive:{shortlabel}'
-        email = cfg.read('general', 'email')
-        se.add_line(f'#SBATCH --job-name={myjobname}')
-        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
-        se.add_line(f'#SBATCH --requeue')
-        se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        if not "--profile" in cmdline and args.awsprofile:
-            cmdline = cmdline.replace(
-                '/froster.py ', f'/froster --profile {args.awsprofile} ')
+                    f'~/.aws/credentials has no entry aws_access_key_id in section/profile {profile}')
+            return False
+
+        # Get the AWS access key and secret key from the specified profile
+        aws_access_key_id = config.get(profile, 'aws_access_key_id')
+        aws_secret_access_key = config.get(profile, 'aws_secret_access_key')
+
+        # Set the environment variables for creds
+        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
+        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
+        os.environ['AWS_PROFILE'] = profile
+        self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
+        self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
+        self.envrn['AWS_PROFILE'] = profile
+        self.envrn['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
+        self.envrn['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
+
+        if profile in ['default', 'AWS', 'aws']:
+            # Set the environment variables for AWS
+            self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
+            self.envrn['RCLONE_S3_REGION'] = self.aws_region
+            self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
+            self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.read(
+                'general', 's3_storage_class')
+            os.environ['RCLONE_S3_STORAGE_CLASS'] = self.read(
+                'general', 's3_storage_class')
         else:
-            cmdline = cmdline.replace('/froster.py ', '/froster ')
-        if not args.folders[0] in cmdline:
-            folders = '" "'.join(args.folders)
-            cmdline = f'{cmdline} "{folders}"'
-        if args.debug:
-            print(f'Command line passed to Slurm:\n{cmdline}')
-        se.add_line(cmdline)
-        jobid = se.sbatch()
-        print(f'Submitted froster archiving job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-archive-{label}-{jobid}.out')
+            prf = self.read('profiles', profile)
+            self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
+            self.envrn['RCLONE_S3_PROFILE'] = profile
+            # profile={'name': '', 'provider': '', 'storage_class': ''}
+            if isinstance(prf, dict):
+                self.envrn['RCLONE_S3_PROVIDER'] = prf['provider']
+                self.envrn['RCLONE_S3_ENDPOINT'] = self._get_aws_s3_session_endpoint_url(
+                    profile)
+                self.envrn['RCLONE_S3_REGION'] = self.aws_region
+                self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
+                self.envrn['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
+                os.environ['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
 
-
-def subcmd_restore(args, cfg, arch, aws):
-
-    global TABLECSV
-    global SELECTEDFILE
-
-    cfg.printdbg("restore:", args.cores, args.awsprofile, args.noslurm,
-                 args.days, args.retrieveopt, args.nodownload, args.folders)
-    fld = '" "'.join(args.folders)
-    cfg.printdbg(f'default cmdline: froster restore "{fld}"')
-
-    # *********
-    if args.monitor:
-        # aws inactivity and cost monitoring
-        aws.monitor_ec2()
         return True
 
-    if not args.folders:
-        TABLECSV = arch.archive_json_get_csv(
-            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
-        if TABLECSV == None:
-            print("No archives available.")
-            return False
-        app = TableArchive()
-        retline = app.run()
-        if not retline:
-            return False
-        if len(retline) < 2:
-            print('Error: froster-archives table did not return result')
-            return False
-        cfg.printdbg("subcmd_restore dialog returns:", retline)
-        args.folders.append(retline[0])
-        if retline[2]:
-            cfg.awsprofile = retline[2]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
-            cfg.printdbg("AWS profile:", cfg.awsprofile)
-    else:
-        pass
-        # we actually want to support symlinks
-        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+    def _get_shared_config_dir(self):
+        theroot = self.config_dir
+        rootfile = os.path.join(theroot, 'shared_config_dir')
+        if os.path.exists(rootfile):
+            with open(rootfile, 'r') as myfile:
+                theroot = myfile.read().strip()
+                if not os.path.isdir(theroot):
+                    if not self.ask_yes_no(f'{rootfile} points to a shared config that does not exist. Do you want to configure {theroot} now?'):
+                        print(
+                            f"Please remove file {rootfile} to continue with a single user config.")
+                        sys.exit(1)
+                        # raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
+        return theroot
 
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
-        return False
-    if not aws.check_bucket_access_folders(args.folders):
-        return False
+    def _get_section_path(self, section):
+        return os.path.join(self.shared_config_dir, section)
 
-    if args.aws:
-        # run ec2_deploy(self, bucket='', prefix='', recursive=False, profile=None):
-        ret = aws.ec2_deploy(args.folders)
-        return True
+    def _get_entry_path(self, section, entry):
+        if section:
+            section_path = self._get_section_path(section)
+            return os.path.join(section_path, entry)
+        else:
+            return os.path.join(self.shared_config_dir, entry)
 
-    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
-        # either no slurm or already running inside a slurm job
-        for fld in args.folders:
-            fld = fld.rstrip(os.path.sep)
-            print(f'Restoring folder {fld}, please wait ...', flush=True)
-            # check if triggered a restore from glacier and other conditions
-            if arch.restore(fld) > 0:
-                if shutil.which('sbatch') and \
-                        args.noslurm == False and \
-                        args.nodownload == False:
-                    # start a future Slurm job just for the download
-                    se = SlurmEssentials(args, cfg)
-                    # get a job start time 12 hours from now
-                    fut_time = se.get_future_start_time(12)
-                    label = fld.replace('/', '+')
-                    label = label.replace(' ', '_')
-                    shortlabel = os.path.basename(fld)
-                    myjobname = f'froster:restore:{shortlabel}'
-                    email = cfg.read('general', 'email')
-                    se.add_line(f'#SBATCH --job-name={myjobname}')
-                    se.add_line(f'#SBATCH --begin={fut_time}')
-                    se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-                    se.add_line(f'#SBATCH --mem=64G')
-                    se.add_line(f'#SBATCH --requeue')
-                    se.add_line(
-                        f'#SBATCH --output=froster-download-{label}-%J.out')
-                    se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-                    se.add_line(f'#SBATCH --mail-user={email}')
-                    se.add_line(f'#SBATCH --time={se.walltime}')
-                    if se.partition:
-                        se.add_line(f'#SBATCH --partition={se.partition}')
-                    if se.qos:
-                        se.add_line(f'#SBATCH --qos={se.qos}')
-                    # original cmdline
-                    cmdline = " ".join(map(shlex.quote, sys.argv))
-                    if not "--profile" in cmdline and args.awsprofile:
-                        cmdline = cmdline.replace(
-                            '/froster.py ', f'/froster --profile {args.awsprofile} ')
-                    else:
-                        cmdline = cmdline.replace('/froster.py ', '/froster ')
-                    if not fld in cmdline:
-                        cmdline = f'{cmdline} "{fld}"'
-                    cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
-                    se.add_line(cmdline)
-                    jobid = se.sbatch()
+    def fix_tree_permissions(self, target_dir):
+        try:
+            if not os.path.isdir(target_dir):
+                print(
+                    f"Error: '{target_dir}' is not a directory", file=sys.stderr)
+                return False
+            # Get the group ID of the target directory
+            gid = os.lstat(target_dir).st_gid
+            for root, dirs, files in os.walk(target_dir):
+                # Check and change the group of the directory
+                self.fix_permissions_if_needed(root, gid)
+                # Check and change the group of each file in the directory
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    self.fix_permissions_if_needed(file_path, gid)
+            return True
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return False
+
+    def fix_permissions_if_needed(self, path, gid=None):
+        # setgid, g+rw, o+r and optionally enforce gid (group)
+        # fix: different setup mey be needed to handle symlinks
+        try:
+            current_mode = os.lstat(path).st_mode
+            # Add user rw, group rw and others read # 0o060 | 0o004
+            new_mode = current_mode | 0o664
+            if new_mode != current_mode:
+                # new_mode = current_mode | 0o7077 # clear group and other permission
+                if not path.endswith('.pem'):
+                    os.chmod(path, new_mode)
                     print(
-                        f'Submitted froster download job to run in 12 hours: {jobid}')
-                    print(f'Check Job Output:')
-                    print(f' tail -f froster-download-{label}-{jobid}.out')
+                        f"  Changed permissions of '{path}' from {oct(current_mode)} to {oct(new_mode)}")
+                    current_mode = os.lstat(path).st_mode
+            if os.path.isdir(path):
+                new_mode = current_mode | 0o2000
+                if new_mode != current_mode:  # Check if setgid bit is not set
+                    os.chmod(path, new_mode)
+                    current_mode = os.lstat(path).st_mode
+                    print(f"  Set setgid bit on directory '{path}'")
+                new_mode = current_mode | 0o0111
+                if new_mode != current_mode:  # Check if execute bit is set on dirs
+                    os.chmod(path, new_mode)
+                    print(f"  Set execute bits on directory '{path}'")
+            current_gid = os.lstat(path).st_gid
+            if not gid:
+                gid = current_gid
+            if current_gid != gid:
+                current_group_name = grp.getgrgid(current_gid).gr_name
+                os.chown(path, -1, gid)  # -1 means don't change the user
+                print(
+                    f"  Changed group of '{path}' from '{current_group_name}' to '{grp.getgrgid(gid).gr_name}'")
+            return True
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return False
+
+    def replace_symlinks_with_realpaths(self, folders):
+        cleaned_folders = []
+        for folder in folders:
+            try:
+                # Split the path into its components
+                folder = os.path.expanduser(folder)
+                # print('expanduser folder:', folder)
+                # print('real path:', os.path.realpath(folder))
+                cleaned_folders.append(os.path.realpath(folder))
+            except Exception as e:
+                print(f"Error processing '{folder}': {e}")
+        self.printdbg('cleaned_folders:', cleaned_folders)
+        return cleaned_folders
+
+    def printdbg(self, *args, **kwargs):
+        # use inspect to get the name of the calling function
+        if self.args.debug:
+            current_frame = inspect.currentframe()
+            calling_function = current_frame.f_back.f_code.co_name
+            print(f' DBG {calling_function}():', args, kwargs)
+
+    def prompt(self, question, defaults=None, type_check=None):
+        # Prompts for user input and writes it to config.
+        # defaults are up to 3 pipe separated strings:
+        # if there is only one string this is the default
+        #
+        # if there are 2 strings they represent section
+        # and key name of the config entry and if there are
+        # 3 strings the last 2 represent section
+        # and key name of the config file and the first is
+        # the default if section and key name are empty
+        #
+        # if defaults is a python list it will assign a number
+        # to each list element and prompt the user for one
+        # of the options
+        default = ''
+        section = ''
+        key = ''
+        if not question.endswith(':'):
+            question += ':'
+        question = f"*** {question} ***"
+        defaultlist = []
+        if isinstance(defaults, list):
+            defaultlist = defaults
+        elif defaults:
+            defaultlist = defaults.split('|')[0].split(',')
+        if len(defaultlist) > 1:
+            print(question)
+            for i, option in enumerate(defaultlist, 1):
+                print(f'  ({i}) {option}')
+            while True:
+                selected = input("  Enter the number of your selection: ")
+                if selected.isdigit() and 1 <= int(selected) <= len(defaultlist):
+                    return defaultlist[int(selected) - 1]
                 else:
-                    print(
-                        f'\nGlacier retrievals pending, run this again in 5-12 hours\n')
-
-    else:
-        se = SlurmEssentials(args, cfg)
-        label = args.folders[0].replace('/', '+')
-        label = label.replace(' ', '_')
-        shortlabel = os.path.basename(args.folders[0])
-        myjobname = f'froster:restore:{shortlabel}'
-        email = cfg.read('general', 'email')
-        se.add_line(f'#SBATCH --job-name={myjobname}')
-        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
-        se.add_line(f'#SBATCH --requeue')
-        se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        if not "--profile" in cmdline and args.awsprofile:
-            cmdline = cmdline.replace(
-                '/froster.py ', f'/froster --profile {args.awsprofile} ')
+                    print("  Invalid selection. Please enter a number from the list.")
+        elif defaults is not None:
+            deflist = defaults.split('|')
+            if len(deflist) == 3:
+                section = deflist[1]
+                key = deflist[2]
+                default = self.read(section, key)
+                if not default:
+                    default = deflist[0]
+            elif len(deflist) == 2:
+                section = deflist[0]
+                key = deflist[1]
+                default = self.read(section, key)
+            elif len(deflist) == 1:
+                default = deflist[0]
+            # if default:
+            question += f"\n  [Default: {default}]"
         else:
-            cmdline = cmdline.replace('/froster.py ', '/froster ')
-        if not args.folders[0] in cmdline:
-            folders = '" "'.join(args.folders)
-            cmdline = f'{cmdline} "{folders}"'
-        cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
-        se.add_line(cmdline)
-        jobid = se.sbatch()
-        print(f'Submitted froster restore job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-restore-{label}-{jobid}.out')
+            question += f"\n  [Default: '']"
+        while True:
+            # user_input = input(f"\033[93m{question}\033[0m ")
+            user_input = input(f"{question} ")
+            if not user_input:
+                if default is not None:
+                    if section:
+                        self.write(section, key, default)
+                    return default
+                else:
+                    print("Please enter a value.")
+            else:
+                if type_check == 'number':
+                    try:
+                        if '.' in user_input:
+                            value = float(user_input)
+                        else:
+                            value = int(user_input)
+                        if section:
+                            self.write(section, key, value)
+                        return value
+                    except ValueError:
+                        print("Invalid input. Please enter a number.")
+                elif type_check == 'string':
+                    if not user_input.isnumeric():
+                        if section:
+                            self.write(section, key, user_input)
+                        return user_input
+                    else:
+                        print("Invalid input. Please enter a string not a number")
+                else:
+                    if section:
+                        self.write(section, key, user_input)
+                    return user_input
 
+    def ask_yes_no(self, question, default="yes"):
+        valid = {"yes": True, "y": True, "no": False, "n": False}
 
-def subcmd_delete(args, cfg, arch, aws):
+        if default is None:
+            prompt = " [y/n] "
+        elif default == "yes":
+            prompt = " [Y/n] "
+        elif default == "no":
+            prompt = " [y/N] "
+        else:
+            raise ValueError("invalid default answer: '%s'" % default)
 
-    global TABLECSV
-    global SELECTEDFILE
+        while True:
+            print(question + prompt, end="")
+            choice = input().lower()
+            if default and not choice:
+                return valid[default]
+            elif choice in valid:
+                return valid[choice]
+            else:
+                print("Please respond with 'yes' or 'no' (or 'y' or 'n').")
 
-    cfg.printdbg("delete:", args.awsprofile, args.folders)
-    fld = '" "'.join(args.folders)
-    cfg.printdbg(f'default cmdline: froster delete "{fld}"')
-
-    if not args.folders:
-        TABLECSV = arch.archive_json_get_csv(
-            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
-        if TABLECSV == None:
-            print("No archives available.")
+    def add_cron_job(self, cmd, minute, hour='*', day_of_month='*', month='*', day_of_week='*'):
+        # CURRENTLY INACTIVE
+        if not minute:
+            print('You must set the minute (1-60) explicily')
             return False
-        app = TableArchive()
-        retline = app.run()
-        if not retline:
+        with tempfile.NamedTemporaryFile(delete=False) as temp:
+            # Dump the current crontab to the temporary file
+            try:
+                os.system('crontab -l > {}'.format(temp.name))
+            except Exception as e:
+                print(f"Error: {e}")
+
+            # Add the new cron job to the temporary file
+            cron_time = "{} {} {} {} {}".format(
+                str(minute), hour, day_of_month, month, day_of_week)
+            with open(temp.name, 'a') as file:
+                file.write('{} {}\n'.format(cron_time, cmd))
+
+            # Install the new crontab
+            try:
+                os.system('crontab {}'.format(temp.name))
+            except Exception as e:
+                print(f"Error: {e}")
+
+            # Clean up by removing the temporary file
+            os.unlink(temp.name)
+
+        print("Cron job added!")
+
+    def add_systemd_cron_job(self, cmd, minute, hour='*'):
+
+        # Troubleshoot with:
+        #
+        # journalctl -f --user-unit froster-monitor.service
+        # journalctl -f --user-unit froster-monitor.timer
+        # journalctl --since "5 minutes ago" | grep froster-monitor
+
+        SERVICE_CONTENT = textwrap.dedent(f"""
+        [Unit]
+        Description=Run Froster-Monitor Cron Job
+
+        [Service]
+        Type=simple
+        ExecStart={cmd}
+
+        [Install]
+        WantedBy=default.target
+        """)
+
+        TIMER_CONTENT = textwrap.dedent(f"""
+        [Unit]
+        Description=Run Froster-Monitor Cron Job hourly
+
+        [Timer]
+        Persistent=true
+        OnCalendar=*-*-* {hour}:{minute}:00
+        #RandomizedDelaySec=300
+        #FixedRandomDelay=true
+        #OnBootSec=180
+        #OnUnitActiveSec=3600
+        Unit=froster-monitor.service
+
+        [Install]
+        WantedBy=timers.target
+        """)
+
+        # Ensure the directory exists
+        # TODO: Check this path
+        user_systemd_dir = os.path.expanduser("~/.config/systemd/user/")
+        os.makedirs(user_systemd_dir, exist_ok=True)
+
+        SERVICE_PATH = os.path.join(
+            user_systemd_dir, "froster-monitor.service")
+        TIMER_PATH = os.path.join(user_systemd_dir, "froster-monitor.timer")
+
+        # Create service and timer files
+        with open(SERVICE_PATH, "w") as service_file:
+            service_file.write(SERVICE_CONTENT)
+
+        with open(TIMER_PATH, "w") as timer_file:
+            timer_file.write(TIMER_CONTENT)
+
+        # Reload systemd and enable/start timer
+        try:
+            os.chdir(user_systemd_dir)
+            os.system("systemctl --user daemon-reload")
+            os.system("systemctl --user enable froster-monitor.service")
+            os.system("systemctl --user enable froster-monitor.timer")
+            os.system("systemctl --user start froster-monitor.timer")
+            print("Systemd froster-monitor.timer cron job started!")
+        except Exception as e:
+            print(f'Could not add systemd scheduler job, Error: {e}')
+
+    def replicate_ini(self, section, src_file, dest_file):
+
+        # copy an ini section from source to destination
+        # sync values in dest that do not exist in src back to src
+        # best used for sync of AWS profiles.
+        # if section==ALL copy all but section called default
+
+        if not os.path.exists(src_file):
+            return
+
+        # Create configparser objects
+        src_parser = configparser.ConfigParser()
+        dest_parser = configparser.ConfigParser()
+
+        # Read source and destination files
+        src_parser.read(src_file)
+        dest_parser.read(dest_file)
+
+        if section == 'ALL':
+            sections = src_parser.sections()
+            sections.remove('default') if 'default' in sections else None
+        else:
+            sections = [section]
+
+        for section in sections:
+            # Get the section from source and destination files
+            src_section_data = dict(src_parser.items(section))
+            dest_section_data = dict(dest_parser.items(
+                section)) if dest_parser.has_section(section) else {}
+
+            # If section does not exist in source or destination file, add it
+            if not src_parser.has_section(section):
+                src_parser.add_section(section)
+
+            if not dest_parser.has_section(section):
+                dest_parser.add_section(section)
+
+            # Write the data into destination file
+            for key, val in src_section_data.items():
+                dest_parser.set(section, key, val)
+
+            # Write the data into source file
+            for key, val in dest_section_data.items():
+                if key not in src_section_data:
+                    src_parser.set(section, key, val)
+
+        # Save the changes in the destination and source files
+        with open(dest_file, 'w') as dest_configfile:
+            dest_parser.write(dest_configfile)
+
+        with open(src_file, 'w') as src_configfile:
+            src_parser.write(src_configfile)
+
+        if self.args.debug:
+            print(f"Ini-section copied from {src_file} to {dest_file}")
+            print(
+                f"Missing entries in source from destination copied back to {src_file}")
+
+    # get the full list of profiles from ~/.aws/credentials profile folder
+    def get_aws_profiles(self):
+        try:
+
+            # Check if aws config file exists
+            if not os.path.exists(self.aws_config_file):
+                return []
+
+            # Check if aws credentials file exists
+            if not os.path.exists(self.aws_credentials_file):
+                return []
+
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # Read the aws credentials file
+            config.read(self.aws_credentials_file)
+
+            # Get the list of profiles
+            profiles = []
+            for section in config.sections():
+                # TODO: is this necessary? Backward compatibility?
+                profile_name = section.replace("profile ", "")
+                profiles.append(profile_name)
+
+            return profiles
+
+        except Exception as err:
+            print(f'Error: ${sys._getframe(  ).f_code.co_name}: {err}')
             return False
-        if len(retline) < 2:
-            print('Error: froster-archives table did not return result')
-            return False
-        cfg.printdbg("dialog returns:", retline)
-        args.folders.append(retline[0])
-        if retline[2]:
-            cfg.awsprofile = retline[2]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
-    else:
-        pass
-        # we actually want to support symlinks
-        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
 
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
-        return False
-    if not aws.check_bucket_access_folders(args.folders):
-        return False
+    def create_aws_configs(self, access_key=None, secret_key=None, region=None):
 
-    for fld in args.folders:
-        fld = fld.rstrip(os.path.sep)
-        # get archive storage location
-        print(
-            f'Deleting archived files in "{fld}", please wait ...', flush=True)
-        if not arch.delete(fld):
-            cfg.printdbg(
-                f'  Archiver.delete({fld}) returned False', flush=True)
+        aws_dir = os.path.join(self.home_dir, ".aws")
 
+        if not os.path.exists(aws_dir):
+            os.makedirs(aws_dir)
 
-def subcmd_mount(args, cfg, arch, aws):
+        if not os.path.isfile(self.aws_config_file):
+            if region:
+                print(
+                    f'\nAWS config file {self.aws_config_file} does not exist, creating ...')
+                with open(self.aws_config_file, "w") as config_file:
+                    config_file.write("[default]\n")
+                    config_file.write(f"region = {region}\n")
+                    config_file.write("\n")
+                    config_file.write("[profile aws]\n")
+                    config_file.write(f"region = {region}\n")
 
-    global TABLECSV
-    global SELECTEDFILE
+        if not os.path.isfile(self.aws_credentials_file):
+            print(
+                f'\nAWS credentials file {self.aws_credentials_file} does not exist, creating ...')
+            if not access_key:
+                access_key = input("Enter your AWS access key ID: ")
+            if not secret_key:
+                secret_key = input("Enter your AWS secret access key: ")
+            with open(self.aws_credentials_file, "w") as credentials_file:
+                credentials_file.write("[default]\n")
+                credentials_file.write(f"aws_access_key_id = {access_key}\n")
+                credentials_file.write(
+                    f"aws_secret_access_key = {secret_key}\n")
+                credentials_file.write("\n")
+                credentials_file.write("[aws]\n")
+                credentials_file.write(f"aws_access_key_id = {access_key}\n")
+                credentials_file.write(
+                    f"aws_secret_access_key = {secret_key}\n")
+            os.chmod(self.aws_credentials_file, 0o600)
 
-    cfg.printdbg("mount:", args.awsprofile, args.mountpoint, args.folders)
-    fld = '" "'.join(args.folders)
-    cfg.printdbg(f'default cmdline: froster mount "{fld}"')
-
-    interactive = False
-    if not args.folders:
-        interactive = True
-        TABLECSV = arch.archive_json_get_csv(
-            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
-        if TABLECSV == None:
-            print("No archives available.")
-            return False
-        app = TableArchive()
-        retline = app.run()
-        if not retline:
-            return False
-        if len(retline) < 2:
-            print('Error: froster-archives table did not return result')
-            return False
-        cfg.printdbg("dialog returns:", retline)
-        args.folders.append(retline[0])
-        if retline[2]:
-            cfg.awsprofile = retline[2]
-            args.awsprofile = cfg.awsprofile
-            cfg._set_env_vars(cfg.awsprofile)
-    else:
-        pass
-        # we actually want to support symlinks
-        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
-
-    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.awsprofile}" not found.')
-        return False
-    if not aws.check_bucket_access_folders(args.folders):
-        return False
-
-    if args.aws:
-        cfg.create_ec2_instance()
+    def set_aws_config(self, profile, key, value, service=''):
+        if key == 'endpoint_url':
+            if value.endswith('.amazonaws.com'):
+                return False
+            else:
+                value = f'{value}\nsignature_version = s3v4'
+        config.read(os.path.expanduser("~/.aws/config"))
+        section = profile
+        if profile != 'default':
+            section = f'profile {profile}'
+        if not config.has_section(section):
+            config.add_section(section)
+        if service:
+            config.set(section, service, f"\n{key} = {value}\n")
+        else:
+            config.set(section, key, value)
+        with open(os.path.expanduser("~/.aws/config"), 'w') as configfile:
+            config.write(configfile)
+        if profile != 'default' and not self.args.cfgfolder:  # when moving cfg it still writes to old folder
+            self.replicate_ini(
+                f'profile {profile}', self.aws_config_file, self.aws_config_fileshr)
         return True
 
-    hostname = platform.node()
-    rclone = Rclone(args, cfg)
-    for fld in args.folders:
-        fld = fld.rstrip(os.path.sep)
-        if fld == os.path.realpath(os.getcwd()):
-            print(f' Cannot mount current working directory {fld}')
-            continue
-        # get archive storage location
-        rowdict = arch.archive_json_get_row(fld)
-        if rowdict == None:
-            print(f'Folder "{fld}" not in archive.')
-            continue
-        archive_folder = rowdict['archive_folder']
+    def get_aws_s3_endpoint_url(self, profile=None):
+        # non boto3 method, use _get_aws_s3_session_endpoint_url instead
+        if not profile:
+            profile = self.awsprofile
+        config.read(os.path.expanduser('~/.aws/config'))
+        prof = 'profile ' + profile
+        if profile == 'default':
+            prof = profile
+        try:
+            # We use the configparser's interpolation feature here to
+            # flatten the 's3' subsection into the 'profile test' section.
+            s3_config_string = config.get(prof, 's3')
+            s3_config = configparser.ConfigParser()
+            s3_config.read_string("[s3_section]\n" + s3_config_string)
+            endpoint_url = s3_config.get('s3_section', 'endpoint_url')
+            return endpoint_url
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            if self.args.debug:
+                print("  No endpoint_url found in aws profile:", profile)
+            return None
 
-        if args.mountpoint and os.path.isdir(args.mountpoint):
-            fld = args.mountpoint
+    def _get_aws_s3_session_endpoint_url(self, profile=None):
+        # retrieve endpoint url through boto API, not configparser
+        import botocore.session  # only botocore Session object has attribute 'full_config'
+        if not profile:
+            profile = self.awsprofile
+        session = botocore.session.Session(
+            profile=profile) if profile else botocore.session.Session()
+        config = session.full_config
+        s3_config = config["profiles"][profile].get("s3", {})
+        endpoint_url = s3_config.get("endpoint_url", None)
+        if self.args.debug:
+            print('*** endpoint url ***:', endpoint_url)
+        return endpoint_url
 
-        print(f'Mounting archive folder at {fld} ... ', flush=True, end="")
-        pid = rclone.mount(archive_folder, fld)
-        print('Done!', flush=True)
-        if interactive:
-            print(textwrap.dedent(f'''
-                Note that this mount point will only work on the current machine, 
-                if you would like to have this work in a batch job you need to enter 
-                these commands in the beginning and the end of a batch script:
-                froster mount {fld}
-                froster umount {fld}
-                '''))
-        if args.mountpoint:
-            # we can only mount a single folder if mountpoint is set
-            break
+    def get_aws_region(self, profile=None):
+        try:
+            session = boto3.Session(
+                profile_name=profile) if profile else boto3.Session()
+            if self.args.debug:
+                print(
+                    f'* get_aws_region for profile {profile}:', session.region_name)
+            return session.region_name
+        except:
+            if self.args.debug:
+                print(
+                    f'  cannot retrieve AWS region for profile {profile}, no valid profile or credentials')
+            return ""
 
+    def get_domain_name(self):
+        try:
+            with open('/etc/resolv.conf', 'r') as file:
+                content = file.readlines()
+        except FileNotFoundError:
+            return "mydomain.edu"
+        tld = None
+        for line in content:
+            if line.startswith('search') or line.startswith('domain'):
+                tokens = line.split()
+                if len(tokens) > 1:
+                    tld = tokens.pop()
+                    break
+        return tld if tld else "mydomain.edu"
 
-def subcmd_umount(args, cfg):
+    def get_time_zone(self):
+        current_tz_str = 'America/Los_Angeles'
+        try:
+            # Resolve the /etc/localtime symlink
+            timezone_path = os.path.realpath("/etc/localtime")
+            # Extract the time zone string by stripping off the prefix of the zoneinfo path
+            current_tz_str = timezone_path.split("zoneinfo/")[-1]
+        except Exception as e:
+            print(f'Error: {e}')
+            current_tz_str = 'America/Los_Angeles'
+        return current_tz_str
 
-    global TABLECSV
-    global SELECTEDFILE
+    def write(self, section, entry, value):
+        try:
+            entry_path = self._get_entry_path(section, entry)
+            os.makedirs(os.path.dirname(entry_path), exist_ok=True)
+            if value == '""':
+                # Check if file exists before trying to remove
+                if os.path.exists(entry_path):
+                    os.remove(entry_path)
+                return
+            with open(entry_path, 'w') as entry_file:
+                if isinstance(value, list):
+                    for item in value:
+                        entry_file.write(f"{item}\n")
+                elif isinstance(value, dict):
+                    json.dump(value, entry_file)
+                else:
+                    entry_file.write(value)
+        except OSError as e:
+            # Handle file operation errors (like permission issues, file not found, etc.)
+            print(
+                f"Please ask your Data Steward to add group permissions. File operation error: {e}")
+            sys.exit(1)
+        except TypeError as e:
+            # Handle issues with the type of 'value'
+            print(f"Type error: {e}")
+        except Exception as e:
+            # Handle any other unexpected errors
+            print(f"An unexpected error occurred: {e}")
 
-    rclone = Rclone(args, cfg)
-    mounts = rclone.get_mounts()
-    if len(mounts) == 0:
-        print("No Rclone mounts on this computer.")
+    def read(self, section, entry, default=""):
+        entry_path = self._get_entry_path(section, entry)
+        if not os.path.exists(entry_path):
+            return default
+            # raise FileNotFoundError(f'Config entry "{entry}" in section "{section}" not found.')
+        with open(entry_path, 'r') as entry_file:
+            try:
+                return json.load(entry_file)
+            except json.JSONDecodeError:
+                pass
+            except:
+                print('Error in ConfigManager.read(), returning default')
+                return default
+        with open(entry_path, 'r') as entry_file:
+            try:
+                content = entry_file.read().splitlines()
+                if len(content) == 1:
+                    return content[0].strip()
+                else:
+                    return content
+            except:
+                print('Error in ConfigManager.read(), returning default')
+                return default
+
+    def delete(self, section, entry):
+        entry_path = self._get_entry_path(section, entry)
+        if not os.path.exists(entry_path):
+            raise FileNotFoundError(
+                f'Config entry "{entry}" in section "{section}" not found.')
+        os.remove(entry_path)
+
+    def delete_section(self, section):
+        section_path = self._get_section_path(section)
+        if not os.path.exists(section_path):
+            raise FileNotFoundError(f'Config section "{section}" not found.')
+        for entry in os.listdir(section_path):
+            os.remove(os.path.join(section_path, entry))
+        os.rmdir(section_path)
+
+    def move_config(self, cfgfolder):
+        if not os.path.isdir(cfgfolder):
+            print(f'{cfgfolder} is not a directory')
+            return False
+        else:
+            # Get the group ID of the folder
+            gid = os.lstat(cfgfolder).st_gid
+            # Get the group name from the group ID
+            pgroup = grp.getgrgid(gid)
+            if pgroup.gr_name == self.whoami:
+                print(
+                    f'  Group ({pgroup.gr_name}) and user name ({self.whoami}) should not be the same for {cfgfolder}.')
+                return False
+            else:
+                # set the correct permission for the folder including setgid to make sure that the group is inherited
+                try:
+                    os.chmod(cfgfolder, 0o2775)
+                    # this will fail for non-owner users.
+                except Exception as e:
+                    print(f"  Could not set permissions on {cfgfolder} :\n{e}")
+                    return False
+
+        # TODO: Check this config path
+        if not cfgfolder and self.shared_config_dir == self.config_dir:
+            cfgfolder = self.prompt("Please enter the root where folder .froster/config will be created.",
+                                    os.path.expanduser('~'))
+        if cfgfolder:
+            new_shared_config_dir = os.path.join(
+                os.path.expanduser(cfgfolder), '.config', 'froster')
+        else:
+            new_shared_config_dir = self.shared_config_dir
+        old_shared_config_dir = self.config_dir
+        shared_config_dir_file = os.path.join(
+            self.config_dir, 'shared_config_dir')
+
+        if os.path.exists(shared_config_dir_file):
+            with open(shared_config_dir_file, 'r') as f:
+                old_shared_config_dir = f.read().strip()
+
+        # print(old_shared_config_dir,new_shared_config_dir)
+        if old_shared_config_dir == new_shared_config_dir:
+            return True
+
+        if not os.path.isdir(new_shared_config_dir):
+            if os.path.isdir(old_shared_config_dir):
+                shutil.move(old_shared_config_dir, new_shared_config_dir)
+                if os.path.isdir(old_shared_config_dir):
+                    try:
+                        os.rmdir(old_shared_config_dir)
+                    except:
+                        pass
+                print(f'  Froster config moved to "{new_shared_config_dir}"\n')
+            os.makedirs(new_shared_config_dir, exist_ok=True)
+            if os.path.exists(self.aws_config_file):
+                self.replicate_ini('ALL', self.aws_config_file,
+                                   os.path.join(new_shared_config_dir, 'aws_config'))
+                print(
+                    f'  ~/.aws/config replicated to "{new_shared_config_dir}/aws_config"\n')
+
+        self.shared_config_dir = new_shared_config_dir
+
+        os.makedirs(old_shared_config_dir, exist_ok=True)
+        with open(shared_config_dir_file, 'w') as f:
+            f.write(self.shared_config_dir)
+            print(
+                f'  Switched configuration path to "{self.shared_config_dir}"')
+        return True
+
+    def wait_for_ssh_ready(self, hostname, port=22, timeout=60):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(3)  # Set a timeout on the socket operations
+            result = s.connect_ex((hostname, port))
+            if result == 0:
+                s.close()
+                return True
+            else:
+                time.sleep(5)  # Wait for 5 seconds before retrying
+                s.close()
+        print("Timeout reached without SSH server being ready.")
         return False
-    folders = cfg.replace_symlinks_with_realpaths(args.folders)
-    if len(folders) == 0:
-        TABLECSV = "\n".join(mounts)
-        TABLECSV = "Mountpoint\n"+TABLECSV
-        app = TableArchive()
-        retline = app.run()
-        folders.append(retline[0])
-    for fld in folders:
-        print(f'Unmounting folder {fld} ... ', flush=True, end="")
-        rclone.unmount(fld)
-        print('Done!', flush=True)
-
-
-def subcmd_ssh(args, cfg, aws):
-
-    ilist = aws.ec2_list_instances('Name', 'FrosterSelfDestruct')
-    ips = [sublist[0] for sublist in ilist if sublist]
-    if args.list:
-        if ips:
-            print("Running AWS EC2 Instances:")
-            for row in ilist:
-                print(' - '.join(row))
-        else:
-            print('No running instances detected')
-        return True
-    if args.terminate:
-        aws.ec2_terminate_instance(args.terminate)
-        return True
-    if args.sshargs:
-        if ':' in args.sshargs[0]:
-            myhost, remote_path = args.sshargs[0].split(':')
-        else:
-            myhost = args.sshargs[0]
-            remote_path = ''
-    else:
-        myhost = cfg.read('cloud', 'ec2_last_instance')
-    if ips and not myhost in ips:
-        print(f'{myhost} is no longer running, replacing with {ips[-1]}')
-        myhost = ips[-1]
-        # cfg.write('cloud', 'ec2_last_instance', myhost)
-    if args.subcmd == 'ssh':
-        print(f'Connecting to {myhost} ...')
-        aws.ssh_execute('ec2-user', myhost)
-        return True
-    elif args.subcmd == 'scp':
-        if len(args.sshargs) != 2:
-            print('The "scp" sub command supports currently 2 arguments')
-            return False
-        hostloc = next((i for i, item in enumerate(
-            args.sshargs) if ":" in item), None)
-        if hostloc == 0:
-            # the hostname is in the first argument: download
-            host, remote_path = args.sshargs[0].split(':')
-            ret = aws.ssh_download(
-                'ec2-user', host, remote_path, args.sshargs[1])
-        elif hostloc == 1:
-            # the hostname is in the second argument: uploaad
-            host, remote_path = args.sshargs[1].split(':')
-            ret = aws.ssh_upload(
-                'ec2-user', host, args.sshargs[0], remote_path)
-        else:
-            print('The "scp" sub command supports currently 2 arguments')
-            return False
-        print(ret.stdout, ret.stderr)
-
-
-def subcmd_credentials(args, aws: AWSBoto):
-    print("Checking credentials...")
-    aws.check_s3_credentials()
-    aws.check_bucket_access_folders(args.folders)
 
 
 class Archiver:
@@ -2332,825 +2324,6 @@ class Archiver:
             print(f"An error occurred: {e}")
             return False
         return True
-
-
-class ScreenConfirm(ModalScreen[bool]):
-    DEFAULT_CSS = """
-    ScreenConfirm {
-        align: center middle;
-    }
-
-    ScreenConfirm > Vertical {
-        background: $secondary;
-        width: auto;
-        height: auto;
-        border: thick $primary;
-        padding: 2 4;
-    }
-
-    ScreenConfirm > Vertical > * {
-        width: auto;
-        height: auto;
-    }
-
-    ScreenConfirm > Vertical > Label {
-        padding-bottom: 2;
-    }
-
-    ScreenConfirm > Vertical > Horizontal {
-        align: right middle;
-    }
-
-    ScreenConfirm Button {
-        margin-left: 2;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-
-            # badfiles = arch.cannot_read_files(retline[5])
-            # if badfiles:
-            #     print(f'  Cannot read these files in folder {retline[5]}: {", ".join(badfiles)}')
-            #     return False
-
-            yield Label("Do you want to start this archiving job now?\nChoose 'Quit' if you would like to archive recursively")
-            with Horizontal():
-                yield Button("Start Job", id="continue")
-                yield Button("Back to List", id="return")
-                yield Button("Quit to CLI", id="quit")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        # self.dismiss(result=event.button.id == "continue")
-        self.dismiss(result=event.button.id)
-
-
-class TableHotspots(App[list]):
-
-    BINDINGS = [("q", "request_quit", "Quit")]
-
-    def __init__(self):
-        super().__init__()
-        self.myrow = []
-
-    def compose(self) -> ComposeResult:
-        table = DataTable()
-        table.focus()
-        table.zebra_stripes = True
-        table.cursor_type = "row"
-        table.styles.max_height = "99vh"
-        yield table
-        # yield Footer()
-
-    def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        fh = open(SELECTEDFILE, 'r')
-        rows = csv.reader(fh)
-        table.add_columns(*next(rows))
-        table.add_rows(itertools.islice(rows, MAXHOTSPOTS))
-
-    def accept_answer(self, answer: str) -> None:
-        # adds yesno answer as last element in list
-        if answer == 'continue':
-            self.exit(self.myrow+[True])
-        elif answer == 'quit':
-            self.exit(self.myrow+[False])
-
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        self.myrow = self.query_one(DataTable).get_row(event.row_key)
-        # self.exit(self.myrow)
-        self.push_screen(ScreenConfirm(), callback=self.accept_answer)
-
-    def action_request_quit(self) -> None:
-        self.app.exit()
-
-
-class TableArchive(App[list]):
-
-    BINDINGS = [("q", "request_quit", "Quit")]
-
-    def compose(self) -> ComposeResult:
-        table = DataTable()
-        table.focus()
-        table.zebra_stripes = True
-        table.cursor_type = "row"
-        table.styles.max_height = "99vh"
-        # table.fixed_rows = 1
-        yield table
-        yield Footer()
-
-    def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        rows = csv.reader(io.StringIO(TABLECSV))
-        table.add_columns(*next(rows))
-        table.add_rows(itertools.islice(rows, MAXHOTSPOTS))
-
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        self.exit(self.query_one(DataTable).get_row(event.row_key))
-        # self.push_screen(ScreenConfirm())
-
-    def action_request_quit(self) -> None:
-        self.app.exit()
-
-
-class TableNIHGrants(App[list]):
-
-    DEFAULT_CSS = """
-    Input.-valid {
-        border: tall $success 60%;
-    }
-    Input.-valid:focus {
-        border: tall $success;
-    }
-    Input {
-        margin: 1 1;
-    }
-    Label {
-        margin: 1 2;
-    }
-    DataTable {
-        margin: 1 2;
-    }
-    """
-
-    BINDINGS = [("q", "request_quit", "Quit")]
-
-    def compose(self) -> ComposeResult:
-        yield Label("Enter search to link your data with metadata of an NIH grant/project")
-        yield Input(
-            placeholder="Enter a part of a Grant Number, PI, Institution or Full Text (Title, Abstract, Terms) ...",
-        )
-        yield LoadingIndicator()
-        table = DataTable()
-        # table.focus()
-        table.zebra_stripes = True
-        table.cursor_type = "row"
-        table.styles.max_height = "99vh"
-        yield table
-        # yield Footer()
-
-    def on_mount(self) -> None:
-        self.query_one(LoadingIndicator).display = False
-        self.query_one(DataTable).display = False
-
-    @on(Input.Submitted)
-    def action_submit(self):
-        self.query_one(LoadingIndicator).display = True
-        self.query_one(DataTable).display = False
-        inp = self.query_one(Input)
-        if inp.value:
-            self.load_data(inp.value)
-        else:
-            self.app.exit([])
-        inp.focus()
-
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        self.exit(self.query_one(DataTable).get_row(event.row_key))
-
-    def action_request_quit(self) -> None:
-        self.app.exit([])
-
-    @work
-    async def load_data(self, searchstr):
-        table = self.query_one(DataTable)
-        table.clear(columns=True)
-
-        await asyncio.sleep(0.1)
-
-        rep = NIHReporter()
-        data = rep.search_full(searchstr)
-        if not data:
-            return
-        rows = iter(data)
-
-        table.add_columns(*next(rows))
-        table.add_rows(rows)
-
-        table.display = True
-        self.query_one(LoadingIndicator).display = False
-
-        return
-
-
-class Rclone:
-    def __init__(self, args, cfg):
-        self.args = args
-        self.cfg = cfg
-        self.rc = os.path.join(self.cfg.bin_dir, 'rclone')
-
-    # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
-
-    # backup: rclone --verbose --files-from tmpfile --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
-    # restore: rclone --verbose --use-json-log copy --max-depth 1 :s3:posix-dp/tests4/ ./tests2
-    # rclone copy --verbose --use-json-log --max-depth 1  :s3:posix-dp/tests5/ ./tests5
-    # rclone --use-json-log checksum md5 ./tests/.froster.md5sum :s3:posix-dp/tests2/
-    # storage tier for each file
-    # rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
-    # list without subdir
-    # rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
-    # rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
-
-    def _run_rc(self, command):
-
-        command = self._add_opt(command, '--verbose')
-        command = self._add_opt(command, '--use-json-log')
-
-        self.cfg.printdbg('Rclone command:', " ".join(command))
-        try:
-            ret = subprocess.run(command, capture_output=True,
-                                 text=True, env=self.cfg.envrn)
-            if ret.returncode != 0:
-                # pass
-                sys.stderr.write(
-                    f'*** Error, Rclone return code > 0:\n{ret.stderr} Command:\n{" ".join(command)}\n\n')
-                # list of exit codes
-                # 0 - success
-                # 1 - Syntax or usage error
-                # 2 - Error not otherwise categorised
-                # 3 - Directory not found
-                # 4 - File not found
-                # 5 - Temporary error (one that more retries might fix) (Retry errors)
-                # 6 - Less serious errors (like 461 errors from dropbox) (NoRetry errors)
-                # 7 - Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)
-                # 8 - Transfer exceeded - limit set by --max-transfer reached
-                # 9 - Operation successful, but no files transferred
-
-            # lines = ret.stderr.decode('utf-8').splitlines() #needed if you do not use ,text=True
-            # locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l])
-            # print("   STDOUT:",ret.stdout)
-            # print("   STDERR:",ret.stderr)
-            # rclone mount --daemon
-            return ret.stdout.strip(), ret.stderr.strip()
-
-        except Exception as e:
-            print(f'\nRclone Error in _run_rc: {str(e)}, command run:')
-            print(f" ".join(command))
-            return None, str(e)
-
-    def _run_bk(self, command):
-        # command = self._add_opt(command, '--verbose')
-        # command = self._add_opt(command, '--use-json-log')
-        cmdline = " ".join(command)
-        self.cfg.printdbg('Rclone command:', cmdline)
-        try:
-            ret = subprocess.Popen(command, preexec_fn=os.setsid, stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE, text=True, env=self.cfg.envrn)
-            # _, stderr = ret.communicate(timeout=3)  # This does not work with rclone
-            if ret.stderr:
-                sys.stderr.write(
-                    f'*** Error in command "{cmdline}":\n {ret.stderr} ')
-            return ret.pid
-        except Exception as e:
-            print(f'Rclone Error: {str(e)}')
-            return None
-
-    def copy(self, src, dst, *args):
-        command = [self.rc, 'copy'] + list(args)
-        command.append(src)  # command.append(f'{src}/')
-        command.append(dst)
-        out, err = self._run_rc(command)
-        if out:
-            print(f'rclone copy output: {out}')
-        # print('ret', err)
-        stats, ops = self._parse_log(err)
-        if stats:
-            return stats[-1]  # return the stats
-        else:
-            st = {}
-            st['stats'] = {}
-            st['stats']['errors'] = 1
-            st['stats']['lastError'] = err
-            return st
-
-    def checksum(self, md5file, dst, *args):
-        # checksum md5 ./tests/.froster.md5sum
-        command = [self.rc, 'checksum'] + list(args)
-        command.append('md5')
-        command.append(md5file)
-        command.append(dst)
-        # print("Command:", command)
-        out, err = self._run_rc(command)
-        if out:
-            print(f'rclone checksum output: {out}')
-        # print('ret', err)
-        stats, ops = self._parse_log(err)
-        if stats:
-            return stats[-1]  # return the stats
-        else:
-            return []
-
-    def mount(self, url, mountpoint, *args):
-        if not shutil.which('fusermount3'):
-            print('Could not find "fusermount3". Please install the "fuse3" OS package')
-            return False
-        if not url.endswith('/'):
-            url+'/'
-        mountpoint = mountpoint.rstrip(os.path.sep)
-        command = [self.rc, 'mount'] + list(args)
-        try:
-            current_permissions = os.lstat(mountpoint).st_mode
-            new_permissions = (current_permissions & ~0o07) | 0o05
-            os.chmod(mountpoint, new_permissions)
-        except:
-            pass
-        command.append('--allow-non-empty')
-        command.append('--default-permissions')
-        command.append('--read-only')
-        command.append('--no-checksum')
-        command.append('--quiet')
-        command.append(url)
-        command.append(mountpoint)
-        pid = self._run_bk(command)
-        return pid
-
-    def unmount(self, mountpoint, wait=False):
-        mountpoint = mountpoint.rstrip(os.path.sep)
-        if self._is_mounted(mountpoint):
-            if shutil.which('fusermount3'):
-                cmd = ['fusermount3', '-u', mountpoint]
-                ret = subprocess.run(
-                    cmd, capture_output=False, text=True, env=self.cfg.envrn)
-            else:
-                rclone_pids = self._get_pids('rclone')
-                fld_pids = self._get_pids(mountpoint, True)
-                common_pids = [
-                    value for value in rclone_pids if value in fld_pids]
-                for pid in common_pids:
-                    try:
-                        os.kill(pid, signal.SIGTERM)
-                        if wait:
-                            _, _ = os.waitpid(int(pid), 0)
-                        return True
-                    except PermissionError:
-                        print(
-                            f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
-                    except Exception as e:
-                        print(
-                            f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}')
-        else:
-            print(
-                f'\nError: Folder {mountpoint} is currently not used as a mountpoint by rclone.')
-
-    def version(self):
-        command = [self.rc, 'version']
-        return self._run_rc(command)
-
-    def get_mounts(self):
-        mounts = []
-        with open('/proc/mounts', 'r') as f:
-            for line in f:
-                parts = line.split()
-                mount_point, fs_type = parts[1], parts[2]
-                if fs_type.startswith('fuse.rclone'):
-                    mounts.append(mount_point)
-        return mounts
-
-    def _get_pids(self, process, full=False):
-        process = process.rstrip(os.path.sep)
-        if full:
-            command = ['pgrep', '-f', process]
-        else:
-            command = ['pgrep', process]
-        try:
-            output = subprocess.check_output(command)
-            pids = [int(pid) for pid in output.decode(
-                errors='ignore').split('\n') if pid]
-            return pids
-        except subprocess.CalledProcessError:
-            # No rclone processes found
-            return []
-
-    def _is_mounted(self, folder_path):
-        # Resolve any symbolic links
-        folder_path = os.path.realpath(folder_path)
-        with open('/proc/mounts', 'r') as f:
-            for line in f:
-                parts = line.split()
-                mount_point, fs_type = parts[1], parts[2]
-                if mount_point == folder_path and fs_type.startswith('fuse.rclone'):
-                    return True
-
-    def _add_opt(self, cmd, option, value=None):
-        if option in cmd:
-            return cmd
-        cmd.append(option)
-        if value:
-            cmd.append(value)
-        return cmd
-
-    def _parse_log(self, strstderr):
-        lines = strstderr.split('\n')
-        data = [json.loads(line.rstrip()) for line in lines if line[0] == "{"]
-        stats = []
-        operations = []
-        for obj in data:
-            if 'accounting/stats' in obj['source']:
-                stats.append(obj)
-            elif 'operations/operations' in obj['source']:
-                operations.append(obj)
-        return stats, operations
-
-        # stats":{"bytes":0,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":4.121489785,"errors":12,"eta":null,"fatalError":false,
-        # "lastError":"failed to open source object: Object in GLACIER, restore first: bucket=\"posix-dp\", key=\"tests4/table_example.py\"",
-        # "renames":0,"retryError":true,"speed":0,"totalBytes":0,"totalChecks":0,"totalTransfers":0,"transferTime":0,"transfers":0},
-        # "time":"2023-04-16T10:18:46.121921-07:00"}
-
-
-class SlurmEssentials:
-    # exit code 64 causes Slurm to --requeue, e.g. sys.exit(64)
-    def __init__(self, args, cfg):
-        self.script_lines = ["#!/bin/bash"]
-        self.cfg = cfg
-        self.args = args
-        self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
-        self.jobs = []
-        self.job_info = {}
-        self.partition = cfg.read('hpc', 'slurm_partition')
-        self.qos = cfg.read('hpc', 'slurm_qos')
-        self.walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
-        self._add_lines_from_cfg()
-
-    def add_line(self, line):
-        if line:
-            self.script_lines.append(line)
-
-    def get_future_start_time(self, add_hours):
-        now = datetime.datetime.now()
-        future_time = now + datetime.timedelta(hours=add_hours)
-        return future_time.strftime("%Y-%m-%dT%H:%M")
-
-    def _add_lines_from_cfg(self):
-        slurm_lscratch = self.cfg.read('hpc', 'slurm_lscratch')
-        lscratch_mkdir = self.cfg.read('hpc', 'lscratch_mkdir')
-        lscratch_root = self.cfg.read('hpc', 'lscratch_root')
-        if slurm_lscratch:
-            self.add_line(f'#SBATCH {slurm_lscratch}')
-        self.add_line(f'{lscratch_mkdir}')
-        if lscratch_root:
-            self.add_line('export TMPDIR=%s/${SLURM_JOB_ID}' % lscratch_root)
-
-    def _reorder_sbatch_lines(self, script_buffer):
-        # we need to make sure that all #BATCH are at the top
-        script_buffer.seek(0)
-        lines = script_buffer.readlines()
-        # Remove the shebang line from the list of lines
-        shebang_line = lines.pop(0)
-        sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
-        non_sbatch_lines = [
-            line for line in lines if not line.startswith("#SBATCH")]
-        reordered_script = io.StringIO()
-        reordered_script.write(shebang_line)
-        for line in sbatch_lines:
-            reordered_script.write(line)
-        for line in non_sbatch_lines:
-            reordered_script.write(line)
-        # add a local scratch teardown, if configured
-        reordered_script.write(self.cfg.read('hpc', 'lscratch_rmdir'))
-        reordered_script.seek(0)
-        return reordered_script
-
-    def sbatch(self):
-        script = io.StringIO()
-        for line in self.script_lines:
-            script.write(line + "\n")
-        script.seek(0)
-        oscript = self._reorder_sbatch_lines(script)
-        result = subprocess.run(["sbatch"], text=True, shell=True, input=oscript.read(),
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode != 0:
-            if 'Invalid generic resource' in result.stderr:
-                print('Invalid generic resource request. Please remove or change file:')
-                print(os.path.join(self.shared_config_dir, 'hpc', 'slurm_lscratch'))
-            else:
-                raise RuntimeError(
-                    f"Error running sbatch: {result.stderr.strip()}")
-            sys.exit(1)
-        job_id = int(result.stdout.split()[-1])
-        if args.debug:
-            oscript.seek(0)
-            with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
-                file.write(oscript.read())
-                print(f' Debug script created: submitted-{job_id}.sh')
-        return job_id
-
-    def squeue(self):
-        result = subprocess.run(["squeue", "--me", "-o", self.squeue_output_format],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running squeue: {result.stderr.strip()}")
-        self.jobs = self._parse_squeue_output(result.stdout.strip())
-
-    def _parse_squeue_output(self, output):
-        csv_file = io.StringIO(output)
-        reader = csv.DictReader(csv_file, delimiter=',',
-                                quotechar='"', skipinitialspace=True)
-        jobs = [row for row in reader]
-        return jobs
-
-    def print_jobs(self):
-        for job in self.jobs:
-            print(job)
-
-    def job_comment_read(self, job_id):
-        jobdict = self._scontrol_show_job(job_id)
-        return jobdict['Comment']
-
-    def job_comment_write(self, job_id, comment):
-        # a comment can be maximum 250 characters, will be chopped automatically
-        args = ['update', f'JobId={str(job_id)}',
-                f'Comment={comment}', str(job_id)]
-        result = subprocess.run(['scontrol'] + args,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running scontrol: {result.stderr.strip()}")
-
-    def _scontrol_show_job(self, job_id):
-        args = ["--oneliner", "show", "job", str(job_id)]
-        result = subprocess.run(['scontrol'] + args,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running scontrol: {result.stderr.strip()}")
-        self.job_info = self._parse_scontrol_output(result.stdout)
-
-    def _parse_scontrol_output(self, output):
-        fields = output.strip().split()
-        job_info = {}
-        for field in fields:
-            key, value = field.split('=', 1)
-            job_info[key] = value
-        return job_info
-
-    def _parse_tabular_data(self, data_str, separator="|"):
-        """Parse data (e.g. acctmgr) presented in a tabular format into a list of dictionaries."""
-        lines = data_str.strip().splitlines()
-        headers = lines[0].split(separator)
-        data = []
-        for line in lines[1:]:
-            values = line.split(separator)
-            data.append(dict(zip(headers, values)))
-        return data
-
-    def _parse_partition_data(self, data_str):
-        """Parse data presented in a tabular format into a list of dictionaries."""
-        lines = data_str.strip().split('\n')
-        # Parse each line into a dictionary
-        partitions = []
-        for line in lines:
-            parts = line.split()
-            partition_dict = {}
-            for part in parts:
-                key, value = part.split("=", 1)
-                partition_dict[key] = value
-            partitions.append(partition_dict)
-        return partitions
-
-    def _get_user_groups(self):
-        """Get the groups the current Unix user is a member of."""
-        groups = [grp.getgrgid(gid).gr_name for gid in os.getgroups()]
-        return groups
-
-    def _get_output(self, command):
-        """Execute a shell command and return its output."""
-        result = subprocess.run(command, shell=True, text=True,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running {command}: {result.stderr.strip()}")
-        return result.stdout.strip()
-
-    def _get_default_account(self):
-        return self._get_output(f'sacctmgr --noheader --parsable2 show user {self.cfg.whoami} format=DefaultAccount')
-
-    def _get_associations(self):
-        mystr = self._get_output(
-            f"sacctmgr show associations where user={self.cfg.whoami} format=Account,QOS --parsable2")
-        asso = {item['Account']: item['QOS'].split(
-            ",") for item in self._parse_tabular_data(mystr) if 'Account' in item}
-        return asso
-
-    def get_allowed_partitions_and_qos(self, account=None):
-        """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
-        bacc = os.environ.get('SBATCH_ACCOUNT', '')
-        account = bacc if bacc else account
-        sacc = os.environ.get('SLURM_ACCOUNT', '')
-        account = sacc if sacc else account
-        allowed_partitions = {}
-        partition_str = self._get_output("scontrol show partition --oneliner")
-        partitions = self._parse_partition_data(partition_str)
-        user_groups = self._get_user_groups()
-        if account is None:
-            account = self._get_default_account()
-        for partition in partitions:
-            pname = partition['PartitionName']
-            add_partition = False
-            if partition.get('State', '') != 'UP':
-                continue
-            if any(group in user_groups for group in partition.get('DenyGroups', '').split(',')):
-                continue
-            if account in partition.get('DenyAccounts', '').split(','):
-                continue
-            allowedaccounts = partition.get('AllowAccounts', '').split(',')
-            if allowedaccounts != ['']:
-                if account in allowedaccounts or 'ALL' in allowedaccounts:
-                    add_partition = True
-            elif any(group in user_groups for group in partition.get('AllowGroups', '').split(',')):
-                add_partition = True
-            elif partition.get('AllowGroups', '') == 'ALL':
-                add_partition = True
-            if add_partition:
-                p_deniedqos = partition.get('DenyQos', '').split(',')
-                p_allowedqos = partition.get('AllowQos', '').split(',')
-                associations = self._get_associations()
-                account_qos = associations.get(account, [])
-                if p_deniedqos != ['']:
-                    allowed_qos = [
-                        q for q in account_qos if q not in p_deniedqos]
-                    # print(f"p_deniedqos: allowed_qos in {pname}:", allowed_qos)
-                elif p_allowedqos == ['ALL']:
-                    allowed_qos = account_qos
-                    # print(f"p_allowedqos = ALL in {pname}:", allowed_qos)
-                elif p_allowedqos != ['']:
-                    allowed_qos = [q for q in account_qos if q in p_allowedqos]
-                    # print(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos)
-                else:
-                    allowed_qos = []
-                    # print(f"p_allowedqos = [] in {pname}:", allowed_qos)
-                allowed_partitions[pname] = allowed_qos
-        return allowed_partitions
-
-    def display_job_info(self):
-        print(self.job_info)
-
-
-class NIHReporter:
-    # if we use --nih as an argument we query NIH Reporter
-    # for metadata
-
-    def __init__(self, verbose=False, active=False, years=None):
-        # self.args = args
-        self.verbose = verbose
-        self.active = active
-        self.years = years
-        self.url = 'https://api.reporter.nih.gov/v2/projects/search'
-        self.exclude_fields = ['Terms', 'AbstractText',
-                               'PhrText']  # pref_terms still included
-        self.grants = []
-
-    def search_full(self, searchstr):
-        searchstr = self._clean_string(searchstr)
-        if not searchstr:
-            return []
-
-        # Search by PI
-        if not self._is_number(searchstr):
-            print('PI search ...')
-            criteria = {"pi_names": [{"any_name": searchstr}]}
-            self._post_request(criteria)
-            print('* # Grants:', len(self.grants))
-
-        if not self.grants:
-            # Search by Project
-            print('Project search ...')
-            criteria = {'project_nums': [searchstr]}
-            self._post_request(criteria)
-            print('* # Grants:', len(self.grants))
-
-        if not self.grants and not self._is_number(searchstr):
-            # Search by Organizations
-            print('Org search ...')
-            criteria = {'org_names': [searchstr]}
-            self._post_request(criteria)
-            print('* # Grants:', len(self.grants))
-
-        # Search by text in  "projecttitle", "terms", and "abstracttext"
-        print('Text search ...')
-        criteria = {'advanced_text_search':
-                    {'operator': 'and', 'search_field': 'all',
-                     'search_text': searchstr}
-                    }
-        self._post_request(criteria)
-        print('* # Grants:', len(self.grants))
-
-        return self._result_sets(True)
-
-    def search_one(self, criteria, header=False):
-        searchstr = self._clean_string(searchstr)
-        self._post_request(criteria)
-        return self._result_sets(header)
-
-    def _is_number(self, string):
-        try:
-            float(string)
-            return True
-        except ValueError:
-            return False
-
-    def _clean_string(self, mystring):
-        mychars = ",:?'$^%&*!`~+={}\\[]"+'"'
-        for i in mychars:
-            mystring = mystring.replace(i, ' ')
-            # print('mystring:', mystring)
-        return mystring
-
-    def _post_request(self, criteria):
-        # make request with retries
-        offset = 0
-        timeout = 30
-        limit = 250
-        max = 250
-        max_retries = 5
-        retry_delay = 1
-        retry_count = 0
-        total = max
-        # for retry_count in range(max_retries):
-        try:
-            while offset < max:
-                params = {'offset': offset, 'limit': limit, 'criteria': criteria,
-                          'exclude_fields': self.exclude_fields}
-                # make request
-                print('Params:', params)
-                response = requests.post(
-                    self.url, json=params, timeout=timeout)
-                # check status code - else return data
-                if response.status_code >= 400 and response.status_code < 500:
-                    print(f"Bad request: {response.text}")
-                    if retry_count < max_retries - 1:
-                        print(f"Retrying after {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                        retry_count += 1
-                    else:
-                        # raise Exception(f"Failed to complete POST request after {max_retries} attempts")
-                        print(
-                            f"Failed to complete POST request after {max_retries} attempts")
-                        return False
-                else:
-                    json = response.json()
-                    total = json['meta']['total']
-                    if total == 0:
-                        if self.verbose:
-                            print("No records for criteria '{}'".format(criteria))
-                        return
-                    if total < max:
-                        max = total
-                    if self.verbose:
-                        print("Found {0} records for criteria '{1}'".format(
-                            total, criteria))
-                    self.grants += [g for g in json['results']]
-                    if self.verbose:
-                        print("{0} records off {1} total returned ...".format(
-                            offset, total), file=sys.stderr)
-                    offset += limit
-                    if offset == 15000:
-                        offset == 14999
-                    elif offset > 15000:
-                        return
-        except requests.exceptions.RequestException as e:
-            print(f"POST request failed: {e}")
-            if retry_count < max_retries - 1:
-                print(f"Retrying after {retry_delay} seconds...")
-                retry_count += 1
-                time.sleep(retry_delay)
-            else:
-                return
-        # raise Exception(f"Failed to complete POST request after {max_retries} attempts")
-
-    def _result_sets(self, header=False):
-        sets = []
-        if header:
-            sets.append(('project_num', 'start', 'end', 'contact_pi_name', 'project_title',
-                        'org_name', 'project_detail_url', 'pi_profile_id'))
-        grants = {}
-        for g in self.grants:
-            # print(json.dumps(g, indent=2))
-            # return
-            core_project_num = str(g.get('core_project_num', '')).strip()
-            line = (
-                core_project_num,
-                str(g.get('project_start_date', '')).strip()[:10],
-                str(g.get('project_end_date', '')).strip()[:10],
-                str(g.get('contact_pi_name', '')).strip(),
-                str(g.get('project_title', '')).strip()  # [:50]
-            )
-            org = ""
-            if g['organization']['org_name']:
-                org = g['organization']['org_name']
-            line += (
-                str(org.encode('utf-8'), 'utf-8'),
-                g.get('project_detail_url', '')
-            )
-            for p in g['principal_investigators']:
-                if p.get('is_contact_pi', False):
-                    line += (str(p.get('profile_id', '')),)
-            if not core_project_num in grants:
-                grants[core_project_num] = line
-        for g in grants.values():
-            sets.append(g)
-            # print(g)
-        # print("{0} total # of grants...".format(len(grants)),file=sys.stderr)
-        return sets
 
 
 class AWSBoto:
@@ -4804,876 +3977,1705 @@ class AWSBoto:
             user_monthly_unit, user_daily_cost, user_daily_unit, user_name
 
 
-class ConfigManager:
-    # we write all config entries as files to '~/.froster/config'
-    # to make it easier for bash users to read entries
-    # with a simple var=$(cat ~/.froster/config/section/entry)
-    # entries can be strings, lists that are written as
-    # multi-line files and dictionaries which are written to json
+class ScreenConfirm(ModalScreen[bool]):
+    DEFAULT_CSS = """
+    ScreenConfirm {
+        align: center middle;
+    }
 
-    def __init__(self, args):
+    ScreenConfirm > Vertical {
+        background: $secondary;
+        width: auto;
+        height: auto;
+        border: thick $primary;
+        padding: 2 4;
+    }
 
-        # Expand the ~ symbols to user's home directory
-        self.home_dir = os.path.expanduser('~')
+    ScreenConfirm > Vertical > * {
+        width: auto;
+        height: auto;
+    }
 
-        # Froster's home directory
-        self.froster_dir = os.path.join(self.home_dir, '.froster')
+    ScreenConfirm > Vertical > Label {
+        padding-bottom: 2;
+    }
 
-        # Froster's configuration directory
-        self.config_dir = os.path.join(self.froster_dir, 'config')
+    ScreenConfirm > Vertical > Horizontal {
+        align: right middle;
+    }
 
-        # Froster's configuration file
-        self.config_file = os.path.join(self.config_dir, 'config.ini')
+    ScreenConfirm Button {
+        margin-left: 2;
+    }
+    """
 
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
+    def compose(self) -> ComposeResult:
+        with Vertical():
 
-        # Check if there is a ~/.froster/config/config.ini file already
-        if (os.path.exists(self.config_file)):
+            # badfiles = arch.cannot_read_files(retline[5])
+            # if badfiles:
+            #     print(f'  Cannot read these files in folder {retline[5]}: {", ".join(badfiles)}')
+            #     return False
 
-            # Populate self variables using confing.ini file
-            config.read(self.config_file)
+            yield Label("Do you want to start this archiving job now?\nChoose 'Quit' if you would like to archive recursively")
+            with Horizontal():
+                yield Button("Start Job", id="continue")
+                yield Button("Back to List", id="return")
+                yield Button("Quit to CLI", id="quit")
 
-            # Froster's shared configuration dir
-            self.shared_config_dir = config.get(
-                'DEFAULT', 'shared_config_dir', fallback=None)
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        # self.dismiss(result=event.button.id == "continue")
+        self.dismiss(result=event.button.id)
 
-            # Froster's shared configuration file
-            self.shared_config_file = config.get(
-                'DEFAULT', 'shared_config_file', fallback=None)
 
-            # TODO: If there is shared config file, read it and populate the variables
+class TableHotspots(App[list]):
 
-            # Froster's bin directory
-            self.bin_dir = config.get('DEFAULT', 'bin_dir', fallback=None)
+    BINDINGS = [("q", "request_quit", "Quit")]
 
-            # NIH Reporter API key
-            self.nih = config.get('DEFAULT', 'nih', fallback=None)
+    def __init__(self):
+        super().__init__()
+        self.myrow = []
 
-            # AWS directory
-            self.aws_dir = config.get('AWS', 'aws_dir', fallback=None)
+    def compose(self) -> ComposeResult:
+        table = DataTable()
+        table.focus()
+        table.zebra_stripes = True
+        table.cursor_type = "row"
+        table.styles.max_height = "99vh"
+        yield table
+        # yield Footer()
 
-            # AWS credentials file
-            self.aws_credentials_file = config.get(
-                'AWS', 'aws_credentials_file', fallback=None)
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        fh = open(SELECTEDFILE, 'r')
+        rows = csv.reader(fh)
+        table.add_columns(*next(rows))
+        table.add_rows(itertools.islice(rows, MAXHOTSPOTS))
 
-            # AWS config file
-            self.aws_config_file = config.get(
-                'AWS', 'aws_config_file', fallback=None)
+    def accept_answer(self, answer: str) -> None:
+        # adds yesno answer as last element in list
+        if answer == 'continue':
+            self.exit(self.myrow+[True])
+        elif answer == 'quit':
+            self.exit(self.myrow+[False])
 
-            # AWS profile
-            self.aws_profile = config.get('AWS', 'aws_profile', fallback=None)
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.myrow = self.query_one(DataTable).get_row(event.row_key)
+        # self.exit(self.myrow)
+        self.push_screen(ScreenConfirm(), callback=self.accept_answer)
 
-            # Current S3 Bucket
-            self.current_bucket = config.get(
-                'AWS', 'current_bucket', fallback=None)
+    def action_request_quit(self) -> None:
+        self.app.exit()
 
-        else:
-            # Create config directory
-            os.makedirs(self.config_dir, exist_ok=True)
 
-            # Add default section to config.ini file
-            config['DEFAULT'] = {}
+class TableArchive(App[list]):
 
-            # Froster's home directory
-            config['DEFAULT']['home_dir'] = self.home_dir
+    BINDINGS = [("q", "request_quit", "Quit")]
 
-            # Froster's directory
-            config['DEFAULT']['froster_dir'] = self.froster_dir
+    def compose(self) -> ComposeResult:
+        table = DataTable()
+        table.focus()
+        table.zebra_stripes = True
+        table.cursor_type = "row"
+        table.styles.max_height = "99vh"
+        # table.fixed_rows = 1
+        yield table
+        yield Footer()
 
-            # Froster's configuration directory
-            config['DEFAULT']['config_dir'] = self.config_dir
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        rows = csv.reader(io.StringIO(TABLECSV))
+        table.add_columns(*next(rows))
+        table.add_rows(itertools.islice(rows, MAXHOTSPOTS))
 
-            # Froster's configuration file
-            config['DEFAULT']['config_file'] = self.config_file
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.exit(self.query_one(DataTable).get_row(event.row_key))
+        # self.push_screen(ScreenConfirm())
 
-            # Froster's shared configuration dir
-            self.shared_config_dir = ''
-            config['DEFAULT']['shared_config_dir'] = self.shared_config_dir
+    def action_request_quit(self) -> None:
+        self.app.exit()
 
-            # Froster's shared configuration file
-            self.shared_config_file = ''
-            config['DEFAULT']['shared_config_file'] = self.shared_config_file
 
-            # Froster's bin directory
-            self.bin_dir = os.path.join(self.froster_dir, 'bin')
-            config['DEFAULT']['bin_dir'] = self.bin_dir
+class TableNIHGrants(App[list]):
 
-            # NIH Reporter API key
-            self.nih = ''
-            config['DEFAULT']['nih'] = self.nih
+    DEFAULT_CSS = """
+    Input.-valid {
+        border: tall $success 60%;
+    }
+    Input.-valid:focus {
+        border: tall $success;
+    }
+    Input {
+        margin: 1 1;
+    }
+    Label {
+        margin: 1 2;
+    }
+    DataTable {
+        margin: 1 2;
+    }
+    """
 
-            # Add AWS section to config.ini file
-            config['AWS'] = {}
+    BINDINGS = [("q", "request_quit", "Quit")]
 
-            # AWS directory
-            self.aws_dir = os.path.join(self.home_dir, '.aws')
-            config['AWS']['aws_dir'] = self.aws_dir
-
-            # AWS credentials file
-            self.aws_credentials_file = os.path.join(
-                self.aws_dir, 'credentials')
-            config['AWS']['aws_credentials_file'] = self.aws_credentials_file
-
-            # AWS config file
-            self.aws_config_file = os.path.join(self.aws_dir, 'config')
-            config['AWS']['aws_config_file'] = self.aws_config_file
-
-            # AWS profile
-            self.aws_profile = ''
-            config['AWS']['aws_profile'] = self.aws_profile
-
-            # Current S3 Bucket
-            self.current_bucket = ''
-            config['AWS']['current_bucket'] = self.current_bucket
-
-            # Write these variables inside the config.ini file
-            with open(self.config_file, 'w') as config_file:
-                config.write(config_file)
-
-    def __repr__(self):
-        return "<{klass} @{id:x} {attrs}>".format(
-            klass=self.__class__.__name__,
-            id=id(self) & 0xFFFFFF,
-            attrs=" ".join("{}={!r}\n".format(k, v)
-                           for k, v in self.__dict__.items()),
+    def compose(self) -> ComposeResult:
+        yield Label("Enter search to link your data with metadata of an NIH grant/project")
+        yield Input(
+            placeholder="Enter a part of a Grant Number, PI, Institution or Full Text (Title, Abstract, Terms) ...",
         )
+        yield LoadingIndicator()
+        table = DataTable()
+        # table.focus()
+        table.zebra_stripes = True
+        table.cursor_type = "row"
+        table.styles.max_height = "99vh"
+        yield table
+        # yield Footer()
 
-    def _set_env_vars(self, profile):
+    def on_mount(self) -> None:
+        self.query_one(LoadingIndicator).display = False
+        self.query_one(DataTable).display = False
 
-        # Read the credentials file
-        config.read(self.aws_credentials_file)
-        self.aws_region = self.get_aws_region(profile)
-
-        if not config.has_section(profile):
-            if self.args.debug:
-                print(
-                    f'~/.aws/credentials has no section for profile {profile}')
-            return False
-        if not config.has_option(profile, 'aws_access_key_id'):
-            if self.args.debug:
-                print(
-                    f'~/.aws/credentials has no entry aws_access_key_id in section/profile {profile}')
-            return False
-
-        # Get the AWS access key and secret key from the specified profile
-        aws_access_key_id = config.get(profile, 'aws_access_key_id')
-        aws_secret_access_key = config.get(profile, 'aws_secret_access_key')
-
-        # Set the environment variables for creds
-        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
-        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
-        os.environ['AWS_PROFILE'] = profile
-        self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
-        self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
-        self.envrn['AWS_PROFILE'] = profile
-        self.envrn['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
-        self.envrn['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
-
-        if profile in ['default', 'AWS', 'aws']:
-            # Set the environment variables for AWS
-            self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
-            self.envrn['RCLONE_S3_REGION'] = self.aws_region
-            self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
-            self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.read(
-                'general', 's3_storage_class')
-            os.environ['RCLONE_S3_STORAGE_CLASS'] = self.read(
-                'general', 's3_storage_class')
+    @on(Input.Submitted)
+    def action_submit(self):
+        self.query_one(LoadingIndicator).display = True
+        self.query_one(DataTable).display = False
+        inp = self.query_one(Input)
+        if inp.value:
+            self.load_data(inp.value)
         else:
-            prf = self.read('profiles', profile)
-            self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
-            self.envrn['RCLONE_S3_PROFILE'] = profile
-            # profile={'name': '', 'provider': '', 'storage_class': ''}
-            if isinstance(prf, dict):
-                self.envrn['RCLONE_S3_PROVIDER'] = prf['provider']
-                self.envrn['RCLONE_S3_ENDPOINT'] = self._get_aws_s3_session_endpoint_url(
-                    profile)
-                self.envrn['RCLONE_S3_REGION'] = self.aws_region
-                self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
-                self.envrn['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
-                os.environ['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
+            self.app.exit([])
+        inp.focus()
 
-        return True
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.exit(self.query_one(DataTable).get_row(event.row_key))
 
-    def _get_shared_config_dir(self):
-        theroot = self.config_dir
-        rootfile = os.path.join(theroot, 'shared_config_dir')
-        if os.path.exists(rootfile):
-            with open(rootfile, 'r') as myfile:
-                theroot = myfile.read().strip()
-                if not os.path.isdir(theroot):
-                    if not self.ask_yes_no(f'{rootfile} points to a shared config that does not exist. Do you want to configure {theroot} now?'):
-                        print(
-                            f"Please remove file {rootfile} to continue with a single user config.")
-                        sys.exit(1)
-                        # raise FileNotFoundError(f'Config root folder "{theroot}" not found. Please remove {rootfile}')
-        return theroot
+    def action_request_quit(self) -> None:
+        self.app.exit([])
 
-    def _get_section_path(self, section):
-        return os.path.join(self.shared_config_dir, section)
+    @work
+    async def load_data(self, searchstr):
+        table = self.query_one(DataTable)
+        table.clear(columns=True)
 
-    def _get_entry_path(self, section, entry):
-        if section:
-            section_path = self._get_section_path(section)
-            return os.path.join(section_path, entry)
-        else:
-            return os.path.join(self.shared_config_dir, entry)
+        await asyncio.sleep(0.1)
 
-    def fix_tree_permissions(self, target_dir):
-        try:
-            if not os.path.isdir(target_dir):
-                print(
-                    f"Error: '{target_dir}' is not a directory", file=sys.stderr)
-                return False
-            # Get the group ID of the target directory
-            gid = os.lstat(target_dir).st_gid
-            for root, dirs, files in os.walk(target_dir):
-                # Check and change the group of the directory
-                self.fix_permissions_if_needed(root, gid)
-                # Check and change the group of each file in the directory
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    self.fix_permissions_if_needed(file_path, gid)
-            return True
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return False
-
-    def fix_permissions_if_needed(self, path, gid=None):
-        # setgid, g+rw, o+r and optionally enforce gid (group)
-        # fix: different setup mey be needed to handle symlinks
-        try:
-            current_mode = os.lstat(path).st_mode
-            # Add user rw, group rw and others read # 0o060 | 0o004
-            new_mode = current_mode | 0o664
-            if new_mode != current_mode:
-                # new_mode = current_mode | 0o7077 # clear group and other permission
-                if not path.endswith('.pem'):
-                    os.chmod(path, new_mode)
-                    print(
-                        f"  Changed permissions of '{path}' from {oct(current_mode)} to {oct(new_mode)}")
-                    current_mode = os.lstat(path).st_mode
-            if os.path.isdir(path):
-                new_mode = current_mode | 0o2000
-                if new_mode != current_mode:  # Check if setgid bit is not set
-                    os.chmod(path, new_mode)
-                    current_mode = os.lstat(path).st_mode
-                    print(f"  Set setgid bit on directory '{path}'")
-                new_mode = current_mode | 0o0111
-                if new_mode != current_mode:  # Check if execute bit is set on dirs
-                    os.chmod(path, new_mode)
-                    print(f"  Set execute bits on directory '{path}'")
-            current_gid = os.lstat(path).st_gid
-            if not gid:
-                gid = current_gid
-            if current_gid != gid:
-                current_group_name = grp.getgrgid(current_gid).gr_name
-                os.chown(path, -1, gid)  # -1 means don't change the user
-                print(
-                    f"  Changed group of '{path}' from '{current_group_name}' to '{grp.getgrgid(gid).gr_name}'")
-            return True
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return False
-
-    def replace_symlinks_with_realpaths(self, folders):
-        cleaned_folders = []
-        for folder in folders:
-            try:
-                # Split the path into its components
-                folder = os.path.expanduser(folder)
-                # print('expanduser folder:', folder)
-                # print('real path:', os.path.realpath(folder))
-                cleaned_folders.append(os.path.realpath(folder))
-            except Exception as e:
-                print(f"Error processing '{folder}': {e}")
-        self.printdbg('cleaned_folders:', cleaned_folders)
-        return cleaned_folders
-
-    def printdbg(self, *args, **kwargs):
-        # use inspect to get the name of the calling function
-        if self.args.debug:
-            current_frame = inspect.currentframe()
-            calling_function = current_frame.f_back.f_code.co_name
-            print(f' DBG {calling_function}():', args, kwargs)
-
-    def prompt(self, question, defaults=None, type_check=None):
-        # Prompts for user input and writes it to config.
-        # defaults are up to 3 pipe separated strings:
-        # if there is only one string this is the default
-        #
-        # if there are 2 strings they represent section
-        # and key name of the config entry and if there are
-        # 3 strings the last 2 represent section
-        # and key name of the config file and the first is
-        # the default if section and key name are empty
-        #
-        # if defaults is a python list it will assign a number
-        # to each list element and prompt the user for one
-        # of the options
-        default = ''
-        section = ''
-        key = ''
-        if not question.endswith(':'):
-            question += ':'
-        question = f"*** {question} ***"
-        defaultlist = []
-        if isinstance(defaults, list):
-            defaultlist = defaults
-        elif defaults:
-            defaultlist = defaults.split('|')[0].split(',')
-        if len(defaultlist) > 1:
-            print(question)
-            for i, option in enumerate(defaultlist, 1):
-                print(f'  ({i}) {option}')
-            while True:
-                selected = input("  Enter the number of your selection: ")
-                if selected.isdigit() and 1 <= int(selected) <= len(defaultlist):
-                    return defaultlist[int(selected) - 1]
-                else:
-                    print("  Invalid selection. Please enter a number from the list.")
-        elif defaults is not None:
-            deflist = defaults.split('|')
-            if len(deflist) == 3:
-                section = deflist[1]
-                key = deflist[2]
-                default = self.read(section, key)
-                if not default:
-                    default = deflist[0]
-            elif len(deflist) == 2:
-                section = deflist[0]
-                key = deflist[1]
-                default = self.read(section, key)
-            elif len(deflist) == 1:
-                default = deflist[0]
-            # if default:
-            question += f"\n  [Default: {default}]"
-        else:
-            question += f"\n  [Default: '']"
-        while True:
-            # user_input = input(f"\033[93m{question}\033[0m ")
-            user_input = input(f"{question} ")
-            if not user_input:
-                if default is not None:
-                    if section:
-                        self.write(section, key, default)
-                    return default
-                else:
-                    print("Please enter a value.")
-            else:
-                if type_check == 'number':
-                    try:
-                        if '.' in user_input:
-                            value = float(user_input)
-                        else:
-                            value = int(user_input)
-                        if section:
-                            self.write(section, key, value)
-                        return value
-                    except ValueError:
-                        print("Invalid input. Please enter a number.")
-                elif type_check == 'string':
-                    if not user_input.isnumeric():
-                        if section:
-                            self.write(section, key, user_input)
-                        return user_input
-                    else:
-                        print("Invalid input. Please enter a string not a number")
-                else:
-                    if section:
-                        self.write(section, key, user_input)
-                    return user_input
-
-    def ask_yes_no(self, question, default="yes"):
-        valid = {"yes": True, "y": True, "no": False, "n": False}
-
-        if default is None:
-            prompt = " [y/n] "
-        elif default == "yes":
-            prompt = " [Y/n] "
-        elif default == "no":
-            prompt = " [y/N] "
-        else:
-            raise ValueError("invalid default answer: '%s'" % default)
-
-        while True:
-            print(question + prompt, end="")
-            choice = input().lower()
-            if default and not choice:
-                return valid[default]
-            elif choice in valid:
-                return valid[choice]
-            else:
-                print("Please respond with 'yes' or 'no' (or 'y' or 'n').")
-
-    def add_cron_job(self, cmd, minute, hour='*', day_of_month='*', month='*', day_of_week='*'):
-        # CURRENTLY INACTIVE
-        if not minute:
-            print('You must set the minute (1-60) explicily')
-            return False
-        with tempfile.NamedTemporaryFile(delete=False) as temp:
-            # Dump the current crontab to the temporary file
-            try:
-                os.system('crontab -l > {}'.format(temp.name))
-            except Exception as e:
-                print(f"Error: {e}")
-
-            # Add the new cron job to the temporary file
-            cron_time = "{} {} {} {} {}".format(
-                str(minute), hour, day_of_month, month, day_of_week)
-            with open(temp.name, 'a') as file:
-                file.write('{} {}\n'.format(cron_time, cmd))
-
-            # Install the new crontab
-            try:
-                os.system('crontab {}'.format(temp.name))
-            except Exception as e:
-                print(f"Error: {e}")
-
-            # Clean up by removing the temporary file
-            os.unlink(temp.name)
-
-        print("Cron job added!")
-
-    def add_systemd_cron_job(self, cmd, minute, hour='*'):
-
-        # Troubleshoot with:
-        #
-        # journalctl -f --user-unit froster-monitor.service
-        # journalctl -f --user-unit froster-monitor.timer
-        # journalctl --since "5 minutes ago" | grep froster-monitor
-
-        SERVICE_CONTENT = textwrap.dedent(f"""
-        [Unit]
-        Description=Run Froster-Monitor Cron Job
-
-        [Service]
-        Type=simple
-        ExecStart={cmd}
-
-        [Install]
-        WantedBy=default.target
-        """)
-
-        TIMER_CONTENT = textwrap.dedent(f"""
-        [Unit]
-        Description=Run Froster-Monitor Cron Job hourly
-
-        [Timer]
-        Persistent=true
-        OnCalendar=*-*-* {hour}:{minute}:00
-        #RandomizedDelaySec=300
-        #FixedRandomDelay=true
-        #OnBootSec=180
-        #OnUnitActiveSec=3600
-        Unit=froster-monitor.service
-
-        [Install]
-        WantedBy=timers.target
-        """)
-
-        # Ensure the directory exists
-        # TODO: Check this path
-        user_systemd_dir = os.path.expanduser("~/.config/systemd/user/")
-        os.makedirs(user_systemd_dir, exist_ok=True)
-
-        SERVICE_PATH = os.path.join(
-            user_systemd_dir, "froster-monitor.service")
-        TIMER_PATH = os.path.join(user_systemd_dir, "froster-monitor.timer")
-
-        # Create service and timer files
-        with open(SERVICE_PATH, "w") as service_file:
-            service_file.write(SERVICE_CONTENT)
-
-        with open(TIMER_PATH, "w") as timer_file:
-            timer_file.write(TIMER_CONTENT)
-
-        # Reload systemd and enable/start timer
-        try:
-            os.chdir(user_systemd_dir)
-            os.system("systemctl --user daemon-reload")
-            os.system("systemctl --user enable froster-monitor.service")
-            os.system("systemctl --user enable froster-monitor.timer")
-            os.system("systemctl --user start froster-monitor.timer")
-            print("Systemd froster-monitor.timer cron job started!")
-        except Exception as e:
-            print(f'Could not add systemd scheduler job, Error: {e}')
-
-    def replicate_ini(self, section, src_file, dest_file):
-
-        # copy an ini section from source to destination
-        # sync values in dest that do not exist in src back to src
-        # best used for sync of AWS profiles.
-        # if section==ALL copy all but section called default
-
-        if not os.path.exists(src_file):
+        rep = NIHReporter()
+        data = rep.search_full(searchstr)
+        if not data:
             return
+        rows = iter(data)
 
-        # Create configparser objects
-        src_parser = configparser.ConfigParser()
-        dest_parser = configparser.ConfigParser()
+        table.add_columns(*next(rows))
+        table.add_rows(rows)
 
-        # Read source and destination files
-        src_parser.read(src_file)
-        dest_parser.read(dest_file)
+        table.display = True
+        self.query_one(LoadingIndicator).display = False
 
-        if section == 'ALL':
-            sections = src_parser.sections()
-            sections.remove('default') if 'default' in sections else None
-        else:
-            sections = [section]
+        return
 
-        for section in sections:
-            # Get the section from source and destination files
-            src_section_data = dict(src_parser.items(section))
-            dest_section_data = dict(dest_parser.items(
-                section)) if dest_parser.has_section(section) else {}
 
-            # If section does not exist in source or destination file, add it
-            if not src_parser.has_section(section):
-                src_parser.add_section(section)
+class Rclone:
+    def __init__(self, args, cfg):
+        self.args = args
+        self.cfg = cfg
+        self.rc = os.path.join(self.cfg.bin_dir, 'rclone')
 
-            if not dest_parser.has_section(section):
-                dest_parser.add_section(section)
+    # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
-            # Write the data into destination file
-            for key, val in src_section_data.items():
-                dest_parser.set(section, key, val)
+    # backup: rclone --verbose --files-from tmpfile --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
+    # restore: rclone --verbose --use-json-log copy --max-depth 1 :s3:posix-dp/tests4/ ./tests2
+    # rclone copy --verbose --use-json-log --max-depth 1  :s3:posix-dp/tests5/ ./tests5
+    # rclone --use-json-log checksum md5 ./tests/.froster.md5sum :s3:posix-dp/tests2/
+    # storage tier for each file
+    # rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
+    # list without subdir
+    # rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
+    # rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
 
-            # Write the data into source file
-            for key, val in dest_section_data.items():
-                if key not in src_section_data:
-                    src_parser.set(section, key, val)
+    def _run_rc(self, command):
 
-        # Save the changes in the destination and source files
-        with open(dest_file, 'w') as dest_configfile:
-            dest_parser.write(dest_configfile)
+        command = self._add_opt(command, '--verbose')
+        command = self._add_opt(command, '--use-json-log')
 
-        with open(src_file, 'w') as src_configfile:
-            src_parser.write(src_configfile)
-
-        if self.args.debug:
-            print(f"Ini-section copied from {src_file} to {dest_file}")
-            print(
-                f"Missing entries in source from destination copied back to {src_file}")
-
-    # get the full list of profiles from ~/.aws/credentials profile folder
-    def get_aws_profiles(self):
+        self.cfg.printdbg('Rclone command:', " ".join(command))
         try:
+            ret = subprocess.run(command, capture_output=True,
+                                 text=True, env=self.cfg.envrn)
+            if ret.returncode != 0:
+                # pass
+                sys.stderr.write(
+                    f'*** Error, Rclone return code > 0:\n{ret.stderr} Command:\n{" ".join(command)}\n\n')
+                # list of exit codes
+                # 0 - success
+                # 1 - Syntax or usage error
+                # 2 - Error not otherwise categorised
+                # 3 - Directory not found
+                # 4 - File not found
+                # 5 - Temporary error (one that more retries might fix) (Retry errors)
+                # 6 - Less serious errors (like 461 errors from dropbox) (NoRetry errors)
+                # 7 - Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)
+                # 8 - Transfer exceeded - limit set by --max-transfer reached
+                # 9 - Operation successful, but no files transferred
 
-            # Check if aws config file exists
-            if not os.path.exists(self.aws_config_file):
-                return []
+            # lines = ret.stderr.decode('utf-8').splitlines() #needed if you do not use ,text=True
+            # locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l])
+            # print("   STDOUT:",ret.stdout)
+            # print("   STDERR:",ret.stderr)
+            # rclone mount --daemon
+            return ret.stdout.strip(), ret.stderr.strip()
 
-            # Check if aws credentials file exists
-            if not os.path.exists(self.aws_credentials_file):
-                return []
+        except Exception as e:
+            print(f'\nRclone Error in _run_rc: {str(e)}, command run:')
+            print(f" ".join(command))
+            return None, str(e)
 
-            # Create a ConfigParser object
-            config = configparser.ConfigParser()
-
-            # Read the aws credentials file
-            config.read(self.aws_credentials_file)
-
-            # Get the list of profiles
-            profiles = []
-            for section in config.sections():
-                # TODO: is this necessary? Backward compatibility?
-                profile_name = section.replace("profile ", "")
-                profiles.append(profile_name)
-
-            return profiles
-
-        except Exception as err:
-            print(f'Error: ${sys._getframe(  ).f_code.co_name}: {err}')
-            return False
-
-    def create_aws_configs(self, access_key=None, secret_key=None, region=None):
-
-        aws_dir = os.path.join(self.home_dir, ".aws")
-
-        if not os.path.exists(aws_dir):
-            os.makedirs(aws_dir)
-
-        if not os.path.isfile(self.aws_config_file):
-            if region:
-                print(
-                    f'\nAWS config file {self.aws_config_file} does not exist, creating ...')
-                with open(self.aws_config_file, "w") as config_file:
-                    config_file.write("[default]\n")
-                    config_file.write(f"region = {region}\n")
-                    config_file.write("\n")
-                    config_file.write("[profile aws]\n")
-                    config_file.write(f"region = {region}\n")
-
-        if not os.path.isfile(self.aws_credentials_file):
-            print(
-                f'\nAWS credentials file {self.aws_credentials_file} does not exist, creating ...')
-            if not access_key:
-                access_key = input("Enter your AWS access key ID: ")
-            if not secret_key:
-                secret_key = input("Enter your AWS secret access key: ")
-            with open(self.aws_credentials_file, "w") as credentials_file:
-                credentials_file.write("[default]\n")
-                credentials_file.write(f"aws_access_key_id = {access_key}\n")
-                credentials_file.write(
-                    f"aws_secret_access_key = {secret_key}\n")
-                credentials_file.write("\n")
-                credentials_file.write("[aws]\n")
-                credentials_file.write(f"aws_access_key_id = {access_key}\n")
-                credentials_file.write(
-                    f"aws_secret_access_key = {secret_key}\n")
-            os.chmod(self.aws_credentials_file, 0o600)
-
-    def set_aws_config(self, profile, key, value, service=''):
-        if key == 'endpoint_url':
-            if value.endswith('.amazonaws.com'):
-                return False
-            else:
-                value = f'{value}\nsignature_version = s3v4'
-        config.read(os.path.expanduser("~/.aws/config"))
-        section = profile
-        if profile != 'default':
-            section = f'profile {profile}'
-        if not config.has_section(section):
-            config.add_section(section)
-        if service:
-            config.set(section, service, f"\n{key} = {value}\n")
-        else:
-            config.set(section, key, value)
-        with open(os.path.expanduser("~/.aws/config"), 'w') as configfile:
-            config.write(configfile)
-        if profile != 'default' and not self.args.cfgfolder:  # when moving cfg it still writes to old folder
-            self.replicate_ini(
-                f'profile {profile}', self.aws_config_file, self.aws_config_fileshr)
-        return True
-
-    def get_aws_s3_endpoint_url(self, profile=None):
-        # non boto3 method, use _get_aws_s3_session_endpoint_url instead
-        if not profile:
-            profile = self.awsprofile
-        config.read(os.path.expanduser('~/.aws/config'))
-        prof = 'profile ' + profile
-        if profile == 'default':
-            prof = profile
+    def _run_bk(self, command):
+        # command = self._add_opt(command, '--verbose')
+        # command = self._add_opt(command, '--use-json-log')
+        cmdline = " ".join(command)
+        self.cfg.printdbg('Rclone command:', cmdline)
         try:
-            # We use the configparser's interpolation feature here to
-            # flatten the 's3' subsection into the 'profile test' section.
-            s3_config_string = config.get(prof, 's3')
-            s3_config = configparser.ConfigParser()
-            s3_config.read_string("[s3_section]\n" + s3_config_string)
-            endpoint_url = s3_config.get('s3_section', 'endpoint_url')
-            return endpoint_url
-        except (configparser.NoSectionError, configparser.NoOptionError):
-            if self.args.debug:
-                print("  No endpoint_url found in aws profile:", profile)
+            ret = subprocess.Popen(command, preexec_fn=os.setsid, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, text=True, env=self.cfg.envrn)
+            # _, stderr = ret.communicate(timeout=3)  # This does not work with rclone
+            if ret.stderr:
+                sys.stderr.write(
+                    f'*** Error in command "{cmdline}":\n {ret.stderr} ')
+            return ret.pid
+        except Exception as e:
+            print(f'Rclone Error: {str(e)}')
             return None
 
-    def _get_aws_s3_session_endpoint_url(self, profile=None):
-        # retrieve endpoint url through boto API, not configparser
-        import botocore.session  # only botocore Session object has attribute 'full_config'
-        if not profile:
-            profile = self.awsprofile
-        session = botocore.session.Session(
-            profile=profile) if profile else botocore.session.Session()
-        config = session.full_config
-        s3_config = config["profiles"][profile].get("s3", {})
-        endpoint_url = s3_config.get("endpoint_url", None)
-        if self.args.debug:
-            print('*** endpoint url ***:', endpoint_url)
-        return endpoint_url
+    def copy(self, src, dst, *args):
+        command = [self.rc, 'copy'] + list(args)
+        command.append(src)  # command.append(f'{src}/')
+        command.append(dst)
+        out, err = self._run_rc(command)
+        if out:
+            print(f'rclone copy output: {out}')
+        # print('ret', err)
+        stats, ops = self._parse_log(err)
+        if stats:
+            return stats[-1]  # return the stats
+        else:
+            st = {}
+            st['stats'] = {}
+            st['stats']['errors'] = 1
+            st['stats']['lastError'] = err
+            return st
 
-    def get_aws_region(self, profile=None):
-        try:
-            session = boto3.Session(
-                profile_name=profile) if profile else boto3.Session()
-            if self.args.debug:
-                print(
-                    f'* get_aws_region for profile {profile}:', session.region_name)
-            return session.region_name
-        except:
-            if self.args.debug:
-                print(
-                    f'  cannot retrieve AWS region for profile {profile}, no valid profile or credentials')
-            return ""
+    def checksum(self, md5file, dst, *args):
+        # checksum md5 ./tests/.froster.md5sum
+        command = [self.rc, 'checksum'] + list(args)
+        command.append('md5')
+        command.append(md5file)
+        command.append(dst)
+        # print("Command:", command)
+        out, err = self._run_rc(command)
+        if out:
+            print(f'rclone checksum output: {out}')
+        # print('ret', err)
+        stats, ops = self._parse_log(err)
+        if stats:
+            return stats[-1]  # return the stats
+        else:
+            return []
 
-    def get_domain_name(self):
-        try:
-            with open('/etc/resolv.conf', 'r') as file:
-                content = file.readlines()
-        except FileNotFoundError:
-            return "mydomain.edu"
-        tld = None
-        for line in content:
-            if line.startswith('search') or line.startswith('domain'):
-                tokens = line.split()
-                if len(tokens) > 1:
-                    tld = tokens.pop()
-                    break
-        return tld if tld else "mydomain.edu"
-
-    def get_time_zone(self):
-        current_tz_str = 'America/Los_Angeles'
-        try:
-            # Resolve the /etc/localtime symlink
-            timezone_path = os.path.realpath("/etc/localtime")
-            # Extract the time zone string by stripping off the prefix of the zoneinfo path
-            current_tz_str = timezone_path.split("zoneinfo/")[-1]
-        except Exception as e:
-            print(f'Error: {e}')
-            current_tz_str = 'America/Los_Angeles'
-        return current_tz_str
-
-    def write(self, section, entry, value):
-        try:
-            entry_path = self._get_entry_path(section, entry)
-            os.makedirs(os.path.dirname(entry_path), exist_ok=True)
-            if value == '""':
-                # Check if file exists before trying to remove
-                if os.path.exists(entry_path):
-                    os.remove(entry_path)
-                return
-            with open(entry_path, 'w') as entry_file:
-                if isinstance(value, list):
-                    for item in value:
-                        entry_file.write(f"{item}\n")
-                elif isinstance(value, dict):
-                    json.dump(value, entry_file)
-                else:
-                    entry_file.write(value)
-        except OSError as e:
-            # Handle file operation errors (like permission issues, file not found, etc.)
-            print(
-                f"Please ask your Data Steward to add group permissions. File operation error: {e}")
-            sys.exit(1)
-        except TypeError as e:
-            # Handle issues with the type of 'value'
-            print(f"Type error: {e}")
-        except Exception as e:
-            # Handle any other unexpected errors
-            print(f"An unexpected error occurred: {e}")
-
-    def read(self, section, entry, default=""):
-        entry_path = self._get_entry_path(section, entry)
-        if not os.path.exists(entry_path):
-            return default
-            # raise FileNotFoundError(f'Config entry "{entry}" in section "{section}" not found.')
-        with open(entry_path, 'r') as entry_file:
-            try:
-                return json.load(entry_file)
-            except json.JSONDecodeError:
-                pass
-            except:
-                print('Error in ConfigManager.read(), returning default')
-                return default
-        with open(entry_path, 'r') as entry_file:
-            try:
-                content = entry_file.read().splitlines()
-                if len(content) == 1:
-                    return content[0].strip()
-                else:
-                    return content
-            except:
-                print('Error in ConfigManager.read(), returning default')
-                return default
-
-    def delete(self, section, entry):
-        entry_path = self._get_entry_path(section, entry)
-        if not os.path.exists(entry_path):
-            raise FileNotFoundError(
-                f'Config entry "{entry}" in section "{section}" not found.')
-        os.remove(entry_path)
-
-    def delete_section(self, section):
-        section_path = self._get_section_path(section)
-        if not os.path.exists(section_path):
-            raise FileNotFoundError(f'Config section "{section}" not found.')
-        for entry in os.listdir(section_path):
-            os.remove(os.path.join(section_path, entry))
-        os.rmdir(section_path)
-
-    def move_config(self, cfgfolder):
-        if not os.path.isdir(cfgfolder):
-            print(f'{cfgfolder} is not a directory')
+    def mount(self, url, mountpoint, *args):
+        if not shutil.which('fusermount3'):
+            print('Could not find "fusermount3". Please install the "fuse3" OS package')
             return False
-        else:
-            # Get the group ID of the folder
-            gid = os.lstat(cfgfolder).st_gid
-            # Get the group name from the group ID
-            pgroup = grp.getgrgid(gid)
-            if pgroup.gr_name == self.whoami:
-                print(
-                    f'  Group ({pgroup.gr_name}) and user name ({self.whoami}) should not be the same for {cfgfolder}.')
-                return False
+        if not url.endswith('/'):
+            url+'/'
+        mountpoint = mountpoint.rstrip(os.path.sep)
+        command = [self.rc, 'mount'] + list(args)
+        try:
+            current_permissions = os.lstat(mountpoint).st_mode
+            new_permissions = (current_permissions & ~0o07) | 0o05
+            os.chmod(mountpoint, new_permissions)
+        except:
+            pass
+        command.append('--allow-non-empty')
+        command.append('--default-permissions')
+        command.append('--read-only')
+        command.append('--no-checksum')
+        command.append('--quiet')
+        command.append(url)
+        command.append(mountpoint)
+        pid = self._run_bk(command)
+        return pid
+
+    def unmount(self, mountpoint, wait=False):
+        mountpoint = mountpoint.rstrip(os.path.sep)
+        if self._is_mounted(mountpoint):
+            if shutil.which('fusermount3'):
+                cmd = ['fusermount3', '-u', mountpoint]
+                ret = subprocess.run(
+                    cmd, capture_output=False, text=True, env=self.cfg.envrn)
             else:
-                # set the correct permission for the folder including setgid to make sure that the group is inherited
-                try:
-                    os.chmod(cfgfolder, 0o2775)
-                    # this will fail for non-owner users.
-                except Exception as e:
-                    print(f"  Could not set permissions on {cfgfolder} :\n{e}")
-                    return False
-
-        # TODO: Check this config path
-        if not cfgfolder and self.shared_config_dir == self.config_dir:
-            cfgfolder = self.prompt("Please enter the root where folder .froster/config will be created.",
-                                    os.path.expanduser('~'))
-        if cfgfolder:
-            new_shared_config_dir = os.path.join(
-                os.path.expanduser(cfgfolder), '.config', 'froster')
-        else:
-            new_shared_config_dir = self.shared_config_dir
-        old_shared_config_dir = self.config_dir
-        shared_config_dir_file = os.path.join(
-            self.config_dir, 'shared_config_dir')
-
-        if os.path.exists(shared_config_dir_file):
-            with open(shared_config_dir_file, 'r') as f:
-                old_shared_config_dir = f.read().strip()
-
-        # print(old_shared_config_dir,new_shared_config_dir)
-        if old_shared_config_dir == new_shared_config_dir:
-            return True
-
-        if not os.path.isdir(new_shared_config_dir):
-            if os.path.isdir(old_shared_config_dir):
-                shutil.move(old_shared_config_dir, new_shared_config_dir)
-                if os.path.isdir(old_shared_config_dir):
+                rclone_pids = self._get_pids('rclone')
+                fld_pids = self._get_pids(mountpoint, True)
+                common_pids = [
+                    value for value in rclone_pids if value in fld_pids]
+                for pid in common_pids:
                     try:
-                        os.rmdir(old_shared_config_dir)
-                    except:
-                        pass
-                print(f'  Froster config moved to "{new_shared_config_dir}"\n')
-            os.makedirs(new_shared_config_dir, exist_ok=True)
-            if os.path.exists(self.aws_config_file):
-                self.replicate_ini('ALL', self.aws_config_file,
-                                   os.path.join(new_shared_config_dir, 'aws_config'))
-                print(
-                    f'  ~/.aws/config replicated to "{new_shared_config_dir}/aws_config"\n')
-
-        self.shared_config_dir = new_shared_config_dir
-
-        os.makedirs(old_shared_config_dir, exist_ok=True)
-        with open(shared_config_dir_file, 'w') as f:
-            f.write(self.shared_config_dir)
+                        os.kill(pid, signal.SIGTERM)
+                        if wait:
+                            _, _ = os.waitpid(int(pid), 0)
+                        return True
+                    except PermissionError:
+                        print(
+                            f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
+                    except Exception as e:
+                        print(
+                            f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}')
+        else:
             print(
-                f'  Switched configuration path to "{self.shared_config_dir}"')
+                f'\nError: Folder {mountpoint} is currently not used as a mountpoint by rclone.')
+
+    def version(self):
+        command = [self.rc, 'version']
+        return self._run_rc(command)
+
+    def get_mounts(self):
+        mounts = []
+        with open('/proc/mounts', 'r') as f:
+            for line in f:
+                parts = line.split()
+                mount_point, fs_type = parts[1], parts[2]
+                if fs_type.startswith('fuse.rclone'):
+                    mounts.append(mount_point)
+        return mounts
+
+    def _get_pids(self, process, full=False):
+        process = process.rstrip(os.path.sep)
+        if full:
+            command = ['pgrep', '-f', process]
+        else:
+            command = ['pgrep', process]
+        try:
+            output = subprocess.check_output(command)
+            pids = [int(pid) for pid in output.decode(
+                errors='ignore').split('\n') if pid]
+            return pids
+        except subprocess.CalledProcessError:
+            # No rclone processes found
+            return []
+
+    def _is_mounted(self, folder_path):
+        # Resolve any symbolic links
+        folder_path = os.path.realpath(folder_path)
+        with open('/proc/mounts', 'r') as f:
+            for line in f:
+                parts = line.split()
+                mount_point, fs_type = parts[1], parts[2]
+                if mount_point == folder_path and fs_type.startswith('fuse.rclone'):
+                    return True
+
+    def _add_opt(self, cmd, option, value=None):
+        if option in cmd:
+            return cmd
+        cmd.append(option)
+        if value:
+            cmd.append(value)
+        return cmd
+
+    def _parse_log(self, strstderr):
+        lines = strstderr.split('\n')
+        data = [json.loads(line.rstrip()) for line in lines if line[0] == "{"]
+        stats = []
+        operations = []
+        for obj in data:
+            if 'accounting/stats' in obj['source']:
+                stats.append(obj)
+            elif 'operations/operations' in obj['source']:
+                operations.append(obj)
+        return stats, operations
+
+        # stats":{"bytes":0,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":4.121489785,"errors":12,"eta":null,"fatalError":false,
+        # "lastError":"failed to open source object: Object in GLACIER, restore first: bucket=\"posix-dp\", key=\"tests4/table_example.py\"",
+        # "renames":0,"retryError":true,"speed":0,"totalBytes":0,"totalChecks":0,"totalTransfers":0,"transferTime":0,"transfers":0},
+        # "time":"2023-04-16T10:18:46.121921-07:00"}
+
+
+class SlurmEssentials:
+    # exit code 64 causes Slurm to --requeue, e.g. sys.exit(64)
+    def __init__(self, args, cfg):
+        self.script_lines = ["#!/bin/bash"]
+        self.cfg = cfg
+        self.args = args
+        self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
+        self.jobs = []
+        self.job_info = {}
+        self.partition = cfg.read('hpc', 'slurm_partition')
+        self.qos = cfg.read('hpc', 'slurm_qos')
+        self.walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
+        self._add_lines_from_cfg()
+
+    def add_line(self, line):
+        if line:
+            self.script_lines.append(line)
+
+    def get_future_start_time(self, add_hours):
+        now = datetime.datetime.now()
+        future_time = now + datetime.timedelta(hours=add_hours)
+        return future_time.strftime("%Y-%m-%dT%H:%M")
+
+    def _add_lines_from_cfg(self):
+        slurm_lscratch = self.cfg.read('hpc', 'slurm_lscratch')
+        lscratch_mkdir = self.cfg.read('hpc', 'lscratch_mkdir')
+        lscratch_root = self.cfg.read('hpc', 'lscratch_root')
+        if slurm_lscratch:
+            self.add_line(f'#SBATCH {slurm_lscratch}')
+        self.add_line(f'{lscratch_mkdir}')
+        if lscratch_root:
+            self.add_line('export TMPDIR=%s/${SLURM_JOB_ID}' % lscratch_root)
+
+    def _reorder_sbatch_lines(self, script_buffer):
+        # we need to make sure that all #BATCH are at the top
+        script_buffer.seek(0)
+        lines = script_buffer.readlines()
+        # Remove the shebang line from the list of lines
+        shebang_line = lines.pop(0)
+        sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
+        non_sbatch_lines = [
+            line for line in lines if not line.startswith("#SBATCH")]
+        reordered_script = io.StringIO()
+        reordered_script.write(shebang_line)
+        for line in sbatch_lines:
+            reordered_script.write(line)
+        for line in non_sbatch_lines:
+            reordered_script.write(line)
+        # add a local scratch teardown, if configured
+        reordered_script.write(self.cfg.read('hpc', 'lscratch_rmdir'))
+        reordered_script.seek(0)
+        return reordered_script
+
+    def sbatch(self):
+        script = io.StringIO()
+        for line in self.script_lines:
+            script.write(line + "\n")
+        script.seek(0)
+        oscript = self._reorder_sbatch_lines(script)
+        result = subprocess.run(["sbatch"], text=True, shell=True, input=oscript.read(),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            if 'Invalid generic resource' in result.stderr:
+                print('Invalid generic resource request. Please remove or change file:')
+                print(os.path.join(self.shared_config_dir, 'hpc', 'slurm_lscratch'))
+            else:
+                raise RuntimeError(
+                    f"Error running sbatch: {result.stderr.strip()}")
+            sys.exit(1)
+        job_id = int(result.stdout.split()[-1])
+        if args.debug:
+            oscript.seek(0)
+            with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
+                file.write(oscript.read())
+                print(f' Debug script created: submitted-{job_id}.sh')
+        return job_id
+
+    def squeue(self):
+        result = subprocess.run(["squeue", "--me", "-o", self.squeue_output_format],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Error running squeue: {result.stderr.strip()}")
+        self.jobs = self._parse_squeue_output(result.stdout.strip())
+
+    def _parse_squeue_output(self, output):
+        csv_file = io.StringIO(output)
+        reader = csv.DictReader(csv_file, delimiter=',',
+                                quotechar='"', skipinitialspace=True)
+        jobs = [row for row in reader]
+        return jobs
+
+    def print_jobs(self):
+        for job in self.jobs:
+            print(job)
+
+    def job_comment_read(self, job_id):
+        jobdict = self._scontrol_show_job(job_id)
+        return jobdict['Comment']
+
+    def job_comment_write(self, job_id, comment):
+        # a comment can be maximum 250 characters, will be chopped automatically
+        args = ['update', f'JobId={str(job_id)}',
+                f'Comment={comment}', str(job_id)]
+        result = subprocess.run(['scontrol'] + args,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Error running scontrol: {result.stderr.strip()}")
+
+    def _scontrol_show_job(self, job_id):
+        args = ["--oneliner", "show", "job", str(job_id)]
+        result = subprocess.run(['scontrol'] + args,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Error running scontrol: {result.stderr.strip()}")
+        self.job_info = self._parse_scontrol_output(result.stdout)
+
+    def _parse_scontrol_output(self, output):
+        fields = output.strip().split()
+        job_info = {}
+        for field in fields:
+            key, value = field.split('=', 1)
+            job_info[key] = value
+        return job_info
+
+    def _parse_tabular_data(self, data_str, separator="|"):
+        """Parse data (e.g. acctmgr) presented in a tabular format into a list of dictionaries."""
+        lines = data_str.strip().splitlines()
+        headers = lines[0].split(separator)
+        data = []
+        for line in lines[1:]:
+            values = line.split(separator)
+            data.append(dict(zip(headers, values)))
+        return data
+
+    def _parse_partition_data(self, data_str):
+        """Parse data presented in a tabular format into a list of dictionaries."""
+        lines = data_str.strip().split('\n')
+        # Parse each line into a dictionary
+        partitions = []
+        for line in lines:
+            parts = line.split()
+            partition_dict = {}
+            for part in parts:
+                key, value = part.split("=", 1)
+                partition_dict[key] = value
+            partitions.append(partition_dict)
+        return partitions
+
+    def _get_user_groups(self):
+        """Get the groups the current Unix user is a member of."""
+        groups = [grp.getgrgid(gid).gr_name for gid in os.getgroups()]
+        return groups
+
+    def _get_output(self, command):
+        """Execute a shell command and return its output."""
+        result = subprocess.run(command, shell=True, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Error running {command}: {result.stderr.strip()}")
+        return result.stdout.strip()
+
+    def _get_default_account(self):
+        return self._get_output(f'sacctmgr --noheader --parsable2 show user {self.cfg.whoami} format=DefaultAccount')
+
+    def _get_associations(self):
+        mystr = self._get_output(
+            f"sacctmgr show associations where user={self.cfg.whoami} format=Account,QOS --parsable2")
+        asso = {item['Account']: item['QOS'].split(
+            ",") for item in self._parse_tabular_data(mystr) if 'Account' in item}
+        return asso
+
+    def get_allowed_partitions_and_qos(self, account=None):
+        """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
+        bacc = os.environ.get('SBATCH_ACCOUNT', '')
+        account = bacc if bacc else account
+        sacc = os.environ.get('SLURM_ACCOUNT', '')
+        account = sacc if sacc else account
+        allowed_partitions = {}
+        partition_str = self._get_output("scontrol show partition --oneliner")
+        partitions = self._parse_partition_data(partition_str)
+        user_groups = self._get_user_groups()
+        if account is None:
+            account = self._get_default_account()
+        for partition in partitions:
+            pname = partition['PartitionName']
+            add_partition = False
+            if partition.get('State', '') != 'UP':
+                continue
+            if any(group in user_groups for group in partition.get('DenyGroups', '').split(',')):
+                continue
+            if account in partition.get('DenyAccounts', '').split(','):
+                continue
+            allowedaccounts = partition.get('AllowAccounts', '').split(',')
+            if allowedaccounts != ['']:
+                if account in allowedaccounts or 'ALL' in allowedaccounts:
+                    add_partition = True
+            elif any(group in user_groups for group in partition.get('AllowGroups', '').split(',')):
+                add_partition = True
+            elif partition.get('AllowGroups', '') == 'ALL':
+                add_partition = True
+            if add_partition:
+                p_deniedqos = partition.get('DenyQos', '').split(',')
+                p_allowedqos = partition.get('AllowQos', '').split(',')
+                associations = self._get_associations()
+                account_qos = associations.get(account, [])
+                if p_deniedqos != ['']:
+                    allowed_qos = [
+                        q for q in account_qos if q not in p_deniedqos]
+                    # print(f"p_deniedqos: allowed_qos in {pname}:", allowed_qos)
+                elif p_allowedqos == ['ALL']:
+                    allowed_qos = account_qos
+                    # print(f"p_allowedqos = ALL in {pname}:", allowed_qos)
+                elif p_allowedqos != ['']:
+                    allowed_qos = [q for q in account_qos if q in p_allowedqos]
+                    # print(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos)
+                else:
+                    allowed_qos = []
+                    # print(f"p_allowedqos = [] in {pname}:", allowed_qos)
+                allowed_partitions[pname] = allowed_qos
+        return allowed_partitions
+
+    def display_job_info(self):
+        print(self.job_info)
+
+
+class NIHReporter:
+    # if we use --nih as an argument we query NIH Reporter
+    # for metadata
+
+    def __init__(self, verbose=False, active=False, years=None):
+        # self.args = args
+        self.verbose = verbose
+        self.active = active
+        self.years = years
+        self.url = 'https://api.reporter.nih.gov/v2/projects/search'
+        self.exclude_fields = ['Terms', 'AbstractText',
+                               'PhrText']  # pref_terms still included
+        self.grants = []
+
+    def search_full(self, searchstr):
+        searchstr = self._clean_string(searchstr)
+        if not searchstr:
+            return []
+
+        # Search by PI
+        if not self._is_number(searchstr):
+            print('PI search ...')
+            criteria = {"pi_names": [{"any_name": searchstr}]}
+            self._post_request(criteria)
+            print('* # Grants:', len(self.grants))
+
+        if not self.grants:
+            # Search by Project
+            print('Project search ...')
+            criteria = {'project_nums': [searchstr]}
+            self._post_request(criteria)
+            print('* # Grants:', len(self.grants))
+
+        if not self.grants and not self._is_number(searchstr):
+            # Search by Organizations
+            print('Org search ...')
+            criteria = {'org_names': [searchstr]}
+            self._post_request(criteria)
+            print('* # Grants:', len(self.grants))
+
+        # Search by text in  "projecttitle", "terms", and "abstracttext"
+        print('Text search ...')
+        criteria = {'advanced_text_search':
+                    {'operator': 'and', 'search_field': 'all',
+                     'search_text': searchstr}
+                    }
+        self._post_request(criteria)
+        print('* # Grants:', len(self.grants))
+
+        return self._result_sets(True)
+
+    def search_one(self, criteria, header=False):
+        searchstr = self._clean_string(searchstr)
+        self._post_request(criteria)
+        return self._result_sets(header)
+
+    def _is_number(self, string):
+        try:
+            float(string)
+            return True
+        except ValueError:
+            return False
+
+    def _clean_string(self, mystring):
+        mychars = ",:?'$^%&*!`~+={}\\[]"+'"'
+        for i in mychars:
+            mystring = mystring.replace(i, ' ')
+            # print('mystring:', mystring)
+        return mystring
+
+    def _post_request(self, criteria):
+        # make request with retries
+        offset = 0
+        timeout = 30
+        limit = 250
+        max = 250
+        max_retries = 5
+        retry_delay = 1
+        retry_count = 0
+        total = max
+        # for retry_count in range(max_retries):
+        try:
+            while offset < max:
+                params = {'offset': offset, 'limit': limit, 'criteria': criteria,
+                          'exclude_fields': self.exclude_fields}
+                # make request
+                print('Params:', params)
+                response = requests.post(
+                    self.url, json=params, timeout=timeout)
+                # check status code - else return data
+                if response.status_code >= 400 and response.status_code < 500:
+                    print(f"Bad request: {response.text}")
+                    if retry_count < max_retries - 1:
+                        print(f"Retrying after {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_count += 1
+                    else:
+                        # raise Exception(f"Failed to complete POST request after {max_retries} attempts")
+                        print(
+                            f"Failed to complete POST request after {max_retries} attempts")
+                        return False
+                else:
+                    json = response.json()
+                    total = json['meta']['total']
+                    if total == 0:
+                        if self.verbose:
+                            print("No records for criteria '{}'".format(criteria))
+                        return
+                    if total < max:
+                        max = total
+                    if self.verbose:
+                        print("Found {0} records for criteria '{1}'".format(
+                            total, criteria))
+                    self.grants += [g for g in json['results']]
+                    if self.verbose:
+                        print("{0} records off {1} total returned ...".format(
+                            offset, total), file=sys.stderr)
+                    offset += limit
+                    if offset == 15000:
+                        offset == 14999
+                    elif offset > 15000:
+                        return
+        except requests.exceptions.RequestException as e:
+            print(f"POST request failed: {e}")
+            if retry_count < max_retries - 1:
+                print(f"Retrying after {retry_delay} seconds...")
+                retry_count += 1
+                time.sleep(retry_delay)
+            else:
+                return
+        # raise Exception(f"Failed to complete POST request after {max_retries} attempts")
+
+    def _result_sets(self, header=False):
+        sets = []
+        if header:
+            sets.append(('project_num', 'start', 'end', 'contact_pi_name', 'project_title',
+                        'org_name', 'project_detail_url', 'pi_profile_id'))
+        grants = {}
+        for g in self.grants:
+            # print(json.dumps(g, indent=2))
+            # return
+            core_project_num = str(g.get('core_project_num', '')).strip()
+            line = (
+                core_project_num,
+                str(g.get('project_start_date', '')).strip()[:10],
+                str(g.get('project_end_date', '')).strip()[:10],
+                str(g.get('contact_pi_name', '')).strip(),
+                str(g.get('project_title', '')).strip()  # [:50]
+            )
+            org = ""
+            if g['organization']['org_name']:
+                org = g['organization']['org_name']
+            line += (
+                str(org.encode('utf-8'), 'utf-8'),
+                g.get('project_detail_url', '')
+            )
+            for p in g['principal_investigators']:
+                if p.get('is_contact_pi', False):
+                    line += (str(p.get('profile_id', '')),)
+            if not core_project_num in grants:
+                grants[core_project_num] = line
+        for g in grants.values():
+            sets.append(g)
+            # print(g)
+        # print("{0} total # of grants...".format(len(grants)),file=sys.stderr)
+        return sets
+
+
+def args_version():
+
+    print(f'froster version {__version__}\n')
+    print(f'Packages version:')
+    print(f'    python v{platform.python_version()}')
+
+    print(f'''
+Authors:
+    Written by Dirk Petersen and Hpc Now Consulting SL
+          
+Repository:
+    https://github.com/dirkpetersen/froster
+
+
+Copyright (C) 2024 Oregon Health & Science University (OSHU)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+''')
+
+    # TODO: make a froster --info function with these old lines
+    # print(f'Froster version: {__version__}')
+    # print(f'  The Script: {os.path.abspath(__file__)}')
+    # print(f'  Config dir: {cfg.shared_config_dir.replace("~/.froster/config","")}')
+    # print(f'  Profs .aws: {", ".join(cfg.get_aws_profiles())}')
+    # print(f'Python version:\n{sys.version}')
+    # try:
+    #     print('* Pwalk ----- ')
+    #     print('  Binary:', shutil.which('pwalk'))
+    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'pwalk'), '--version'],
+    #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])
+    #     print('* Rclone ---- ')
+    #     print('  Binary:', shutil.which('rclone'))
+    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'rclone'), '--version'],
+    #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+    # except FileNotFoundError as e:
+    #     print(f'Error: {e}')
+    #     return False
+    # return True
+
+# TODO: Check folder and variables being set here
+
+
+def subcmd_config(args, cfg, aws):
+    # configure user and / or team settings
+    # arguments are Class instances passed from main
+
+    cfg.fix_tree_permissions(cfg.shared_config_dir)
+
+    # TODO: These line should'nt be necessary, but check them
+    # if args.cfgfolder:
+    #     bin_dir = os.path.join(
+    #         args.cfgfolder, '.config', 'froster', 'general', 'bin_dir')
+    #     if os.path.exists(bin_dir):
+    #         theroot = os.path.join(args.cfgfolder, '.config', 'froster')
+    #         shared_config_dir_file = os.path.join(
+    #             cfg.config_dir, 'shared_config_dirig_dirig_dir')
+    #         with open(shared_config_dir_file, 'w') as myfile:
+    #             myfile.write(theroot)
+    #         cfg.shared_config_dir = theroot
+    #         print(
+    #             f'  Config folder set to {cfg.shared_config_dir}, please restart froster without config folder argument.')
+    #         return True
+
+    # first_time = True
+    # bin_dir = cfg.bin_dir
+    # if not cfg.bin_dir:
+    #     cfg.bin_dir = '~/.froster/bin'
+    #     cfg.bin_dir = os.path.expanduser(cfg.bin_dir)
+    #     if not os.path.exists(cfg.bin_dir):
+    #         os.makedirs(cfg.bin_dir, mode=0o775)
+    # else:
+    #     if cfg.bin_dir.startswith(cfg.home_dir):
+    #         cfg.bin_dir = cfg.bin_dir.replace(cfg.home_dir, '~')
+    #     cfg.bin_dir = os.path.expanduser(cfg.bin_dir)
+    #     first_time = False
+    # if bin_dir != cfg.bin_dir:
+    #     cfg.write('general', 'bin_dir', cfg.bin_dir)
+
+    # Basic setup, focus the indexer on larger folders and file sizes
+    if not cfg.read('general', 'max_small_file_size_kib'):
+        cfg.write('general', 'max_small_file_size_kib', '1024')
+    if not cfg.read('general', 'min_index_folder_size_gib'):
+        cfg.write('general', 'min_index_folder_size_gib', "1")
+    if not cfg.read('general', 'min_index_folder_size_avg_mib'):
+        cfg.write('general', 'min_index_folder_size_avg_mib', "10")
+    if not cfg.read('general', 'max_hotspots_display_entries'):
+        cfg.write('general', 'max_hotspots_display_entries', "5000")
+
+    # general setup
+    defdom = cfg.get_domain_name()
+    whoami = cfg.whoami
+
+    if args.monitor:
+        # monitoring only setup, do not continue
+        fro = os.path.join(cfg.bin_dir, 'froster')
+        cfg.write('general', 'email', args.monitor)
+        cfg.add_systemd_cron_job(f'{fro} restore --monitor', '30')
         return True
 
-    def wait_for_ssh_ready(self, hostname, port=22, timeout=60):
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(3)  # Set a timeout on the socket operations
-            result = s.connect_ex((hostname, port))
-            if result == 0:
-                s.close()
-                return True
+    if args.index:
+        # only basic configuration required for indexing jobs
+        return True
+
+    print(f'\n*** Asking a few questions  ({cfg.shared_config_dir}) ***')
+    print('*** For most you can just hit <Enter> to accept the default. ***\n')
+
+    # determine if we need to move the (shared) config to a new folder
+    movecfg = False
+
+    # TODO: check this
+    if args.cfgfolder == '' and cfg.shared_config_dir == cfg.config_dir:
+        if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', 'no'):
+            movecfg = True
+            # TODO: populate config.ini with the shared config folder
+            args.cfgfolder = cfg.prompt(
+                'Enter the path to a shared config folder:')
+    elif args.cfgfolder:
+        movecfg = True
+    if movecfg:
+        if cfg.move_config(args.cfgfolder):
+            print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
+        else:
+            print(f'  ERROR: Could not move config folder to {args.cfgfolder}')
+            return False
+
+    # domain-name not needed right now
+    # domain = cfg.prompt('Enter your domain name:',
+    #                    f'{defdom}|general|domain','string')
+    emailaddr = cfg.prompt('Enter your email address:',
+                           f'{whoami}@{defdom}|general|email', 'string')
+    emailstr = emailaddr.replace('@', '-')
+    emailstr = emailstr.replace('.', '-')
+
+    do_prompt = cfg.read('general', 'prompt_nih_reporter', 'yes')
+    if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?', do_prompt):
+        cfg.write('general', 'prompt_nih_reporter', 'yes')
+    else:
+        cfg.write('general', 'prompt_nih_reporter', 'no')
+
+    print("")
+
+    # cloud setup
+    bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
+                        f'froster-{emailstr}|general|bucket', 'string')
+    archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
+                             'archive|general|archiveroot', 'string')
+
+    cls = cfg.read('general', 's3_storage_class')
+    s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
+                                  'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
+    cfg.write('general', 's3_storage_class', s3_storage_class)
+
+    cfg.create_aws_configs()
+    # TODO: check over this
+    # if there is a shared ~/.aws/config copy it over
+    if cfg.config_dir != cfg.shared_config_dir:
+        cfg.replicate_ini('ALL', cfg.aws_config_fileshr, cfg.aws_config_file)
+
+    aws_region = cfg.get_aws_region('aws')
+    if not aws_region:
+        aws_region = cfg.get_aws_region()
+
+    if not aws_region:
+        aws_region = cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
+                                aws.get_aws_regions())
+    aws_region = cfg.prompt(
+        'Please confirm/edit the AWS S3 region', aws_region)
+
+    # cfg.create_aws_configs(None, None, aws_region)
+    print(f"\n  Verify that bucket '{bucket}' is configured ... ")
+
+    # for accessing glacier use one of these
+    allowed_aws_profiles = ['default', 'aws', 'AWS']
+    profmsg = 1
+    profs = cfg.get_aws_profiles()
+
+    for prof in profs:
+        if prof in allowed_aws_profiles:
+            cfg.set_aws_config(prof, 'region', aws_region)
+            if prof == 'AWS' or prof == 'aws':
+                cfg.write('general', 'aws_profile', prof)
+            elif prof == 'default':
+                cfg.write('general', 'aws_profile', 'default')
+            aws.create_s3_bucket(bucket, prof)
+
+    for prof in profs:
+        if prof in allowed_aws_profiles:
+            continue
+        if profmsg == 1:
+            print(
+                '\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
+            profmsg = 0
+        if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?', 'yes'):
+            continue
+        profile = {'name': '', 'provider': '', 'storage_class': ''}
+        pendpoint = ''
+        pregion = ''
+        pr = cfg.read('profiles', prof)
+        if isinstance(pr, dict):
+            profile = cfg.read('profiles', prof)
+        profile['name'] = prof
+
+        if not profile['provider']:
+            profile['provider'] = ['AWS', 'GCS', 'Wasabi',
+                                   'IDrive', 'Ceph', 'Minio', 'Other']
+        profile['provider'] = \
+            cfg.prompt(
+                f'S3 Provider for profile "{prof}"', profile['provider'])
+
+        pregion = cfg.get_aws_region(prof)
+        if not pregion:
+            pregion = cfg.prompt('Please select the S3 region',
+                                 aws.get_aws_regions(prof, profile['provider']))
+        pregion = \
+            cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"', pregion)
+        if pregion:
+            cfg.set_aws_config(prof, 'region', pregion)
+
+        if profile['provider'] != 'AWS':
+            if not pendpoint:
+                pendpoint = cfg.get_aws_s3_endpoint_url(prof)
+                if not pendpoint:
+                    if 'Wasabi' == profile['provider']:
+                        pendpoint = f'https://s3.{pregion}.wasabisys.com'
+                    elif 'GCS' == profile['provider']:
+                        pendpoint = 'https://storage.googleapis.com'
+
+            pendpoint = \
+                cfg.prompt(
+                    f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)', pendpoint)
+            if pendpoint:
+                if not pendpoint.startswith('http'):
+                    pendpoint = 'https://' + pendpoint
+                cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
+
+        if not profile['storage_class']:
+            if profile['provider'] == 'AWS':
+                profile['storage_class'] = s3_storage_class
             else:
-                time.sleep(5)  # Wait for 5 seconds before retrying
-                s.close()
-        print("Timeout reached without SSH server being ready.")
+                profile['storage_class'] = 'STANDARD'
+
+        if profile['provider']:
+            cfg.write('profiles', prof, profile)
+        else:
+            print(f'\nConfig for AWS profile "{prof}" was not saved.')
+
+        aws.create_s3_bucket(bucket, prof)
+
+    if shutil.which('scontrol') and shutil.which('sacctmgr'):
+        se = SlurmEssentials(args, cfg)
+        parts = se.get_allowed_partitions_and_qos()
+        print('')
+
+        slurm_walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
+        slurm_walltime = cfg.prompt(
+            f'Please confirm or set the Slurm --time (wall time as days-hours) for froster jobs', slurm_walltime)
+        cfg.write('hpc', 'slurm_walltime', slurm_walltime)
+        if '-' in slurm_walltime:
+            days, hours = slurm_walltime.split('-')
+        else:
+            days = 0
+            hours = slurm_walltime
+
+        mydef = cfg.read('hpc', 'slurm_partition')
+        if mydef:
+            mydef = f' (now: {mydef})'
+        slurm_partition = cfg.prompt(f'Please select the Slurm partition for jobs that last up to {days} days and {hours} hours.{mydef}',
+                                     list(parts.keys()))
+        cfg.write('hpc', 'slurm_partition', slurm_partition)
+        # slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
+        print('')
+
+        mydef = cfg.read('hpc', 'slurm_qos')
+        if mydef:
+            mydef = f' (now: {mydef})'
+        slurm_qos = cfg.prompt(f'Please select the Slurm QOS for jobs that last up to {days} days and {hours} days.{mydef}',
+                               parts[slurm_partition])
+        cfg.write('hpc', 'slurm_qos', slurm_qos)
+        # slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
+        print('')
+
+    if shutil.which('sbatch'):
+        print('\n*** And finally a few questions how your HPC uses local scratch space ***')
+        print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
+        print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
+
+        # setup local scratch spaces, the defauls are OHSU specific
+        x = cfg.prompt('How do you request local scratch from Slurm?',
+                       '--gres disk:1024|hpc|slurm_lscratch', 'string')  # get 1TB scratch space
+        x = cfg.prompt('Is there a user script that provisions local scratch?',
+                       'mkdir-scratch.sh|hpc|lscratch_mkdir', 'string')  # optional
+        x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
+                       'rmdir-scratch.sh|hpc|lscratch_rmdir', 'string')  # optional
+        x = cfg.prompt('What is the local scratch root ?',
+                       '/mnt/scratch|hpc|lscratch_root', 'string')  # add slurm jobid at the end
+
+    print(f'\nChecked permissions in {cfg.shared_config_dir}')
+    cfg.fix_tree_permissions(cfg.shared_config_dirig_dir)
+
+    print('\nDone!\n')
+
+
+def subcmd_index(args, cfg, arch):
+
+    cfg.printdbg(" Command line:", args.cores, args.noslurm,
+                 args.pwalkcsv, args.folders, flush=True)
+
+    if not args.folders:
+        print('you must point to at least one folder in your command line')
         return False
+    args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+    if args.pwalkcsv and not os.path.exists(args.pwalkcsv):
+        print(f'File "{args.pwalkcsv}" does not exist.')
+        return False
+
+    for fld in args.folders:
+        if not os.path.isdir(fld):
+            print(f'The folder {fld} does not exist.')
+            if not args.pwalkcsv:
+                return False
+
+    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            print(f'Indexing folder {fld}, please wait ...', flush=True)
+            arch.index(fld)
+    else:
+        se = SlurmEssentials(args, cfg)
+        label = arch._get_hotspots_file(args.folders[0]).replace('.csv', '')
+        label = label.replace(' ', '_')
+        shortlabel = os.path.basename(args.folders[0])
+        myjobname = f'froster:index:{shortlabel}'
+        email = cfg.read('general', 'email')
+        se.add_line(f'#SBATCH --job-name={myjobname}')
+        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --time={se.walltime}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')
+        # se.add_line(f'ml python')
+        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+        cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if args.debug:
+            print(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster indexing job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-index-{label}-{jobid}.out')
+
+
+def subcmd_archive(args, cfg, arch, aws):
+
+    global TABLECSV
+    global SELECTEDFILE
+
+    if args.debug:
+        print("archive:", args.cores, args.awsprofile, args.noslurm,
+              args.larger, args.older, args.agemtime, args.folders)
+    fld = '" "'.join(args.folders)
+    if args.debug:
+        print(f'default cmdline: froster.py archive "{fld}"')
+
+    archmeta = []
+    if not args.folders:
+        hsfolder = os.path.join(cfg.shared_config_dir, 'hotspots')
+        if not os.path.exists(hsfolder):
+            print("No folders to archive in arguments and no Hotspots CSV files found!")
+            print('Run: froster archive "/your/folder/to/archive"')
+            return False
+        csv_files = [f for f in os.listdir(
+            hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+        if len(csv_files) == 0:
+            print("No folders to archive in arguments and no Hotspots CSV files found!")
+            print('Run: froster archive "/your/folder/to/archive"')
+            return False
+        # Sort the CSV files by their modification time in descending order (newest first)
+        csv_files.sort(key=lambda x: os.path.getmtime(
+            os.path.join(hsfolder, x)), reverse=True)
+        # if there are multiple files allow for selection
+        if len(csv_files) > 1:
+            TABLECSV = '"Select a Hotspot file"\n' + '\n'.join(csv_files)
+            app = TableArchive()
+            retline = app.run()
+            if not retline:
+                return False
+            SELECTEDFILE = os.path.join(hsfolder, retline[0])
+        else:
+            SELECTEDFILE = os.path.join(hsfolder, csv_files[0])
+        if args.larger > 0 and args.older > 0:
+            # implement archiving batchmode
+            arch.archive_batch()
+            return
+        elif args.larger > 0 or args.older > 0:
+            print('You need to combine both "--older <days> and --larger <GiB> options')
+            return
+
+        SELECTEDFILE = arch.get_user_hotspot(SELECTEDFILE)
+        app = TableHotspots()
+        retline = app.run()
+        # print('Retline:', retline)
+        if not retline:
+            return False
+        if len(retline) < 6:
+            print('Error: Hotspots table did not return all columns')
+            return False
+
+        if retline[-1]:
+            if cfg.nih == 'yes' or args.nih:
+                app = TableNIHGrants()
+                archmeta = app.run()
+        else:
+            print(
+                f'\nYou can start this archive process later by using this command:\n  froster archive "{retline[5]}"')
+            print(
+                f'\n... or if you like to include all subfolders run:\n  froster archive --recursive "{retline[5]}"\n')
+            return False
+
+        badfiles = arch.cannot_read_files(retline[5])
+        if badfiles:
+            print(
+                f'  Cannot read {len(badfiles)} files in folder {retline[5]}, for example:\n  {", ".join(badfiles[:10])}')
+            return False
+
+        args.folders.append(retline[5])
+
+    else:
+        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access(cfg.bucket, readwrite=True):
+        return False
+
+    # if recursive archiving, check if we can read all files
+    if args.recursive:
+        isbad = False
+        for fld in args.folders:
+            # check for bad files first
+            print(
+                f'Checking access to files in folder tree "{fld}" ... ', flush=True)
+            for root, dirs, files in arch._walker(fld):
+                print(f'  Folder "{root}" ... ', flush=True)
+                badfiles = arch.cannot_read_files(root)
+                if badfiles:
+                    isbad = True
+                    print(
+                        f'  Error: Cannot read {len(badfiles)} files in folder, for example:\n  {", ".join(badfiles[:10])}', flush=True)
+                for dir in dirs:
+                    dirpath = os.path.join(root, dir)
+                    ret = arch.test_write(dirpath)
+                    if ret == 13 or ret == 2:
+                        print(
+                            f'  Cannot write to sub-folder {dir}', flush=True)
+                        isbad = True
+        if isbad:
+            print(
+                f'Error: Cannot archive folder(s) resursively, fix some permissions first.', flush=True)
+            return False
+
+    if not shutil.which('sbatch') or args.noslurm or args.reset or os.getenv('SLURM_JOB_ID'):
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            if args.reset:
+                ret = arch.reset_folder(fld, args.recursive)
+                continue
+            if args.recursive:
+                print(
+                    f'Archiving folder "{fld}" and subfolders, please wait ...', flush=True)
+                if not arch.archive_recursive(fld, archmeta):
+                    if args.debug:
+                        print(
+                            f'  Archiver.archive_recursive({fld}) returned False', flush=True)
+            else:
+                print(
+                    f'Archiving folder "{fld}" (no subfolders), please wait ...', flush=True)
+                arch.archive(fld, archmeta)
+    else:
+        se = SlurmEssentials(args, cfg)
+        label = args.folders[0].replace('/', '+')
+        label = label.replace(' ', '_')
+        shortlabel = os.path.basename(args.folders[0])
+        myjobname = f'froster:archive:{shortlabel}'
+        email = cfg.read('general', 'email')
+        se.add_line(f'#SBATCH --job-name={myjobname}')
+        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --requeue')
+        se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --time={se.walltime}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')
+        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+        if not "--profile" in cmdline and args.awsprofile:
+            cmdline = cmdline.replace(
+                '/froster.py ', f'/froster --profile {args.awsprofile} ')
+        else:
+            cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if not args.folders[0] in cmdline:
+            folders = '" "'.join(args.folders)
+            cmdline = f'{cmdline} "{folders}"'
+        if args.debug:
+            print(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster archiving job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-archive-{label}-{jobid}.out')
+
+
+def subcmd_restore(args, cfg, arch, aws):
+
+    global TABLECSV
+    global SELECTEDFILE
+
+    cfg.printdbg("restore:", args.cores, args.awsprofile, args.noslurm,
+                 args.days, args.retrieveopt, args.nodownload, args.folders)
+    fld = '" "'.join(args.folders)
+    cfg.printdbg(f'default cmdline: froster restore "{fld}"')
+
+    # *********
+    if args.monitor:
+        # aws inactivity and cost monitoring
+        aws.monitor_ec2()
+        return True
+
+    if not args.folders:
+        TABLECSV = arch.archive_json_get_csv(
+            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
+        if TABLECSV == None:
+            print("No archives available.")
+            return False
+        app = TableArchive()
+        retline = app.run()
+        if not retline:
+            return False
+        if len(retline) < 2:
+            print('Error: froster-archives table did not return result')
+            return False
+        cfg.printdbg("subcmd_restore dialog returns:", retline)
+        args.folders.append(retline[0])
+        if retline[2]:
+            cfg.awsprofile = retline[2]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)
+            cfg.printdbg("AWS profile:", cfg.awsprofile)
+    else:
+        pass
+        # we actually want to support symlinks
+        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access_folders(args.folders):
+        return False
+
+    if args.aws:
+        # run ec2_deploy(self, bucket='', prefix='', recursive=False, profile=None):
+        ret = aws.ec2_deploy(args.folders)
+        return True
+
+    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
+        # either no slurm or already running inside a slurm job
+        for fld in args.folders:
+            fld = fld.rstrip(os.path.sep)
+            print(f'Restoring folder {fld}, please wait ...', flush=True)
+            # check if triggered a restore from glacier and other conditions
+            if arch.restore(fld) > 0:
+                if shutil.which('sbatch') and \
+                        args.noslurm == False and \
+                        args.nodownload == False:
+                    # start a future Slurm job just for the download
+                    se = SlurmEssentials(args, cfg)
+                    # get a job start time 12 hours from now
+                    fut_time = se.get_future_start_time(12)
+                    label = fld.replace('/', '+')
+                    label = label.replace(' ', '_')
+                    shortlabel = os.path.basename(fld)
+                    myjobname = f'froster:restore:{shortlabel}'
+                    email = cfg.read('general', 'email')
+                    se.add_line(f'#SBATCH --job-name={myjobname}')
+                    se.add_line(f'#SBATCH --begin={fut_time}')
+                    se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+                    se.add_line(f'#SBATCH --mem=64G')
+                    se.add_line(f'#SBATCH --requeue')
+                    se.add_line(
+                        f'#SBATCH --output=froster-download-{label}-%J.out')
+                    se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+                    se.add_line(f'#SBATCH --mail-user={email}')
+                    se.add_line(f'#SBATCH --time={se.walltime}')
+                    if se.partition:
+                        se.add_line(f'#SBATCH --partition={se.partition}')
+                    if se.qos:
+                        se.add_line(f'#SBATCH --qos={se.qos}')
+                    # original cmdline
+                    cmdline = " ".join(map(shlex.quote, sys.argv))
+                    if not "--profile" in cmdline and args.awsprofile:
+                        cmdline = cmdline.replace(
+                            '/froster.py ', f'/froster --profile {args.awsprofile} ')
+                    else:
+                        cmdline = cmdline.replace('/froster.py ', '/froster ')
+                    if not fld in cmdline:
+                        cmdline = f'{cmdline} "{fld}"'
+                    cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
+                    se.add_line(cmdline)
+                    jobid = se.sbatch()
+                    print(
+                        f'Submitted froster download job to run in 12 hours: {jobid}')
+                    print(f'Check Job Output:')
+                    print(f' tail -f froster-download-{label}-{jobid}.out')
+                else:
+                    print(
+                        f'\nGlacier retrievals pending, run this again in 5-12 hours\n')
+
+    else:
+        se = SlurmEssentials(args, cfg)
+        label = args.folders[0].replace('/', '+')
+        label = label.replace(' ', '_')
+        shortlabel = os.path.basename(args.folders[0])
+        myjobname = f'froster:restore:{shortlabel}'
+        email = cfg.read('general', 'email')
+        se.add_line(f'#SBATCH --job-name={myjobname}')
+        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --requeue')
+        se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --time={se.walltime}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')
+        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+        if not "--profile" in cmdline and args.awsprofile:
+            cmdline = cmdline.replace(
+                '/froster.py ', f'/froster --profile {args.awsprofile} ')
+        else:
+            cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if not args.folders[0] in cmdline:
+            folders = '" "'.join(args.folders)
+            cmdline = f'{cmdline} "{folders}"'
+        cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster restore job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-restore-{label}-{jobid}.out')
+
+
+def subcmd_delete(args, cfg, arch, aws):
+
+    global TABLECSV
+    global SELECTEDFILE
+
+    cfg.printdbg("delete:", args.awsprofile, args.folders)
+    fld = '" "'.join(args.folders)
+    cfg.printdbg(f'default cmdline: froster delete "{fld}"')
+
+    if not args.folders:
+        TABLECSV = arch.archive_json_get_csv(
+            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
+        if TABLECSV == None:
+            print("No archives available.")
+            return False
+        app = TableArchive()
+        retline = app.run()
+        if not retline:
+            return False
+        if len(retline) < 2:
+            print('Error: froster-archives table did not return result')
+            return False
+        cfg.printdbg("dialog returns:", retline)
+        args.folders.append(retline[0])
+        if retline[2]:
+            cfg.awsprofile = retline[2]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)
+    else:
+        pass
+        # we actually want to support symlinks
+        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access_folders(args.folders):
+        return False
+
+    for fld in args.folders:
+        fld = fld.rstrip(os.path.sep)
+        # get archive storage location
+        print(
+            f'Deleting archived files in "{fld}", please wait ...', flush=True)
+        if not arch.delete(fld):
+            cfg.printdbg(
+                f'  Archiver.delete({fld}) returned False', flush=True)
+
+
+def subcmd_mount(args, cfg, arch, aws):
+
+    global TABLECSV
+    global SELECTEDFILE
+
+    cfg.printdbg("mount:", args.awsprofile, args.mountpoint, args.folders)
+    fld = '" "'.join(args.folders)
+    cfg.printdbg(f'default cmdline: froster mount "{fld}"')
+
+    interactive = False
+    if not args.folders:
+        interactive = True
+        TABLECSV = arch.archive_json_get_csv(
+            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
+        if TABLECSV == None:
+            print("No archives available.")
+            return False
+        app = TableArchive()
+        retline = app.run()
+        if not retline:
+            return False
+        if len(retline) < 2:
+            print('Error: froster-archives table did not return result')
+            return False
+        cfg.printdbg("dialog returns:", retline)
+        args.folders.append(retline[0])
+        if retline[2]:
+            cfg.awsprofile = retline[2]
+            args.awsprofile = cfg.awsprofile
+            cfg._set_env_vars(cfg.awsprofile)
+    else:
+        pass
+        # we actually want to support symlinks
+        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+
+    if args.awsprofile and args.awsprofile not in cfg.get_aws_profiles():
+        print(f'Profile "{args.awsprofile}" not found.')
+        return False
+    if not aws.check_bucket_access_folders(args.folders):
+        return False
+
+    if args.aws:
+        cfg.create_ec2_instance()
+        return True
+
+    hostname = platform.node()
+    rclone = Rclone(args, cfg)
+    for fld in args.folders:
+        fld = fld.rstrip(os.path.sep)
+        if fld == os.path.realpath(os.getcwd()):
+            print(f' Cannot mount current working directory {fld}')
+            continue
+        # get archive storage location
+        rowdict = arch.archive_json_get_row(fld)
+        if rowdict == None:
+            print(f'Folder "{fld}" not in archive.')
+            continue
+        archive_folder = rowdict['archive_folder']
+
+        if args.mountpoint and os.path.isdir(args.mountpoint):
+            fld = args.mountpoint
+
+        print(f'Mounting archive folder at {fld} ... ', flush=True, end="")
+        pid = rclone.mount(archive_folder, fld)
+        print('Done!', flush=True)
+        if interactive:
+            print(textwrap.dedent(f'''
+                Note that this mount point will only work on the current machine, 
+                if you would like to have this work in a batch job you need to enter 
+                these commands in the beginning and the end of a batch script:
+                froster mount {fld}
+                froster umount {fld}
+                '''))
+        if args.mountpoint:
+            # we can only mount a single folder if mountpoint is set
+            break
+
+
+def subcmd_umount(args, cfg):
+
+    global TABLECSV
+    global SELECTEDFILE
+
+    rclone = Rclone(args, cfg)
+    mounts = rclone.get_mounts()
+    if len(mounts) == 0:
+        print("No Rclone mounts on this computer.")
+        return False
+    folders = cfg.replace_symlinks_with_realpaths(args.folders)
+    if len(folders) == 0:
+        TABLECSV = "\n".join(mounts)
+        TABLECSV = "Mountpoint\n"+TABLECSV
+        app = TableArchive()
+        retline = app.run()
+        folders.append(retline[0])
+    for fld in folders:
+        print(f'Unmounting folder {fld} ... ', flush=True, end="")
+        rclone.unmount(fld)
+        print('Done!', flush=True)
+
+
+def subcmd_ssh(args, cfg, aws):
+
+    ilist = aws.ec2_list_instances('Name', 'FrosterSelfDestruct')
+    ips = [sublist[0] for sublist in ilist if sublist]
+    if args.list:
+        if ips:
+            print("Running AWS EC2 Instances:")
+            for row in ilist:
+                print(' - '.join(row))
+        else:
+            print('No running instances detected')
+        return True
+    if args.terminate:
+        aws.ec2_terminate_instance(args.terminate)
+        return True
+    if args.sshargs:
+        if ':' in args.sshargs[0]:
+            myhost, remote_path = args.sshargs[0].split(':')
+        else:
+            myhost = args.sshargs[0]
+            remote_path = ''
+    else:
+        myhost = cfg.read('cloud', 'ec2_last_instance')
+    if ips and not myhost in ips:
+        print(f'{myhost} is no longer running, replacing with {ips[-1]}')
+        myhost = ips[-1]
+        # cfg.write('cloud', 'ec2_last_instance', myhost)
+    if args.subcmd == 'ssh':
+        print(f'Connecting to {myhost} ...')
+        aws.ssh_execute('ec2-user', myhost)
+        return True
+    elif args.subcmd == 'scp':
+        if len(args.sshargs) != 2:
+            print('The "scp" sub command supports currently 2 arguments')
+            return False
+        hostloc = next((i for i, item in enumerate(
+            args.sshargs) if ":" in item), None)
+        if hostloc == 0:
+            # the hostname is in the first argument: download
+            host, remote_path = args.sshargs[0].split(':')
+            ret = aws.ssh_download(
+                'ec2-user', host, remote_path, args.sshargs[1])
+        elif hostloc == 1:
+            # the hostname is in the second argument: uploaad
+            host, remote_path = args.sshargs[1].split(':')
+            ret = aws.ssh_upload(
+                'ec2-user', host, args.sshargs[0], remote_path)
+        else:
+            print('The "scp" sub command supports currently 2 arguments')
+            return False
+        print(ret.stdout, ret.stderr)
+
+
+def subcmd_credentials(args, aws: AWSBoto):
+    print("Checking credentials...")
+    aws.check_s3_credentials()
+    aws.check_bucket_access_folders(args.folders)
+
+
 
 
 def parse_arguments():
@@ -5872,6 +5874,7 @@ def parse_arguments():
 
 def main():
 
+    # TODO: Is this necessary?
     if args.debug:
         pass
 
