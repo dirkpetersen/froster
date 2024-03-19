@@ -58,55 +58,6 @@ __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
 __version__ = '0.9.0.70'
 
 
-def main():
-
-    if args.debug:
-        pass
-
-    if len(sys.argv) == 1:
-        return True
-
-    # Instantiate classes required by all functions
-    cfg = ConfigManager(args)
-    arch = Archiver(args, cfg)
-    aws = AWSBoto(args, cfg, arch)
-
-    if args.version:
-        args_version()
-        return True
-
-    if args.subcmd in ['archive', 'delete', 'restore']:
-        # remove folders that are not writable from args.folders
-        errfld = []
-        for fld in args.folders:
-            ret = arch.test_write(fld)
-            if ret == 13 or ret == 2:
-                errfld.append(fld)
-        if errfld:
-            errflds = '" \n"'.join(errfld)
-            print(
-                f'\nERROR: These folder(s) \n"{errflds}"\n must exist and you need write access to them.')
-            return False
-
-    # call a function for each sub command in our CLI
-    if args.subcmd in ['config', 'cnf']:
-        subcmd_config(args, cfg, aws)
-    elif args.subcmd in ['index', 'ind']:
-        subcmd_index(args, cfg, arch)
-    elif args.subcmd in ['archive', 'arc']:
-        subcmd_archive(args, cfg, arch, aws)
-    elif args.subcmd in ['restore', 'rst']:
-        subcmd_restore(args, cfg, arch, aws)
-    elif args.subcmd in ['delete', 'del']:
-        subcmd_delete(args, cfg, arch, aws)
-    elif args.subcmd in ['mount', 'mnt']:
-        subcmd_mount(args, cfg, arch, aws)
-    elif args.subcmd in ['umount']:  # or args.unmount:
-        subcmd_umount(args, cfg)
-    elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
-        subcmd_ssh(args, cfg, aws)
-
-
 def args_version():
 
     print(f'froster version {__version__}\n')
@@ -139,58 +90,61 @@ limitations under the License.
     # TODO: make a froster --info function with these old lines
     # print(f'Froster version: {__version__}')
     # print(f'  The Script: {os.path.abspath(__file__)}')
-    # print(f'  Config dir: {cfg.config_root.replace("/.config/froster","")}')
+    # print(f'  Config dir: {cfg.shared_config_dir.replace("~/.froster/config","")}')
     # print(f'  Profs .aws: {", ".join(cfg.get_aws_profiles())}')
     # print(f'Python version:\n{sys.version}')
     # try:
     #     print('* Pwalk ----- ')
     #     print('  Binary:', shutil.which('pwalk'))
-    #     print('  Version:', subprocess.run([os.path.join(cfg.binfolderx, 'pwalk'), '--version'],
+    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'pwalk'), '--version'],
     #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])
     #     print('* Rclone ---- ')
     #     print('  Binary:', shutil.which('rclone'))
-    #     print('  Version:', subprocess.run([os.path.join(cfg.binfolderx, 'rclone'), '--version'],
+    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'rclone'), '--version'],
     #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
     # except FileNotFoundError as e:
     #     print(f'Error: {e}')
     #     return False
     # return True
 
+# TODO: Check folder and variables being set here
+
 
 def subcmd_config(args, cfg, aws):
     # configure user and / or team settings
     # arguments are Class instances passed from main
 
-    cfg.fix_tree_permissions(cfg.config_root)
+    cfg.fix_tree_permissions(cfg.shared_config_dir)
 
-    if args.cfgfolder:
-        binfolder = os.path.join(
-            args.cfgfolder, '.config', 'froster', 'general', 'binfolder')
-        if os.path.exists(binfolder):
-            theroot = os.path.join(args.cfgfolder, '.config', 'froster')
-            config_root_file = os.path.join(
-                cfg.config_root_local, 'config_root')
-            with open(config_root_file, 'w') as myfile:
-                myfile.write(theroot)
-            cfg.config_root = theroot
-            print(
-                f'  Config folder set to {cfg.config_root}, please restart froster without config folder argument.')
-            return True
+    # TODO: These line should'nt be necessary, but check them
+    # if args.cfgfolder:
+    #     bin_dir = os.path.join(
+    #         args.cfgfolder, '.config', 'froster', 'general', 'bin_dir')
+    #     if os.path.exists(bin_dir):
+    #         theroot = os.path.join(args.cfgfolder, '.config', 'froster')
+    #         shared_config_dir_file = os.path.join(
+    #             cfg.config_dir, 'shared_config_dirig_dirig_dir')
+    #         with open(shared_config_dir_file, 'w') as myfile:
+    #             myfile.write(theroot)
+    #         cfg.shared_config_dir = theroot
+    #         print(
+    #             f'  Config folder set to {cfg.shared_config_dir}, please restart froster without config folder argument.')
+    #         return True
 
-    first_time = True
-    binfolder = cfg.binfolder
-    if not cfg.binfolder:
-        cfg.binfolder = '~/.froster/bin'
-        cfg.binfolderx = os.path.expanduser(cfg.binfolder)
-        if not os.path.exists(cfg.binfolderx):
-            os.makedirs(cfg.binfolderx, mode=0o775)
-    else:
-        if cfg.binfolder.startswith(cfg.home_dir):
-            cfg.binfolder = cfg.binfolder.replace(cfg.home_dir, '~')
-        cfg.binfolderx = os.path.expanduser(cfg.binfolder)
-        first_time = False
-    if binfolder != cfg.binfolder:
-        cfg.write('general', 'binfolder', cfg.binfolder)
+    # first_time = True
+    # bin_dir = cfg.bin_dir
+    # if not cfg.bin_dir:
+    #     cfg.bin_dir = '~/.froster/bin'
+    #     cfg.bin_dir = os.path.expanduser(cfg.bin_dir)
+    #     if not os.path.exists(cfg.bin_dir):
+    #         os.makedirs(cfg.bin_dir, mode=0o775)
+    # else:
+    #     if cfg.bin_dir.startswith(cfg.home_dir):
+    #         cfg.bin_dir = cfg.bin_dir.replace(cfg.home_dir, '~')
+    #     cfg.bin_dir = os.path.expanduser(cfg.bin_dir)
+    #     first_time = False
+    # if bin_dir != cfg.bin_dir:
+    #     cfg.write('general', 'bin_dir', cfg.bin_dir)
 
     # Basic setup, focus the indexer on larger folders and file sizes
     if not cfg.read('general', 'max_small_file_size_kib'):
@@ -208,7 +162,7 @@ def subcmd_config(args, cfg, aws):
 
     if args.monitor:
         # monitoring only setup, do not continue
-        fro = os.path.join(cfg.binfolderx, 'froster')
+        fro = os.path.join(cfg.bin_dir, 'froster')
         cfg.write('general', 'email', args.monitor)
         cfg.add_systemd_cron_job(f'{fro} restore --monitor', '30')
         return True
@@ -217,14 +171,17 @@ def subcmd_config(args, cfg, aws):
         # only basic configuration required for indexing jobs
         return True
 
-    print(f'\n*** Asking a few questions  ({cfg.config_root}) ***')
+    print(f'\n*** Asking a few questions  ({cfg.shared_config_dir}) ***')
     print('*** For most you can just hit <Enter> to accept the default. ***\n')
 
     # determine if we need to move the (shared) config to a new folder
     movecfg = False
-    if first_time and args.cfgfolder == '' and cfg.config_root == cfg.config_root_local:
+
+    # TODO: check this
+    if args.cfgfolder == '' and cfg.shared_config_dir == cfg.config_dir:
         if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', 'no'):
             movecfg = True
+            # TODO: populate config.ini with the shared config folder
             args.cfgfolder = cfg.prompt(
                 'Enter the path to a shared config folder:')
     elif args.cfgfolder:
@@ -264,9 +221,10 @@ def subcmd_config(args, cfg, aws):
     cfg.write('general', 's3_storage_class', s3_storage_class)
 
     cfg.create_aws_configs()
+    # TODO: check over this
     # if there is a shared ~/.aws/config copy it over
-    if cfg.config_root_local != cfg.config_root:
-        cfg.replicate_ini('ALL', cfg.awsconfigfileshr, cfg.awsconfigfile)
+    if cfg.config_dir != cfg.shared_config_dir:
+        cfg.replicate_ini('ALL', cfg.aws_config_fileshr, cfg.aws_config_file)
 
     aws_region = cfg.get_aws_region('aws')
     if not aws_region:
@@ -406,8 +364,8 @@ def subcmd_config(args, cfg, aws):
         x = cfg.prompt('What is the local scratch root ?',
                        '/mnt/scratch|hpc|lscratch_root', 'string')  # add slurm jobid at the end
 
-    print(f'\nChecked permissions in {cfg.config_root}')
-    cfg.fix_tree_permissions(cfg.config_root)
+    print(f'\nChecked permissions in {cfg.shared_config_dir}')
+    cfg.fix_tree_permissions(cfg.shared_config_dirig_dir)
 
     print('\nDone!\n')
 
@@ -480,7 +438,7 @@ def subcmd_archive(args, cfg, arch, aws):
 
     archmeta = []
     if not args.folders:
-        hsfolder = os.path.join(cfg.config_root, 'hotspots')
+        hsfolder = os.path.join(cfg.shared_config_dir, 'hotspots')
         if not os.path.exists(hsfolder):
             print("No folders to archive in arguments and no Hotspots CSV files found!")
             print('Run: froster archive "/your/folder/to/archive"')
@@ -974,12 +932,18 @@ def subcmd_ssh(args, cfg, aws):
         print(ret.stdout, ret.stderr)
 
 
+def subcmd_credentials(args, aws: AWSBoto):
+    print("Checking credentials...")
+    aws.check_s3_credentials()
+    aws.check_bucket_access_folders(args.folders)
+
+
 class Archiver:
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
         self.archive_json = os.path.join(
-            cfg.config_root, 'froster-archives.json')
+            cfg.shared_config_dir, 'froster-archives.json')
         x = self.cfg.read('general', 'max_small_file_size_kib')
         self.thresholdKB = int(x) if x else 1024
         x = self.cfg.read('general', 'min_index_folder_size_gib')
@@ -1013,7 +977,7 @@ class Archiver:
                 if not self.args.pwalkcsv:
                     pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
                     # 2> {tmpfile2.name}.err'
-                    mycmd = f'{self.cfg.binfolderx}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
+                    mycmd = f'{self.cfg.bin_dir}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
                     self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
                     ret = subprocess.run(mycmd, shell=True,
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -2277,7 +2241,7 @@ class Archiver:
     def _get_hotspots_path(self, folder):
         # get a full path name of a new hotspots file
         # based on a folder name that has been crawled
-        hsfld = os.path.join(self.cfg.config_root, 'hotspots')
+        hsfld = os.path.join(self.cfg.shared_config_dir, 'hotspots')
         os.makedirs(hsfld, exist_ok=True)
         return os.path.join(hsfld, self._get_hotspots_file(folder))
 
@@ -2572,7 +2536,7 @@ class Rclone:
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
-        self.rc = os.path.join(self.cfg.binfolderx, 'rclone')
+        self.rc = os.path.join(self.cfg.bin_dir, 'rclone')
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -2856,7 +2820,7 @@ class SlurmEssentials:
         if result.returncode != 0:
             if 'Invalid generic resource' in result.stderr:
                 print('Invalid generic resource request. Please remove or change file:')
-                print(os.path.join(self.config_root, 'hpc', 'slurm_lscratch'))
+                print(os.path.join(self.shared_config_dir, 'hpc', 'slurm_lscratch'))
             else:
                 raise RuntimeError(
                     f"Error running sbatch: {result.stderr.strip()}")
@@ -3192,7 +3156,7 @@ class NIHReporter:
 class AWSBoto:
     # we write all config entries as files to '~/.config'
     # to make it easier for bash users to read entries
-    # with a simple var=$(cat ~/.config/froster/section/entry)
+    # with a simple var=$(cat ~/.froster/config/section/entry)
     # entries can be strings, lists that are written as
     # multi-line files and dictionaries which are written to json
 
@@ -3201,6 +3165,63 @@ class AWSBoto:
         self.cfg = cfg
         self.arch = arch
         self.awsprofile = self.cfg.awsprofile
+
+    def check_s3_credentials(self, profile=None, verbose=False):
+
+        session = boto3.Session(
+            profile_name=profile) if profile else boto3.Session()
+        try:
+            if verbose or self.args.debug:
+                self.cfg.printdbg(
+                    f'  Checking credentials for profile "{profile}" ... ', end='')
+            ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+            s3_client = session.client('s3', endpoint_url=ep_url)
+            s3_client.list_buckets()
+            if verbose or self.args.debug:
+                print('Done.')
+        # return True
+        # try:
+        #    pass
+        except botocore.exceptions.NoCredentialsError:
+            print(
+                "No AWS credentials found. Please check your access key and secret key.")
+        except botocore.exceptions.EndpointConnectionError:
+            print(
+                "Unable to connect to the AWS S3 endpoint. Please check your internet connection.")
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code')
+            # error_code = e.response['Error']['Code']
+            if error_code == 'RequestTimeTooSkewed':
+                print(
+                    f"The time difference between S3 storage and your computer is too high:\n{e}")
+            elif error_code == 'InvalidAccessKeyId':
+                print(
+                    f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
+                print(
+                    f"Fix your credentials in ~/.aws/credentials for profile {profile}")
+            elif error_code == 'SignatureDoesNotMatch':
+                if "Signature expired" in str(e):
+                    print(
+                        f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
+                    return False
+                else:
+                    print(
+                        f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")
+            elif error_code == 'InvalidClientTokenId':
+                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
+                print(
+                    f"Fix your credentials in ~/.aws/credentials for profile {profile}")
+            else:
+                print(
+                    f"Error validating credentials for profile {profile}: {e}")
+                print(
+                    f"Fix your credentials in ~/.aws/credentials for profile {profile}")
+            return False
+        except Exception as e:
+            print(
+                f"An unexpected Error in check_s3_credentials with profile {profile}: {e}")
+            sys.exit(1)
+        return True
 
     def get_aws_regions(self, profile=None, provider='AWS'):
         # returns a list of AWS regions
@@ -3249,8 +3270,8 @@ class AWSBoto:
         if not bucket_name:
             print('check_bucket_access: bucket_name empty. You may have not yet configured a S3 bucket name. Please run "froster config" first')
             sys.exit(1)
-        if not self._check_s3_credentials(profile):
-            print('_check_s3_credentials failed. Please edit file ~/.aws/credentials')
+        if not self.check_s3_credentials(profile):
+            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
             return False
         session = boto3.Session(
             profile_name=profile) if profile else boto3.Session()
@@ -3298,7 +3319,7 @@ class AWSBoto:
             return False
 
     def create_s3_bucket(self, bucket_name, profile=None):
-        if not self._check_s3_credentials(profile, verbose=True):
+        if not self.check_s3_credentials(profile, verbose=True):
             print(
                 f"Cannot create bucket '{bucket_name}' with these credentials")
             print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
@@ -3388,62 +3409,6 @@ class AWSBoto:
         except Exception as e:
             print(f"An unexpected error occurred in create_s3_bucket: {e}")
             return False
-        return True
-
-    def _check_s3_credentials(self, profile=None, verbose=False):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        try:
-            if verbose or self.args.debug:
-                self.cfg.printdbg(
-                    f'  Checking credentials for profile "{profile}" ... ', end='')
-            ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
-            s3_client = session.client('s3', endpoint_url=ep_url)
-            s3_client.list_buckets()
-            if verbose or self.args.debug:
-                print('Done.')
-        # return True
-        # try:
-        #    pass
-        except botocore.exceptions.NoCredentialsError:
-            print(
-                "No AWS credentials found. Please check your access key and secret key.")
-        except botocore.exceptions.EndpointConnectionError:
-            print(
-                "Unable to connect to the AWS S3 endpoint. Please check your internet connection.")
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code')
-            # error_code = e.response['Error']['Code']
-            if error_code == 'RequestTimeTooSkewed':
-                print(
-                    f"The time difference between S3 storage and your computer is too high:\n{e}")
-            elif error_code == 'InvalidAccessKeyId':
-                print(
-                    f"Error: Invalid AWS Access Key ID in profile {profile}:\n{e}")
-                print(
-                    f"Fix your credentials in ~/.aws/credentials for profile {profile}")
-            elif error_code == 'SignatureDoesNotMatch':
-                if "Signature expired" in str(e):
-                    print(
-                        f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
-                    return False
-                else:
-                    print(
-                        f"Error: Invalid AWS Secret Access Key in profile {profile}:\n{e}")
-            elif error_code == 'InvalidClientTokenId':
-                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
-                print(
-                    f"Fix your credentials in ~/.aws/credentials for profile {profile}")
-            else:
-                print(
-                    f"Error validating credentials for profile {profile}: {e}")
-                print(
-                    f"Fix your credentials in ~/.aws/credentials for profile {profile}")
-            return False
-        except Exception as e:
-            print(
-                f"An unexpected Error in _check_s3_credentials with profile {profile}: {e}")
-            sys.exit(1)
         return True
 
     def _get_s3_data_size(self, folders, profile=None):
@@ -3540,9 +3505,9 @@ class AWSBoto:
             print(ret.stdout, ret.stderr)
 
         archive_json = os.path.join(
-            self.cfg.config_root, 'froster-archives.json')
+            self.cfg.shared_config_dir, 'froster-archives.json')
         ret = self.ssh_upload(
-            'ec2-user', ip, archive_json, "~/.config/froster/")
+            'ec2-user', ip, archive_json, "~/.froster/config/")
         if ret.stdout or ret.stderr:
             print(ret.stdout, ret.stderr)
 
@@ -3912,8 +3877,8 @@ class AWSBoto:
         long_timezone = self.cfg.get_time_zone()
         return textwrap.dedent(f'''
         #! /bin/bash
-        mkdir -p ~/.config/froster
-        sleep 3 # give us some time to upload json to ~/.config/froster
+        mkdir -p ~/.froster/config
+        sleep 3 # give us some time to upload json to ~/.froster/config
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo '#export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
         echo '#export AWS_DEFAULT_REGION={self.cfg.aws_region}' >> ~/.bashrc
@@ -4000,7 +3965,7 @@ class AWSBoto:
             return False
 
         # Create a new EC2 key pair
-        key_path = os.path.join(self.cfg.config_root,
+        key_path = os.path.join(self.cfg.shared_config_dir,
                                 'cloud', f'{self.cfg.ssh_key_name}.pem')
         if not os.path.exists(key_path):
             try:
@@ -4012,13 +3977,13 @@ class AWSBoto:
                 pass
             key_pair = ec2.create_key_pair(KeyName=self.cfg.ssh_key_name)
             os.makedirs(os.path.join(
-                self.cfg.config_root, 'cloud'), exist_ok=True)
+                self.cfg.shared_config_dir, 'cloud'), exist_ok=True)
             with open(key_path, 'w') as key_file:
                 key_file.write(key_pair.key_material)
             os.chmod(key_path, 0o640)  # Set file permission to 600
 
         mykey_path = os.path.join(
-            self.cfg.config_root, 'cloud', f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
+            self.cfg.shared_config_dir, 'cloud', f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
         if not os.path.exists(mykey_path):
             shutil.copyfile(key_path, mykey_path)
             os.chmod(mykey_path, 0o600)  # Set file permission to 600
@@ -4195,10 +4160,10 @@ class AWSBoto:
         return ilist
 
     def _ssh_get_key_path(self):
-        key_path = os.path.join(self.cfg.config_root,
+        key_path = os.path.join(self.cfg.shared_config_dir,
                                 'cloud', f'{self.cfg.ssh_key_name}.pem')
         mykey_path = os.path.join(
-            self.cfg.config_root, 'cloud', f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
+            self.cfg.shared_config_dir, 'cloud', f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
         if not os.path.exists(key_path):
             print(
                 f'{key_path} does not exist. Please create it by launching "froster restore --aws"')
@@ -4840,52 +4805,144 @@ class AWSBoto:
 
 
 class ConfigManager:
-    # we write all config entries as files to '~/.config'
+    # we write all config entries as files to '~/.froster/config'
     # to make it easier for bash users to read entries
-    # with a simple var=$(cat ~/.config/froster/section/entry)
+    # with a simple var=$(cat ~/.froster/config/section/entry)
     # entries can be strings, lists that are written as
     # multi-line files and dictionaries which are written to json
 
     def __init__(self, args):
-        self.args = args
+
+        # Expand the ~ symbols to user's home directory
         self.home_dir = os.path.expanduser('~')
-        self.config_root_local = os.path.join(
-            self.home_dir, '.config', 'froster')
-        os.makedirs(self.config_root_local, exist_ok=True)
-        self.config_root = self._get_config_root()
-        self.binfolder = self.read(
-            'general', 'binfolder').replace(self.home_dir, '~')
-        self.binfolderx = os.path.expanduser(self.binfolder)
-        self.nih = self.read('general', 'prompt_nih_reporter')
-        self.homepaths = self._get_home_paths()
-        self.awscredsfile = os.path.join(self.home_dir, '.aws', 'credentials')
-        self.awsconfigfile = os.path.join(self.home_dir, '.aws', 'config')
-        self.awsconfigfileshr = os.path.join(self.config_root, 'aws_config')
-        self.bucket = self.read('general', 'bucket')
-        self.archiveroot = self.read('general', 'archiveroot')
-        self.archivepath = os.path.join(
-            self.bucket,
-            self.archiveroot,)
-        self.awsprofile = os.getenv('AWS_PROFILE', 'default')
-        profs = self.get_aws_profiles()
-        if "aws" in profs:
-            self.awsprofile = os.getenv('AWS_PROFILE', 'aws')
-        elif "AWS" in profs:
-            self.awsprofile = os.getenv('AWS_PROFILE', 'AWS')
-        if hasattr(self.args, "awsprofile") and args.awsprofile:
-            self.awsprofile = self.args.awsprofile
-        self.aws_region = self.get_aws_region(self.awsprofile)
-        self.envrn = os.environ.copy()
-        if not self._set_env_vars(self.awsprofile):
-            self.awsprofile = ''
-        self.ssh_key_name = 'froster-ec2'
-        self.whoami = getpass.getuser()
+
+        # Froster's home directory
+        self.froster_dir = os.path.join(self.home_dir, '.froster')
+
+        # Froster's configuration directory
+        self.config_dir = os.path.join(self.froster_dir, 'config')
+
+        # Froster's configuration file
+        self.config_file = os.path.join(self.config_dir, 'config.ini')
+
+        # Create a ConfigParser object
+        config = configparser.ConfigParser()
+
+        # Check if there is a ~/.froster/config/config.ini file already
+        if (os.path.exists(self.config_file)):
+
+            # Populate self variables using confing.ini file
+            config.read(self.config_file)
+
+            # Froster's shared configuration dir
+            self.shared_config_dir = config.get(
+                'DEFAULT', 'shared_config_dir', fallback=None)
+
+            # Froster's shared configuration file
+            self.shared_config_file = config.get(
+                'DEFAULT', 'shared_config_file', fallback=None)
+
+            # TODO: If there is shared config file, read it and populate the variables
+
+            # Froster's bin directory
+            self.bin_dir = config.get('DEFAULT', 'bin_dir', fallback=None)
+
+            # NIH Reporter API key
+            self.nih = config.get('DEFAULT', 'nih', fallback=None)
+
+            # AWS directory
+            self.aws_dir = config.get('AWS', 'aws_dir', fallback=None)
+
+            # AWS credentials file
+            self.aws_credentials_file = config.get(
+                'AWS', 'aws_credentials_file', fallback=None)
+
+            # AWS config file
+            self.aws_config_file = config.get(
+                'AWS', 'aws_config_file', fallback=None)
+
+            # AWS profile
+            self.aws_profile = config.get('AWS', 'aws_profile', fallback=None)
+
+            # Current S3 Bucket
+            self.current_bucket = config.get(
+                'AWS', 'current_bucket', fallback=None)
+
+        else:
+            # Create config directory
+            os.makedirs(self.config_dir, exist_ok=True)
+
+            # Add default section to config.ini file
+            config['DEFAULT'] = {}
+
+            # Froster's home directory
+            config['DEFAULT']['home_dir'] = self.home_dir
+
+            # Froster's directory
+            config['DEFAULT']['froster_dir'] = self.froster_dir
+
+            # Froster's configuration directory
+            config['DEFAULT']['config_dir'] = self.config_dir
+
+            # Froster's configuration file
+            config['DEFAULT']['config_file'] = self.config_file
+
+            # Froster's shared configuration dir
+            self.shared_config_dir = ''
+            config['DEFAULT']['shared_config_dir'] = self.shared_config_dir
+
+            # Froster's shared configuration file
+            self.shared_config_file = ''
+            config['DEFAULT']['shared_config_file'] = self.shared_config_file
+
+            # Froster's bin directory
+            self.bin_dir = os.path.join(self.froster_dir, 'bin')
+            config['DEFAULT']['bin_dir'] = self.bin_dir
+
+            # NIH Reporter API key
+            self.nih = ''
+            config['DEFAULT']['nih'] = self.nih
+
+            # Add AWS section to config.ini file
+            config['AWS'] = {}
+
+            # AWS directory
+            self.aws_dir = os.path.join(self.home_dir, '.aws')
+            config['AWS']['aws_dir'] = self.aws_dir
+
+            # AWS credentials file
+            self.aws_credentials_file = os.path.join(
+                self.aws_dir, 'credentials')
+            config['AWS']['aws_credentials_file'] = self.aws_credentials_file
+
+            # AWS config file
+            self.aws_config_file = os.path.join(self.aws_dir, 'config')
+            config['AWS']['aws_config_file'] = self.aws_config_file
+
+            # AWS profile
+            self.aws_profile = ''
+            config['AWS']['aws_profile'] = self.aws_profile
+
+            # Current S3 Bucket
+            self.current_bucket = ''
+            config['AWS']['current_bucket'] = self.current_bucket
+
+            # Write these variables inside the config.ini file
+            with open(self.config_file, 'w') as config_file:
+                config.write(config_file)
+
+    def __repr__(self):
+        return "<{klass} @{id:x} {attrs}>".format(
+            klass=self.__class__.__name__,
+            id=id(self) & 0xFFFFFF,
+            attrs=" ".join("{}={!r}\n".format(k, v)
+                           for k, v in self.__dict__.items()),
+        )
 
     def _set_env_vars(self, profile):
 
         # Read the credentials file
-        config = configparser.ConfigParser()
-        config.read(self.awscredsfile)
+        config.read(self.aws_credentials_file)
         self.aws_region = self.get_aws_region(profile)
 
         if not config.has_section(profile):
@@ -4938,18 +4995,9 @@ class ConfigManager:
 
         return True
 
-    def _get_home_paths(self):
-        path_dirs = os.environ['PATH'].split(os.pathsep)
-        # Filter the directories in the PATH that are inside the home directory
-        dirs_inside_home = {
-            directory for directory in path_dirs
-            if directory.startswith(self.home_dir) and os.path.isdir(directory)
-        }
-        return sorted(dirs_inside_home, key=len)
-
-    def _get_config_root(self):
-        theroot = self.config_root_local
-        rootfile = os.path.join(theroot, 'config_root')
+    def _get_shared_config_dir(self):
+        theroot = self.config_dir
+        rootfile = os.path.join(theroot, 'shared_config_dir')
         if os.path.exists(rootfile):
             with open(rootfile, 'r') as myfile:
                 theroot = myfile.read().strip()
@@ -4962,14 +5010,14 @@ class ConfigManager:
         return theroot
 
     def _get_section_path(self, section):
-        return os.path.join(self.config_root, section)
+        return os.path.join(self.shared_config_dir, section)
 
     def _get_entry_path(self, section, entry):
         if section:
             section_path = self._get_section_path(section)
             return os.path.join(section_path, entry)
         else:
-            return os.path.join(self.config_root, entry)
+            return os.path.join(self.shared_config_dir, entry)
 
     def fix_tree_permissions(self, target_dir):
         try:
@@ -5225,6 +5273,7 @@ class ConfigManager:
         """)
 
         # Ensure the directory exists
+        # TODO: Check this path
         user_systemd_dir = os.path.expanduser("~/.config/systemd/user/")
         os.makedirs(user_systemd_dir, exist_ok=True)
 
@@ -5308,27 +5357,36 @@ class ConfigManager:
             print(
                 f"Missing entries in source from destination copied back to {src_file}")
 
+    # get the full list of profiles from ~/.aws/credentials profile folder
     def get_aws_profiles(self):
-        # get the full list of profiles from ~/.aws/ profile folder
         try:
+
+            # Check if aws config file exists
+            if not os.path.exists(self.aws_config_file):
+                return []
+
+            # Check if aws credentials file exists
+            if not os.path.exists(self.aws_credentials_file):
+                return []
+
+            # Create a ConfigParser object
             config = configparser.ConfigParser()
-            # Read the AWS config file ---- optional, we only require a creds file
-            if os.path.exists(self.awsconfigfile):
-                config.read(self.awsconfigfile)
-            # Read the AWS credentials file
-            if os.path.exists(self.awscredsfile):
-                config.read(self.awscredsfile)
+
+            # Read the aws credentials file
+            config.read(self.aws_credentials_file)
+
             # Get the list of profiles
             profiles = []
             for section in config.sections():
-                # .replace("default", "default")
+                # TODO: is this necessary? Backward compatibility?
                 profile_name = section.replace("profile ", "")
                 profiles.append(profile_name)
-            # convert list to set and back to list to remove dups
-            return list(set(profiles))
-        except Exception as e:
-            # print(f'Error: {e}')
-            return []
+
+            return profiles
+
+        except Exception as err:
+            print(f'Error: ${sys._getframe(  ).f_code.co_name}: {err}')
+            return False
 
     def create_aws_configs(self, access_key=None, secret_key=None, region=None):
 
@@ -5337,25 +5395,25 @@ class ConfigManager:
         if not os.path.exists(aws_dir):
             os.makedirs(aws_dir)
 
-        if not os.path.isfile(self.awsconfigfile):
+        if not os.path.isfile(self.aws_config_file):
             if region:
                 print(
-                    f'\nAWS config file {self.awsconfigfile} does not exist, creating ...')
-                with open(self.awsconfigfile, "w") as config_file:
+                    f'\nAWS config file {self.aws_config_file} does not exist, creating ...')
+                with open(self.aws_config_file, "w") as config_file:
                     config_file.write("[default]\n")
                     config_file.write(f"region = {region}\n")
                     config_file.write("\n")
                     config_file.write("[profile aws]\n")
                     config_file.write(f"region = {region}\n")
 
-        if not os.path.isfile(self.awscredsfile):
+        if not os.path.isfile(self.aws_credentials_file):
             print(
-                f'\nAWS credentials file {self.awscredsfile} does not exist, creating ...')
+                f'\nAWS credentials file {self.aws_credentials_file} does not exist, creating ...')
             if not access_key:
                 access_key = input("Enter your AWS access key ID: ")
             if not secret_key:
                 secret_key = input("Enter your AWS secret access key: ")
-            with open(self.awscredsfile, "w") as credentials_file:
+            with open(self.aws_credentials_file, "w") as credentials_file:
                 credentials_file.write("[default]\n")
                 credentials_file.write(f"aws_access_key_id = {access_key}\n")
                 credentials_file.write(
@@ -5365,7 +5423,7 @@ class ConfigManager:
                 credentials_file.write(f"aws_access_key_id = {access_key}\n")
                 credentials_file.write(
                     f"aws_secret_access_key = {secret_key}\n")
-            os.chmod(self.awscredsfile, 0o600)
+            os.chmod(self.aws_credentials_file, 0o600)
 
     def set_aws_config(self, profile, key, value, service=''):
         if key == 'endpoint_url':
@@ -5373,7 +5431,6 @@ class ConfigManager:
                 return False
             else:
                 value = f'{value}\nsignature_version = s3v4'
-        config = configparser.ConfigParser()
         config.read(os.path.expanduser("~/.aws/config"))
         section = profile
         if profile != 'default':
@@ -5388,14 +5445,13 @@ class ConfigManager:
             config.write(configfile)
         if profile != 'default' and not self.args.cfgfolder:  # when moving cfg it still writes to old folder
             self.replicate_ini(
-                f'profile {profile}', self.awsconfigfile, self.awsconfigfileshr)
+                f'profile {profile}', self.aws_config_file, self.aws_config_fileshr)
         return True
 
     def get_aws_s3_endpoint_url(self, profile=None):
         # non boto3 method, use _get_aws_s3_session_endpoint_url instead
         if not profile:
             profile = self.awsprofile
-        config = configparser.ConfigParser()
         config.read(os.path.expanduser('~/.aws/config'))
         prof = 'profile ' + profile
         if profile == 'default':
@@ -5558,47 +5614,50 @@ class ConfigManager:
                     print(f"  Could not set permissions on {cfgfolder} :\n{e}")
                     return False
 
-        if not cfgfolder and self.config_root == self.config_root_local:
-            cfgfolder = self.prompt("Please enter the root where folder .config/froster will be created.",
+        # TODO: Check this config path
+        if not cfgfolder and self.shared_config_dir == self.config_dir:
+            cfgfolder = self.prompt("Please enter the root where folder .froster/config will be created.",
                                     os.path.expanduser('~'))
         if cfgfolder:
-            new_config_root = os.path.join(
+            new_shared_config_dir = os.path.join(
                 os.path.expanduser(cfgfolder), '.config', 'froster')
         else:
-            new_config_root = self.config_root
-        old_config_root = self.config_root_local
-        config_root_file = os.path.join(self.config_root_local, 'config_root')
+            new_shared_config_dir = self.shared_config_dir
+        old_shared_config_dir = self.config_dir
+        shared_config_dir_file = os.path.join(
+            self.config_dir, 'shared_config_dir')
 
-        if os.path.exists(config_root_file):
-            with open(config_root_file, 'r') as f:
-                old_config_root = f.read().strip()
+        if os.path.exists(shared_config_dir_file):
+            with open(shared_config_dir_file, 'r') as f:
+                old_shared_config_dir = f.read().strip()
 
-        # print(old_config_root,new_config_root)
-        if old_config_root == new_config_root:
+        # print(old_shared_config_dir,new_shared_config_dir)
+        if old_shared_config_dir == new_shared_config_dir:
             return True
 
-        if not os.path.isdir(new_config_root):
-            if os.path.isdir(old_config_root):
-                shutil.move(old_config_root, new_config_root)
-                if os.path.isdir(old_config_root):
+        if not os.path.isdir(new_shared_config_dir):
+            if os.path.isdir(old_shared_config_dir):
+                shutil.move(old_shared_config_dir, new_shared_config_dir)
+                if os.path.isdir(old_shared_config_dir):
                     try:
-                        os.rmdir(old_config_root)
+                        os.rmdir(old_shared_config_dir)
                     except:
                         pass
-                print(f'  Froster config moved to "{new_config_root}"\n')
-            os.makedirs(new_config_root, exist_ok=True)
-            if os.path.exists(self.awsconfigfile):
-                self.replicate_ini('ALL', self.awsconfigfile,
-                                   os.path.join(new_config_root, 'aws_config'))
+                print(f'  Froster config moved to "{new_shared_config_dir}"\n')
+            os.makedirs(new_shared_config_dir, exist_ok=True)
+            if os.path.exists(self.aws_config_file):
+                self.replicate_ini('ALL', self.aws_config_file,
+                                   os.path.join(new_shared_config_dir, 'aws_config'))
                 print(
-                    f'  ~/.aws/config replicated to "{new_config_root}/aws_config"\n')
+                    f'  ~/.aws/config replicated to "{new_shared_config_dir}/aws_config"\n')
 
-        self.config_root = new_config_root
+        self.shared_config_dir = new_shared_config_dir
 
-        os.makedirs(old_config_root, exist_ok=True)
-        with open(config_root_file, 'w') as f:
-            f.write(self.config_root)
-            print(f'  Switched configuration path to "{self.config_root}"')
+        os.makedirs(old_shared_config_dir, exist_ok=True)
+        with open(shared_config_dir_file, 'w') as f:
+            f.write(self.shared_config_dir)
+            print(
+                f'  Switched configuration path to "{self.shared_config_dir}"')
         return True
 
     def wait_for_ssh_ready(self, hostname, port=22, timeout=60):
@@ -5626,22 +5685,29 @@ def parse_arguments():
                                      description='A (mostly) automated tool for archiving large scale data ' +
                                      'after finding folders in the file system that are worth archiving.')
 
+    # ***
+
     parser.add_argument('-d', '--debug', dest='debug', action='store_true', default=False,
                         help="verbose output for all commands")
-
     parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true', default=False,
                         help="do not submit a Slurm job, execute in the foreground. ")
-
     parser.add_argument('-c', '--cores', dest='cores', action='store_true', default='4',
                         help='Number of cores to be allocated for the machine. (default=4)')
-
     parser.add_argument('-p', '--profile', dest='awsprofile', action='store_true', default='',
                         help='which AWS profile in ~/.aws/ should be used. default="aws"')
-
     parser.add_argument('-v', '--version', dest='version', action='store_true',
                         help='print froster and packages version info')
 
     subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
+
+    # ***
+
+    parser_credentials = subparsers.add_parser('credentials', aliases=['crd'],
+                                               help=textwrap.dedent(f'''
+            Credential manager
+        '''), formatter_class=argparse.RawTextHelpFormatter)
+    parser_credentials.add_argument('--check', '-c', dest='crd-check', action='store_true', default=False,
+                                    help="Check if there are valid credentials on default routes.")
 
     # ***
 
@@ -5655,9 +5721,6 @@ def parse_arguments():
     parser_config.add_argument('--monitor', '-m', dest='monitor', action='store', default='',
                                metavar='<email@address.org>', help='setup froster as a monitoring cronjob ' +
                                'on an ec2 instance and notify an email address')
-    parser_config.add_argument('cfgfolder', action='store', default="", nargs='?',
-                               help='configuration root folder where .config/froster will be created ' +
-                               '(default=~ home directory)  ')
 
     # ***
 
@@ -5707,26 +5770,19 @@ def parse_arguments():
             options are set froster will print a command that 
             allows you to archive all matching folders at once.
         '''))
-
     parser_archive.add_argument('--mtime', '-m', dest='agemtime', action='store_true', default=False,
                                 help="Use modified file time (mtime) instead of accessed time (atime)")
-
     parser_archive.add_argument('--recursive', '-r', dest='recursive', action='store_true', default=False,
                                 help="Archive the current folder and all sub-folders")
-
     parser_archive.add_argument('--reset', '-s', dest='reset', action='store_true', default=False,
                                 help="This will not download any data, but recusively reset a folder from previous (e.g. failed) " +
                                 "archiving attempt. It will delete .froster.md5sum and extract Froster.smallfiles.tar")
-
     parser_archive.add_argument('--no-tar', '-t', dest='notar', action='store_true', default=False,
                                 help="Do not move small files to tar file before archiving")
-
     parser_archive.add_argument('--nih', '-n', dest='nih', action='store_true', default=False,
                                 help="Search and Link Metadata from NIH Reporter")
-
     parser_archive.add_argument('--dry-run', '-d', dest='dryrun', action='store_true', default=False,
                                 help="Execute a test archive without actually copying the data")
-
     parser_archive.add_argument('folders', action='store', default=[], nargs='*',
                                 help='folders you would like to archive (separated by space), ' +
                                 'the last folder in this list is the target   ')
@@ -5785,19 +5841,14 @@ def parse_arguments():
             $10/TiB/month for the duration you keep the data in S3.
             (Costs in Summer 2023)
             '''))
-
     parser_restore.add_argument('--aws', '-a', dest='aws', action='store_true', default=False,
                                 help="Restore folder on new AWS EC2 instance instead of local machine")
-
     parser_restore.add_argument('--instance-type', '-i', dest='instancetype', action='store', default="",
                                 help='The EC2 instance type is auto-selected, but you can pick any other type here')
-
     parser_restore.add_argument('--monitor', '-m', dest='monitor', action='store_true', default=False,
                                 help="Monitor EC2 server for cost and idle time.")
-
     parser_restore.add_argument('--no-download', '-l', dest='nodownload', action='store_true', default=False,
                                 help="skip download to local storage after retrieval from Glacier")
-
     parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
                                 help='folders you would like to to restore (separated by space), ' +
                                 '')
@@ -5808,21 +5859,74 @@ def parse_arguments():
                                        help=textwrap.dedent(f'''
             Login to an AWS EC2 instance to which data was restored with the --aws option
         '''), formatter_class=argparse.RawTextHelpFormatter)
-
     parser_ssh.add_argument('--list', '-l', dest='list', action='store_true', default=False,
                             help="List running Froster AWS EC2 instances")
-
     parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='',
                             metavar='<hostname>', help='Terminate AWS EC2 instance with this public IP Address.')
-
     parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
                             help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
                             '')
 
-    if len(sys.argv) == 1:
-        parser.print_help(sys.stdout)
+    return parser
 
-    return parser.parse_args()
+
+def main():
+
+    if args.debug:
+        pass
+
+    # Init Config Manager
+    cfg = ConfigManager(args)
+
+    print(cfg)
+    exit(0)
+
+    # Init Archiver
+    arch = Archiver(args, cfg)
+
+    # Init AWS Boto
+    aws = AWSBoto(args, cfg, arch)
+
+    # Print current version of froster
+    if args.version:
+        args_version()
+        return True
+
+    if args.subcmd in ['archive', 'delete', 'restore']:
+        # remove folders that are not writable from args.folders
+        errfld = []
+        for fld in args.folders:
+            ret = arch.test_write(fld)
+            if ret == 13 or ret == 2:
+                errfld.append(fld)
+        if errfld:
+            errflds = '" \n"'.join(errfld)
+            print(
+                f'\nERROR: These folder(s) \n"{errflds}"\n must exist and you need write access to them.')
+            return False
+
+    # call a function for each sub command in our CLI
+    if args.subcmd in ['config', 'cnf']:
+        subcmd_config(args, cfg, aws)
+    elif args.subcmd in ['index', 'ind']:
+        subcmd_index(args, cfg, arch)
+    elif args.subcmd in ['archive', 'arc']:
+        subcmd_archive(args, cfg, arch, aws)
+    elif args.subcmd in ['restore', 'rst']:
+        subcmd_restore(args, cfg, arch, aws)
+    elif args.subcmd in ['delete', 'del']:
+        subcmd_delete(args, cfg, arch, aws)
+    elif args.subcmd in ['mount', 'mnt']:
+        subcmd_mount(args, cfg, arch, aws)
+    elif args.subcmd in ['umount']:  # or args.unmount:
+        subcmd_umount(args, cfg)
+    elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
+        subcmd_ssh(args, cfg, aws)
+    elif args.subcmd in ['credentials', 'crd']:
+        subcmd_credentials(args, aws)
+    else:
+        parser.print_help()
+        return True
 
 
 if __name__ == "__main__":
@@ -5833,7 +5937,8 @@ if __name__ == "__main__":
 
     try:
         # parse arguments using python's internal module argparse.py
-        args = parse_arguments()
+        parser = parse_arguments()
+        args = parser.parse_args()
 
         # Declaring variables
         TABLECSV = ''  # CSV string for DataTable
