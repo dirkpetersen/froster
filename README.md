@@ -290,13 +290,13 @@ echo 'alias fro="froster --no-slurm --cores=8 --profile=myceph"' >> ~/.bashrc
 
 #### advanced configuration 
 
-Some advanced configuration settings are not offered through a user inferface but you can change them under `~/.config/froster`. For example,  `~/.config/froster/general` has one file per setting which makes it very easy to use the settings in shell scripts, for example when writing addon tools: 
+Some advanced configuration settings are not offered through a user inferface but you can change them under `~/.froster/config`. For example,  `~/.froster/config/general` has one file per setting which makes it very easy to use the settings in shell scripts, for example when writing addon tools: 
 
 ```
-DEFAULT_STORAGE_CLASS=$(cat ~/.config/froster/general/s3_storage_class)
+DEFAULT_STORAGE_CLASS=$(cat ~/.froster/config/general/s3_storage_class)
 ```
 
-a few advanced settings at ~/.config/froster/general deserve more explanation:
+a few advanced settings at ~/.froster/config/general deserve more explanation:
 
 * min_index_folder_size_gib (Default: 10)
 
@@ -484,7 +484,7 @@ Now let's take it to the next level. Small datasets are not really worth archivi
 ```
 froster archive --older 1095 --larger 1024
 
-Processing hotspots file /home/users/dp/.config/froster/hotspots/@XxxxermanLab.csv!
+Processing hotspots file /home/users/dp/.froster/config/hotspots/@XxxxermanLab.csv!
 
 Run this command to archive all selected folders in batch mode:
 
@@ -521,7 +521,7 @@ Froster.smallfiles.tar is created prior to uploading. When restoring data Froste
 To avoid tarring you can set max_small_file_size_kib to 0 using this command. The default is 1024 (KiB) or you can use the `archive --notar` option.
 
 ```
-echo 0 > ~/.config/froster/general/max_small_file_size_kib
+echo 0 > ~/.froster/config/general/max_small_file_size_kib
 ```
 
 #### NIH Life Sciences metadata
@@ -626,7 +626,7 @@ vd ~/my_department.csv
 
 ### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
 
-This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.config/froster/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
+This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.froster/config/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
 
 ### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
 
@@ -692,7 +692,7 @@ dp@grammy:~$ froster config  --help
 usage: froster config [-h] [--index] [--monitor <email@address.org>] [cfgfolder]
 
 positional arguments:
-  cfgfolder             configuration root folder where .config/froster will be created (default=~ home directory)
+  cfgfolder             configuration root folder where .froster/config will be created (default=~ home directory)
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -841,4 +841,4 @@ Froster is a good on-ramp to Starfish. If many users in your organization end up
 
 All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While AWS Glacier and Rclone will still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone or [Cyberduck](#using-cyberduck-to-browse-glacier) (for smaller amounts of data) to retrieve your data, as it is kept in its original format.   
 
-Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database `foster-archives.json` (default location: `~/.config/froster/`). To restore a specific folder, simply use the command followed by the desired path, for example: `s3-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `s3-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs. Note: You may have to change the AWS profile in `s3-restore.sh` to a profile you find under `~/.aws`
+Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database `foster-archives.json` (default location: `~/.froster/config/`). To restore a specific folder, simply use the command followed by the desired path, for example: `s3-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `s3-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs. Note: You may have to change the AWS profile in `s3-restore.sh` to a profile you find under `~/.aws`
