@@ -131,3 +131,56 @@ echo "deleting test data in $created_folder"
 
 rm -rf $created_folder
 
+### OLD TEST DOWN HERE
+
+# # Generate dummy data
+# dummy_data_path=$(generate_test_data)
+# echo "Dummy data path: ${dummy_data_path}"
+
+# # Create an aws s3 bucket
+# testbucket='froster-'$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)
+# echo "test bucket: ${testbucket}"
+
+# # TODO: this should not be here.
+# cfgbucket=''
+# if [[ -f ~/.froster/config/general/bucket ]]; then
+#   cfgbucket=$(cat ~/.froster/config/general/bucket)
+# fi
+# echo "$testbucket" >~/.froster/config/general/bucket
+
+# export RCLONE_S3_PROFILE=aws      # or ${AWS_PROFILE} or change this to the AWS profile you want to use
+# export RCLONE_S3_REGION=us-west-2 # or change this to the AWS region you want to use
+# export RCLONE_S3_PROVIDER=AWS     # or change this to another S3 provider (e.g. Ceph for on-premises)
+# export RCLONE_S3_ENV_AUTH=true    # use AWS environment variables and settings from ~/.aws
+
+# rclone --log-level error mkdir ":s3:$testbucket"
+
+# echo -e "\n*** froster config --index"
+# froster --no-slurm config --index
+# echo -e "\n*** froster index $dummy_data_path:"
+# froster --no-slurm index "$dummy_data_path"
+# echo "*** froster archive $dummy_data_path:"
+# froster --no-slurm archive "$dummy_data_path"
+# echo "*** froster delete $dummy_data_path:"
+# froster --no-slurm delete "$dummy_data_path"
+# echo "*** froster mount $dummy_data_path:"
+# froster --no-slurm mount "$dummy_data_path"
+# echo "Wait 3 sec for mount to finish"
+# sleep 3
+# echo -e "\n*** froster umount $dummy_data_path:"
+# froster --no-slurm umount "$dummy_data_path"
+# echo -e "\n*** froster restore $dummy_data_path:"
+# froster --no-slurm restore "$dummy_data_path"
+
+# if [[ -n $cfgbucket ]]; then
+#   echo "$cfgbucket" >~/.froster/config/general/bucket
+# fi
+
+# echo "deleting bucket s3://$testbucket"
+# rclone --log-level error purge ":s3:${testbucket}${dummy_data_path}"
+# # only deletes bucket if dummy_data_path was the only content in bucket
+# rclone --log-level error rmdirs ":s3:$testbucket"
+
+# echo "deleting test data in $dummy_data_path"
+
+# rm -rf $dummy_data_path
