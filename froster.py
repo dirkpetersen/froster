@@ -123,8 +123,9 @@ class ConfigManager:
                 'AWS', 'current_bucket', fallback=None)
 
         else:
+
             # Create config directory
-            os.makedirs(self.config_dir, exist_ok=True)
+            os.makedirs(self.config_dir, exist_ok=True, mode=0o775)
 
             # Add default section to config.ini file
             config['DEFAULT'] = {}
@@ -533,7 +534,7 @@ class ConfigManager:
         # Ensure the directory exists
         # TODO: Check this path
         user_systemd_dir = os.path.expanduser("~/.config/systemd/user/")
-        os.makedirs(user_systemd_dir, exist_ok=True)
+        os.makedirs(user_systemd_dir, exist_ok=True, mode=0o775)
 
         SERVICE_PATH = os.path.join(
             user_systemd_dir, "froster-monitor.service")
@@ -651,7 +652,7 @@ class ConfigManager:
         aws_dir = os.path.join(self.home_dir, ".aws")
 
         if not os.path.exists(aws_dir):
-            os.makedirs(aws_dir)
+            os.makedirs(aws_dir, mode=0o775)
 
         if not os.path.isfile(self.aws_config_file):
             if region:
@@ -792,7 +793,7 @@ class ConfigManager:
     def write(self, section, entry, value):
         try:
             entry_path = self._get_entry_path(section, entry)
-            os.makedirs(os.path.dirname(entry_path), exist_ok=True)
+            os.makedirs(os.path.dirname(entry_path), exist_ok=True, mode=0o775)
             if value == '""':
                 # Check if file exists before trying to remove
                 if os.path.exists(entry_path):
@@ -909,7 +910,7 @@ class ConfigManager:
                     except:
                         pass
                 print(f'  Froster config moved to "{new_shared_config_dir}"\n')
-            os.makedirs(new_shared_config_dir, exist_ok=True)
+            os.makedirs(new_shared_config_dir, exist_ok=True, mode=0o775)
             if os.path.exists(self.aws_config_file):
                 self.replicate_ini('ALL', self.aws_config_file,
                                    os.path.join(new_shared_config_dir, 'aws_config'))
@@ -918,7 +919,7 @@ class ConfigManager:
 
         self.shared_config_dir = new_shared_config_dir
 
-        os.makedirs(old_shared_config_dir, exist_ok=True)
+        os.makedirs(old_shared_config_dir, exist_ok=True, mode=0o775)
         with open(shared_config_dir_file, 'w') as f:
             f.write(self.shared_config_dir)
             print(
@@ -1309,7 +1310,7 @@ class Archiver:
         try:
             hsdir, hsfile = os.path.split(hotspot_csv)
             hsdiruser = os.path.join(hsdir, self.cfg.whoami)
-            os.makedirs(hsdiruser, exist_ok=True)
+            os.makedirs(hsdiruser, exist_ok=True, mode=0o775)
             user_csv = os.path.join(hsdiruser, hsfile)
             if os.path.exists(user_csv):
                 if os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
@@ -2253,7 +2254,7 @@ class Archiver:
         # get a full path name of a new hotspots file
         # based on a folder name that has been crawled
         hsfld = os.path.join(self.cfg.shared_config_dir, 'hotspots')
-        os.makedirs(hsfld, exist_ok=True)
+        os.makedirs(hsfld, exist_ok=True, mode=0o775)
         return os.path.join(hsfld, self._get_hotspots_file(folder))
 
     def _get_hotspots_file(self, folder):
@@ -3164,7 +3165,7 @@ class AWSBoto:
                 pass
             key_pair = ec2.create_key_pair(KeyName=self.cfg.ssh_key_name)
             os.makedirs(os.path.join(
-                self.cfg.shared_config_dir, 'cloud'), exist_ok=True)
+                self.cfg.shared_config_dir, 'cloud'), exist_ok=True, mode=0o775)
             with open(key_path, 'w') as key_file:
                 key_file.write(key_pair.key_material)
             os.chmod(key_path, 0o640)  # Set file permission to 600
@@ -4875,7 +4876,7 @@ def subcmd_config(args, cfg, aws):
     #     if os.path.exists(bin_dir):
     #         theroot = os.path.join(args.cfgfolder, '.config', 'froster')
     #         shared_config_dir_file = os.path.join(
-    #             cfg.config_dir, 'shared_config_dirig_dirig_dir')
+    #             cfg.config_dir, 'shared_config_dir')
     #         with open(shared_config_dir_file, 'w') as myfile:
     #             myfile.write(theroot)
     #         cfg.shared_config_dir = theroot
