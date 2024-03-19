@@ -4,7 +4,7 @@ Froster is a user-friendly archiving tool for teams that move data between highe
 
 ## Installation
 
-To install Froster, execute the following command into your terminal:"
+To install Froster, execute the following command into your terminal:
 
 ```
 curl -s https://raw.githubusercontent.com/HPCNow/froster/develop/froster | bash -s install && source ~/.bashrc
@@ -75,20 +75,18 @@ There were three motivations behind the creation of `Froster`:
 
 ### Installing 
 
-Just pipe this curl command to bash to install: 
+To install Froster, execute the following command into your terminal:
 
 ```
-curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+curl -s https://raw.githubusercontent.com/HPCNow/froster/develop/froster | bash -s install && source ~/.bashrc
 ```
 
-and if you have recently installed it with all dependencies and just would like to update the core software, you can use 2 options
+### Updating 
+
+To update Froster there are 2 options: execute the installation command again or run the following command into your terminal:
 
 ```
 froster update 
-```
-or if you are updating from an older version from 2023
-```
-curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- update
 ```
 
 ### configuring 
@@ -641,7 +639,7 @@ Each of the sub commands has a help option, for example `froster archive --help`
 
 ```
 dp@grammy:~$ froster
-usage: froster  [-h] [--debug] [--no-slurm] [--cores CORES] [--profile AWSPROFILE] [--version]
+usage: froster  [-h] [--debug] [--no-slurm] [--cores CORES] [--profile aws_profile] [--version]
                 {config,cnf,index,idx,archive,arc,delete,del,mount,umount,restore,rst,ssh,scp} ...
 
 A (mostly) automated tool for archiving large scale data after finding folders in the file system that
@@ -673,7 +671,7 @@ optional arguments:
   --no-slurm, -n        do not submit a Slurm job, execute in the foreground.
   --cores CORES, -c CORES
                         Number of cores to be allocated for the machine. (default=4)
-  --profile AWSPROFILE, -p AWSPROFILE
+  --profile aws_profile, -p aws_profile
                         which AWS profile in ~/.aws/ should be used. default="aws"
   --version, -v         print Froster and Python version info
 
