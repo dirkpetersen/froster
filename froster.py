@@ -2441,6 +2441,24 @@ class AWSBoto:
         # elif provider == 'Ceph':
         #     return ['default-placement', 'us-east-1', '']
 
+    def get_aws_s3_buckets(self, profile=None):
+        print('Getting S3 buckets...')
+        s3 = boto3.client('s3')
+        session = boto3.Session(
+            profile_name=profile) if profile else boto3.Session()
+        
+        # ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+        # s3_client = session.client('s3', endpoint_url=ep_url)
+
+        s3_client = session.client('s3')
+        existing_buckets = s3_client.list_buckets()
+        bucket_list = [bucket['Name'] for bucket in existing_buckets['Buckets']]
+        print(bucket_list)
+        exit (0)# patata
+        return bucket_list
+
+
+
     def check_bucket_access_folders(self, folders, readwrite=False):
         # check all the buckets that have been used for archiving
         sufficient = True
@@ -5113,6 +5131,13 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     if args.aws:
         # aws configuration
         __subcmd_config_aws(cfg, aws)
+
+        aws.get_aws_s3_buckets()
+    
+
+
+
+
         return
 
     if args.print:
@@ -5127,6 +5152,18 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     # aws configuration
     __subcmd_config_aws(cfg, aws)
+
+
+    #     # cloud setup
+    # bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
+    #                     f'froster-{emailstr}|general|bucket', 'string')
+    # archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
+    #                          'archive|general|archiveroot', 'string')
+
+    # cls = cfg.read('general', 's3_storage_class')
+    # s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
+    #                               'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
+    # cfg.write('general', 's3_storage_class', s3_storage_class)
 
     exit(0)  # patata
 
@@ -5199,112 +5236,112 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     # print("")
 
-    # cloud setup
-    bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
-                        f'froster-{emailstr}|general|bucket', 'string')
-    archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
-                             'archive|general|archiveroot', 'string')
+    # # cloud setup
+    # bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
+    #                     f'froster-{emailstr}|general|bucket', 'string')
+    # archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
+    #                          'archive|general|archiveroot', 'string')
 
-    cls = cfg.read('general', 's3_storage_class')
-    s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
-                                  'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
-    cfg.write('general', 's3_storage_class', s3_storage_class)
+    # cls = cfg.read('general', 's3_storage_class')
+    # s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
+    #                               'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
+    # cfg.write('general', 's3_storage_class', s3_storage_class)
 
-    cfg.aws_create_profile()
-    # TODO: check over this
-    # if there is a shared ~/.aws/config copy it over
-    if cfg.config_dir != cfg.shared_config_dir:
-        cfg.replicate_ini('ALL', cfg.aws_config_fileshr, cfg.aws_config_file)
+    # cfg.aws_create_profile()
+    # # TODO: check over this
+    # # if there is a shared ~/.aws/config copy it over
+    # if cfg.config_dir != cfg.shared_config_dir:
+    #     cfg.replicate_ini('ALL', cfg.aws_config_fileshr, cfg.aws_config_file)
 
-    aws_region = cfg.get_aws_region('aws')
-    if not aws_region:
-        aws_region = cfg.get_aws_region()
+    # aws_region = cfg.get_aws_region('aws')
+    # if not aws_region:
+    #     aws_region = cfg.get_aws_region()
 
-    if not aws_region:
-        aws_region = cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
-                                aws.get_aws_regions())
-    aws_region = cfg.prompt(
-        'Please confirm/edit the AWS S3 region', aws_region)
+    # if not aws_region:
+    #     aws_region = cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
+    #                             aws.get_aws_regions())
+    # aws_region = cfg.prompt(
+    #     'Please confirm/edit the AWS S3 region', aws_region)
 
-    # cfg.aws_create_profile(None, None, aws_region)
-    print(f"\n  Verify that bucket '{bucket}' is configured ... ")
+    # # cfg.aws_create_profile(None, None, aws_region)
+    # print(f"\n  Verify that bucket '{bucket}' is configured ... ")
 
-    # for accessing glacier use one of these
-    allowed_aws_profiles = ['default', 'aws', 'AWS']
-    profmsg = 1
-    profs = cfg.get_aws_profiles()
+    # # for accessing glacier use one of these
+    # allowed_aws_profiles = ['default', 'aws', 'AWS']
+    # profmsg = 1
+    # profs = cfg.get_aws_profiles()
 
-    for prof in profs:
-        if prof in allowed_aws_profiles:
-            cfg.set_aws_config(prof, 'region', aws_region)
-            if prof == 'AWS' or prof == 'aws':
-                cfg.write('general', 'aws_profile', prof)
-            elif prof == 'default':
-                cfg.write('general', 'aws_profile', 'default')
-            aws.create_s3_bucket(bucket, prof)
+    # for prof in profs:
+    #     if prof in allowed_aws_profiles:
+    #         cfg.set_aws_config(prof, 'region', aws_region)
+    #         if prof == 'AWS' or prof == 'aws':
+    #             cfg.write('general', 'aws_profile', prof)
+    #         elif prof == 'default':
+    #             cfg.write('general', 'aws_profile', 'default')
+    #         aws.create_s3_bucket(bucket, prof)
 
-    for prof in profs:
-        if prof in allowed_aws_profiles:
-            continue
-        if profmsg == 1:
-            print(
-                '\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
-            profmsg = 0
-        if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?', 'yes'):
-            continue
-        profile = {'name': '', 'provider': '', 'storage_class': ''}
-        pendpoint = ''
-        pregion = ''
-        pr = cfg.read('profiles', prof)
-        if isinstance(pr, dict):
-            profile = cfg.read('profiles', prof)
-        profile['name'] = prof
+    # for prof in profs:
+    #     if prof in allowed_aws_profiles:
+    #         continue
+    #     if profmsg == 1:
+    #         print(
+    #             '\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
+    #         profmsg = 0
+    #     if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?', 'yes'):
+    #         continue
+    #     profile = {'name': '', 'provider': '', 'storage_class': ''}
+    #     pendpoint = ''
+    #     pregion = ''
+    #     pr = cfg.read('profiles', prof)
+    #     if isinstance(pr, dict):
+    #         profile = cfg.read('profiles', prof)
+    #     profile['name'] = prof
 
-        if not profile['provider']:
-            profile['provider'] = ['AWS', 'GCS', 'Wasabi',
-                                   'IDrive', 'Ceph', 'Minio', 'Other']
-        profile['provider'] = \
-            cfg.prompt(
-                f'S3 Provider for profile "{prof}"', profile['provider'])
+    #     if not profile['provider']:
+    #         profile['provider'] = ['AWS', 'GCS', 'Wasabi',
+    #                                'IDrive', 'Ceph', 'Minio', 'Other']
+    #     profile['provider'] = \
+    #         cfg.prompt(
+    #             f'S3 Provider for profile "{prof}"', profile['provider'])
 
-        pregion = cfg.get_aws_region(prof)
-        if not pregion:
-            pregion = cfg.prompt('Please select the S3 region',
-                                 aws.get_aws_regions(prof, profile['provider']))
-        pregion = \
-            cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"', pregion)
-        if pregion:
-            cfg.set_aws_config(prof, 'region', pregion)
+    #     pregion = cfg.get_aws_region(prof)
+    #     if not pregion:
+    #         pregion = cfg.prompt('Please select the S3 region',
+    #                              aws.get_aws_regions(prof, profile['provider']))
+    #     pregion = \
+    #         cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"', pregion)
+    #     if pregion:
+    #         cfg.set_aws_config(prof, 'region', pregion)
 
-        if profile['provider'] != 'AWS':
-            if not pendpoint:
-                pendpoint = cfg.get_aws_s3_endpoint_url(prof)
-                if not pendpoint:
-                    if 'Wasabi' == profile['provider']:
-                        pendpoint = f'https://s3.{pregion}.wasabisys.com'
-                    elif 'GCS' == profile['provider']:
-                        pendpoint = 'https://storage.googleapis.com'
+    #     if profile['provider'] != 'AWS':
+    #         if not pendpoint:
+    #             pendpoint = cfg.get_aws_s3_endpoint_url(prof)
+    #             if not pendpoint:
+    #                 if 'Wasabi' == profile['provider']:
+    #                     pendpoint = f'https://s3.{pregion}.wasabisys.com'
+    #                 elif 'GCS' == profile['provider']:
+    #                     pendpoint = 'https://storage.googleapis.com'
 
-            pendpoint = \
-                cfg.prompt(
-                    f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)', pendpoint)
-            if pendpoint:
-                if not pendpoint.startswith('http'):
-                    pendpoint = 'https://' + pendpoint
-                cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
+    #         pendpoint = \
+    #             cfg.prompt(
+    #                 f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)', pendpoint)
+    #         if pendpoint:
+    #             if not pendpoint.startswith('http'):
+    #                 pendpoint = 'https://' + pendpoint
+    #             cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
 
-        if not profile['storage_class']:
-            if profile['provider'] == 'AWS':
-                profile['storage_class'] = s3_storage_class
-            else:
-                profile['storage_class'] = 'STANDARD'
+    #     if not profile['storage_class']:
+    #         if profile['provider'] == 'AWS':
+    #             profile['storage_class'] = s3_storage_class
+    #         else:
+    #             profile['storage_class'] = 'STANDARD'
 
-        if profile['provider']:
-            cfg.write('profiles', prof, profile)
-        else:
-            print(f'\nConfig for AWS profile "{prof}" was not saved.')
+    #     if profile['provider']:
+    #         cfg.write('profiles', prof, profile)
+    #     else:
+    #         print(f'\nConfig for AWS profile "{prof}" was not saved.')
 
-        aws.create_s3_bucket(bucket, prof)
+    #     aws.create_s3_bucket(bucket, prof)
 
     if shutil.which('scontrol') and shutil.which('sacctmgr'):
         se = SlurmEssentials(args, cfg)
