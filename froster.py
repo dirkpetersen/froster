@@ -926,16 +926,16 @@ class Archiver:
             self.archive_json = os.path.join(
                 cfg.config_dir, 'froster-archives.json')
 
-        x = self.cfg.read('general', 'max_small_file_size_kib')
+        x = cfg.max_small_file_size_kib
         self.thresholdKB = int(x) if x else 1024
 
-        x = self.cfg.read('general', 'min_index_folder_size_gib')
+        x = cfg.min_index_folder_size_gib
         self.thresholdGB = int(x) if x else 10
 
-        x = self.cfg.read('general', 'min_index_folder_size_avg_mib')
+        x = cfg.min_index_folder_size_avg_mib
         self.thresholdMB = int(x) if x else 10
 
-        x = self.cfg.read('general', 'max_hotspots_display_entries')
+        x = cfg.max_hotspots_display_entries
         global MAXHOTSPOTS
         MAXHOTSPOTS = int(x) if x else 5000
         self.dirmetafiles = ['Froster.allfiles.csv', 'Froster.smallfiles.tar',
