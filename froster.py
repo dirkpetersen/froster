@@ -914,11 +914,11 @@ class ConfigManager:
 
 class Archiver:
 
-    # TODO: Review this Archiver init
     def __init__(self, args, cfg: ConfigManager):
         self.args = args
 
         self.cfg = cfg
+
         if cfg.is_shared:
             self.archive_json = os.path.join(
                 cfg.shared_config_dir, 'froster-archives.json')
@@ -938,6 +938,7 @@ class Archiver:
         x = cfg.max_hotspots_display_entries
         global MAXHOTSPOTS
         MAXHOTSPOTS = int(x) if x else 5000
+
         self.dirmetafiles = ['Froster.allfiles.csv', 'Froster.smallfiles.tar',
                              '.froster.md5sum', '.froster-restored.md5sum', 'Where-did-the-files-go.txt']
 
