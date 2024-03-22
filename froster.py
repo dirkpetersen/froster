@@ -105,7 +105,7 @@ class ConfigManager:
         self.aws_profile = ''
 
         # Current S3 Bucket
-        self.current_bucket = ''
+        self.current_s3_bucket = ''
 
         # Basic setup, focus the indexer on larger folders and file sizes
         self.max_small_file_size_kib = 1024
@@ -143,8 +143,8 @@ class ConfigManager:
                     'AWS', 'aws_profile', fallback=None)
 
                 # Current S3 Bucket
-                self.current_bucket = config.get(
-                    'AWS', 'current_bucket', fallback=None)
+                self.current_s3_bucket = config.get(
+                    'AWS', 'current_s3_bucket', fallback=None)
 
     # Representation of object. Returns all variables in the object
 
@@ -2330,18 +2330,26 @@ class AWSBoto:
     def check_s3_credentials(self,
                              aws_access_key_id=None,
                              aws_secret_access_key=None,
+                             aws_profile=None,
                              verbose=False):
-
-        if aws_access_key_id and aws_secret_access_key:
-            sts = boto3.client('sts',
-                               aws_access_key_id=aws_access_key_id,
-                               aws_secret_access_key=aws_secret_access_key)
-        else:
-            sts = boto3.client('sts')
-
         try:
+        
+            # Check if we have the necessary credentials or profile
+            if aws_access_key_id and aws_secret_access_key:
+                # Use the provided credentials
+                sts = boto3.client('sts',
+                                aws_access_key_id=aws_access_key_id,
+                                aws_secret_access_key=aws_secret_access_key)
+            else:
+                # Use the provided profile
+                sts = boto3.Session(profile_name=aws_profile).client('sts')
+
+            # Check if the provided credentials or profile are valid
             sts.get_caller_identity()
+
+            # credentials are valid
             return True
+        
         except Exception as e:
             return False
 
@@ -2437,22 +2445,35 @@ class AWSBoto:
         # elif provider == 'Ceph':
         #     return ['default-placement', 'us-east-1', '']
 
-    def get_aws_s3_buckets(self, profile=None):
-        print('Getting S3 buckets...')
-        s3 = boto3.client('s3')
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
+    def get_aws_s3_buckets(self, profile_name):
+        try:
+
+            # Initialize a session using the provided profile
+            session = boto3.Session(profile_name=profile_name)
+
+            # Create an S3 client
+            s3_client = session.client('s3')
+
+            # Get all the buckets
+            existing_buckets = s3_client.list_buckets()
+
+            # Extract the bucket names
+            bucket_list = [bucket['Name']
+                        for bucket in existing_buckets['Buckets']]
+
+            # Filter the bucket names and retrieve only froster-* buckets
+            froster_bucket_list = [
+                x for x in bucket_list if x.startswith('froster-')]
+
+            # Return the list of froster buckets
+            return froster_bucket_list
         
-        # ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
-        # s3_client = session.client('s3', endpoint_url=ep_url)
-
-        s3_client = session.client('s3')
-        existing_buckets = s3_client.list_buckets()
-        bucket_list = [bucket['Name'] for bucket in existing_buckets['Buckets']]
-        print(bucket_list)
-        exit (0)# patata
-        return bucket_list
-
+        # TODO: Expand exception handling
+        except Exception as e:
+            print(f"Error: {e}")
+            print('\nYou can configure aws credentials using the command:')
+            print('    froster config --aws\n')
+            exit(1)
 
 
     def check_bucket_access_folders(self, folders, readwrite=False):
@@ -2529,12 +2550,32 @@ class AWSBoto:
                 f"Error: cannot write to bucket {bucket_name} in profile {self.aws_profile}: {e}")
             return False
 
-    def create_s3_bucket(self, bucket_name, profile=None):
-        if not self.check_s3_credentials(profile, verbose=True):
-            print(
-                f"Cannot create bucket '{bucket_name}' with these credentials")
-            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
-            return False
+    def create_s3_bucket(self, bucket_name, aws_profile):
+
+        # TODO: Check bucket name constrains
+        try:
+
+            # Check if the provided AWS profile has the necessary permissions
+            if not self.check_s3_credentials(aws_profile=aws_profile):
+                print(f"Cannot create bucket '{bucket_name}' using profile '{aws_profile}'")
+                print('\nYou can configure aws credentials using the command:')
+                print('    froster config --aws\n')
+                exit(1)
+
+            session = boto3.Session(profile_name = aws_profile)
+            s3_client = session.client('s3')
+            s3_client.create_bucket(Bucket=bucket_name)
+
+        except Exception as e:
+            print(f'Error creating bucket {bucket_name}: {e}')
+            exit(1)
+
+# s3.create_bucket(Bucket='mybucket', CreateBucketConfiguration={
+#     'LocationConstraint': 'us-west-1'})
+    
+        # response = s3_client.create_bucket(Bucket=bucket_name, CreateBucketConfiguration={'LocationConstraint': region}
+        return
+
         region = self.cfg.get_aws_region(profile)
         session = boto3.Session(
             profile_name=profile) if profile else boto3.Session()
@@ -4900,6 +4941,19 @@ def __inquirer_email_check(answers, current):
     return True
 
 
+def __inquirer_bucket_name_check(answers, current):
+
+    if not current.startswith("froster-"):
+        raise inquirer.errors.ValidationError(
+            "", reason="Wrong bucket name. E.g.: froster-")
+
+    if not len(current) > 8:
+        raise inquirer.errors.ValidationError(
+            "", reason="Bucket name too short. E.g.: froster-")
+
+    return True
+
+
 def __subcmd_config_user(cfg: ConfigManager):
 
     print(f'\n*** USER CONFIGURATION ***\n')
@@ -4960,9 +5014,9 @@ def __subcmd_config_user(cfg: ConfigManager):
     print(f'\n*** USER CONFIGURATION DONE ***\n')
 
 
-def __subcmd_config_aws(cfg: ConfigManager, aws: AWSBoto):
+def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
 
-    print(f'\n*** AWS CONFIGURATION ***\n')
+    print(f'\n*** AWS PROFILE CONFIGURATION ***\n')
 
     # Create a ConfigParser object
     config = configparser.ConfigParser()
@@ -5001,17 +5055,11 @@ def __subcmd_config_aws(cfg: ConfigManager, aws: AWSBoto):
         # Store aws profile in the config object
         config['AWS'] = {}
         config['AWS']['aws_profile'] = aws_new_profile_name
-        
-        # Set the new profile as the selected profile
-        cfg.aws_profile = aws_new_profile_name
 
     else:
         # Store aws profile in the config object
         config['AWS'] = {}
         config['AWS']['aws_profile'] = aws_profile
-
-        # Set the new profile as the selected profile
-        cfg.aws_profile = aws_profile
 
         # Create a ConfigParser object
         aws_credentials = configparser.ConfigParser()
@@ -5034,7 +5082,7 @@ def __subcmd_config_aws(cfg: ConfigManager, aws: AWSBoto):
         print('    ...AWS credentials are NOT valid\n')
         print('\nYou can configure aws credentials using the command:')
         print('    froster config --aws')
-        print(f'\n*** AWS CONFIGURATION DONE ***\n')
+        print(f'\n*** AWS PROFILE CONFIGURATION DONE ***\n')
         return
 
     # aws region configuration
@@ -5061,7 +5109,7 @@ def __subcmd_config_aws(cfg: ConfigManager, aws: AWSBoto):
         if aws_region:
 
             is_region_correct = inquirer.confirm(
-                message=f'Region of profile {aws_profile} is {aws_region}. Is this region correct?', default=False)
+                message=f'Region of profile {aws_profile} is {aws_region}. Is this region correct?', default=True)
 
         if not aws_region or not is_region_correct:
 
@@ -5080,14 +5128,83 @@ def __subcmd_config_aws(cfg: ConfigManager, aws: AWSBoto):
                                    aws_secret_access_key,
                                    region)
 
+    # Set the new profile as the selected profile
+    cfg.aws_profile = config.get('AWS', 'aws_profile', fallback=None)
+
     # Create a new config directory in case it does not exist
     if not os.path.exists(cfg.config_dir):
         os.makedirs(cfg.config_dir)
+
     # Write the config object to the config file
     with open(cfg.config_file, 'w') as configfile:
         config.write(configfile)
 
-    print(f'\n*** AWS CONFIGURATION DONE ***\n')
+    print(f'\n*** AWS PROFILE CONFIGURATION DONE ***\n')
+
+
+def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
+
+    print(f'\n*** AWS S3 CONFIGURATION for profile {cfg.aws_profile} ***\n')
+
+    # Create a ConfigParser object
+    config = configparser.ConfigParser()
+
+    # if exists, read the config.ini file
+    if os.path.exists(cfg.config_file):
+        config.read(cfg.config_file)
+    else:
+        print(f'\n*** NO CONFIGURATION FOUND ***')
+        print('\nYou can configure froster using the command:')
+        print('    froster config\n')
+        return
+
+    if not config.has_section('AWS'):
+        print(f'\n*** NO AWS PROFILE FOUND ***')
+        print('\nYou can configure aws profile using the command:')
+        print('    froster config --aws\n')
+        return
+
+    # Configure AWS S3 bucket
+
+    # Get list froster buckets for the given profile
+    s3_buckets = aws.get_aws_s3_buckets(cfg.aws_profile)
+
+    # Add an option to create a new profile
+    s3_buckets.append('+ Create new bucket')
+
+    # Ask user to choose an existing aws s3 bucket or create a new one
+    s3_bucket = inquirer.list_input("Choose your aws s3 bucket",
+                                    choices=s3_buckets)
+
+    # Check if user wants to create a new aws s3 bucket
+    if s3_bucket == '+ Create new bucket':
+
+        # Get new bucket name
+        aws_s3_new_bucket_name = inquirer.text(
+            message='Enter new bucket name (it must start with "froster-")', validate=__inquirer_bucket_name_check)
+
+        # Create new bucket
+        aws.create_s3_bucket(aws_profile=cfg.aws_profile,
+                             bucket_name=aws_s3_new_bucket_name)
+
+        # Store new aws s3 bucket in the config object
+        config['S3'] = {}
+        config['S3']['current_s3_bucket'] = aws_s3_new_bucket_name
+    else:
+
+        # Store aws s3 bucket in the config object
+        config['S3'] = {}
+        config['S3']['current_s3_bucket'] = s3_bucket
+
+    # Set the new profile as the selected profile
+    cfg.current_s3_bucket = config.get(
+        'S3', 'current_s3_bucket', fallback=None)
+
+    # Write the config object to the config file
+    with open(cfg.config_file, 'w') as configfile:
+        config.write(configfile)
+
+    print(f'*** AWS S3 CONFIGURATION DONE ***\n')
 
 
 def __subcmd_config_print(cfg: ConfigManager):
@@ -5132,10 +5249,12 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     if args.aws:
         # aws configuration
-        __subcmd_config_aws(cfg, aws)
+        __subcmd_config_aws_profile(cfg, aws)
+        return
 
-        aws.get_aws_s3_buckets()
-
+    if args.s3:
+        # aws s3 configuration
+        __subcmd_config_aws_s3(cfg, aws)
         return
 
     if args.print:
@@ -5149,7 +5268,10 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     __subcmd_config_user(cfg)
 
     # aws configuration
-    __subcmd_config_aws(cfg, aws)
+    __subcmd_config_aws_profile(cfg, aws)
+
+    # aws s3 configuration
+    __subcmd_config_aws_s3(cfg, aws)
 
     #     # cloud setup
     # bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
@@ -6004,7 +6126,7 @@ def parse_arguments():
         '''), formatter_class=argparse.RawTextHelpFormatter)
 
     parser_config.add_argument('-a', '--aws', dest='aws', action='store_true', default=False,
-                               help="Setup AWS credentials and bucket")
+                               help="Setup AWS profile")
 
     parser_config.add_argument('-i', '--index', dest='index', action='store_true', default=False,
                                help="Configure froster for indexing only, don't ask addional questions.")
@@ -6015,6 +6137,9 @@ def parse_arguments():
 
     parser_config.add_argument('-p', '--print', dest='print', action='store_true', default=False,
                                help="Print the current configuration")
+
+    parser_config.add_argument('-s', '--s3', dest='s3', action='store_true', default=False,
+                               help="Setup s3 bucket configuration")
 
     parser_config.add_argument('-u', '--user', dest='user', action='store_true', default=False,
                                help="Setup user specific configuration")
