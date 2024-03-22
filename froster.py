@@ -5001,11 +5001,17 @@ def __subcmd_config_aws(cfg: ConfigManager, aws: AWSBoto):
         # Store aws profile in the config object
         config['AWS'] = {}
         config['AWS']['aws_profile'] = aws_new_profile_name
+        
+        # Set the new profile as the selected profile
+        cfg.aws_profile = aws_new_profile_name
 
     else:
         # Store aws profile in the config object
         config['AWS'] = {}
         config['AWS']['aws_profile'] = aws_profile
+
+        # Set the new profile as the selected profile
+        cfg.aws_profile = aws_profile
 
         # Create a ConfigParser object
         aws_credentials = configparser.ConfigParser()
