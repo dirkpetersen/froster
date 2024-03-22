@@ -61,11 +61,10 @@ __version__ = '0.9.0.70'
 
 
 class ConfigManager:
-    # we write all config entries as files to '~/.froster/config'
-    # to make it easier for bash users to read entries
-    # with a simple var=$(cat ~/.froster/config/config.ini)
-    # entries can be strings, lists that are written as
-    # multi-line files and dictionaries which are written to json
+    ''' Froster configuration managers
+
+    This class manages the configuration of Froster.
+    It reads and writes the configuration files.'''
 
     def __init__(self):
 
