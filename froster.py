@@ -93,9 +93,6 @@ class ConfigManager:
         # Froster's shared configuration file
         self.shared_config_file = ''
 
-        # NIH Reporter API key
-        self.nih = 'https://api.reporter.nih.gov/v2/projects/search'
-
         # AWS directory
         self.aws_dir = os.path.join(self.home_dir, '.aws')
 
@@ -945,7 +942,6 @@ class Archiver:
         self.dirmetafiles = ['Froster.allfiles.csv', 'Froster.smallfiles.tar',
                              '.froster.md5sum', '.froster-restored.md5sum', 'Where-did-the-files-go.txt']
 
-        self.url = 'https://api.reporter.nih.gov/v2/projects/search'
         self.grants = []
 
     def index(self, pwalkfolder):
@@ -5133,10 +5129,6 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
         __subcmd_config_aws(cfg, aws)
 
         aws.get_aws_s3_buckets()
-    
-
-
-
 
         return
 
@@ -5152,7 +5144,6 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     # aws configuration
     __subcmd_config_aws(cfg, aws)
-
 
     #     # cloud setup
     # bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
