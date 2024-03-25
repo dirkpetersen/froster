@@ -2332,8 +2332,12 @@ class AWSBoto:
                              aws_secret_access_key=None,
                              aws_profile=None,
                              verbose=False):
-        try:
         
+        # If no credentials or profile are provided, return False
+        if not aws_access_key_id or not aws_secret_access_key and not aws_profile:
+            return False
+        
+        try:
             # Check if we have the necessary credentials or profile
             if aws_access_key_id and aws_secret_access_key:
                 # Use the provided credentials
