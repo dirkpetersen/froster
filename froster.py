@@ -115,7 +115,6 @@ class ConfigManager:
 
         # TODO: This whoami is necessary?
         # Whoami
-
         self.whoami = getpass.getuser()
 
         # Check if there is a ~/.froster/config/config.ini file and populate the variables
@@ -151,8 +150,8 @@ class ConfigManager:
                 self.current_s3_bucket = config.get(
                     'AWS', 'current_s3_bucket', fallback=None)
 
-
     # Representation of object. Returns all variables in the object
+
     def __repr__(self):
         return "<{klass} @{id:x} {attrs}>".format(
             klass=self.__class__.__name__,
@@ -160,7 +159,6 @@ class ConfigManager:
             attrs=" ".join("{}={!r}\n".format(k, v)
                            for k, v in self.__dict__.items()),
         )
-
 
     def _set_env_vars(self, profile):
 
@@ -2338,18 +2336,18 @@ class AWSBoto:
                              aws_secret_access_key=None,
                              aws_profile=None,
                              verbose=False):
-        
+
         # If no credentials or profile are provided, return False
         if not aws_access_key_id or not aws_secret_access_key and not aws_profile:
             return False
-        
+
         try:
             # Check if we have the necessary credentials or profile
             if aws_access_key_id and aws_secret_access_key:
                 # Use the provided credentials
                 sts = boto3.client('sts',
-                                aws_access_key_id=aws_access_key_id,
-                                aws_secret_access_key=aws_secret_access_key)
+                                   aws_access_key_id=aws_access_key_id,
+                                   aws_secret_access_key=aws_secret_access_key)
             else:
                 # Use the provided profile
                 sts = boto3.Session(profile_name=aws_profile).client('sts')
@@ -2359,7 +2357,7 @@ class AWSBoto:
 
             # credentials are valid
             return True
-        
+
         except Exception as e:
             return False
 
@@ -2469,7 +2467,7 @@ class AWSBoto:
 
             # Extract the bucket names
             bucket_list = [bucket['Name']
-                        for bucket in existing_buckets['Buckets']]
+                           for bucket in existing_buckets['Buckets']]
 
             # Filter the bucket names and retrieve only froster-* buckets
             froster_bucket_list = [
@@ -2477,14 +2475,13 @@ class AWSBoto:
 
             # Return the list of froster buckets
             return froster_bucket_list
-        
+
         # TODO: Expand exception handling
         except Exception as e:
             print(f"Error: {e}")
             print('\nYou can configure aws credentials using the command:')
             print('    froster config --aws\n')
             exit(1)
-
 
     def check_bucket_access_folders(self, folders, readwrite=False):
         # check all the buckets that have been used for archiving
@@ -2567,12 +2564,13 @@ class AWSBoto:
 
             # Check if the provided AWS profile has the necessary permissions
             if not self.check_s3_credentials(aws_profile=aws_profile):
-                print(f"Cannot create bucket '{bucket_name}' using profile '{aws_profile}'")
+                print(
+                    f"Cannot create bucket '{bucket_name}' using profile '{aws_profile}'")
                 print('\nYou can configure aws credentials using the command:')
                 print('    froster config --aws\n')
                 exit(1)
 
-            session = boto3.Session(profile_name = aws_profile)
+            session = boto3.Session(profile_name=aws_profile)
             s3_client = session.client('s3')
             s3_client.create_bucket(Bucket=bucket_name)
 
@@ -2582,7 +2580,7 @@ class AWSBoto:
 
 # s3.create_bucket(Bucket='mybucket', CreateBucketConfiguration={
 #     'LocationConstraint': 'us-west-1'})
-    
+
         # response = s3_client.create_bucket(Bucket=bucket_name, CreateBucketConfiguration={'LocationConstraint': region}
         return
 
