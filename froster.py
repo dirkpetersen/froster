@@ -176,7 +176,6 @@ class ConfigManager:
                            for k, v in self.__dict__.items()),
         )
 
-
     def _set_env_vars(self, profile):
 
         # Create a ConfigParser object
@@ -2274,10 +2273,11 @@ class AWSBoto:
 
         if cfg.aws_profile:
             # Get the region from the AWS config file
-            self.region = cfg.get_aws_region(aws_profile = cfg.aws_profile)
+            self.region = cfg.get_aws_region(aws_profile=cfg.aws_profile)
 
             # Initialize a Boto3 session using the configured profile
-            session = boto3.Session(profile_name = cfg.aws_profile, region_name=self.region)
+            session = boto3.Session(
+                profile_name=cfg.aws_profile, region_name=self.region)
 
             # Initialize the AWS clients
             self.sts_client = session.client('sts')
@@ -2363,7 +2363,7 @@ class AWSBoto:
         #     print(
         #         f"Unexpected error checking s3 credentials: {e}")
         #     return False
-    def update_region (self, aws_profile_name, region):
+    def update_region(self, aws_profile_name, region):
         ''' Update the region of an existing AWS profile'''
 
         # Create a aws config ConfigParser object
@@ -2443,9 +2443,9 @@ class AWSBoto:
         return profiles
 
     def get_regions(self,
-                    aws_profile = None,
-                    aws_access_key_id = None,
-                    aws_secret_access_key = None):
+                    aws_profile=None,
+                    aws_access_key_id=None,
+                    aws_secret_access_key=None):
         ''' AWS regions getter
 
         Get the regions for the provided credentials.'''
@@ -2457,16 +2457,17 @@ class AWSBoto:
         try:
             if aws_profile:
                 # Build a ec2 client with the provided profile
-                keys = boto3.Session(profile_name=aws_profile).get_credentials()
+                keys = boto3.Session(
+                    profile_name=aws_profile).get_credentials()
                 ec2 = boto3.client('ec2',
-                                   aws_access_key_id = keys.access_key,
-                                   aws_secret_access_key = keys.secret_key)
+                                   aws_access_key_id=keys.access_key,
+                                   aws_secret_access_key=keys.secret_key)
 
             else:
                 # Build a ec2 client with the provided credentials
                 ec2 = boto3.client('ec2',
-                                   aws_access_key_id = aws_access_key_id,
-                                   aws_secret_access_key = aws_secret_access_key)
+                                   aws_access_key_id=aws_access_key_id,
+                                   aws_secret_access_key=aws_secret_access_key)
 
             regions = ec2.describe_regions()
             region_names = [region['RegionName']
@@ -2500,7 +2501,7 @@ class AWSBoto:
         # elif provider == 'Ceph':
         #     return ['default-placement', 'us-east-1', '']
 
-    def get_aws_s3_buckets(self, profile_name):
+    def get_s3_buckets(self, profile_name):
         try:
 
             # Get all the buckets
@@ -2614,37 +2615,33 @@ class AWSBoto:
                 print('    froster config --aws\n')
                 exit(1)
 
+            print(f'\nCreating bucket {bucket_name}...')
             self.s3_client.create_bucket(Bucket=bucket_name,
-                                    CreateBucketConfiguration={'LocationConstraint': self.region})
+                                         CreateBucketConfiguration={'LocationConstraint': self.region})
+            print(f'    ...bucket created\n')
+
+            print(f'\nApplying AES256 encryption to bucket {bucket_name}...')
+            encryption_configuration = {
+                'Rules': [
+                    {
+                        'ApplyServerSideEncryptionByDefault': {
+                            'SSEAlgorithm': 'AES256'
+                        }
+                    }
+                ]
+            }
+            self.s3_client.put_bucket_encryption(
+                Bucket=bucket_name,
+                ServerSideEncryptionConfiguration=encryption_configuration
+            )
+            print(f'    ...encryption applied.\n')
 
         except Exception as e:
             print(f'Error creating bucket {bucket_name}: {e}')
             exit(1)
 
+        # TODO: expand error codes
 
-        # return
-
-        # region = self.cfg.get_aws_region(profile)
-        # session = boto3.Session(
-        #     profile_name=profile) if profile else boto3.Session()
-        # ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
-        # s3_client = session.client('s3', endpoint_url=ep_url)
-        # existing_buckets = s3_client.list_buckets()
-        # for bucket in existing_buckets['Buckets']:
-        #     if bucket['Name'] == bucket_name:
-        #         self.cfg.printdbg(f'S3 bucket {bucket_name} exists')
-        #         return True
-        # try:
-        #     if region and region != 'default-placement':
-        #         response = s3_client.create_bucket(
-        #             Bucket=bucket_name,
-        #             CreateBucketConfiguration={'LocationConstraint': region}
-        #         )
-        #     else:
-        #         response = s3_client.create_bucket(
-        #             Bucket=bucket_name,
-        #         )
-        #     print(f"Created S3 Bucket '{bucket_name}'")
         # except botocore.exceptions.BotoCoreError as e:
         #     print(f"BotoCoreError: {e}")
         # except botocore.exceptions.ClientError as e:
@@ -2675,6 +2672,7 @@ class AWSBoto:
         # except Exception as e:
         #     print(f"An unexpected error occurred: {e}")
         #     return False
+
         # encryption_configuration = {
         #     'Rules': [
         #         {
@@ -5135,7 +5133,7 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
             return
 
         # Check the seletected profile region
-        aws_region = cfg.get_aws_region(aws_profile = aws_profile)
+        aws_region = cfg.get_aws_region(aws_profile=aws_profile)
 
         # Ask user to confirm the region
         if aws_region:
@@ -5152,7 +5150,7 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
                                          choices=aws_regions)
 
             # TODO: Update region in the config file
-            aws.update_region(aws_profile_name = aws_profile,region = region)
+            aws.update_region(aws_profile_name=aws_profile, region=region)
 
     # Create a ConfigParser object
     config = configparser.ConfigParser()
@@ -5207,7 +5205,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     print(f'\n*** AWS S3 CONFIGURATION for profile "{cfg.aws_profile}" ***\n')
 
     # Get list froster buckets for the given profile
-    s3_buckets = aws.get_aws_s3_buckets(cfg.aws_profile)
+    s3_buckets = aws.get_s3_buckets(cfg.aws_profile)
 
     # Add an option to create a new bucket
     s3_buckets.append('+ Create new bucket')
