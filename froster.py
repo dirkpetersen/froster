@@ -176,6 +176,7 @@ class ConfigManager:
                            for k, v in self.__dict__.items()),
         )
 
+
     def _set_env_vars(self, profile):
 
         # Create a ConfigParser object
@@ -2272,8 +2273,13 @@ class AWSBoto:
         self.arch = arch
 
         if cfg.aws_profile:
+            # Get the region from the AWS config file
+            self.region = cfg.get_aws_region(aws_profile = cfg.aws_profile)
+
             # Initialize a Boto3 session using the configured profile
-            session = boto3.Session(cfg.aws_profile)
+            session = boto3.Session(profile_name = cfg.aws_profile, region_name=self.region)
+
+            # Initialize the AWS clients
             self.sts_client = session.client('sts')
             self.s3_client = session.client('s3')
             self.ec2_client = session.client('ec2')
@@ -2497,14 +2503,8 @@ class AWSBoto:
     def get_aws_s3_buckets(self, profile_name):
         try:
 
-            # Initialize a session using the provided profile
-            session = boto3.Session(profile_name=profile_name)
-
-            # Create an S3 client
-            s3_client = session.client('s3')
-
             # Get all the buckets
-            existing_buckets = s3_client.list_buckets()
+            existing_buckets = self.s3_client.list_buckets()
 
             # Extract the bucket names
             bucket_list = [bucket['Name']
@@ -2604,118 +2604,112 @@ class AWSBoto:
     def create_s3_bucket(self, bucket_name, aws_profile):
 
         # TODO: Check bucket name constrains
-        # TODO: review with new aws boto session self variable
-        exit(1)
         try:
 
             # Check if the provided AWS profile has the necessary permissions
             if not self.check_credentials(aws_profile=aws_profile):
                 print(
-                    f"Cannot create bucket '{bucket_name}' using profile '{aws_profile}'")
+                    f"Error: Cannot create bucket '{bucket_name}' using profile '{aws_profile}'")
                 print('\nYou can configure aws credentials using the command:')
                 print('    froster config --aws\n')
                 exit(1)
 
-            session = boto3.Session(profile_name=aws_profile)
-            s3_client = session.client('s3')
-            s3_client.create_bucket(Bucket=bucket_name)
+            self.s3_client.create_bucket(Bucket=bucket_name,
+                                    CreateBucketConfiguration={'LocationConstraint': self.region})
 
         except Exception as e:
             print(f'Error creating bucket {bucket_name}: {e}')
             exit(1)
 
-# s3.create_bucket(Bucket='mybucket', CreateBucketConfiguration={
-#     'LocationConstraint': 'us-west-1'})
 
-        # response = s3_client.create_bucket(Bucket=bucket_name, CreateBucketConfiguration={'LocationConstraint': region}
-        return
+        # return
 
-        region = self.cfg.get_aws_region(profile)
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
-        s3_client = session.client('s3', endpoint_url=ep_url)
-        existing_buckets = s3_client.list_buckets()
-        for bucket in existing_buckets['Buckets']:
-            if bucket['Name'] == bucket_name:
-                self.cfg.printdbg(f'S3 bucket {bucket_name} exists')
-                return True
-        try:
-            if region and region != 'default-placement':
-                response = s3_client.create_bucket(
-                    Bucket=bucket_name,
-                    CreateBucketConfiguration={'LocationConstraint': region}
-                )
-            else:
-                response = s3_client.create_bucket(
-                    Bucket=bucket_name,
-                )
-            print(f"Created S3 Bucket '{bucket_name}'")
-        except botocore.exceptions.BotoCoreError as e:
-            print(f"BotoCoreError: {e}")
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'InvalidBucketName':
-                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
-            elif error_code == 'BucketAlreadyExists':
-                pass
-                # print(f"Error: Bucket '{bucket_name}' already exists.")
-            elif error_code == 'BucketAlreadyOwnedByYou':
-                pass
-                # print(f"Error: You already own a bucket named '{bucket_name}'.")
-            elif error_code == 'InvalidAccessKeyId':
-                # pass
-                print(
-                    "Error: InvalidAccessKeyId. The AWS Access Key Id you provided does not exist in our records")
-            elif error_code == 'SignatureDoesNotMatch':
-                pass
-                # print("Error: Invalid AWS Secret Access Key.")
-            elif error_code == 'AccessDenied':
-                print(
-                    "Error: Access denied. Check your account permissions for creating S3 buckets")
-            elif error_code == 'IllegalLocationConstraintException':
-                print(f"Error: The specified region '{region}' is not valid.")
-            else:
-                print(f"ClientError: {e}")
-            return False
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            return False
-        encryption_configuration = {
-            'Rules': [
-                {
-                    'ApplyServerSideEncryptionByDefault': {
-                        'SSEAlgorithm': 'AES256'
-                    }
-                }
-            ]
-        }
-        try:
-            response = s3_client.put_bucket_encryption(
-                Bucket=bucket_name,
-                ServerSideEncryptionConfiguration=encryption_configuration
-            )
-            print(f"Applied AES256 encryption to S3 bucket '{bucket_name}'")
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'InvalidBucketName':
-                print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
-            elif error_code == 'AccessDenied':
-                print(
-                    "Error: Access denied. Check your account permissions for creating S3 buckets")
-            elif error_code == 'IllegalLocationConstraintException':
-                print(f"Error: The specified region '{region}' is not valid.")
-            elif error_code == 'InvalidLocationConstraint':
-                if not ep_url:
-                    # do not show this error with non AWS endpoints
-                    print(
-                        f"Error: The specified location-constraint '{region}' is not valid")
-            else:
-                print(f"ClientError: {e}")
-        except Exception as e:
-            print(f"An unexpected error occurred in create_s3_bucket: {e}")
-            return False
-        return True
+        # region = self.cfg.get_aws_region(profile)
+        # session = boto3.Session(
+        #     profile_name=profile) if profile else boto3.Session()
+        # ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+        # s3_client = session.client('s3', endpoint_url=ep_url)
+        # existing_buckets = s3_client.list_buckets()
+        # for bucket in existing_buckets['Buckets']:
+        #     if bucket['Name'] == bucket_name:
+        #         self.cfg.printdbg(f'S3 bucket {bucket_name} exists')
+        #         return True
+        # try:
+        #     if region and region != 'default-placement':
+        #         response = s3_client.create_bucket(
+        #             Bucket=bucket_name,
+        #             CreateBucketConfiguration={'LocationConstraint': region}
+        #         )
+        #     else:
+        #         response = s3_client.create_bucket(
+        #             Bucket=bucket_name,
+        #         )
+        #     print(f"Created S3 Bucket '{bucket_name}'")
+        # except botocore.exceptions.BotoCoreError as e:
+        #     print(f"BotoCoreError: {e}")
+        # except botocore.exceptions.ClientError as e:
+        #     error_code = e.response['Error']['Code']
+        #     if error_code == 'InvalidBucketName':
+        #         print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
+        #     elif error_code == 'BucketAlreadyExists':
+        #         pass
+        #         # print(f"Error: Bucket '{bucket_name}' already exists.")
+        #     elif error_code == 'BucketAlreadyOwnedByYou':
+        #         pass
+        #         # print(f"Error: You already own a bucket named '{bucket_name}'.")
+        #     elif error_code == 'InvalidAccessKeyId':
+        #         # pass
+        #         print(
+        #             "Error: InvalidAccessKeyId. The AWS Access Key Id you provided does not exist in our records")
+        #     elif error_code == 'SignatureDoesNotMatch':
+        #         pass
+        #         # print("Error: Invalid AWS Secret Access Key.")
+        #     elif error_code == 'AccessDenied':
+        #         print(
+        #             "Error: Access denied. Check your account permissions for creating S3 buckets")
+        #     elif error_code == 'IllegalLocationConstraintException':
+        #         print(f"Error: The specified region '{region}' is not valid.")
+        #     else:
+        #         print(f"ClientError: {e}")
+        #     return False
+        # except Exception as e:
+        #     print(f"An unexpected error occurred: {e}")
+        #     return False
+        # encryption_configuration = {
+        #     'Rules': [
+        #         {
+        #             'ApplyServerSideEncryptionByDefault': {
+        #                 'SSEAlgorithm': 'AES256'
+        #             }
+        #         }
+        #     ]
+        # }
+        # try:
+        #     response = s3_client.put_bucket_encryption(
+        #         Bucket=bucket_name,
+        #         ServerSideEncryptionConfiguration=encryption_configuration
+        #     )
+        #     print(f"Applied AES256 encryption to S3 bucket '{bucket_name}'")
+        # except botocore.exceptions.ClientError as e:
+        #     error_code = e.response['Error']['Code']
+        #     if error_code == 'InvalidBucketName':
+        #         print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
+        #     elif error_code == 'AccessDenied':
+        #         print(
+        #             "Error: Access denied. Check your account permissions for creating S3 buckets")
+        #     elif error_code == 'IllegalLocationConstraintException':
+        #         print(f"Error: The specified region '{region}' is not valid.")
+        #     elif error_code == 'InvalidLocationConstraint':
+        #         if not ep_url:
+        #             # do not show this error with non AWS endpoints
+        #             print(
+        #                 f"Error: The specified location-constraint '{region}' is not valid")
+        #     else:
+        #         print(f"ClientError: {e}")
+        # except Exception as e:
+        #     print(f"An unexpected error occurred in create_s3_bucket: {e}")
+        #     return False
+        # return True
 
     def _get_s3_data_size(self, folders, profile=None):
         """
@@ -5210,7 +5204,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
         return
 
     # Configure AWS S3 bucket
-    print(f'\n*** AWS S3 CONFIGURATION for profile {cfg.aws_profile} ***\n')
+    print(f'\n*** AWS S3 CONFIGURATION for profile "{cfg.aws_profile}" ***\n')
 
     # Get list froster buckets for the given profile
     s3_buckets = aws.get_aws_s3_buckets(cfg.aws_profile)
@@ -5250,7 +5244,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     with open(cfg.config_file, 'w') as configfile:
         config.write(configfile)
 
-    print(f'*** AWS S3 CONFIGURATION DONE ***\n')
+    print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
 
 
 def __subcmd_config_print(cfg: ConfigManager):
