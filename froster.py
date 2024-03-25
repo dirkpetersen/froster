@@ -61,7 +61,7 @@ __version__ = '0.9.0.70'
 
 
 class ConfigManager:
-    ''' Froster configuration managers
+    ''' Froster configuration manager
 
     This class manages the configuration of Froster.
     It reads and writes the configuration files.'''
@@ -115,6 +115,7 @@ class ConfigManager:
 
         # TODO: This whoami is necessary?
         # Whoami
+
         self.whoami = getpass.getuser()
 
         # Check if there is a ~/.froster/config/config.ini file and populate the variables
@@ -150,8 +151,8 @@ class ConfigManager:
                 self.current_s3_bucket = config.get(
                     'AWS', 'current_s3_bucket', fallback=None)
 
-    # Representation of object. Returns all variables in the object
 
+    # Representation of object. Returns all variables in the object
     def __repr__(self):
         return "<{klass} @{id:x} {attrs}>".format(
             klass=self.__class__.__name__,
@@ -159,6 +160,7 @@ class ConfigManager:
             attrs=" ".join("{}={!r}\n".format(k, v)
                            for k, v in self.__dict__.items()),
         )
+
 
     def _set_env_vars(self, profile):
 
@@ -5152,8 +5154,6 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
 
 def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
 
-    print(f'\n*** AWS S3 CONFIGURATION for profile {cfg.aws_profile} ***\n')
-
     # Create a ConfigParser object
     config = configparser.ConfigParser()
 
@@ -5173,11 +5173,12 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
         return
 
     # Configure AWS S3 bucket
+    print(f'\n*** AWS S3 CONFIGURATION for profile {cfg.aws_profile} ***\n')
 
     # Get list froster buckets for the given profile
     s3_buckets = aws.get_aws_s3_buckets(cfg.aws_profile)
 
-    # Add an option to create a new profile
+    # Add an option to create a new bucket
     s3_buckets.append('+ Create new bucket')
 
     # Ask user to choose an existing aws s3 bucket or create a new one
