@@ -104,8 +104,11 @@ class ConfigManager:
         # AWS profile
         self.aws_profile = ''
 
-        # Current S3 Bucket
-        self.current_s3_bucket = ''
+        # Current S3 bucket
+        self.bucket_name = ''
+
+        # Archive directory inside AWS S3 bucket
+        self.archive_dir = ''
 
         # Froster's default shared configuration
         self.is_shared = False
@@ -137,15 +140,16 @@ class ConfigManager:
 
             if config.has_section('DEFAULT'):
 
-                self.name = config.get('DEFAULT', 'name')
-                self.email = config.get('DEFAULT', 'email')
-                self.is_nih = config.get('DEFAULT', 'is_nih')
-                self.is_shared = config.get('DEFAULT', 'is_shared')
+                self.name = config.get('DEFAULT', 'name', fallback=None)
+                self.email = config.get('DEFAULT', 'email', fallback=None)
+                self.is_nih = config.get('DEFAULT', 'is_nih', fallback=None)
+                self.is_shared = config.get(
+                    'DEFAULT', 'is_shared', fallback=None)
 
                 if self.is_shared:
 
                     self.shared_config_dir = config.get(
-                        'DEFAULT', 'shared_config_dir')
+                        'DEFAULT', 'shared_config_dir', fallback=None)
 
                     self.shared_config_file = os.path.join(
                         self.shared_config_dir, 'shared_config.ini')
@@ -162,9 +166,14 @@ class ConfigManager:
                 self.aws_profile = config.get(
                     'AWS', 'aws_profile', fallback=None)
 
-                # Current S3 Bucket
-                self.current_s3_bucket = config.get(
-                    'AWS', 'current_s3_bucket', fallback=None)
+            if config.has_section('S3'):
+                # Current AWS S3 bucket
+                self.bucket_name = config.get(
+                    'AWS', 'bucket_name', fallback=None)
+
+                # Archive directoy inside AWS S3 bucket
+                self.archive_dir = config.get(
+                    'AWS', 'archive_dir', fallback=None)
 
     # Representation of object. Returns all variables in the object
 
@@ -1048,8 +1057,9 @@ class Archiver:
 
     def archive(self, folder, meta, isrecursive=False, issubfolder=False):
 
+        archivepath = os.path.join(self.cfg.bucket_name, self.cfg.archive_dir)
         source = os.path.abspath(folder)
-        target = os.path.join(f':s3:{self.cfg.archivepath}',
+        target = os.path.join(f':s3:{archivepath}',
                               source.lstrip(os.path.sep))
 
         if os.path.isfile(os.path.join(source, ".froster.md5sum")):
@@ -1122,7 +1132,7 @@ class Archiver:
         # upload of Froster.allfiles.csv to INTELLIGENT_TIERING
         #
         allf_s = os.path.join(source, 'Froster.allfiles.csv')
-        allf_d = os.path.join(self.cfg.archiveroot,
+        allf_d = os.path.join(self.cfg.archive_dir,
                               source.lstrip(os.path.sep),
                               'Froster.allfiles.csv')
         if os.path.exists(allf_s):
@@ -2272,17 +2282,10 @@ class AWSBoto:
         self.arch = arch
 
         if cfg.aws_profile:
-            # Get the region from the AWS config file
-            self.region = cfg.get_aws_region(aws_profile=cfg.aws_profile)
-
-            # Initialize a Boto3 session using the configured profile
-            session = boto3.Session(
-                profile_name=cfg.aws_profile, region_name=self.region)
-
-            # Initialize the AWS clients
-            self.sts_client = session.client('sts')
-            self.s3_client = session.client('s3')
-            self.ec2_client = session.client('ec2')
+            if self.check_credentials(aws_profile=cfg.aws_profile):   
+                self.set_session(cfg)
+            else:
+                cfg.aws_profile = None
 
     def check_credentials(self,
                           aws_profile=None,
@@ -2363,246 +2366,8 @@ class AWSBoto:
         #     print(
         #         f"Unexpected error checking s3 credentials: {e}")
         #     return False
-    def update_region(self, aws_profile_name, region):
-        ''' Update the region of an existing AWS profile'''
 
-        # Create a aws config ConfigParser object
-        aws_config = configparser.ConfigParser()
-
-        # If exists, read the aws config file
-        if os.path.exists(self.cfg.aws_config_file):
-            aws_config.read(self.cfg.aws_config_file)
-
-        # Update the region of the profile
-        aws_config[aws_profile_name]['region'] = region
-
-        # Write the config object to the config file
-        with open(self.cfg.aws_config_file, 'w') as configfile:
-            aws_config.write(configfile)
-
-        # Asure the permissions of the config file
-        os.chmod(self.cfg.aws_config_file, 0o600)
-
-    def create_profile(self,
-                       aws_profile_name,
-                       aws_access_key_id,
-                       aws_secret_access_key,
-                       region,
-                       output='json'):
-
-        # If it does not exist, create aws directory
-        if not os.path.exists(self.cfg.aws_dir):
-            os.makedirs(self.cfg.aws_dir, mode=0o775)
-
-        # aws config file
-
-        # Create a aws config ConfigParser object
-        aws_config = configparser.ConfigParser()
-
-        # If exists, read the aws config file
-        if os.path.exists(self.cfg.aws_config_file):
-            aws_config.read(self.cfg.aws_config_file)
-
-        # Create a new profile in the aws config file
-        aws_config[aws_profile_name] = {}
-        aws_config[aws_profile_name]['region'] = region
-        aws_config[aws_profile_name]['output'] = output
-
-        # Write the config object to the config file
-        with open(self.cfg.aws_config_file, 'w') as configfile:
-            aws_config.write(configfile)
-
-        # Asure the permissions of the config file
-        os.chmod(self.cfg.aws_config_file, 0o600)
-
-        # aws credential file
-
-        # Create a aws credentials ConfigParser object
-        aws_credentials = configparser.ConfigParser()
-
-        # if exists, read the aws credentials file
-        if os.path.exists(self.cfg.aws_credentials_file):
-            aws_credentials.read(self.cfg.aws_credentials_file)
-
-        # Create a new profile in the aws credentials file
-        aws_credentials[aws_profile_name] = {}
-        aws_credentials[aws_profile_name]['aws_access_key_id'] = aws_access_key_id
-        aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
-
-        # Write the config object to the config file
-        with open(self.cfg.aws_credentials_file, 'w') as configfile:
-            aws_credentials.write(configfile)
-
-        # Asure the permissions of the credentials file
-        os.chmod(self.cfg.aws_credentials_file, 0o600)
-
-    def get_profiles(self):
-        ''' Get a list of available AWS profiles'''
-
-        profiles = boto3.Session().available_profiles
-        return profiles
-
-    def get_regions(self,
-                    aws_profile=None,
-                    aws_access_key_id=None,
-                    aws_secret_access_key=None):
-        ''' AWS regions getter
-
-        Get the regions for the provided credentials.'''
-
-        if not aws_profile and (not aws_access_key_id or not aws_secret_access_key):
-            print(f'Error: No credentials provided in {inspect.stack()[0][3]}')
-            exit(1)
-
-        try:
-            if aws_profile:
-                # Build a ec2 client with the provided profile
-                keys = boto3.Session(
-                    profile_name=aws_profile).get_credentials()
-                ec2 = boto3.client('ec2',
-                                   aws_access_key_id=keys.access_key,
-                                   aws_secret_access_key=keys.secret_key)
-
-            else:
-                # Build a ec2 client with the provided credentials
-                ec2 = boto3.client('ec2',
-                                   aws_access_key_id=aws_access_key_id,
-                                   aws_secret_access_key=aws_secret_access_key)
-
-            regions = ec2.describe_regions()
-            region_names = [region['RegionName']
-                            for region in regions['Regions']]
-            return region_names
-
-        except Exception as e:
-            print(f'Error in {inspect.stack()[0][3]}: {e}')
-            exit(1)
-
-        # print(regions)
-        # regions = [i for i in regions if not i.startswith('ap-')]
-        # return sorted(regions, reverse=True)
-
-        # if provider == 'AWS':
-        #     try:
-        #         session = boto3.Session(
-        #             profile_name=profile) if profile else boto3.Session()
-        #         regions = session.get_available_regions('ec2')
-        #         # make the list a little shorter
-        #         regions = [i for i in regions if not i.startswith('ap-')]
-        #         return sorted(regions, reverse=True)
-        #     except:
-        #         return ['us-west-2', 'us-west-1', 'us-east-1', '']
-        # elif provider == 'GCS':
-        #     return ['us-west1', 'us-east1', '']
-        # elif provider == 'Wasabi':
-        #     return ['us-west-1', 'us-east-1', '']
-        # elif provider == 'IDrive':
-        #     return ['us-or', 'us-va', 'us-la', '']
-        # elif provider == 'Ceph':
-        #     return ['default-placement', 'us-east-1', '']
-
-    def get_s3_buckets(self, profile_name):
-        try:
-
-            # Get all the buckets
-            existing_buckets = self.s3_client.list_buckets()
-
-            # Extract the bucket names
-            bucket_list = [bucket['Name']
-                           for bucket in existing_buckets['Buckets']]
-
-            # Filter the bucket names and retrieve only froster-* buckets
-            froster_bucket_list = [
-                x for x in bucket_list if x.startswith('froster-')]
-
-            # Return the list of froster buckets
-            return froster_bucket_list
-
-        # TODO: Expand exception handling
-        except Exception as e:
-            print(f"Error: {e}")
-            print('\nYou can configure aws credentials using the command:')
-            print('    froster config --aws\n')
-            exit(1)
-
-    def check_bucket_access_folders(self, folders, readwrite=False):
-        # check all the buckets that have been used for archiving
-        sufficient = True
-        myaccess = 'read'
-        if readwrite:
-            myaccess = 'write'
-        buckets = []
-        for folder in folders:
-            bucket, *_ = self.arch.archive_get_bucket_info(folder)
-            if bucket:
-                buckets.append(bucket)
-            else:
-                print(f'Error: No archive config found for folder {folder}')
-                sufficient = False
-        buckets = list(set(buckets))  # remove dups
-        for bucket in buckets:
-            if not self.check_bucket_access(bucket, readwrite):
-                print(f' You have no {myaccess} access to bucket "{bucket}" !')
-                sufficient = False
-        return sufficient
-
-    def check_bucket_access(self, bucket_name, readwrite=False, profile=None):
-        # TODO: function pendint to review
-        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
-        exit(1)
-
-        if not bucket_name:
-            print('check_bucket_access: bucket_name empty. You may have not yet configured a S3 bucket name. Please run "froster config" first')
-            sys.exit(1)
-        if not self.check_credentials(profile):
-            print('check_credentials failed. Please edit file ~/.aws/credentials')
-            return False
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
-        s3 = session.client('s3', endpoint_url=ep_url)
-
-        try:
-            # Check if bucket exists
-            s3.head_bucket(Bucket=bucket_name)
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == '403':
-                print(
-                    f"Error: Access denied to bucket {bucket_name} for profile {self.aws_profile}. Check your permissions.")
-            elif error_code == '404':
-                print(
-                    f"Error: Bucket {bucket_name} does not exist in profile {self.aws_profile}.")
-                print("run 'froster config' to create this bucket.")
-            else:
-                print(
-                    f"Error accessing bucket {bucket_name} in profile {self.aws_profile}: {e}")
-            return False
-        except Exception as e:
-            print(
-                f"An unexpected error in function check_bucket_access for profile {self.aws_profile}: {e}")
-            return False
-
-        if not readwrite:
-            return True
-
-        # Test write access by uploading a small test file
-        try:
-            test_object_key = "test_write_access.txt"
-            s3.put_object(Bucket=bucket_name, Key=test_object_key,
-                          Body="Test write access")
-            # print(f"Successfully wrote test to {bucket_name}")
-
-            # Clean up by deleting the test object
-            s3.delete_object(Bucket=bucket_name, Key=test_object_key)
-            # print(f"Successfully deleted test object from {bucket_name}")
-            return True
-        except botocore.exceptions.ClientError as e:
-            print(
-                f"Error: cannot write to bucket {bucket_name} in profile {self.aws_profile}: {e}")
-            return False
-
-    def create_s3_bucket(self, bucket_name, aws_profile):
+    def create_bucket(self, bucket_name, aws_profile):
 
         # TODO: Check bucket name constrains
         try:
@@ -2705,9 +2470,258 @@ class AWSBoto:
         #     else:
         #         print(f"ClientError: {e}")
         # except Exception as e:
-        #     print(f"An unexpected error occurred in create_s3_bucket: {e}")
+        #     print(f"An unexpected error occurred in create_bucket: {e}")
         #     return False
         # return True
+
+    def create_profile(self,
+                       aws_profile_name,
+                       aws_access_key_id,
+                       aws_secret_access_key,
+                       region,
+                       output='json'):
+
+        # If it does not exist, create aws directory
+        if not os.path.exists(self.cfg.aws_dir):
+            os.makedirs(self.cfg.aws_dir, mode=0o775)
+
+        # aws config file
+
+        # Create a aws config ConfigParser object
+        aws_config = configparser.ConfigParser()
+
+        # If exists, read the aws config file
+        if os.path.exists(self.cfg.aws_config_file):
+            aws_config.read(self.cfg.aws_config_file)
+
+        # Create a new profile in the aws config file
+        aws_config[aws_profile_name] = {}
+        aws_config[aws_profile_name]['region'] = region
+        aws_config[aws_profile_name]['output'] = output
+
+        # Write the config object to the config file
+        with open(self.cfg.aws_config_file, 'w') as configfile:
+            aws_config.write(configfile)
+
+        # Asure the permissions of the config file
+        os.chmod(self.cfg.aws_config_file, 0o600)
+
+        # aws credential file
+
+        # Create a aws credentials ConfigParser object
+        aws_credentials = configparser.ConfigParser()
+
+        # if exists, read the aws credentials file
+        if os.path.exists(self.cfg.aws_credentials_file):
+            aws_credentials.read(self.cfg.aws_credentials_file)
+
+        # Create a new profile in the aws credentials file
+        aws_credentials[aws_profile_name] = {}
+        aws_credentials[aws_profile_name]['aws_access_key_id'] = aws_access_key_id
+        aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
+
+        # Write the config object to the config file
+        with open(self.cfg.aws_credentials_file, 'w') as configfile:
+            aws_credentials.write(configfile)
+
+        # Asure the permissions of the credentials file
+        os.chmod(self.cfg.aws_credentials_file, 0o600)
+
+    def get_buckets(self):
+        try:
+
+            # Get all the buckets
+            existing_buckets = self.s3_client.list_buckets()
+
+            # Extract the bucket names
+            bucket_list = [bucket['Name']
+                           for bucket in existing_buckets['Buckets']]
+
+            # Filter the bucket names and retrieve only froster-* buckets
+            froster_bucket_list = [
+                x for x in bucket_list if x.startswith('froster-')]
+
+            # Return the list of froster buckets
+            return froster_bucket_list
+
+        # TODO: Expand exception handling
+        except Exception as e:
+            print(f"Error: {e}")
+            print('\nYou can configure aws credentials using the command:')
+            print('    froster config --aws\n')
+            exit(1)
+
+    def get_profiles(self):
+        ''' Get a list of available AWS profiles'''
+
+        profiles = boto3.Session().available_profiles
+        return profiles
+
+    def get_regions(self):
+        ''' AWS regions getter
+
+        Get the regions for the current session or get default regions.'''
+
+        try:
+            print("here 1")
+            regions = self.ec2_client.describe_regions()
+            print("here 2")
+            region_names = [region['RegionName']
+                            for region in regions['Regions']]
+            return region_names
+
+        except Exception as e:
+            try: 
+                # If current session does not have a region, return default regions
+                s = boto3.Session()
+                dynamodb_regions = s.get_available_regions('dynamodb')
+                return dynamodb_regions
+            except Exception as e:
+                print(f'Error in {inspect.stack()[0][3]}: {e}')
+                exit(1)
+
+        # print(regions)
+        # regions = [i for i in regions if not i.startswith('ap-')]
+        # return sorted(regions, reverse=True)
+
+        # if provider == 'AWS':
+        #     try:
+        #         session = boto3.Session(
+        #             profile_name=profile) if profile else boto3.Session()
+        #         regions = session.get_available_regions('ec2')
+        #         # make the list a little shorter
+        #         regions = [i for i in regions if not i.startswith('ap-')]
+        #         return sorted(regions, reverse=True)
+        #     except:
+        #         return ['us-west-2', 'us-west-1', 'us-east-1', '']
+        # elif provider == 'GCS':
+        #     return ['us-west1', 'us-east1', '']
+        # elif provider == 'Wasabi':
+        #     return ['us-west-1', 'us-east-1', '']
+        # elif provider == 'IDrive':
+        #     return ['us-or', 'us-va', 'us-la', '']
+        # elif provider == 'Ceph':
+        #     return ['default-placement', 'us-east-1', '']
+
+    def list_objects_in_bucket(self, bucket_name):
+        response = self.s3_client.list_objects_v2(Bucket=bucket_name)
+        return response.get('Contents', [])
+
+    def update_region(self, aws_profile_name, region):
+        ''' Update the region of an existing AWS profile'''
+
+        # Create a aws config ConfigParser object
+        aws_config = configparser.ConfigParser()
+
+        # If exists, read the aws config file
+        if os.path.exists(self.cfg.aws_config_file):
+            aws_config.read(self.cfg.aws_config_file)
+
+        # Update the region of the profile
+        aws_config[aws_profile_name]['region'] = region
+
+        # Write the config object to the config file
+        with open(self.cfg.aws_config_file, 'w') as configfile:
+            aws_config.write(configfile)
+
+        # Asure the permissions of the config file
+        os.chmod(self.cfg.aws_config_file, 0o600)
+
+    def set_session(self, cfg: ConfigManager):
+        ''' Set the AWS profile for the current session'''
+
+
+        # Get the region from the AWS config file
+        self.region = cfg.get_aws_region(aws_profile=cfg.aws_profile)
+
+        # Initialize a Boto3 session using the configured profile
+        session = boto3.Session(
+            profile_name=cfg.aws_profile, region_name=self.region)
+
+        # Initialize the AWS clients
+        self.sts_client = session.client('sts')
+        self.s3_client = session.client('s3')
+        self.ec2_client = session.client('ec2')
+
+
+####################################################################################################
+
+    def check_bucket_access_folders(self, folders, readwrite=False):
+        # check all the buckets that have been used for archiving
+        sufficient = True
+        myaccess = 'read'
+        if readwrite:
+            myaccess = 'write'
+        buckets = []
+        for folder in folders:
+            bucket, *_ = self.arch.archive_get_bucket_info(folder)
+            if bucket:
+                buckets.append(bucket)
+            else:
+                print(f'Error: No archive config found for folder {folder}')
+                sufficient = False
+        buckets = list(set(buckets))  # remove dups
+        for bucket in buckets:
+            if not self.check_bucket_access(bucket, readwrite):
+                print(f' You have no {myaccess} access to bucket "{bucket}" !')
+                sufficient = False
+        return sufficient
+
+    def check_bucket_access(self, bucket_name, readwrite=False, profile=None):
+        # TODO: function pendint to review
+        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+        exit(1)
+
+        if not bucket_name:
+            print('check_bucket_access: bucket_name empty. You may have not yet configured a S3 bucket name. Please run "froster config" first')
+            sys.exit(1)
+        if not self.check_credentials(profile):
+            print('check_credentials failed. Please edit file ~/.aws/credentials')
+            return False
+        session = boto3.Session(
+            profile_name=profile) if profile else boto3.Session()
+        ep_url = self.cfg._get_aws_s3_session_endpoint_url(profile)
+        s3 = session.client('s3', endpoint_url=ep_url)
+
+        try:
+            # Check if bucket exists
+            s3.head_bucket(Bucket=bucket_name)
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '403':
+                print(
+                    f"Error: Access denied to bucket {bucket_name} for profile {self.aws_profile}. Check your permissions.")
+            elif error_code == '404':
+                print(
+                    f"Error: Bucket {bucket_name} does not exist in profile {self.aws_profile}.")
+                print("run 'froster config' to create this bucket.")
+            else:
+                print(
+                    f"Error accessing bucket {bucket_name} in profile {self.aws_profile}: {e}")
+            return False
+        except Exception as e:
+            print(
+                f"An unexpected error in function check_bucket_access for profile {self.aws_profile}: {e}")
+            return False
+
+        if not readwrite:
+            return True
+
+        # Test write access by uploading a small test file
+        try:
+            test_object_key = "test_write_access.txt"
+            s3.put_object(Bucket=bucket_name, Key=test_object_key,
+                          Body="Test write access")
+            # print(f"Successfully wrote test to {bucket_name}")
+
+            # Clean up by deleting the test object
+            s3.delete_object(Bucket=bucket_name, Key=test_object_key)
+            # print(f"Successfully deleted test object from {bucket_name}")
+            return True
+        except botocore.exceptions.ClientError as e:
+            print(
+                f"Error: cannot write to bucket {bucket_name} in profile {self.aws_profile}: {e}")
+            return False
 
     def _get_s3_data_size(self, folders, profile=None):
         """
@@ -5104,8 +5118,7 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
             return
 
         # Get list of aws regions for the given credentials
-        aws_regions = aws.get_regions(aws_access_key_id=aws_access_key_id,
-                                      aws_secret_access_key=aws_secret_access_key)
+        aws_regions = aws.get_regions()
 
         # Ask user to choose a region
         region = inquirer.list_input("Choose your region",
@@ -5142,14 +5155,14 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
 
         if not aws_region or not is_region_correct:
 
-            # Get list of aws regions for the given user
-            aws_regions = aws.get_regions(aws_profile=aws_profile)
+            # Get list of aws regions
+            aws_regions = aws.get_regions()
 
             # Ask user to choose a region
             region = inquirer.list_input("Choose your region",
                                          choices=aws_regions)
 
-            # TODO: Update region in the config file
+            # Update region in the config file
             aws.update_region(aws_profile_name=aws_profile, region=region)
 
     # Create a ConfigParser object
@@ -5165,10 +5178,12 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
     config['AWS'] = {}
     if aws_profile == '+ Create new profile':
         config['AWS']['aws_profile'] = aws_new_profile_name
-        cfg.aws_profile = aws_new_profile_name  # Set new profile in the cfg object
     else:
         config['AWS']['aws_profile'] = aws_profile
-        cfg.aws_profile = aws_profile  # Set selected profile in the cfg object
+
+    # Set the new profile as the selected profile
+    cfg.aws_profile = config.get(
+        'AWS', 'aws_profile', fallback=None)
 
     # Create a new config directory in case it does not exist
     if not os.path.exists(cfg.config_dir):
@@ -5177,6 +5192,9 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
     # Write the config object to the config file
     with open(cfg.config_file, 'w') as configfile:
         config.write(configfile)
+
+    # Populate the AWSBoto self variables with this new configuration
+    aws.set_session(cfg)
 
     print(f'\n*** AWS PROFILE CONFIGURATION DONE ***\n')
 
@@ -5195,17 +5213,30 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
         print('    froster config\n')
         return
 
-    if not config.has_section('AWS'):
+    if not config.has_section('AWS') or not config.has_option('AWS', 'aws_profile'):
         print(f'\n*** NO AWS PROFILE FOUND ***')
         print('\nYou can configure aws profile using the command:')
         print('    froster config --aws\n')
         return
 
+    config['S3'] = {}
+
     # Configure AWS S3 bucket
     print(f'\n*** AWS S3 CONFIGURATION for profile "{cfg.aws_profile}" ***\n')
 
+    print(f'\nChecking AWS credentials for profile "{cfg.aws_profile}"...')
+    if aws.check_credentials():
+        print('    ...AWS credentials are valid\n')
+    else:
+        print('    ...AWS credentials are NOT valid\n')
+        print('\nYou can configure aws credentials using the command:')
+        print('    froster config --aws')
+        print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
+        return
+
+
     # Get list froster buckets for the given profile
-    s3_buckets = aws.get_s3_buckets(cfg.aws_profile)
+    s3_buckets = aws.get_buckets()
 
     # Add an option to create a new bucket
     s3_buckets.append('+ Create new bucket')
@@ -5222,25 +5253,53 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
             message='Enter new bucket name (it must start with "froster-")', validate=__inquirer_bucket_name_check)
 
         # Create new bucket
-        aws.create_s3_bucket(aws_profile=cfg.aws_profile,
-                             bucket_name=aws_s3_new_bucket_name)
+        aws.create_bucket(aws_profile=cfg.aws_profile,
+                          bucket_name=aws_s3_new_bucket_name)
 
         # Store new aws s3 bucket in the config object
-        config['S3'] = {}
-        config['S3']['current_s3_bucket'] = aws_s3_new_bucket_name
+        config['S3']['bucket_name'] = aws_s3_new_bucket_name
     else:
-
         # Store aws s3 bucket in the config object
-        config['S3'] = {}
-        config['S3']['current_s3_bucket'] = s3_bucket
+        config['S3']['bucket_name'] = s3_bucket
 
     # Set the new profile as the selected profile
-    cfg.current_s3_bucket = config.get(
-        'S3', 'current_s3_bucket', fallback=None)
+    cfg.bucket_name = config.get(
+        'S3', 'bucket_name', fallback=None)
+
+    # Get the archive directory in the selected bucket
+    # TODO: make this inquiring in shortchut mode once this PR is merged: https://github.com/magmax/python-inquirer/pull/543
+    archive_dir_question = [
+        inquirer.Path(
+            'archive directory', message='Enter the archive directory inside your S3 bucket',
+            path_type=inquirer.Path.DIRECTORY)
+    ]
+    archive_dir_answer = inquirer.prompt(archive_dir_question)
+    archive_dir = archive_dir_answer['archive directory']
+    print()
+
+    # Store aws s3 archive dir in the config object
+    config['S3']['archive_dir'] = archive_dir
+
+    # Set the aws s3 archive dir as the cfg object
+    cfg.archive_dir = archive_dir
+
+    storage_class = inquirer.list_input("Choose the AWS S3 storage class",
+                                        choices={'DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING'})
+
+    # Store aws s3 storage class in the config object
+    config['S3']['storage_class'] = storage_class
+
+    # Set the aws s3 storage class in the cfg object
+    cfg.storage_class = storage_class
 
     # Write the config object to the config file
     with open(cfg.config_file, 'w') as configfile:
         config.write(configfile)
+
+    # Note: This is not needed as the AWSBoto object is already updated every time we call froster.py.
+    # But it's here in case we have some others config after this S3 configuration.
+    # Populate the AWSBoto self variables with this new configuration
+    aws.set_session(cfg)
 
     print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
 
@@ -5304,17 +5363,6 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     # aws s3 configuration
     __subcmd_config_aws_s3(cfg, aws)
-
-    #     # cloud setup
-    # bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
-    #                     f'froster-{emailstr}|general|bucket', 'string')
-    # archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
-    #                          'archive|general|archiveroot', 'string')
-
-    # cls = cfg.read('general', 's3_storage_class')
-    # s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
-    #                               'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
-    # cfg.write('general', 's3_storage_class', s3_storage_class)
 
     exit(0)  # patata
 
@@ -5390,8 +5438,8 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     # # cloud setup
     # bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
     #                     f'froster-{emailstr}|general|bucket', 'string')
-    # archiveroot = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
-    #                          'archive|general|archiveroot', 'string')
+    # archive_dir = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
+    #                          'archive|general|archive_dir', 'string')
 
     # cls = cfg.read('general', 's3_storage_class')
     # s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
@@ -5429,7 +5477,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     #             cfg.write('general', 'aws_profile', prof)
     #         elif prof == 'default':
     #             cfg.write('general', 'aws_profile', 'default')
-    #         aws.create_s3_bucket(bucket, prof)
+    #         aws.create_bucket(bucket, prof)
 
     # for prof in profs:
     #     if prof in allowed_aws_profiles:
@@ -5492,7 +5540,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     #     else:
     #         print(f'\nConfig for AWS profile "{prof}" was not saved.')
 
-    #     aws.create_s3_bucket(bucket, prof)
+    #     aws.create_bucket(bucket, prof)
 
     if shutil.which('scontrol') and shutil.which('sacctmgr'):
         se = SlurmEssentials(args, cfg)
