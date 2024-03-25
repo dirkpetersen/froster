@@ -83,15 +83,6 @@ class ConfigManager:
         # Froster's configuration file
         self.config_file = os.path.join(self.config_dir, 'config.ini')
 
-        # Froster's default shared configuration
-        self.is_shared = False
-
-        # Froster's shared configuration dir
-        self.shared_config_dir = ''
-
-        # Froster's shared configuration file
-        self.shared_config_file = ''
-
         # AWS directory
         self.aws_dir = os.path.join(self.home_dir, '.aws')
 
@@ -107,11 +98,24 @@ class ConfigManager:
         # Current S3 Bucket
         self.current_s3_bucket = ''
 
+        # Froster's default shared configuration
+        self.is_shared = False
+
+        # Froster's shared configuration dir
+        self.shared_config_dir = ''
+
+        # Froster's shared configuration file
+        self.shared_config_file = ''
+
         # Basic setup, focus the indexer on larger folders and file sizes
         self.max_small_file_size_kib = 1024
         self.min_index_folder_size_gib = 1
         self.min_index_folder_size_avg_mib = 10
         self.max_hotspots_display_entries = 5000
+
+        # TODO: This whoami is necessary?
+        # Whoami
+        self.whoami = getpass.getuser()
 
         # Check if there is a ~/.froster/config/config.ini file and populate the variables
         if os.path.exists(self.config_file):
