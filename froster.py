@@ -67,6 +67,11 @@ class ConfigManager:
     It reads and writes the configuration files.'''
 
     def __init__(self):
+        ''' Initialize the ConfigManager object
+
+        This function initializes the ConfigManager object with default values.
+        Then it reads the configuration file (if exists) and populates the object variables.
+        '''
 
         # Expand the ~ symbols to user's home directory
         self.home_dir = os.path.expanduser('~')
@@ -82,6 +87,10 @@ class ConfigManager:
 
         # Froster's configuration file
         self.config_file = os.path.join(self.config_dir, 'config.ini')
+
+        # Froster's archive json file
+        self.archive_json = os.path.join(
+            self.config_dir, 'froster-archives.json')
 
         # AWS directory
         self.aws_dir = os.path.join(self.home_dir, '.aws')
@@ -127,15 +136,22 @@ class ConfigManager:
             config.read(self.config_file)
 
             if config.has_section('DEFAULT'):
+
                 self.name = config.get('DEFAULT', 'name')
                 self.email = config.get('DEFAULT', 'email')
                 self.is_nih = config.get('DEFAULT', 'is_nih')
                 self.is_shared = config.get('DEFAULT', 'is_shared')
+
                 if self.is_shared:
+
                     self.shared_config_dir = config.get(
                         'DEFAULT', 'shared_config_dir')
+
                     self.shared_config_file = os.path.join(
                         self.shared_config_dir, 'shared_config.ini')
+
+                    self.archive_json = os.path.join(
+                        self.shared_config_dir, 'froster-archives.json')
 
             # TODO: If there is shared config file, read it and populate the variables
             # TODO: Should we call fix_tree_permissions for the shared_config_dir and shared_config_file
@@ -682,32 +698,36 @@ class ConfigManager:
                 f'profile {profile}', self.aws_config_file, self.aws_config_fileshr)
         return True
 
-    def get_aws_s3_endpoint_url(self, profile=None):
+    # Unused function
+    # def get_aws_s3_endpoint_url(self, profile=None):
 
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
+    #     # Create a ConfigParser object
+    #     config = configparser.ConfigParser()
 
-        # non boto3 method, use _get_aws_s3_session_endpoint_url instead
-        if not profile:
-            profile = self.aws_profile
-        config.read(os.path.expanduser('~/.aws/config'))
-        prof = 'profile ' + profile
-        if profile == 'default':
-            prof = profile
-        try:
-            # We use the configparser's interpolation feature here to
-            # flatten the 's3' subsection into the 'profile test' section.
-            s3_config_string = config.get(prof, 's3')
-            s3_config = configparser.ConfigParser()
-            s3_config.read_string("[s3_section]\n" + s3_config_string)
-            endpoint_url = s3_config.get('s3_section', 'endpoint_url')
-            return endpoint_url
-        except (configparser.NoSectionError, configparser.NoOptionError):
-            if self.args.debug:
-                print("  No endpoint_url found in aws profile:", profile)
-            return None
+    #     # non boto3 method, use _get_aws_s3_session_endpoint_url instead
+    #     if not profile:
+    #         profile = self.aws_profile
+    #     config.read(os.path.expanduser('~/.aws/config'))
+    #     prof = 'profile ' + profile
+    #     if profile == 'default':
+    #         prof = profile
+    #     try:
+    #         # We use the configparser's interpolation feature here to
+    #         # flatten the 's3' subsection into the 'profile test' section.
+    #         s3_config_string = config.get(prof, 's3')
+    #         s3_config = configparser.ConfigParser()
+    #         s3_config.read_string("[s3_section]\n" + s3_config_string)
+    #         endpoint_url = s3_config.get('s3_section', 'endpoint_url')
+    #         return endpoint_url
+    #     except (configparser.NoSectionError, configparser.NoOptionError):
+    #         if self.args.debug:
+    #             print("  No endpoint_url found in aws profile:", profile)
+    #         return None
 
     def _get_aws_s3_session_endpoint_url(self, profile=None):
+        # TODO: function pendint to review
+        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+        exit(1)
         # retrieve endpoint url through boto API, not configparser
         if not profile:
             profile = self.aws_profile
@@ -923,12 +943,7 @@ class Archiver:
 
         self.cfg = cfg
 
-        if cfg.is_shared:
-            self.archive_json = os.path.join(
-                cfg.shared_config_dir, 'froster-archives.json')
-        else:
-            self.archive_json = os.path.join(
-                cfg.config_dir, 'froster-archives.json')
+        self.archive_json = cfg.archive_json
 
         x = cfg.max_small_file_size_kib
         self.thresholdKB = int(x) if x else 1024
@@ -2329,7 +2344,6 @@ class AWSBoto:
         self.args = args
         self.cfg = cfg
         self.arch = arch
-        self.aws_profile = self.cfg.aws_profile
 
     def check_s3_credentials(self,
                              aws_access_key_id=None,
@@ -2505,6 +2519,9 @@ class AWSBoto:
         return sufficient
 
     def check_bucket_access(self, bucket_name, readwrite=False, profile=None):
+        # TODO: function pendint to review
+        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+        exit(1)
 
         if not bucket_name:
             print('check_bucket_access: bucket_name empty. You may have not yet configured a S3 bucket name. Please run "froster config" first')
