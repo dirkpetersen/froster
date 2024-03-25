@@ -597,80 +597,6 @@ class ConfigManager:
             print(
                 f"Missing entries in source from destination copied back to {src_file}")
 
-    # get the full list of profiles from ~/.aws/credentials profile folder
-    def get_aws_profiles(self):
-        try:
-            # Check if aws credentials file exists
-            if not os.path.exists(self.aws_credentials_file):
-                return []
-
-            # Create a ConfigParser object
-            config = configparser.ConfigParser()
-
-            # Read the aws credentials file
-            config.read(self.aws_credentials_file)
-
-            # Get the list of profiles
-            profiles = []
-            for section in config.sections():
-                # TODO: is this necessary? Backward compatibility?
-                profile_name = section.replace("profile ", "")
-                profiles.append(profile_name)
-
-            return profiles
-
-        except Exception as err:
-            print(f'Error: ${sys._getframe(  ).f_code.co_name}: {err}')
-            return []
-
-    def aws_create_profile(self, aws_new_profile_name, aws_access_key_id, aws_secret_access_key, region, output='json'):
-
-        # Create aws directory if it does not exist
-        if not os.path.exists(self.aws_dir):
-            os.makedirs(self.aws_dir, mode=0o775)
-
-        # aws config file
-
-        # Create a aws config ConfigParser object
-        aws_config = configparser.ConfigParser()
-
-        # if exists, read the aws config file
-        if os.path.exists(self.aws_config_file):
-            aws_config.read(self.aws_config_file)
-
-        # Create a new profile in the aws config file
-        aws_config[aws_new_profile_name] = {}
-        aws_config[aws_new_profile_name]['region'] = region
-        aws_config[aws_new_profile_name]['output'] = output
-
-        # Write the config object to the config file
-        with open(self.aws_config_file, 'w') as configfile:
-            aws_config.write(configfile)
-
-        # Asure the permissions of the config file
-        os.chmod(self.aws_config_file, 0o600)
-
-        # aws credential file
-
-        # Create a aws credentials ConfigParser object
-        aws_credentials = configparser.ConfigParser()
-
-        # if exists, read the aws credentials file
-        if os.path.exists(self.aws_credentials_file):
-            aws_credentials.read(self.aws_credentials_file)
-
-        # Create a new profile in the aws credentials file
-        aws_credentials[aws_new_profile_name] = {}
-        aws_credentials[aws_new_profile_name]['aws_access_key_id'] = aws_access_key_id
-        aws_credentials[aws_new_profile_name]['aws_secret_access_key'] = aws_secret_access_key
-
-        # Write the config object to the config file
-        with open(self.aws_credentials_file, 'w') as configfile:
-            aws_credentials.write(configfile)
-
-        # Asure the permissions of the credentials file
-        os.chmod(self.aws_credentials_file, 0o600)
-
     def set_aws_config(self, profile, key, value, service=''):
 
         # Create a ConfigParser object
@@ -740,7 +666,7 @@ class ConfigManager:
             print('*** endpoint url ***:', endpoint_url)
         return endpoint_url
 
-    def get_aws_region(self, profile=None):
+    def get_aws_region(self, aws_profile):
 
         # Check if aws credentials file exists
         if not os.path.exists(self.aws_config_file):
@@ -752,8 +678,8 @@ class ConfigManager:
         # Read the aws config file
         config.read(self.aws_config_file)
 
-        if config.has_section(profile) and config.has_option(profile, 'region'):
-            return config.get(profile, 'region')
+        if config.has_section(aws_profile) and config.has_option(aws_profile, 'region'):
+            return config.get(aws_profile, 'region')
 
         return
 
@@ -2345,34 +2271,43 @@ class AWSBoto:
         self.cfg = cfg
         self.arch = arch
 
-    def check_s3_credentials(self,
-                             aws_access_key_id=None,
-                             aws_secret_access_key=None,
-                             aws_profile=None,
-                             verbose=False):
+        if cfg.aws_profile:
+            # Initialize a Boto3 session using the configured profile
+            session = boto3.Session(cfg.aws_profile)
+            self.sts_client = session.client('sts')
+            self.s3_client = session.client('s3')
+            self.ec2_client = session.client('ec2')
 
-        # If no credentials or profile are provided, return False
-        if not aws_access_key_id or not aws_secret_access_key and not aws_profile:
-            return False
+    def check_credentials(self,
+                          aws_profile=None,
+                          aws_access_key_id=None,
+                          aws_secret_access_key=None):
+        ''' AWS credential checker
+
+        Check if the provided AWS credentials or provide AWS profile are valid.
+        If nothing is provided, the current session is checked.'''
 
         try:
-            # Check if we have the necessary credentials or profile
             if aws_access_key_id and aws_secret_access_key:
-                # Use the provided credentials
+                # Build a STS client with the provided credentials
                 sts = boto3.client('sts',
                                    aws_access_key_id=aws_access_key_id,
                                    aws_secret_access_key=aws_secret_access_key)
-            else:
-                # Use the provided profile
+            elif aws_profile:
+                # Build a STS client with the provided profile
                 sts = boto3.Session(profile_name=aws_profile).client('sts')
+            else:
+                # Build a STS client with the current session
+                sts = self.sts_client
 
-            # Check if the provided credentials or profile are valid
+            # Check that we can get the caller identity
             sts.get_caller_identity()
 
-            # credentials are valid
+            # Credentials are valid
             return True
 
         except Exception as e:
+            # Credentials are not valid
             return False
 
         # TODO: rework error checks
@@ -2422,26 +2357,118 @@ class AWSBoto:
         #     print(
         #         f"Unexpected error checking s3 credentials: {e}")
         #     return False
+    def update_region (self, aws_profile_name, region):
+        ''' Update the region of an existing AWS profile'''
 
-    def get_aws_regions(self, aws_access_key_id=None, aws_secret_access_key=None,):
-        # returns a list of AWS regions
+        # Create a aws config ConfigParser object
+        aws_config = configparser.ConfigParser()
 
-        # Check if parameters are provided
-        if aws_access_key_id and aws_secret_access_key:
-            ec2 = boto3.client('ec2',
-                               aws_access_key_id=aws_access_key_id,
-                               aws_secret_access_key=aws_secret_access_key)
-        else:
-            ec2 = boto3.client('ec2')
+        # If exists, read the aws config file
+        if os.path.exists(self.cfg.aws_config_file):
+            aws_config.read(self.cfg.aws_config_file)
+
+        # Update the region of the profile
+        aws_config[aws_profile_name]['region'] = region
+
+        # Write the config object to the config file
+        with open(self.cfg.aws_config_file, 'w') as configfile:
+            aws_config.write(configfile)
+
+        # Asure the permissions of the config file
+        os.chmod(self.cfg.aws_config_file, 0o600)
+
+    def create_profile(self,
+                       aws_profile_name,
+                       aws_access_key_id,
+                       aws_secret_access_key,
+                       region,
+                       output='json'):
+
+        # If it does not exist, create aws directory
+        if not os.path.exists(self.cfg.aws_dir):
+            os.makedirs(self.cfg.aws_dir, mode=0o775)
+
+        # aws config file
+
+        # Create a aws config ConfigParser object
+        aws_config = configparser.ConfigParser()
+
+        # If exists, read the aws config file
+        if os.path.exists(self.cfg.aws_config_file):
+            aws_config.read(self.cfg.aws_config_file)
+
+        # Create a new profile in the aws config file
+        aws_config[aws_profile_name] = {}
+        aws_config[aws_profile_name]['region'] = region
+        aws_config[aws_profile_name]['output'] = output
+
+        # Write the config object to the config file
+        with open(self.cfg.aws_config_file, 'w') as configfile:
+            aws_config.write(configfile)
+
+        # Asure the permissions of the config file
+        os.chmod(self.cfg.aws_config_file, 0o600)
+
+        # aws credential file
+
+        # Create a aws credentials ConfigParser object
+        aws_credentials = configparser.ConfigParser()
+
+        # if exists, read the aws credentials file
+        if os.path.exists(self.cfg.aws_credentials_file):
+            aws_credentials.read(self.cfg.aws_credentials_file)
+
+        # Create a new profile in the aws credentials file
+        aws_credentials[aws_profile_name] = {}
+        aws_credentials[aws_profile_name]['aws_access_key_id'] = aws_access_key_id
+        aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
+
+        # Write the config object to the config file
+        with open(self.cfg.aws_credentials_file, 'w') as configfile:
+            aws_credentials.write(configfile)
+
+        # Asure the permissions of the credentials file
+        os.chmod(self.cfg.aws_credentials_file, 0o600)
+
+    def get_profiles(self):
+        ''' Get a list of available AWS profiles'''
+
+        profiles = boto3.Session().available_profiles
+        return profiles
+
+    def get_regions(self,
+                    aws_profile = None,
+                    aws_access_key_id = None,
+                    aws_secret_access_key = None):
+        ''' AWS regions getter
+
+        Get the regions for the provided credentials.'''
+
+        if not aws_profile and (not aws_access_key_id or not aws_secret_access_key):
+            print(f'Error: No credentials provided in {inspect.stack()[0][3]}')
+            exit(1)
 
         try:
+            if aws_profile:
+                # Build a ec2 client with the provided profile
+                keys = boto3.Session(profile_name=aws_profile).get_credentials()
+                ec2 = boto3.client('ec2',
+                                   aws_access_key_id = keys.access_key,
+                                   aws_secret_access_key = keys.secret_key)
+
+            else:
+                # Build a ec2 client with the provided credentials
+                ec2 = boto3.client('ec2',
+                                   aws_access_key_id = aws_access_key_id,
+                                   aws_secret_access_key = aws_secret_access_key)
+
             regions = ec2.describe_regions()
             region_names = [region['RegionName']
                             for region in regions['Regions']]
             return region_names
 
-        except boto3.exceptions.ClientError:
-            print("Error: Unable to retrieve AWS regions for the given credentials.")
+        except Exception as e:
+            print(f'Error in {inspect.stack()[0][3]}: {e}')
             exit(1)
 
         # print(regions)
@@ -2526,8 +2553,8 @@ class AWSBoto:
         if not bucket_name:
             print('check_bucket_access: bucket_name empty. You may have not yet configured a S3 bucket name. Please run "froster config" first')
             sys.exit(1)
-        if not self.check_s3_credentials(profile):
-            print('check_s3_credentials failed. Please edit file ~/.aws/credentials')
+        if not self.check_credentials(profile):
+            print('check_credentials failed. Please edit file ~/.aws/credentials')
             return False
         session = boto3.Session(
             profile_name=profile) if profile else boto3.Session()
@@ -2577,10 +2604,12 @@ class AWSBoto:
     def create_s3_bucket(self, bucket_name, aws_profile):
 
         # TODO: Check bucket name constrains
+        # TODO: review with new aws boto session self variable
+        exit(1)
         try:
 
             # Check if the provided AWS profile has the necessary permissions
-            if not self.check_s3_credentials(aws_profile=aws_profile):
+            if not self.check_credentials(aws_profile=aws_profile):
                 print(
                     f"Cannot create bucket '{bucket_name}' using profile '{aws_profile}'")
                 print('\nYou can configure aws credentials using the command:')
@@ -5043,17 +5072,8 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
 
     print(f'\n*** AWS PROFILE CONFIGURATION ***\n')
 
-    # Create a ConfigParser object
-    config = configparser.ConfigParser()
-
-    # if exists, read the config.ini file
-    if os.path.exists(cfg.config_file):
-        config.read(cfg.config_file)
-
-    # Configure AWS credentials
-
     # Get list of current AWS profiles under ~/.aws/credentials
-    aws_profiles = cfg.get_aws_profiles()
+    aws_profiles = aws.get_profiles()
 
     # Add an option to create a new profile
     aws_profiles.append('+ Create new profile')
@@ -5064,6 +5084,8 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
 
     # Check if user wants to create a new aws profile
     if aws_profile == '+ Create new profile':
+
+        # NEW PROFILE CONFIGURATION
 
         # Get new profile name
         aws_new_profile_name = inquirer.text(
@@ -5077,84 +5099,84 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
         aws_secret_access_key = inquirer.text(
             message="AWS Secret Access Key", validate=__inquirer_required_check)
 
-        # Store aws profile in the config object
-        config['AWS'] = {}
-        config['AWS']['aws_profile'] = aws_new_profile_name
+        # Check if the provided aws credentials are valid
+        print("\nChecking AWS credentials...")
+        if aws.check_credentials(aws_access_key_id=aws_access_key_id,
+                                 aws_secret_access_key=aws_secret_access_key):
+            print('    ...AWS credentials are valid\n')
+        else:
+            print('    ...AWS credentials are NOT valid\n')
+            print('\nYou can configure aws credentials using the command:')
+            print('    froster config --aws')
+            print(f'\n*** AWS PROFILE CONFIGURATION DONE ***\n')
+            return
 
-    else:
-        # Store aws profile in the config object
-        config['AWS'] = {}
-        config['AWS']['aws_profile'] = aws_profile
-
-        # Create a ConfigParser object
-        aws_credentials = configparser.ConfigParser()
-
-        # Read the aws credentials file
-        aws_credentials.read(cfg.aws_credentials_file)
-
-        # Get aws credentials from selected profile
-        aws_access_key_id = aws_credentials.get(
-            aws_profile, 'aws_access_key_id')
-        aws_secret_access_key = aws_credentials.get(
-            aws_profile, 'aws_secret_access_key')
-
-    # Check if the provided aws credentials are valid
-    print("\nChecking AWS credentials...")
-    if aws.check_s3_credentials(aws_access_key_id, aws_secret_access_key):
-        print('    ...AWS credentials are valid\n')
-
-    else:
-        print('    ...AWS credentials are NOT valid\n')
-        print('\nYou can configure aws credentials using the command:')
-        print('    froster config --aws')
-        print(f'\n*** AWS PROFILE CONFIGURATION DONE ***\n')
-        return
-
-    # aws region configuration
-    if aws_profile == '+ Create new profile':
-
-        # Get list of aws regions for the given user
-        aws_regions = aws.get_aws_regions(aws_access_key_id,
-                                          aws_secret_access_key)
+        # Get list of aws regions for the given credentials
+        aws_regions = aws.get_regions(aws_access_key_id=aws_access_key_id,
+                                      aws_secret_access_key=aws_secret_access_key)
 
         # Ask user to choose a region
         region = inquirer.list_input("Choose your region",
                                      choices=aws_regions)
 
         # Create new profile in ~/.aws/credentials and ~/.aws/config
-        cfg.aws_create_profile(aws_new_profile_name,
-                               aws_access_key_id,
-                               aws_secret_access_key,
-                               region)
+        aws.create_profile(aws_profile_name=aws_new_profile_name,
+                           aws_access_key_id=aws_access_key_id,
+                           aws_secret_access_key=aws_secret_access_key,
+                           region=region)
 
     else:
+
+        # EXISTING PROFILE CONFIGURATION
+
+        # Check if the provided aws credentials are valid
+        print("\nChecking AWS profile credentials...")
+        if aws.check_credentials(aws_profile=aws_profile):
+            print('    ...AWS profile credentials are valid\n')
+        else:
+            print('    ...AWS profile credentials are NOT valid\n')
+            print('\nYou can configure new aws credentials using the command:')
+            print('    froster config --aws')
+            print(f'\n*** AWS PROFILE CONFIGURATION DONE ***\n')
+            return
+
         # Check the seletected profile region
-        aws_region = cfg.get_aws_region(aws_profile)
+        aws_region = cfg.get_aws_region(aws_profile = aws_profile)
 
+        # Ask user to confirm the region
         if aws_region:
-
             is_region_correct = inquirer.confirm(
                 message=f'Region of profile {aws_profile} is {aws_region}. Is this region correct?', default=True)
 
         if not aws_region or not is_region_correct:
 
             # Get list of aws regions for the given user
-            aws_regions = aws.get_aws_regions(aws_access_key_id,
-                                              aws_secret_access_key)
+            aws_regions = aws.get_regions(aws_profile=aws_profile)
 
             # Ask user to choose a region
             region = inquirer.list_input("Choose your region",
                                          choices=aws_regions)
 
-            # TODO: We are rewriting the credentials file. Split this in two functions
-            # Create new profile in ~/.aws/credentials and ~/.aws/config
-            cfg.aws_create_profile(aws_profile,
-                                   aws_access_key_id,
-                                   aws_secret_access_key,
-                                   region)
+            # TODO: Update region in the config file
+            aws.update_region(aws_profile_name = aws_profile,region = region)
 
-    # Set the new profile as the selected profile
-    cfg.aws_profile = config.get('AWS', 'aws_profile', fallback=None)
+    # Create a ConfigParser object
+    config = configparser.ConfigParser()
+
+    # if exists, read the config.ini file
+    if os.path.exists(cfg.config_file):
+        config.read(cfg.config_file)
+
+    # Configure AWS credentials
+
+    # Store aws profile in the config object
+    config['AWS'] = {}
+    if aws_profile == '+ Create new profile':
+        config['AWS']['aws_profile'] = aws_new_profile_name
+        cfg.aws_profile = aws_new_profile_name  # Set new profile in the cfg object
+    else:
+        config['AWS']['aws_profile'] = aws_profile
+        cfg.aws_profile = aws_profile  # Set selected profile in the cfg object
 
     # Create a new config directory in case it does not exist
     if not os.path.exists(cfg.config_dir):
@@ -5248,20 +5270,14 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     # configure user and / or team settings
     # arguments are Class instances passed from main
 
-    # TODO: this defdom and whoami should be here?
-    # # general setup
-    # defdom = cfg.get_domain_name()
-    # whoami = cfg.whoami
+    # TODO: Pending review
+    # if args.monitor:
+    #     # monitoring only setup, do not continue
+    #     fro = os.path.join(cfg.bin_dir, 'froster')
+    #     cfg.write('general', 'email', args.monitor)
+    #     cfg.add_systemd_cron_job(f'{fro} restore --monitor', '30')
+    #     return
 
-    # TODO: this monitor check should be here?
-    if args.monitor:
-        # monitoring only setup, do not continue
-        fro = os.path.join(cfg.bin_dir, 'froster')
-        cfg.write('general', 'email', args.monitor)
-        cfg.add_systemd_cron_job(f'{fro} restore --monitor', '30')
-        return
-
-    # TODO: this monitor check should be here?
     if args.index:
         # only basic configuration required for indexing jobs
         return True
@@ -5390,7 +5406,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     #                               'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
     # cfg.write('general', 's3_storage_class', s3_storage_class)
 
-    # cfg.aws_create_profile()
+    # cfg.aws_()
     # # TODO: check over this
     # # if there is a shared ~/.aws/config copy it over
     # if cfg.config_dir != cfg.shared_config_dir:
@@ -5402,11 +5418,11 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     # if not aws_region:
     #     aws_region = cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
-    #                             aws.get_aws_regions())
+    #                             aws.get_regions())
     # aws_region = cfg.prompt(
     #     'Please confirm/edit the AWS S3 region', aws_region)
 
-    # # cfg.aws_create_profile(None, None, aws_region)
+    # # cfg.aws_(None, None, aws_region)
     # print(f"\n  Verify that bucket '{bucket}' is configured ... ")
 
     # # for accessing glacier use one of these
@@ -5450,7 +5466,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     #     pregion = cfg.get_aws_region(prof)
     #     if not pregion:
     #         pregion = cfg.prompt('Please select the S3 region',
-    #                              aws.get_aws_regions(prof, profile['provider']))
+    #                              aws.get_regions(prof, profile['provider']))
     #     pregion = \
     #         cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"', pregion)
     #     if pregion:
@@ -5595,6 +5611,9 @@ def subcmd_index(args, cfg, arch):
 
 
 def subcmd_archive(args, cfg, arch, aws):
+    # TODO: function pendint to review
+    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+    exit(1)
 
     global TABLECSV
     global SELECTEDFILE
@@ -5759,6 +5778,9 @@ def subcmd_archive(args, cfg, arch, aws):
 
 
 def subcmd_restore(args, cfg, arch, aws):
+    # TODO: function pendint to review
+    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+    exit(1)
 
     global TABLECSV
     global SELECTEDFILE
@@ -5900,7 +5922,9 @@ def subcmd_restore(args, cfg, arch, aws):
 
 
 def subcmd_delete(args, cfg, arch, aws):
-
+    # TODO: function pendint to review
+    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+    exit(1)
     global TABLECSV
     global SELECTEDFILE
 
@@ -5949,7 +5973,9 @@ def subcmd_delete(args, cfg, arch, aws):
 
 
 def subcmd_mount(args, cfg, arch, aws):
-
+    # TODO: function pendint to review
+    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+    exit(1)
     global TABLECSV
     global SELECTEDFILE
 
@@ -6104,7 +6130,7 @@ def subcmd_ssh(args, cfg, aws):
 
 def subcmd_credentials(args, aws: AWSBoto):
     print("Checking credentials...")
-    aws.check_s3_credentials()
+    aws.check_credentials()
     aws.check_bucket_access_folders(args.folders)
 
 
