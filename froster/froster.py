@@ -6367,7 +6367,7 @@ def parse_arguments():
 def main():
 
     if not sys.platform.startswith('linux'):
-        print('This software currently only runs on Linux x64')
+        print('Froster currently only runs on Linux x64\n')
         sys.exit(1)
 
     try:
@@ -6430,13 +6430,9 @@ def main():
             parser.print_help()
 
     except KeyboardInterrupt:
-        print('Keyboard interrupt')
-        print()
-        try:
-            sys.exit(0)
-        except SystemExit:
-            os._exit(0)
+        print('Keyboard interrupt\n')
+        sys.exit(0)
 
     except Exception as e:
-        print(f"Error: {e}")
-        exit(1)
+        print(f"Error: {e}\n")
+        sys.exit(1)
