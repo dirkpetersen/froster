@@ -4938,7 +4938,7 @@ class NIHReporter:
 
 def args_version():
 
-    print(f'froster version {__version__}\n')
+    print(f'froster v{__version__}\n')
     print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
     print('    pwalk', 'v'+subprocess.run([os.path.join(sys.prefix, 'tools', 'pwalk'), '--version'],
