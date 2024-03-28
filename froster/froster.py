@@ -4968,28 +4968,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ''')
 
-    # TODO: make a froster --info function with these old lines
-    # print(f'Froster version: {__version__}')
-    # print(f'  The Script: {os.path.abspath(__file__)}')
-    # print(f'  Config dir: {cfg.shared_config_dir.replace("~/.froster/config","")}')
-    # print(f'  Profs .aws: {", ".join(cfg.get_aws_profiles())}')
-    # print(f'Python version:\n{sys.version}')
-    # try:
-    #     print('* Pwalk ----- ')
-    #     print('  Binary:', shutil.which('pwalk'))
-    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'pwalk'), '--version'],
-    #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])
-    #     print('* Rclone ---- ')
-    #     print('  Binary:', shutil.which('rclone'))
-    #     print('  Version:', subprocess.run([os.path.join(cfg.bin_dir, 'rclone'), '--version'],
-    #             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
-    # except FileNotFoundError as e:
-    #     print(f'Error: {e}')
-    #     return False
-    # return True
-
-# TODO: Check folder and variables being set here
-
 
 def __inquirer_required_check(answers, current):
     if not current:
