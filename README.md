@@ -54,7 +54,7 @@ After you installed the pre-requisites, close and open the terminal again to ref
 To install Froster, execute the following command into your terminal:
 
 ```
-pipx install git+https://github.com/HPCNow/froster.git@OHSU-63-froster-as-python-package
+pipx install git+https://github.com/HPCNow/froster.git@develop
 
 ```
 
