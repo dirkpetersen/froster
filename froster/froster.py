@@ -914,9 +914,10 @@ class Archiver:
         with tempfile.NamedTemporaryFile() as tmpfile:
             with tempfile.NamedTemporaryFile() as tmpfile2:
                 if not self.args.pwalkcsv:
-                    pwalkcmd = 'pwalk --NoSnap --one-file-system --header'
+                    pwalk_path = os.path.join(sys.prefix, 'tools', 'pwalk')
+                    pwalkcmd = f'{pwalk_path} --NoSnap --one-file-system --header'
                     # 2> {tmpfile2.name}.err'
-                    mycmd = f'{self.cfg.bin_dir}/{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
+                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
                     self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
                     ret = subprocess.run(mycmd, shell=True,
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -933,10 +934,10 @@ class Archiver:
                     pwalkcsv = self.args.pwalkcsv
                 with tempfile.NamedTemporaryFile() as tmpfile3:
                     # copy/backup pwalk csv file to network location
-                    if args.pwalkcopy:
+                    if self.args.pwalkcopy:
                         print(
-                            f' Copying and cleaning {pwalkcsv} to {args.pwalkcopy}, please wait ... ', flush=True, end="")
-                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalkcsv} > {args.pwalkcopy}'
+                            f' Copying and cleaning {pwalkcsv} to {self.args.pwalkcopy}, please wait ... ', flush=True, end="")
+                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalkcsv} > {self.args.pwalkcopy}'
                         self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
                         result = subprocess.run(mycmd, shell=True)
                         print('Done!', flush=True)
@@ -1202,7 +1203,7 @@ class Archiver:
         print(f'\nProcessing hotspots file {SELECTEDFILE}!')
 
         agefld = 'AccD'
-        if args.agemtime:
+        if self.args.agemtime:
             agefld = 'ModD'
 
         # Initialize a connection to an in-memory database
@@ -1215,7 +1216,7 @@ class Archiver:
 
         # Now, you can run SQL queries on this virtual table
         rows = conn.execute(
-            f"SELECT * FROM hs WHERE {agefld} > {args.older} and GiB > {args.larger} ").fetchall()
+            f"SELECT * FROM hs WHERE {agefld} > {self.args.older} and GiB > {self.args.larger} ").fetchall()
 
         totalspace = 0
         cmdline = ""
@@ -2770,7 +2771,7 @@ class AWSBoto:
         bootstrap_restore = self._ec2_user_space_script(iid)
 
         # part 2, prep restoring .....
-        for folder in args.folders:
+        for folder in self.args.folders:
             refolder = os.path.join(os.path.sep, 'restored', folder[1:])
             bootstrap_restore += f'\nmkdir -p "{refolder}"'
             bootstrap_restore += f'\nln -s "{refolder}" ~/restored-$(basename "{folder}")'
@@ -3620,7 +3621,7 @@ class AWSBoto:
             elif error_code == 'AccessDenied':
                 self.cfg.printdbg(
                     f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
-                if not args.debug:
+                if not self.args.debug:
                     print(
                         ' Cannot use SES email features to send you status messages: AccessDenied')
             else:
@@ -4608,7 +4609,7 @@ class SlurmEssentials:
                     f"Error running sbatch: {result.stderr.strip()}")
             sys.exit(1)
         job_id = int(result.stdout.split()[-1])
-        if args.debug:
+        if self.args.debug:
             oscript.seek(0)
             with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
                 file.write(oscript.read())
@@ -4940,6 +4941,10 @@ def args_version():
     print(f'froster version {__version__}\n')
     print(f'Packages version:')
     print(f'    python v{platform.python_version()}')
+    print(f'    pwalk v', subprocess.run([os.path.join(sys.prefix, 'tools', 'pwalk'), '--version'],
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])
+    print('     rclone v', subprocess.run(['rclone', '--version'],
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
     print(f'''
 Authors:
@@ -5331,7 +5336,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     if args.index:
         # only basic configuration required for indexing jobs
-        return True
+        return
 
     if args.user:
         # user configuration
@@ -6384,64 +6389,6 @@ def parse_arguments():
 
 def main():
 
-    # TODO: Is this necessary?
-    if args.debug:
-        pass
-
-    # Init Config Manager
-    cfg = ConfigManager()
-
-    # Init Archiver
-    arch = Archiver(args, cfg)
-
-    # Init AWS Boto
-    aws = AWSBoto(args, cfg, arch)
-
-    # Print current version of froster
-    if args.version:
-        args_version()
-        return True
-
-    if args.subcmd in ['archive', 'delete', 'restore']:
-        # remove folders that are not writable from args.folders
-        errfld = []
-        for fld in args.folders:
-            ret = arch.test_write(fld)
-            if ret == 13 or ret == 2:
-                errfld.append(fld)
-        if errfld:
-            errflds = '" \n"'.join(errfld)
-            print(
-                f'\nERROR: These folder(s) \n"{errflds}"\n must exist and you need write access to them.')
-            return False
-
-    # call a function for each sub command in our CLI
-    if args.subcmd in ['config', 'cnf']:
-        subcmd_config(args, cfg, aws)
-    elif args.subcmd in ['index', 'ind']:
-        subcmd_index(args, cfg, arch)
-    elif args.subcmd in ['archive', 'arc']:
-        subcmd_archive(args, cfg, arch, aws)
-    elif args.subcmd in ['restore', 'rst']:
-        subcmd_restore(args, cfg, arch, aws)
-    elif args.subcmd in ['delete', 'del']:
-        subcmd_delete(args, cfg, arch, aws)
-    elif args.subcmd in ['mount', 'mnt']:
-        subcmd_mount(args, cfg, arch, aws)
-    elif args.subcmd in ['umount']:  # or args.unmount:
-        subcmd_umount(args, cfg)
-    elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
-        subcmd_ssh(args, cfg, aws)
-    elif args.subcmd in ['credentials', 'crd']:
-        subcmd_credentials(args, aws)
-    else:
-        parser.print_help()
-
-    return True
-
-
-if __name__ == "__main__":
-
     if not sys.platform.startswith('linux'):
         print('This software currently only runs on Linux x64')
         sys.exit(1)
@@ -6456,11 +6403,54 @@ if __name__ == "__main__":
         SELECTEDFILE = ''  # CSV filename to open in hotspots
         MAXHOTSPOTS = 0
 
-        # TODO: Replace return values from main() from True/False to real exit codes
-        if main():
+        # Init Config Manager
+        cfg = ConfigManager()
+
+        # Init Archiver
+        arch = Archiver(args, cfg)
+
+        # Init AWS Boto
+        aws = AWSBoto(args, cfg, arch)
+
+        # Print current version of froster
+        if args.version:
+            args_version()
             sys.exit(0)
+
+        if args.subcmd in ['archive', 'delete', 'restore']:
+            # remove folders that are not writable from args.folders
+            errfld = []
+            for fld in args.folders:
+                ret = arch.test_write(fld)
+                if ret == 13 or ret == 2:
+                    errfld.append(fld)
+            if errfld:
+                errflds = '" \n"'.join(errfld)
+                print(
+                    f'\nERROR: These folder(s) \n"{errflds}"\n must exist and you need write access to them.')
+                sys.exit(1)
+
+        # call a function for each sub command in our CLI
+        if args.subcmd in ['config', 'cnf']:
+            subcmd_config(args, cfg, aws)
+        elif args.subcmd in ['index', 'ind']:
+            subcmd_index(args, cfg, arch)
+        elif args.subcmd in ['archive', 'arc']:
+            subcmd_archive(args, cfg, arch, aws)
+        elif args.subcmd in ['restore', 'rst']:
+            subcmd_restore(args, cfg, arch, aws)
+        elif args.subcmd in ['delete', 'del']:
+            subcmd_delete(args, cfg, arch, aws)
+        elif args.subcmd in ['mount', 'mnt']:
+            subcmd_mount(args, cfg, arch, aws)
+        elif args.subcmd in ['umount']:  # or args.unmount:
+            subcmd_umount(args, cfg)
+        elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
+            subcmd_ssh(args, cfg, aws)
+        elif args.subcmd in ['credentials', 'crd']:
+            subcmd_credentials(args, aws)
         else:
-            sys.exit(1)
+            parser.print_help()
 
     except KeyboardInterrupt:
         print('Keyboard interrupt')

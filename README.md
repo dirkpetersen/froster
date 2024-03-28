@@ -2,14 +2,63 @@
 
 Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster crawls your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. 
 
+</br>
+
+## Installation pre-requisite: packages
+
+### On Debian/Ubuntu
+
+```
+sudo apt update
+sudo apt install -y curl python3 python3-pip python3-venv pipx git gcc lib32gcc-s1
+pipx ensurepath
+```
+
+### On RHEL 
+
+```
+sudo yum update
+sudo yum install -y curl python3 python3-pip python3-venv pipx git gcc lib32gcc-s1
+pipx ensurepath
+```
+
+### On HPC machine
+
+Please contact your administrator to install these packages:
+```
+curl python3 python3-pip python3-venv pipx git gcc lib32gcc-s1
+```
+and run this command:
+```
+pipx ensurepath 
+```
+
+</br>
+
+## Installation pre-requisite: Rclone
+
+Froster uses [Rclone](https://rclone.org/).
+Rclone is a free cloud storage management software.
+Installation may take a while and you do NOT need to run 'rclone config' after installation.
+They provide an installation command script:
+
+```
+sudo -v ; curl https://rclone.org/install.sh | sudo bash
+```
+
+</br>
+
 ## Installation
 
+After you installed the pre-requisites, close and open the terminal again to refresh the environment.
 To install Froster, execute the following command into your terminal:
 
 ```
-curl -s https://raw.githubusercontent.com/HPCNow/froster/develop/froster | bash -s install && source ~/.bashrc
+pipx install git+https://github.com/HPCNow/froster.git@OHSU-63-froster-as-python-package
+
 ```
 
+</br>
 
 ## Table of Contents
 
