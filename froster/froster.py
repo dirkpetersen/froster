@@ -4319,7 +4319,7 @@ class Rclone:
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
-        self.rc = os.path.join(self.cfg.bin_dir, 'rclone')
+        self.rc = 'rclone'
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
