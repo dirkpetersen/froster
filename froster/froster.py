@@ -4939,12 +4939,11 @@ class NIHReporter:
 def args_version():
 
     print(f'froster version {__version__}\n')
-    print(f'Packages version:')
+    print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
-    print(f'    pwalk v', subprocess.run([os.path.join(sys.prefix, 'tools', 'pwalk'), '--version'],
-                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0])
-    print('     rclone v', subprocess.run(['rclone', '--version'],
-                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+    print('    pwalk', 'v'+subprocess.run([os.path.join(sys.prefix, 'tools', 'pwalk'), '--version'],
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+    print('   ',subprocess.run(['rclone', '--version'],stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
     print(f'''
 Authors:
