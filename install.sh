@@ -144,8 +144,8 @@ install_froster() {
     # Create froster virtual environment
     echo
     echo "Installing froster via pipx command..."
-    pipx ensurepath
-    pipx install git+https://github.com/HPCNow/froster.git@develop
+    pipx ensurepath >/dev/null 2>&1
+    pipx install git+https://github.com/HPCNow/froster.git@develop >/dev/null 2>&1
     echo "  ...froster installed"
 }
 
@@ -161,16 +161,16 @@ install_pwalk() {
     pwalk_path=filesystem-reporting-tools-${pwalk_commit}
 
     # Gather pwalk repository files
-    curl -s -L ${pwalk_repository} | tar xzf -
+    curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1
 
     # Compile pwalk tool and put exec file in froster's binaries folder
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${froster_bin_path}/pwalk >/dev/null 2>&1
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
-    rm -rf ${pwalk_path}
+    rm -rf ${pwalk_path} >/dev/null 2>&1
 
     # Move pwalk to froster's binaries folder
-    mv pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk
+    mv pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
 
     echo "  ...pwalk installed"
 }
@@ -194,16 +194,16 @@ install_rclone() {
     fi
 
     # Download the rclone zip file
-    curl -LO $rclone_url
+    curl -LO $rclone_url >/dev/null 2>&1
 
     # Extract the zip file
-    unzip rclone-current-linux-*.zip
+    unzip rclone-current-linux-*.zip >/dev/null 2>&1
 
     # Move rclone to froster's binaries folder
-    mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone
+    mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
 
     # Remove the downloaded zip file
-    rm -rf rclone-current-linux-*.zip rclone-v*/
+    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 }
 
 ############
