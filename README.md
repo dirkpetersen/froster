@@ -10,43 +10,25 @@ Froster is a user-friendly archiving tool for teams that move data between highe
 
 ```
 sudo apt update
-sudo apt install -y curl python3 python3-pip python3-venv pipx git gcc lib32gcc-s1
-pipx ensurepath
+sudo apt install -y curl pipx git gcc lib32gcc-s1
 ```
 
 ### On RHEL 
 
 ```
 sudo yum update
-sudo yum install -y curl python3 python3-pip python3-venv pipx git gcc lib32gcc-s1
-pipx ensurepath
+sudo yum install -y curl pipx git gcc lib32gcc-s1
 ```
 
 ### On HPC machine
 
 Please contact your administrator to install these packages:
 ```
-curl python3 python3-pip python3-venv pipx git gcc lib32gcc-s1
-```
-and run this command:
-```
-pipx ensurepath 
+curl pipx git gcc lib32gcc-s1
 ```
 
 </br>
 
-## Installation pre-requisite: Rclone
-
-Froster uses [Rclone](https://rclone.org/).
-Rclone is a free cloud storage management software.
-Installation may take a while and you do NOT need to run 'rclone config' after installation.
-They provide an installation command script:
-
-```
-sudo -v ; curl https://rclone.org/install.sh | sudo bash
-```
-
-</br>
 
 ## Installation
 
@@ -54,7 +36,7 @@ After you installed the pre-requisites, close and open the terminal again to ref
 To install Froster, execute the following command into your terminal:
 
 ```
-pipx install git+https://github.com/HPCNow/froster.git@develop
+curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
 
 ```
 

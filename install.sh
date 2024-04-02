@@ -1,0 +1,240 @@
+#! /bin/bash
+
+# Make sure script ends as soon as an error arises
+set -e
+
+#################
+### VARIABLES ###
+#################
+
+froster_old_path=${HOME}/.local/share/froster
+froster_backup_old_path=${HOME}/.local/share/froster.bak
+
+#####################
+### ERROR HANDLER ###
+#####################
+
+# Define error handler function
+set -e
+
+trap 'catch $? $BASH_COMMAND' EXIT
+
+catch() {
+    if [ "$1" != "0" ]; then
+        # error handling goes here
+        echo "Error: $2: exit code $1"
+    fi
+}
+
+#################
+### FUNCTIONS ###
+#################
+
+# Check all needed apt dependencies to install froster
+check_apt_dependencies() {
+
+    # Check if curl is installed
+    if [[ -z $(command -v curl) ]]; then
+        echo "Error: curl is not installed."
+        echo
+        echo "In most linux distros you can install the latest version of curl by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y curl"
+        echo
+        exit 1
+    fi
+
+    # Check if pipx is installed
+    if [[ -z $(command -v pipx) ]]; then
+        echo "Error: pipx is not installed."
+        echo
+        echo "Please install pipx"
+        echo "In most linux distros you can install the latest version of pipx by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y pipx"
+        echo "  pipx ensurepath"
+        echo
+        exit 1
+    fi
+
+    # Check if gcc is installed
+    if [[ -z $(command -v gcc) ]]; then
+        echo "Error: gcc is not installed."
+        echo
+        echo "Please install gcc"
+        echo "In most linux distros you can install the latest version of gcc by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y gcc"
+        echo
+        exit 1
+    fi
+
+    # Check if lib32gcc-s1 is installed (pwalk compilation requirement)
+    if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
+        echo "Error: lib32gcc-s1 is not installed."
+        echo
+        echo "Please install lib32gcc-s1"
+        echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y lib32gcc-s1"
+        echo
+        exit 1
+    fi
+
+    # Check if git is installed (pipx installation requirement)
+    # TODO: Get rid of this requirement once froster is in PyPi repository
+    if [[ -z $(command -v git) ]]; then
+        echo "Error: git is not installed."
+        echo
+        echo "Please install git"
+        echo "In most linux distros you can install the latest version of git by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y git"
+        echo
+        exit 1
+    fi
+
+    # Check if unzip is installed (rclone requirement)
+    if [[ -z $(command -v unzip) ]]; then
+        echo "Error: unzip is not installed."
+        echo
+        echo "Please install unzip"
+        echo "In most linux distros you can install the latest version of unzip by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y unzip"
+        echo
+        exit 1
+    fi
+}
+
+# Backup older installations (if any)
+backup_old_installation() {
+
+    echo
+    echo "Backing up older froster installation..."
+
+    # Remove older installation backup (old path)
+    rm -rf ${froster_backup_old_path}
+
+    # Remove older installation backup (new path)
+    rm -rf ${froster_backup_path}
+
+    # Back up (if any) older froster installations (old path)
+    if [[ -d ${HOME}/.local/share/froster ]]; then
+        mv -f ${froster_old_path} ${froster_backup_path}
+    fi
+
+    # Remove old files (old path)
+    rm -f ${HOME}/.local/bin/froster
+    rm -f ${HOME}/.local/bin/froster.py
+    rm -f ${HOME}/.local/bin/s3-restore.py
+
+    # Back up (if any) older froster installations (new path)
+    if [[ -d ${froster_path} ]]; then
+        mv -f ${froster_path} ${froster_backup_path}
+        echo "  ...older installation backup at: ${froster_backup_path}"
+    else
+        echo "  ...no older froster installation found"
+    fi
+}
+
+# Install froster
+install_froster() {
+
+    # Create froster virtual environment
+    echo
+    echo "Installing froster via pipx command..."
+    pipx ensurepath
+    pipx install git+https://github.com/HPCNow/froster.git@develop
+    echo "  ...froster installed"
+}
+
+# Install pwalk
+install_pwalk() {
+
+    echo
+    echo "Installing pwalk... "
+
+    # Variables of pwalk third-party tool froster is using
+    pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
+    pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
+    pwalk_path=filesystem-reporting-tools-${pwalk_commit}
+
+    # Gather pwalk repository files
+    curl -s -L ${pwalk_repository} | tar xzf -
+
+    # Compile pwalk tool and put exec file in froster's binaries folder
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${froster_bin_path}/pwalk >/dev/null 2>&1
+
+    # Delete downloaded pwalk files
+    rm -rf ${pwalk_path}
+
+    # Move pwalk to froster's binaries folder
+    mv pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk
+
+    echo "  ...pwalk installed"
+}
+
+# Install rclone
+install_rclone() {
+
+    # Check the architecture of the system
+    arch=$(uname -m)
+
+    # Get the rclone download URL based on the architecture
+    if [[ "$arch" == "x86_64" ]] || [[ "$arch" == "amd64" ]]; then
+        rclone_url='https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+
+    elif [[ "$arch" == "arm" ]] || [[ "$arch" == "arm64" ]] || [[ "$arch" == "aarch64" ]]; then
+        rclone_url='https://downloads.rclone.org/rclone-current-linux-arm64.zip'
+
+    else
+        echo "Unsupported architecture"
+        exit 1
+    fi
+
+    # Download the rclone zip file
+    curl -LO $rclone_url
+
+    # Extract the zip file
+    unzip rclone-current-linux-*.zip
+
+    # Move rclone to froster's binaries folder
+    mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone
+}
+
+############
+### CODE ###
+############
+
+# Check linux package dependencies
+check_apt_dependencies
+
+echo
+echo "Installing latest version of froster..."
+
+# Set rw permissions on anyone in file's group
+umask 0002
+
+# Install froster
+install_froster
+
+# Install pwalk
+install_pwalk
+
+# Install rclone
+install_rclone
+
+# Backup old installation (if any)
+#backup_old_installation
+
+# Refresh environment
+source ${HOME}/.bashrc
+
+echo
+echo "Installation complete!"
+
+echo
+echo "Check out froster by running command:"
+echo "  froster --help"
+echo
