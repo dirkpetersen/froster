@@ -164,13 +164,13 @@ install_pwalk() {
     curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1
 
     # Compile pwalk tool and put exec file in froster's binaries folder
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o pwalk >/dev/null 2>&1
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1
+
+    # Move pwalk to froster's binaries folder
+    mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
     rm -rf ${pwalk_path} >/dev/null 2>&1
-
-    # Move pwalk to froster's binaries folder
-    mv pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
 
     echo "  ...pwalk installed"
 }
