@@ -4939,7 +4939,7 @@ def args_version():
     print(f'froster v{__version__}\n')
     print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
-    print('    pwalk', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
+    print('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
     print('   ',subprocess.run([os.path.join(sys.prefix, 'bin', 'rclone'), '--version'],stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 

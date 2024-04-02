@@ -143,7 +143,7 @@ install_froster() {
 
     # Create froster virtual environment
     echo
-    echo "Installing froster via pipx command..."
+    echo "Installing latests version of froster..."
     pipx ensurepath >/dev/null 2>&1
     pipx install git+https://github.com/HPCNow/froster.git@develop >/dev/null 2>&1
     echo "  ...froster installed"
@@ -153,7 +153,7 @@ install_froster() {
 install_pwalk() {
 
     echo
-    echo "Installing pwalk... "
+    echo "Installing third-party dependency: pwalk... "
 
     # Variables of pwalk third-party tool froster is using
     pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
@@ -177,6 +177,9 @@ install_pwalk() {
 
 # Install rclone
 install_rclone() {
+
+    echo
+    echo "Installing third-party dependency: rclone... "
 
     # Check the architecture of the system
     arch=$(uname -m)
@@ -204,6 +207,8 @@ install_rclone() {
 
     # Remove the downloaded zip file
     rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+
+    echo "  ...rclone installed"
 }
 
 ############
@@ -212,9 +217,6 @@ install_rclone() {
 
 # Check linux package dependencies
 check_apt_dependencies
-
-echo
-echo "Installing latest version of froster..."
 
 # Set rw permissions on anyone in file's group
 umask 0002
@@ -231,13 +233,9 @@ install_rclone
 # Backup old installation (if any)
 #backup_old_installation
 
-# Refresh environment
-source ${HOME}/.bashrc
-
 echo
 echo "Installation complete!"
 
 echo
-echo "Check out froster by running command:"
-echo "  froster --help"
-echo
+echo "You will need to open a new terminal or refresh your current terminal session using:"
+echo "  source ~/.bashrc"
