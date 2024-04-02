@@ -9,22 +9,22 @@ Froster is a user-friendly archiving tool for teams that move data between highe
 ### On Debian/Ubuntu
 
 ```
-sudo apt update
-sudo apt install -y curl pipx git gcc lib32gcc-s1
+sudo apt-get update
+sudo apt-get install -y curl pipx git gcc lib32gcc-s1 unzip
 ```
 
 ### On RHEL 
 
 ```
 sudo yum update
-sudo yum install -y curl pipx git gcc lib32gcc-s1
+sudo yum install -y curl pipx git gcc lib32gcc-s1 unzip
 ```
 
 ### On HPC machine
 
 Please contact your administrator to install these packages:
 ```
-curl pipx git gcc lib32gcc-s1
+curl pipx git gcc lib32gcc-s1 unzip
 ```
 
 </br>
