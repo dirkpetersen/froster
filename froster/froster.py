@@ -17,7 +17,6 @@ import asyncio
 import stat
 import datetime
 import tarfile
-import zipfile
 import textwrap
 import tarfile
 import time
@@ -29,7 +28,6 @@ import io
 import math
 import signal
 import shlex
-import glob
 import shutil
 import tempfile
 import subprocess
@@ -914,7 +912,7 @@ class Archiver:
         with tempfile.NamedTemporaryFile() as tmpfile:
             with tempfile.NamedTemporaryFile() as tmpfile2:
                 if not self.args.pwalkcsv:
-                    pwalk_path = os.path.join(sys.prefix, 'tools', 'pwalk')
+                    pwalk_path = os.path.join(sys.prefix, 'bin', 'pwalk')
                     pwalkcmd = f'{pwalk_path} --NoSnap --one-file-system --header'
                     # 2> {tmpfile2.name}.err'
                     mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
@@ -4319,7 +4317,7 @@ class Rclone:
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
-        self.rc = 'rclone'
+        self.rc = os.path.join(sys.prefix, 'bin', 'rclone')
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -4941,9 +4939,9 @@ def args_version():
     print(f'froster v{__version__}\n')
     print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
-    print('    pwalk', 'v'+subprocess.run([os.path.join(sys.prefix, 'tools', 'pwalk'), '--version'],
+    print('    pwalk', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
-    print('   ',subprocess.run(['rclone', '--version'],stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+    print('   ',subprocess.run([os.path.join(sys.prefix, 'bin', 'rclone'), '--version'],stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
     print(f'''
 Authors:
