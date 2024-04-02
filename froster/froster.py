@@ -69,26 +69,28 @@ class ConfigManager:
 
         This function initializes the ConfigManager object with default values.
         Then it reads the configuration file (if exists) and populates the object variables.
+        It follows the XDG Base Directory conventions: 
+        https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
         '''
 
         # Expand the ~ symbols to user's home directory
         self.home_dir = os.path.expanduser('~')
 
         # Froster's home directory
-        self.froster_dir = os.path.join(self.home_dir, '.froster')
+        self.froster_dir = os.path.join(sys.prefix)
 
         # Froster's binary directory
         self.bin_dir = os.path.join(self.froster_dir, 'bin')
 
         # Froster's configuration directory
-        self.config_dir = os.path.join(self.froster_dir, 'config')
+        self.config_dir = os.path.join(self.home_dir, '.config', 'froster')
 
         # Froster's configuration file
         self.config_file = os.path.join(self.config_dir, 'config.ini')
 
         # Froster's archive json file
         self.archive_json = os.path.join(
-            self.config_dir, 'froster-archives.json')
+            self.home_dir, '.local', 'share', 'froster', 'froster-archives.json')
 
         # AWS directory
         self.aws_dir = os.path.join(self.home_dir, '.aws')
@@ -2281,7 +2283,7 @@ class AWSBoto:
         self.arch = arch
 
         if cfg.aws_profile:
-            if self.check_credentials(aws_profile=cfg.aws_profile):   
+            if self.check_credentials(aws_profile=cfg.aws_profile):
                 self.set_session(cfg)
             else:
                 cfg.aws_profile = None
@@ -2570,7 +2572,7 @@ class AWSBoto:
             return region_names
 
         except Exception as e:
-            try: 
+            try:
                 # If current session does not have a region, return default regions
                 s = boto3.Session()
                 dynamodb_regions = s.get_available_regions('dynamodb')
@@ -2629,7 +2631,6 @@ class AWSBoto:
     def set_session(self, cfg: ConfigManager):
         ''' Set the AWS profile for the current session'''
 
-
         # Get the region from the AWS config file
         self.region = cfg.get_aws_region(aws_profile=cfg.aws_profile)
 
@@ -2644,6 +2645,7 @@ class AWSBoto:
 
 
 ####################################################################################################
+
 
     def check_bucket_access_folders(self, folders, readwrite=False):
         # check all the buckets that have been used for archiving
@@ -4941,7 +4943,8 @@ def args_version():
     print(f'    python v{platform.python_version()}')
     print('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
-    print('   ',subprocess.run([os.path.join(sys.prefix, 'bin', 'rclone'), '--version'],stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+    print('   ', subprocess.run([os.path.join(sys.prefix, 'bin', 'rclone'), '--version'],
+          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
     print(f'''
 Authors:
@@ -5213,7 +5216,6 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
         print('    froster config --aws')
         print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
         return
-
 
     # Get list froster buckets for the given profile
     s3_buckets = aws.get_buckets()
