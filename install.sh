@@ -201,6 +201,9 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone
+
+    # Remove the downloaded zip file
+    rm -rf rclone-current-linux-*.zip rclone-v*/
 }
 
 ############
