@@ -36,7 +36,7 @@ After you installed the pre-requisites, close and open the terminal again to ref
 To install Froster, execute the following command into your terminal:
 
 ```
-curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+curl -s https://raw.githubusercontent.com/HPCnow/froster/develop/install.sh | bash
 
 ```
 
