@@ -104,17 +104,20 @@ class ConfigManager:
         # AWS profile
         self.aws_profile = ''
 
-        # Current S3 bucket
+        # Current S3 bucket name
         self.bucket_name = ''
 
         # Archive directory inside AWS S3 bucket
         self.archive_dir = ''
 
+        # Store aws s3 storage class in the config object
+        self.storage_class = ''
+
         # Froster's default shared configuration
         self.is_shared = False
 
         # Froster's shared configuration dir
-        self.shared_config_dir = ''
+        self.shared_dir = ''
 
         # Froster's shared configuration file
         self.shared_config_file = ''
@@ -129,7 +132,7 @@ class ConfigManager:
         # Whoami
         self.whoami = getpass.getuser()
 
-        # Check if there is a ~/.froster/config/config.ini file and populate the variables
+        # Check if there is a ~/.config/froster/config.ini file and populate the variables
         if os.path.exists(self.config_file):
 
             # Create a ConfigParser object
@@ -148,11 +151,11 @@ class ConfigManager:
 
                 if self.is_shared:
 
-                    self.shared_config_dir = config.get(
+                    self.shared_dir = config.get(
                         'DEFAULT', 'shared_config_dir', fallback=None)
 
                     self.shared_config_file = os.path.join(
-                        self.shared_config_dir, 'shared_config.ini')
+                        self.shared_dir, 'shared_config.ini')
 
                     self.archive_json = os.path.join(
                         self.shared_config_dir, 'froster-archives.json')
@@ -169,11 +172,15 @@ class ConfigManager:
             if config.has_section('S3'):
                 # Current AWS S3 bucket
                 self.bucket_name = config.get(
-                    'AWS', 'bucket_name', fallback=None)
+                    'S3', 'bucket_name', fallback=None)
 
                 # Archive directoy inside AWS S3 bucket
                 self.archive_dir = config.get(
-                    'AWS', 'archive_dir', fallback=None)
+                    'S3', 'archive_dir', fallback=None)
+                
+                # Store aws s3 storage class in the config object
+                self.storage_class = config.get(
+                    'S3', 'storage_class', fallback=None)
 
     # Representation of object. Returns all variables in the object
 
@@ -186,7 +193,9 @@ class ConfigManager:
         )
 
     def _set_env_vars(self, profile):
-
+        print(
+            f'TODO: Function pending to review {inspect.currentframe().f_code.co_name}')
+        exit(1)
         # Create a ConfigParser object
         config = configparser.ConfigParser()
 
@@ -245,6 +254,9 @@ class ConfigManager:
         return True
 
     def _get_shared_config_dir(self):
+        print(
+            f'TODO: Function pending to review {inspect.currentframe().f_code.co_name}')
+        exit(1)
         theroot = self.config_dir
         rootfile = os.path.join(theroot, 'shared_config_dir')
         if os.path.exists(rootfile):
@@ -259,14 +271,14 @@ class ConfigManager:
         return theroot
 
     def _get_section_path(self, section):
-        return os.path.join(self.shared_config_dir, section)
+        return os.path.join(self.shared_dir, section)
 
     def _get_entry_path(self, section, entry):
         if section:
             section_path = self._get_section_path(section)
             return os.path.join(section_path, entry)
         else:
-            return os.path.join(self.shared_config_dir, entry)
+            return os.path.join(self.shared_dir, entry)
 
     def fix_tree_permissions(self, target_dir):
         try:
@@ -810,14 +822,14 @@ class ConfigManager:
                     return False
 
         # TODO: Check this config path
-        if not cfgfolder and self.shared_config_dir == self.config_dir:
+        if not cfgfolder and self.shared_dir == self.config_dir:
             cfgfolder = self.prompt("Please enter the root where folder .froster/config will be created.",
                                     os.path.expanduser('~'))
         if cfgfolder:
             new_shared_config_dir = os.path.join(
                 os.path.expanduser(cfgfolder), '.config', 'froster')
         else:
-            new_shared_config_dir = self.shared_config_dir
+            new_shared_config_dir = self.shared_dir
         old_shared_config_dir = self.config_dir
         shared_config_dir_file = os.path.join(
             self.config_dir, 'shared_config_dir')
@@ -846,13 +858,13 @@ class ConfigManager:
                 print(
                     f'  ~/.aws/config replicated to "{new_shared_config_dir}/aws_config"\n')
 
-        self.shared_config_dir = new_shared_config_dir
+        self.shared_dir = new_shared_config_dir
 
         os.makedirs(old_shared_config_dir, exist_ok=True, mode=0o775)
         with open(shared_config_dir_file, 'w') as f:
-            f.write(self.shared_config_dir)
+            f.write(self.shared_dir)
             print(
-                f'  Switched configuration path to "{self.shared_config_dir}"')
+                f'  Switched configuration path to "{self.shared_dir}"')
         return True
 
     def wait_for_ssh_ready(self, hostname, port=22, timeout=60):
@@ -2564,9 +2576,7 @@ class AWSBoto:
         Get the regions for the current session or get default regions.'''
 
         try:
-            print("here 1")
             regions = self.ec2_client.describe_regions()
-            print("here 2")
             region_names = [region['RegionName']
                             for region in regions['Regions']]
             return region_names
@@ -4603,7 +4613,7 @@ class SlurmEssentials:
         if result.returncode != 0:
             if 'Invalid generic resource' in result.stderr:
                 print('Invalid generic resource request. Please remove or change file:')
-                print(os.path.join(self.shared_config_dir, 'hpc', 'slurm_lscratch'))
+                print(os.path.join(self.shared_dir, 'hpc', 'slurm_lscratch'))
             else:
                 raise RuntimeError(
                     f"Error running sbatch: {result.stderr.strip()}")
@@ -5299,231 +5309,7 @@ def __subcmd_config_print(cfg: ConfigManager):
         print('    froster config\n')
 
 
-def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
-    # configure user and / or team settings
-    # arguments are Class instances passed from main
-
-    # TODO: Pending review
-    # if args.monitor:
-    #     # monitoring only setup, do not continue
-    #     fro = os.path.join(cfg.bin_dir, 'froster')
-    #     cfg.write('general', 'email', args.monitor)
-    #     cfg.add_systemd_cron_job(f'{fro} restore --monitor', '30')
-    #     return
-
-    if args.index:
-        # only basic configuration required for indexing jobs
-        return
-
-    if args.user:
-        # user configuration
-        __subcmd_config_user(cfg)
-        return
-
-    if args.aws:
-        # aws configuration
-        __subcmd_config_aws_profile(cfg, aws)
-        return
-
-    if args.s3:
-        # aws s3 configuration
-        __subcmd_config_aws_s3(cfg, aws)
-        return
-
-    if args.print:
-        # aws configuration
-        __subcmd_config_print(cfg)
-        return
-
-    print(f'\n*** FROSTER CONFIGURATION ***')
-
-    # user configuration
-    __subcmd_config_user(cfg)
-
-    # aws configuration
-    __subcmd_config_aws_profile(cfg, aws)
-
-    # aws s3 configuration
-    __subcmd_config_aws_s3(cfg, aws)
-
-    exit(0)  # patata
-
-#     questions = [
-#         inquirer.Text('name', message="Enter your name"),
-#         inquirer.Text('email', message="Enter your email address",),
-#         inquirer.Text('is_nih', message="Do you want to search and link NIH life sciences grants with your archives?",),
-#         inquirer.Confirm('is_shared', message="Do you want to collaborate with other users on archive and restore?",),
-# ]
-
-    # print(f'\n*** Asking a few questions  ({cfg.shared_config_dir}) ***')
-    # print('*** For most you can just hit <Enter> to accept the default. ***\n')
-
-    # config.set('DEFAULT', 'shared_config_dir', 'patata')
-
-    # Create a ConfigParser object
-    config = configparser.ConfigParser()
-
-    # Populate self variables using confing.ini file
-    config.read(self.config_file)
-
-    # with open(cfg.config_file, 'w') as configfile:
-    #     config.write(configfile)
-    # exit(0)
-
-    # # Froster's shared configuration dir
-    # self.shared_config_dir = config.get(
-    #     'DEFAULT', 'shared_config_dir', fallback=None)
-
-    # # Froster's shared configuration file
-    # self.shared_config_file = config.get(
-    #     'DEFAULT', 'shared_config_file', fallback=None)
-
-    # # determine if we need to move the (shared) config to a new folder
-    # movecfg = False
-    # if args.cfgfolder == '' and cfg.shared_config_dir == cfg.config_dir:
-    #     if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', default='no'):
-    #         movecfg = True
-    #         # TODO: populate config.ini with the shared config folder
-    #         args.cfgfolder = cfg.prompt(
-    #             'Enter the path to a shared config folder:')
-    # elif args.cfgfolder:
-    #     movecfg = True
-    # if movecfg:
-    #     if cfg.move_config(args.cfgfolder):
-    #         print('\n  IMPORTANT: All archiving collaborators need to have consistent AWS profile names in their ~/.aws/credentials\n')
-    #     else:
-    #         print(f'  ERROR: Could not move config folder to {args.cfgfolder}')
-    #         return False
-
-    # if cfg.ask_yes_no(f'  Do you want to collaborate with other users on archive and restore?', default='no'):
-
-    #     # TODO: populate config.ini with the shared config folder
-    #     args.cfgfolder = cfg.prompt(
-    #         'Enter the path to a shared config folder:')
-
-    # # domain-name not needed right now
-    # # domain = cfg.prompt('Enter your domain name:',
-    # #                    f'{defdom}|general|domain','string')
-    # emailaddr = cfg.prompt('Enter your email address:',
-    #                        f'{whoami}@{defdom}|general|email', 'string')
-    # emailstr = emailaddr.replace('@', '-')
-    # emailstr = emailstr.replace('.', '-')
-
-    # do_prompt = cfg.read('general', 'prompt_nih_reporter', 'yes')
-    # if cfg.ask_yes_no(f'\n*** Do you want to search and link NIH life sciences grants with your archives?', do_prompt):
-    #     cfg.write('general', 'prompt_nih_reporter', 'yes')
-    # else:
-    #     cfg.write('general', 'prompt_nih_reporter', 'no')
-
-    # print("")
-
-    # # cloud setup
-    # bucket = cfg.prompt('Please confirm/edit S3 bucket name to be created in all used profiles.',
-    #                     f'froster-{emailstr}|general|bucket', 'string')
-    # archive_dir = cfg.prompt('Please confirm/edit the archive root path inside your S3 bucket',
-    #                          'archive|general|archive_dir', 'string')
-
-    # cls = cfg.read('general', 's3_storage_class')
-    # s3_storage_class = cfg.prompt(f'Please confirm/edit the AWS S3 Storage class ({cls})',
-    #                               'DEEP_ARCHIVE,GLACIER,INTELLIGENT_TIERING|general|s3_storage_class', 'string')
-    # cfg.write('general', 's3_storage_class', s3_storage_class)
-
-    # cfg.aws_()
-    # # TODO: check over this
-    # # if there is a shared ~/.aws/config copy it over
-    # if cfg.config_dir != cfg.shared_config_dir:
-    #     cfg.replicate_ini('ALL', cfg.aws_config_fileshr, cfg.aws_config_file)
-
-    # aws_region = cfg.get_aws_region('aws')
-    # if not aws_region:
-    #     aws_region = cfg.get_aws_region()
-
-    # if not aws_region:
-    #     aws_region = cfg.prompt('Please select AWS S3 region (e.g. us-west-2 for Oregon)',
-    #                             aws.get_regions())
-    # aws_region = cfg.prompt(
-    #     'Please confirm/edit the AWS S3 region', aws_region)
-
-    # # cfg.aws_(None, None, aws_region)
-    # print(f"\n  Verify that bucket '{bucket}' is configured ... ")
-
-    # # for accessing glacier use one of these
-    # allowed_aws_profiles = ['default', 'aws', 'AWS']
-    # profmsg = 1
-    # profs = cfg.get_aws_profiles()
-
-    # for prof in profs:
-    #     if prof in allowed_aws_profiles:
-    #         cfg.set_aws_config(prof, 'region', aws_region)
-    #         if prof == 'AWS' or prof == 'aws':
-    #             cfg.write('general', 'aws_profile', prof)
-    #         elif prof == 'default':
-    #             cfg.write('general', 'aws_profile', 'default')
-    #         aws.create_bucket(bucket, prof)
-
-    # for prof in profs:
-    #     if prof in allowed_aws_profiles:
-    #         continue
-    #     if profmsg == 1:
-    #         print(
-    #             '\nFound additional profiles in ~/.aws and need to ask a few more questions.\n')
-    #         profmsg = 0
-    #     if not cfg.ask_yes_no(f'Do you want to configure profile "{prof}"?', 'yes'):
-    #         continue
-    #     profile = {'name': '', 'provider': '', 'storage_class': ''}
-    #     pendpoint = ''
-    #     pregion = ''
-    #     pr = cfg.read('profiles', prof)
-    #     if isinstance(pr, dict):
-    #         profile = cfg.read('profiles', prof)
-    #     profile['name'] = prof
-
-    #     if not profile['provider']:
-    #         profile['provider'] = ['AWS', 'GCS', 'Wasabi',
-    #                                'IDrive', 'Ceph', 'Minio', 'Other']
-    #     profile['provider'] = \
-    #         cfg.prompt(
-    #             f'S3 Provider for profile "{prof}"', profile['provider'])
-
-    #     pregion = cfg.get_aws_region(prof)
-    #     if not pregion:
-    #         pregion = cfg.prompt('Please select the S3 region',
-    #                              aws.get_regions(prof, profile['provider']))
-    #     pregion = \
-    #         cfg.prompt(f'Confirm/edit S3 region for profile "{prof}"', pregion)
-    #     if pregion:
-    #         cfg.set_aws_config(prof, 'region', pregion)
-
-    #     if profile['provider'] != 'AWS':
-    #         if not pendpoint:
-    #             pendpoint = cfg.get_aws_s3_endpoint_url(prof)
-    #             if not pendpoint:
-    #                 if 'Wasabi' == profile['provider']:
-    #                     pendpoint = f'https://s3.{pregion}.wasabisys.com'
-    #                 elif 'GCS' == profile['provider']:
-    #                     pendpoint = 'https://storage.googleapis.com'
-
-    #         pendpoint = \
-    #             cfg.prompt(
-    #                 f'S3 Endpoint for profile "{prof}" (e.g https://s3.domain.com)', pendpoint)
-    #         if pendpoint:
-    #             if not pendpoint.startswith('http'):
-    #                 pendpoint = 'https://' + pendpoint
-    #             cfg.set_aws_config(prof, 'endpoint_url', pendpoint, 's3')
-
-    #     if not profile['storage_class']:
-    #         if profile['provider'] == 'AWS':
-    #             profile['storage_class'] = s3_storage_class
-    #         else:
-    #             profile['storage_class'] = 'STANDARD'
-
-    #     if profile['provider']:
-    #         cfg.write('profiles', prof, profile)
-    #     else:
-    #         print(f'\nConfig for AWS profile "{prof}" was not saved.')
-
-    #     aws.create_bucket(bucket, prof)
-
+def __subcmd_config_slurm(args, cfg: ConfigManager):
     if shutil.which('scontrol') and shutil.which('sacctmgr'):
         se = SlurmEssentials(args, cfg)
         parts = se.get_allowed_partitions_and_qos()
@@ -5572,8 +5358,71 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
         x = cfg.prompt('What is the local scratch root ?',
                        '/mnt/scratch|hpc|lscratch_root', 'string')  # add slurm jobid at the end
 
+
+def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
+
+    # configure user and / or team settings
+    # arguments are Class instances passed from main
+
+    # TODO: Pending review
+    # if args.monitor:
+    #     # monitoring only setup, do not continue
+    #     fro = os.path.join(cfg.bin_dir, 'froster')
+    #     cfg.write('general', 'email', args.monitor)
+    #     cfg.add_systemd_cron_job(f'{fro} restore --monitor', '30')
+    #     return
+
+    if args.index:
+        # only basic configuration required for indexing jobs
+        return
+
+    if args.user:
+        # user configuration
+        __subcmd_config_user(cfg)
+        return
+
+    if args.aws:
+        # aws configuration
+        __subcmd_config_aws_profile(cfg, aws)
+        return
+
+    if args.s3:
+        # aws s3 configuration
+        __subcmd_config_aws_s3(cfg, aws)
+        return
+
+    if args.slurm:
+        # aws s3 configuration
+        __subcmd_config_slurm(args, cfg)
+        return
+
+    if args.print:
+        # aws configuration
+        __subcmd_config_print(cfg)
+        return
+
+    print(f'\n*** FROSTER CONFIGURATION ***')
+
+    # user configuration
+    __subcmd_config_user(cfg)
+
+    # aws configuration
+    __subcmd_config_aws_profile(cfg, aws)
+
+    # aws s3 configuration
+    __subcmd_config_aws_s3(cfg, aws)
+
+    # slurm configuration
+    __subcmd_config_slurm(cfg)
+
+
     print(f'\nChecked permissions in {cfg.shared_config_dir}')
     cfg.fix_tree_permissions(cfg.shared_config_dirig_dir)
+
+    
+    print(f'\n*** FROSTER CONFIGURATION DONE ***\n')
+
+
 
     print('\nDone!\n')
 
@@ -6212,6 +6061,9 @@ def parse_arguments():
 
     parser_config.add_argument('-s', '--s3', dest='s3', action='store_true', default=False,
                                help="Setup s3 bucket configuration")
+    
+    parser_config.add_argument('-l', '--slurm', dest='slurm', action='store_true', default=False,
+                               help="Setup slurm configuration")
 
     parser_config.add_argument('-u', '--user', dest='user', action='store_true', default=False,
                                help="Setup user specific configuration")
