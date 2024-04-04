@@ -6422,3 +6422,7 @@ def main():
     except Exception as e:
         print(f"Error: {e}\n")
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+    
