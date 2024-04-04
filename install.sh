@@ -3,13 +3,6 @@
 # Make sure script ends as soon as an error arises
 set -e
 
-#################
-### VARIABLES ###
-#################
-
-froster_old_path=${HOME}/.local/share/froster
-froster_backup_old_path=${HOME}/.local/share/froster.bak
-
 #####################
 ### ERROR HANDLER ###
 #####################
@@ -111,41 +104,38 @@ check_apt_dependencies() {
 backup_old_installation() {
 
     echo
-    echo "Backing up older froster installation..."
+    echo "Backing up older froster installation (if any)..."
 
-    # Remove older installation backup (old path)
-    rm -rf ${froster_backup_old_path}
-
-    # Remove older installation backup (new path)
-    rm -rf ${froster_backup_path}
-
-    # Back up (if any) older froster installations (old path)
+    # Back up (if any) older froster data files
     if [[ -d ${HOME}/.local/share/froster ]]; then
-        mv -f ${froster_old_path} ${froster_backup_path}
+        mv -f ${HOME}/.local/share/froster ${HOME}/.local/share/froster.bak
+        echo "Data back up at ${HOME}/.local/share/froster.bak"
     fi
 
-    # Remove old files (old path)
+    # Back up (if any) older froster configurations
+    if [[ -d ${HOME}/.config/froster ]]; then
+        mv -f ${HOME}/.config/froster ${HOME}/.config/froster.bak
+        echo "Config back up at ${HOME}/.config/froster.bak"
+    fi
+
+    # Remove old files
     rm -f ${HOME}/.local/bin/froster
     rm -f ${HOME}/.local/bin/froster.py
     rm -f ${HOME}/.local/bin/s3-restore.py
 
-    # Back up (if any) older froster installations (new path)
-    if [[ -d ${froster_path} ]]; then
-        mv -f ${froster_path} ${froster_backup_path}
-        echo "  ...older installation backup at: ${froster_backup_path}"
-    else
-        echo "  ...no older froster installation found"
-    fi
+    echo "  ...older froster installation backed up"
 }
 
 # Install froster
 install_froster() {
 
-    # Create froster virtual environment
     echo
-    echo "Installing latests version of froster..."
+    echo "Installing latest version of froster..."
+
     pipx ensurepath >/dev/null 2>&1
+    # TODO: Update path once froster is in PyPi repository
     pipx install git+https://github.com/HPCNow/froster.git@develop >/dev/null 2>&1
+
     echo "  ...froster installed"
 }
 
@@ -192,7 +182,7 @@ install_rclone() {
         rclone_url='https://downloads.rclone.org/rclone-current-linux-arm64.zip'
 
     else
-        echo "Unsupported architecture"
+        echo "Unsupported architecture: ${arch}"
         exit 1
     fi
 
@@ -221,6 +211,9 @@ check_apt_dependencies
 # Set rw permissions on anyone in file's group
 umask 0002
 
+# Backup old installation (if any)
+backup_old_installation
+
 # Install froster
 install_froster
 
@@ -230,12 +223,10 @@ install_pwalk
 # Install rclone
 install_rclone
 
-# Backup old installation (if any)
-#backup_old_installation
-
 echo
 echo "Installation complete!"
 
 echo
 echo "You will need to open a new terminal or refresh your current terminal session using:"
 echo "  source ~/.bashrc"
+echo
