@@ -131,8 +131,7 @@ class ConfigManager:
 
                 self.name = config.get('USER', 'name', fallback=None)
                 self.email = config.get('USER', 'email', fallback=None)
-                self.is_nih = config.get('USER', 'is_nih', fallback=None)
-                self.is_shared = config.get(
+                self.is_shared = config.getboolean(
                     'USER', 'is_shared', fallback=None)
 
                 if self.is_shared:
@@ -155,6 +154,10 @@ class ConfigManager:
             if self.is_shared:
                 # Change the config parser if this is a shared configuration
                 config.read(self.shared_config_file)
+
+            # NIH configuration
+            if config.has_section('NIH'):
+                self.is_nih = config.getboolean('NIH', 'is_nih', fallback=None)
 
             # AWS S3 configuration
             if config.has_section('S3'):
@@ -2311,8 +2314,6 @@ class AWSBoto:
         if hasattr(cfg, 'aws_profile'):
             if self.check_credentials(aws_profile=cfg.aws_profile):
                 self.set_session(cfg)
-            else:
-                cfg.aws_profile = None
 
     def check_credentials(self,
                           aws_profile=None,
@@ -5120,7 +5121,7 @@ def __subcmd_config_nih(cfg: ConfigManager):
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         if os.path.exists(cfg.shared_config_file):
             config.read(cfg.shared_config_file)
     else:
@@ -5133,7 +5134,7 @@ def __subcmd_config_nih(cfg: ConfigManager):
             return
 
     # Configure NIH
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         print(f'\n*** NIH - SHARED - CONFIGURATION  ***\n')
     else:
         print(f'\n*** NIH S3 CONFIGURATION ***\n')
@@ -5151,7 +5152,7 @@ def __subcmd_config_nih(cfg: ConfigManager):
     # Write the config object to the config file
     cfg.is_nih = is_nih
 
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         print(f'\n*** NIH - SHARED - CONFIGURATION DONE ***\n')
     else:
         print(f'\n*** NIH CONFIGURATION DONE ***\n')
@@ -5191,6 +5192,15 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
         # Get new profile name
         aws_new_profile_name = inquirer.text(
             message="Enter new profile name", validate=__inquirer_required_check)
+
+        # If new profile name already exists, then prompt user if we should overwrite it
+        if aws_new_profile_name in aws_profiles:
+            is_overwrite = inquirer.confirm(
+                message=f'WARNING: Do you want to overwrite profile {aws_new_profile_name}?', default=False)
+
+            if not is_overwrite:
+                print(f'\n*** AWS PROFILE CONFIGURATION DONE ***\n')
+                return
 
         # Get aws access key id
         aws_access_key_id = inquirer.text(
@@ -5291,7 +5301,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         if os.path.exists(cfg.shared_config_file):
             config.read(cfg.shared_config_file)
     else:
@@ -5306,7 +5316,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     config['S3'] = {}
 
     # Configure AWS S3 bucket
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         print(f'\n*** AWS S3 - SHARED - CONFIGURATION  ***\n')
     else:
         print(f'\n*** AWS S3 CONFIGURATION ***\n')
@@ -5336,7 +5346,12 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
 
         # Get new bucket name
         aws_s3_new_bucket_name = inquirer.text(
-            message='Enter new bucket name (it must start with "froster-")', validate=__inquirer_bucket_name_check)
+            message='Enter new bucket name (it must start with "froster-")',
+            validate=__inquirer_bucket_name_check)
+
+        if aws_s3_new_bucket_name in s3_buckets:
+            print(f'Bucket {aws_s3_new_bucket_name} already exists')
+            sys.exit(1)
 
         # Create new bucket
         aws.create_bucket(aws_profile=cfg.aws_profile,
@@ -5386,7 +5401,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
         with open(cfg.config_file, 'w') as configfile:
             config.write(configfile)
 
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         print(f'\n*** AWS S3 - SHARED - CONFIGURATION DONE ***\n')
     else:
         print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
@@ -5398,7 +5413,7 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         if os.path.exists(cfg.shared_config_file):
             config.read(cfg.shared_config_file)
     else:
@@ -5414,7 +5429,7 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
 
     if shutil.which('scontrol') and shutil.which('sacctmgr'):
 
-        if hasattr(cfg, 'is_shared') and cfg.is_shared:
+        if cfg.is_shared:
             print(f'\n*** SLURM - SHARED - CONFIGURATION ***\n')
         else:
             print(f'\n*** SLURM CONFIGURATION DONE ***\n')
@@ -5459,14 +5474,14 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
             config['SLURM']['lscratch_root'] = lscratch_root
 
     # Write the config object to the config file
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         with open(cfg.shared_config_file, 'w') as configfile:
             config.write(configfile)
     else:
         with open(cfg.config_file, 'w') as configfile:
             config.write(configfile)
 
-    if hasattr(cfg, 'is_shared') and cfg.is_shared:
+    if cfg.is_shared:
         print(f'\n*** SLURM - SHARED - CONFIGURATION DONE ***\n')
     else:
         print(f'\n*** SLURM CONFIGURATION DONE ***\n')
@@ -6422,6 +6437,7 @@ def main():
     except Exception as e:
         print(f"Error: {e}\n")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
