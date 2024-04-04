@@ -101,26 +101,8 @@ class ConfigManager:
         # AWS credentials file
         self.aws_credentials_file = os.path.join(self.aws_dir, 'credentials')
 
-        # AWS profile
-        self.aws_profile = ''
-
-        # Current S3 bucket name
-        self.bucket_name = ''
-
-        # Archive directory inside AWS S3 bucket
-        self.archive_dir = ''
-
-        # Store aws s3 storage class in the config object
-        self.storage_class = ''
-
         # Froster's default shared configuration
         self.is_shared = False
-
-        # Froster's shared configuration dir
-        self.shared_dir = ''
-
-        # Froster's shared configuration file
-        self.shared_config_file = ''
 
         # Basic setup, focus the indexer on larger folders and file sizes
         self.max_small_file_size_kib = 1024
@@ -181,6 +163,17 @@ class ConfigManager:
                 # Store aws s3 storage class in the config object
                 self.storage_class = config.get(
                     'S3', 'storage_class', fallback=None)
+
+            if config.has_section('HPC'):
+                self.slurm_walltime_days = config.get('HPC', 'slurm_walltime_days', fallback=None)
+                self.slurm_walltime_hours = config.get('HPC', 'slurm_walltime_hours', fallback=None)
+                self.slurm_partition = config.get('HPC', 'slurm_partition', fallback=None)
+                self.slurm_qos = config.get('HPC', 'slurm_qos', fallback=None)
+                self.slurm_lscratch = config.get('HPC', 'slurm_lscratch', fallback=None)
+                self.lscratch_mkdir = config.get('HPC', 'lscratch_mkdir', fallback=None)
+                self.lscratch_rmdir = config.get('HPC', 'lscratch_rmdir', fallback=None)
+                self.lscratch_root = config.get('HPC', 'lscratch_root', fallback=None)
+                    
 
     # Representation of object. Returns all variables in the object
 
@@ -5006,6 +4999,14 @@ def __inquirer_bucket_name_check(answers, current):
 
     return True
 
+def __inquirer_is_empty_or_number_check(answers, current):
+
+    pattern = r"^[0-9]+$|^$"
+    if re.match(pattern, current) is None:
+        raise inquirer.errors.ValidationError(
+            "", reason="Must be a number")
+    return True
+
 
 def __subcmd_config_user(cfg: ConfigManager):
 
@@ -5288,12 +5289,69 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     with open(cfg.config_file, 'w') as configfile:
         config.write(configfile)
 
-    # Note: This is not needed as the AWSBoto object is already updated every time we call froster.py.
-    # But it's here in case we have some others config after this S3 configuration.
-    # Populate the AWSBoto self variables with this new configuration
-    aws.set_session(cfg)
-
     print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
+
+
+def __subcmd_config_slurm(args, cfg: ConfigManager):
+
+    # Create a ConfigParser object
+    config = configparser.ConfigParser()
+
+    # if exists, read the config.ini file
+    if os.path.exists(cfg.config_file):
+        config.read(cfg.config_file)
+    else:
+        print(f'\n*** NO CONFIGURATION FOUND ***')
+        print('\nYou can configure froster using the command:')
+        print('    froster config\n')
+        return
+    
+    config['HPC'] = {}
+
+    if shutil.which('scontrol') and shutil.which('sacctmgr'):
+
+        print(f'\n*** SLURM CONFIGURATION ***')
+
+        slurm_walltime_days = inquirer.text(
+            message="Set the Slurm --time (days) for froster jobs (suggested = 7)", validate=__inquirer_is_empty_or_number_check)
+        
+        slurm_walltime_hours = inquirer.text(
+            message="Set the Slurm --time (hours) for froster jobs (suggested = 0)", validate=__inquirer_is_empty_or_number_check)
+
+        # TODO: This class __init__ should not be here, it should be in the main
+        se = SlurmEssentials(args, cfg)
+        parts = se.get_allowed_partitions_and_qos()
+
+        slurm_partition = inquirer.list_input(
+            message=f'Select the Slurm partition for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+            choices=list(parts.keys()))
+        
+        slurm_qos = inquirer.list_input(
+            message=f'Select the Slurm QOS for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+            choices=list(parts[slurm_partition]))
+        
+        config['HPC']['slurm_walltime_days'] = slurm_walltime_days
+        config['HPC']['slurm_walltime_hours'] = slurm_walltime_hours
+        config['HPC']['slurm_partition'] = slurm_partition
+        config['HPC']['slurm_qos'] = slurm_qos
+        
+        # TODO: Is this shutil sbatch necessary?
+        if shutil.which('sbatch'):
+            slurm_lscratch = inquirer.text(message="How do you request local scratch from Slurm? (Optional: press enter to skip)")
+            lscratch_mkdir = inquirer.text(message="Is there a user script that provisions local scratch? (Optional: press enter to skip)")
+            lscratch_rmdir = inquirer.text(message="Is there a user script that tears down local scratch at the end? (Optional: press enter to skip)")
+            lscratch_root = inquirer.text(message="What is the local scratch root? (Optional: press enter to skip)")
+
+            config['HPC']['slurm_lscratch'] = slurm_lscratch
+            config['HPC']['lscratch_mkdir'] = lscratch_mkdir
+            config['HPC']['lscratch_rmdir'] = lscratch_rmdir
+            config['HPC']['lscratch_root'] = lscratch_root
+
+        # Write the config object to the config file
+        with open(cfg.config_file, 'w') as configfile:
+            config.write(configfile)
+
+        print(f'\n*** SLURM CONFIGURATION DONE ***\n')
 
 
 def __subcmd_config_print(cfg: ConfigManager):
@@ -5307,56 +5365,6 @@ def __subcmd_config_print(cfg: ConfigManager):
         print(f'\n*** NO CONFIGURATION FOUND ***')
         print('\nYou can configure froster using the command:')
         print('    froster config\n')
-
-
-def __subcmd_config_slurm(args, cfg: ConfigManager):
-    if shutil.which('scontrol') and shutil.which('sacctmgr'):
-        se = SlurmEssentials(args, cfg)
-        parts = se.get_allowed_partitions_and_qos()
-        print('')
-
-        slurm_walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
-        slurm_walltime = cfg.prompt(
-            f'Please confirm or set the Slurm --time (wall time as days-hours) for froster jobs', slurm_walltime)
-        cfg.write('hpc', 'slurm_walltime', slurm_walltime)
-        if '-' in slurm_walltime:
-            days, hours = slurm_walltime.split('-')
-        else:
-            days = 0
-            hours = slurm_walltime
-
-        mydef = cfg.read('hpc', 'slurm_partition')
-        if mydef:
-            mydef = f' (now: {mydef})'
-        slurm_partition = cfg.prompt(f'Please select the Slurm partition for jobs that last up to {days} days and {hours} hours.{mydef}',
-                                     list(parts.keys()))
-        cfg.write('hpc', 'slurm_partition', slurm_partition)
-        # slurm_partition =  cfg.prompt('Please confirm the Slurm partition', slurm_partition)
-        print('')
-
-        mydef = cfg.read('hpc', 'slurm_qos')
-        if mydef:
-            mydef = f' (now: {mydef})'
-        slurm_qos = cfg.prompt(f'Please select the Slurm QOS for jobs that last up to {days} days and {hours} days.{mydef}',
-                               parts[slurm_partition])
-        cfg.write('hpc', 'slurm_qos', slurm_qos)
-        # slurm_qos =  cfg.prompt('Please confirm the Slurm QOS', slurm_qos)
-        print('')
-
-    if shutil.which('sbatch'):
-        print('\n*** And finally a few questions how your HPC uses local scratch space ***')
-        print('*** This config is optional and you can hit ctrl+c to cancel any time ***')
-        print('*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***\n')
-
-        # setup local scratch spaces, the defauls are OHSU specific
-        x = cfg.prompt('How do you request local scratch from Slurm?',
-                       '--gres disk:1024|hpc|slurm_lscratch', 'string')  # get 1TB scratch space
-        x = cfg.prompt('Is there a user script that provisions local scratch?',
-                       'mkdir-scratch.sh|hpc|lscratch_mkdir', 'string')  # optional
-        x = cfg.prompt('Is there a user script that tears down local scratch at the end?',
-                       'rmdir-scratch.sh|hpc|lscratch_rmdir', 'string')  # optional
-        x = cfg.prompt('What is the local scratch root ?',
-                       '/mnt/scratch|hpc|lscratch_root', 'string')  # add slurm jobid at the end
 
 
 def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
@@ -5417,9 +5425,9 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
 
     print(f'\nChecked permissions in {cfg.shared_config_dir}')
-    cfg.fix_tree_permissions(cfg.shared_config_dirig_dir)
+    cfg.fix_tree_permissions(cfg.shared_config_dir)
 
-    
+
     print(f'\n*** FROSTER CONFIGURATION DONE ***\n')
 
 
