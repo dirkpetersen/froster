@@ -2308,7 +2308,7 @@ class AWSBoto:
         self.cfg = cfg
         self.arch = arch
 
-        if cfg.aws_profile:
+        if hasattr(cfg, 'aws_profile'):
             if self.check_credentials(aws_profile=cfg.aws_profile):
                 self.set_session(cfg)
             else:
@@ -5103,8 +5103,6 @@ def __subcmd_config_user(cfg: ConfigManager):
     else:
         config['USER']['shared_config_dir'] = ''
 
-
-    
     # Create config directory in case it does not exist
     if not os.path.exists(cfg.config_dir):
         os.makedirs(cfg.config_dir)
@@ -5115,13 +5113,14 @@ def __subcmd_config_user(cfg: ConfigManager):
 
     print(f'\n*** USER CONFIGURATION DONE ***\n')
 
+
 def __subcmd_config_nih(cfg: ConfigManager):
 
     # Create a ConfigParser object
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         if os.path.exists(cfg.shared_config_file):
             config.read(cfg.shared_config_file)
     else:
@@ -5134,14 +5133,14 @@ def __subcmd_config_nih(cfg: ConfigManager):
             return
 
     # Configure NIH
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         print(f'\n*** NIH - SHARED - CONFIGURATION  ***\n')
     else:
         print(f'\n*** NIH S3 CONFIGURATION ***\n')
 
     is_nih = inquirer.confirm(
         message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
-    
+
     config['NIH'] = {}
     config['NIH']['is_nih'] = str(is_nih)
 
@@ -5152,7 +5151,7 @@ def __subcmd_config_nih(cfg: ConfigManager):
     # Write the config object to the config file
     cfg.is_nih = is_nih
 
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         print(f'\n*** NIH - SHARED - CONFIGURATION DONE ***\n')
     else:
         print(f'\n*** NIH CONFIGURATION DONE ***\n')
@@ -5292,7 +5291,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         if os.path.exists(cfg.shared_config_file):
             config.read(cfg.shared_config_file)
     else:
@@ -5307,7 +5306,7 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     config['S3'] = {}
 
     # Configure AWS S3 bucket
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         print(f'\n*** AWS S3 - SHARED - CONFIGURATION  ***\n')
     else:
         print(f'\n*** AWS S3 CONFIGURATION ***\n')
@@ -5380,14 +5379,14 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     cfg.storage_class = storage_class
 
     # Write the config object to the config file
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         with open(cfg.shared_config_file, 'w') as configfile:
             config.write(configfile)
     else:
         with open(cfg.config_file, 'w') as configfile:
             config.write(configfile)
 
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         print(f'\n*** AWS S3 - SHARED - CONFIGURATION DONE ***\n')
     else:
         print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
@@ -5399,7 +5398,7 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         if os.path.exists(cfg.shared_config_file):
             config.read(cfg.shared_config_file)
     else:
@@ -5415,7 +5414,7 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
 
     if shutil.which('scontrol') and shutil.which('sacctmgr'):
 
-        if cfg.is_shared:
+        if hasattr(cfg, 'is_shared') and cfg.is_shared:
             print(f'\n*** SLURM - SHARED - CONFIGURATION ***\n')
         else:
             print(f'\n*** SLURM CONFIGURATION DONE ***\n')
@@ -5460,14 +5459,14 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
             config['SLURM']['lscratch_root'] = lscratch_root
 
     # Write the config object to the config file
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         with open(cfg.shared_config_file, 'w') as configfile:
             config.write(configfile)
     else:
         with open(cfg.config_file, 'w') as configfile:
             config.write(configfile)
 
-    if cfg.is_shared:
+    if hasattr(cfg, 'is_shared') and cfg.is_shared:
         print(f'\n*** SLURM - SHARED - CONFIGURATION DONE ***\n')
     else:
         print(f'\n*** SLURM CONFIGURATION DONE ***\n')
@@ -6190,7 +6189,7 @@ def parse_arguments():
     parser_config.add_argument('-m', '--monitor', dest='monitor', action='store_true', default=False,
                                help='Setup froster as a monitoring cronjob ' +
                                'on an ec2 instance and notify an email address')
-    
+
     parser_config.add_argument('-n', '--nih', dest='nih', action='store_true', default=False,
                                help="Setup NIH reporter configuration")
 
