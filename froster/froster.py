@@ -5541,9 +5541,6 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     # nih configuration
     __subcmd_config_nih(cfg)
 
-    # nih configuration
-    __subcmd_config_nih(cfg)
-
     # aws configuration
     __subcmd_config_aws_profile(cfg, aws)
 
