@@ -88,9 +88,13 @@ class ConfigManager:
         # Froster's configuration file
         self.config_file = os.path.join(self.config_dir, 'config.ini')
 
+        # Froster's data directory
+        self.data_dir = os.path.join(
+            self.home_dir, '.local', 'share', 'froster')
+
         # Froster's archive json file
         self.archive_json = os.path.join(
-            self.home_dir, '.local', 'share', 'froster', 'froster-archives.json')
+            self.data_dir, 'froster-archives.json')
 
         # AWS directory
         self.aws_dir = os.path.join(self.home_dir, '.aws')
@@ -120,60 +124,77 @@ class ConfigManager:
             # Create a ConfigParser object
             config = configparser.ConfigParser()
 
-            # Populate self variables using confing.ini file
+            # Populate self variables using local config.ini file
             config.read(self.config_file)
 
-            if config.has_section('DEFAULT'):
+            if config.has_section('USER'):
 
-                self.name = config.get('DEFAULT', 'name', fallback=None)
-                self.email = config.get('DEFAULT', 'email', fallback=None)
-                self.is_nih = config.get('DEFAULT', 'is_nih', fallback=None)
+                self.name = config.get('USER', 'name', fallback=None)
+                self.email = config.get('USER', 'email', fallback=None)
+                self.is_nih = config.get('USER', 'is_nih', fallback=None)
                 self.is_shared = config.get(
-                    'DEFAULT', 'is_shared', fallback=None)
+                    'USER', 'is_shared', fallback=None)
 
                 if self.is_shared:
 
                     self.shared_dir = config.get(
-                        'DEFAULT', 'shared_config_dir', fallback=None)
+                        'USER', 'shared_config_dir', fallback=None)
 
                     self.shared_config_file = os.path.join(
                         self.shared_dir, 'shared_config.ini')
 
                     self.archive_json = os.path.join(
-                        self.shared_config_dir, 'froster-archives.json')
+                        self.shared_dir, 'froster-archives.json')
 
-            # TODO: If there is shared config file, read it and populate the variables
-            # TODO: Should we call fix_tree_permissions for the shared_config_dir and shared_config_file
-            # in case someone screwed up the permissions?
-
+            # AWS profile
             if config.has_section('AWS'):
-                # AWS profile
                 self.aws_profile = config.get(
                     'AWS', 'aws_profile', fallback=None)
 
+            # Change config file if this is a shared configuration
+            if self.is_shared:
+                # Change the config parser if this is a shared configuration
+                config.read(self.shared_config_file)
+
+            # AWS S3 configuration
             if config.has_section('S3'):
-                # Current AWS S3 bucket
+                # Current S3 Bucket name
                 self.bucket_name = config.get(
                     'S3', 'bucket_name', fallback=None)
 
                 # Archive directoy inside AWS S3 bucket
                 self.archive_dir = config.get(
                     'S3', 'archive_dir', fallback=None)
-                
+
                 # Store aws s3 storage class in the config object
                 self.storage_class = config.get(
                     'S3', 'storage_class', fallback=None)
 
-            if config.has_section('HPC'):
-                self.slurm_walltime_days = config.get('HPC', 'slurm_walltime_days', fallback=None)
-                self.slurm_walltime_hours = config.get('HPC', 'slurm_walltime_hours', fallback=None)
-                self.slurm_partition = config.get('HPC', 'slurm_partition', fallback=None)
-                self.slurm_qos = config.get('HPC', 'slurm_qos', fallback=None)
-                self.slurm_lscratch = config.get('HPC', 'slurm_lscratch', fallback=None)
-                self.lscratch_mkdir = config.get('HPC', 'lscratch_mkdir', fallback=None)
-                self.lscratch_rmdir = config.get('HPC', 'lscratch_rmdir', fallback=None)
-                self.lscratch_root = config.get('HPC', 'lscratch_root', fallback=None)
-                    
+            # slurm configuration
+            if config.has_section('SLURM'):
+                self.slurm_walltime_days = config.get(
+                    'SLURM', 'slurm_walltime_days', fallback=None)
+
+                self.slurm_walltime_hours = config.get(
+                    'SLURM', 'slurm_walltime_hours', fallback=None)
+
+                self.slurm_partition = config.get(
+
+                    'SLURM', 'slurm_partition', fallback=None)
+                self.slurm_qos = config.get(
+                    'SLURM', 'slurm_qos', fallback=None)
+
+                self.slurm_lscratch = config.get(
+                    'SLURM', 'slurm_lscratch', fallback=None)
+
+                self.lscratch_mkdir = config.get(
+                    'SLURM', 'lscratch_mkdir', fallback=None)
+
+                self.lscratch_rmdir = config.get(
+                    'SLURM', 'lscratch_rmdir', fallback=None)
+
+                self.lscratch_root = config.get(
+                    'SLURM', 'lscratch_root', fallback=None)
 
     # Representation of object. Returns all variables in the object
 
@@ -4544,6 +4565,7 @@ class Rclone:
 
 class SlurmEssentials:
     # exit code 64 causes Slurm to --requeue, e.g. sys.exit(64)
+    # TODO: these variables are not READ from the config file
     def __init__(self, args, cfg):
         self.script_lines = ["#!/bin/bash"]
         self.cfg = cfg
@@ -4999,6 +5021,7 @@ def __inquirer_bucket_name_check(answers, current):
 
     return True
 
+
 def __inquirer_is_empty_or_number_check(answers, current):
 
     pattern = r"^[0-9]+$|^$"
@@ -5029,9 +5052,6 @@ def __subcmd_config_user(cfg: ConfigManager):
                           validate=__inquirer_email_check)
     print()
 
-    is_nih = inquirer.confirm(
-        message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
-
     is_shared = inquirer.confirm(
         message="Do you want to collaborate with other users on archive and restore?", default=False)
 
@@ -5046,17 +5066,45 @@ def __subcmd_config_user(cfg: ConfigManager):
     shared_config_dir_answer = inquirer.prompt(shared_config_dir_question)
     shared_config_dir = shared_config_dir_answer['shared_config_dir']
 
-    # Populate the config object with the answers
-    config['DEFAULT'] = {}
-    config['DEFAULT']['name'] = fullname
-    config['DEFAULT']['email'] = email
-    config['DEFAULT']['is_nih'] = str(is_nih)
-    config['DEFAULT']['is_shared'] = str(is_shared)
+    # If its shared configuration
     if is_shared:
-        config['DEFAULT']['shared_config_dir'] = str(shared_config_dir)
-    else:
-        config['DEFAULT']['shared_config_dir'] = ''
 
+        if os.path.isfile(os.path.join(shared_config_dir, 'froster-archives.json')):
+            # If the froster-archives.json file is found in the shared config directory we are done here
+            print(
+                "\nNote: the froster-archives.json file was found in the shared config directory\n")
+        else:
+            print(
+                "\nNote: the froster-archives.json file was NOT found in the shared config directory\n")
+
+            # Check if the froster-archives.json file is found in the local directory
+            if os.path.isfile(os.path.join(cfg.data_dir, 'froster-archives.json')):
+                # If the froster-archives.json file is found in the local directory we ask the user if they want to move it to the shared directory
+                print(
+                    "Note: the froster-archives.json file was found in the local directory\n")
+
+                # Ask user if they want to move the local list of files and directories that were archived to the shared directory
+                move_local_to_shared = inquirer.confirm(
+                    message="Do you want to move the local list of files and directories that were archived to the shared directory?", default=True)
+
+                if move_local_to_shared:
+                    shutil.copy(os.path.join(
+                        cfg.data_dir, 'froster-archives.json'), shared_config_dir)
+                    print(
+                        "Local list of files and directories that were archived was moved to the shared directory\n")
+
+    # Populate the config object with the answers
+    config['USER'] = {}
+    config['USER']['name'] = fullname
+    config['USER']['email'] = email
+    config['USER']['is_shared'] = str(is_shared)
+    if is_shared:
+        config['USER']['shared_config_dir'] = str(shared_config_dir)
+    else:
+        config['USER']['shared_config_dir'] = ''
+
+
+    
     # Create config directory in case it does not exist
     if not os.path.exists(cfg.config_dir):
         os.makedirs(cfg.config_dir)
@@ -5067,10 +5115,64 @@ def __subcmd_config_user(cfg: ConfigManager):
 
     print(f'\n*** USER CONFIGURATION DONE ***\n')
 
+def __subcmd_config_nih(cfg: ConfigManager):
+
+    # Create a ConfigParser object
+    config = configparser.ConfigParser()
+
+    # if exists, read the config.ini file
+    if cfg.is_shared:
+        if os.path.exists(cfg.shared_config_file):
+            config.read(cfg.shared_config_file)
+    else:
+        if os.path.exists(cfg.config_file):
+            config.read(cfg.config_file)
+        else:
+            print(f'\n*** NO CONFIGURATION FOUND ***')
+            print('\nYou can configure froster using the command:')
+            print('    froster config\n')
+            return
+
+    # Configure NIH
+    if cfg.is_shared:
+        print(f'\n*** NIH - SHARED - CONFIGURATION  ***\n')
+    else:
+        print(f'\n*** NIH S3 CONFIGURATION ***\n')
+
+    is_nih = inquirer.confirm(
+        message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
+    
+    config['NIH'] = {}
+    config['NIH']['is_nih'] = str(is_nih)
+
+    # Write the config object to the config file
+    with open(cfg.config_file, 'w') as configfile:
+        config.write(configfile)
+
+    # Write the config object to the config file
+    cfg.is_nih = is_nih
+
+    if cfg.is_shared:
+        print(f'\n*** NIH - SHARED - CONFIGURATION DONE ***\n')
+    else:
+        print(f'\n*** NIH CONFIGURATION DONE ***\n')
+
 
 def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
 
     print(f'\n*** AWS PROFILE CONFIGURATION ***\n')
+
+    # Create a ConfigParser object
+    config = configparser.ConfigParser()
+
+    # if exists, read the config.ini file
+    if os.path.exists(cfg.config_file):
+        config.read(cfg.config_file)
+    else:
+        print(f'\n*** NO CONFIGURATION FOUND ***')
+        print('\nYou can configure froster using the command:')
+        print('    froster config\n')
+        return
 
     # Get list of current AWS profiles under ~/.aws/credentials
     aws_profiles = aws.get_profiles()
@@ -5159,15 +5261,6 @@ def __subcmd_config_aws_profile(cfg: ConfigManager, aws: AWSBoto):
             # Update region in the config file
             aws.update_region(aws_profile_name=aws_profile, region=region)
 
-    # Create a ConfigParser object
-    config = configparser.ConfigParser()
-
-    # if exists, read the config.ini file
-    if os.path.exists(cfg.config_file):
-        config.read(cfg.config_file)
-
-    # Configure AWS credentials
-
     # Store aws profile in the config object
     config['AWS'] = {}
     if aws_profile == '+ Create new profile':
@@ -5199,24 +5292,25 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if os.path.exists(cfg.config_file):
-        config.read(cfg.config_file)
+    if cfg.is_shared:
+        if os.path.exists(cfg.shared_config_file):
+            config.read(cfg.shared_config_file)
     else:
-        print(f'\n*** NO CONFIGURATION FOUND ***')
-        print('\nYou can configure froster using the command:')
-        print('    froster config\n')
-        return
-
-    if not config.has_section('AWS') or not config.has_option('AWS', 'aws_profile'):
-        print(f'\n*** NO AWS PROFILE FOUND ***')
-        print('\nYou can configure aws profile using the command:')
-        print('    froster config --aws\n')
-        return
+        if os.path.exists(cfg.config_file):
+            config.read(cfg.config_file)
+        else:
+            print(f'\n*** NO CONFIGURATION FOUND ***')
+            print('\nYou can configure froster using the command:')
+            print('    froster config\n')
+            return
 
     config['S3'] = {}
 
     # Configure AWS S3 bucket
-    print(f'\n*** AWS S3 CONFIGURATION for profile "{cfg.aws_profile}" ***\n')
+    if cfg.is_shared:
+        print(f'\n*** AWS S3 - SHARED - CONFIGURATION  ***\n')
+    else:
+        print(f'\n*** AWS S3 CONFIGURATION ***\n')
 
     print(f'\nChecking AWS credentials for profile "{cfg.aws_profile}"...')
     if aws.check_credentials():
@@ -5286,10 +5380,17 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     cfg.storage_class = storage_class
 
     # Write the config object to the config file
-    with open(cfg.config_file, 'w') as configfile:
-        config.write(configfile)
+    if cfg.is_shared:
+        with open(cfg.shared_config_file, 'w') as configfile:
+            config.write(configfile)
+    else:
+        with open(cfg.config_file, 'w') as configfile:
+            config.write(configfile)
 
-    print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
+    if cfg.is_shared:
+        print(f'\n*** AWS S3 - SHARED - CONFIGURATION DONE ***\n')
+    else:
+        print(f'\n*** AWS S3 CONFIGURATION DONE ***\n')
 
 
 def __subcmd_config_slurm(args, cfg: ConfigManager):
@@ -5298,23 +5399,30 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
     config = configparser.ConfigParser()
 
     # if exists, read the config.ini file
-    if os.path.exists(cfg.config_file):
-        config.read(cfg.config_file)
+    if cfg.is_shared:
+        if os.path.exists(cfg.shared_config_file):
+            config.read(cfg.shared_config_file)
     else:
-        print(f'\n*** NO CONFIGURATION FOUND ***')
-        print('\nYou can configure froster using the command:')
-        print('    froster config\n')
-        return
-    
-    config['HPC'] = {}
+        if os.path.exists(cfg.config_file):
+            config.read(cfg.config_file)
+        else:
+            print(f'\n*** NO CONFIGURATION FOUND ***')
+            print('\nYou can configure froster using the command:')
+            print('    froster config\n')
+            return
+
+    config['SLURM'] = {}
 
     if shutil.which('scontrol') and shutil.which('sacctmgr'):
 
-        print(f'\n*** SLURM CONFIGURATION ***')
+        if cfg.is_shared:
+            print(f'\n*** SLURM - SHARED - CONFIGURATION ***\n')
+        else:
+            print(f'\n*** SLURM CONFIGURATION DONE ***\n')
 
         slurm_walltime_days = inquirer.text(
             message="Set the Slurm --time (days) for froster jobs (suggested = 7)", validate=__inquirer_is_empty_or_number_check)
-        
+
         slurm_walltime_hours = inquirer.text(
             message="Set the Slurm --time (hours) for froster jobs (suggested = 0)", validate=__inquirer_is_empty_or_number_check)
 
@@ -5325,32 +5433,43 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
         slurm_partition = inquirer.list_input(
             message=f'Select the Slurm partition for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
             choices=list(parts.keys()))
-        
+
         slurm_qos = inquirer.list_input(
             message=f'Select the Slurm QOS for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
             choices=list(parts[slurm_partition]))
-        
-        config['HPC']['slurm_walltime_days'] = slurm_walltime_days
-        config['HPC']['slurm_walltime_hours'] = slurm_walltime_hours
-        config['HPC']['slurm_partition'] = slurm_partition
-        config['HPC']['slurm_qos'] = slurm_qos
-        
+
+        config['SLURM']['slurm_walltime_days'] = slurm_walltime_days
+        config['SLURM']['slurm_walltime_hours'] = slurm_walltime_hours
+        config['SLURM']['slurm_partition'] = slurm_partition
+        config['SLURM']['slurm_qos'] = slurm_qos
+
         # TODO: Is this shutil sbatch necessary?
         if shutil.which('sbatch'):
-            slurm_lscratch = inquirer.text(message="How do you request local scratch from Slurm? (Optional: press enter to skip)")
-            lscratch_mkdir = inquirer.text(message="Is there a user script that provisions local scratch? (Optional: press enter to skip)")
-            lscratch_rmdir = inquirer.text(message="Is there a user script that tears down local scratch at the end? (Optional: press enter to skip)")
-            lscratch_root = inquirer.text(message="What is the local scratch root? (Optional: press enter to skip)")
+            slurm_lscratch = inquirer.text(
+                message="How do you request local scratch from Slurm? (Optional: press enter to skip)")
+            lscratch_mkdir = inquirer.text(
+                message="Is there a user script that provisions local scratch? (Optional: press enter to skip)")
+            lscratch_rmdir = inquirer.text(
+                message="Is there a user script that tears down local scratch at the end? (Optional: press enter to skip)")
+            lscratch_root = inquirer.text(
+                message="What is the local scratch root? (Optional: press enter to skip)")
 
-            config['HPC']['slurm_lscratch'] = slurm_lscratch
-            config['HPC']['lscratch_mkdir'] = lscratch_mkdir
-            config['HPC']['lscratch_rmdir'] = lscratch_rmdir
-            config['HPC']['lscratch_root'] = lscratch_root
+            config['SLURM']['slurm_lscratch'] = slurm_lscratch
+            config['SLURM']['lscratch_mkdir'] = lscratch_mkdir
+            config['SLURM']['lscratch_rmdir'] = lscratch_rmdir
+            config['SLURM']['lscratch_root'] = lscratch_root
 
-        # Write the config object to the config file
+    # Write the config object to the config file
+    if cfg.is_shared:
+        with open(cfg.shared_config_file, 'w') as configfile:
+            config.write(configfile)
+    else:
         with open(cfg.config_file, 'w') as configfile:
             config.write(configfile)
 
+    if cfg.is_shared:
+        print(f'\n*** SLURM - SHARED - CONFIGURATION DONE ***\n')
+    else:
         print(f'\n*** SLURM CONFIGURATION DONE ***\n')
 
 
@@ -5389,7 +5508,13 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
         __subcmd_config_user(cfg)
         return
 
+    if args.nih:
+        # nih configuration
+        __subcmd_config_nih(cfg)
+        return
+
     if args.aws:
+
         # aws configuration
         __subcmd_config_aws_profile(cfg, aws)
         return
@@ -5414,6 +5539,12 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     # user configuration
     __subcmd_config_user(cfg)
 
+    # nih configuration
+    __subcmd_config_nih(cfg)
+
+    # nih configuration
+    __subcmd_config_nih(cfg)
+
     # aws configuration
     __subcmd_config_aws_profile(cfg, aws)
 
@@ -5423,14 +5554,10 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     # slurm configuration
     __subcmd_config_slurm(cfg)
 
-
     print(f'\nChecked permissions in {cfg.shared_config_dir}')
     cfg.fix_tree_permissions(cfg.shared_config_dir)
 
-
     print(f'\n*** FROSTER CONFIGURATION DONE ***\n')
-
-
 
     print('\nDone!\n')
 
@@ -6063,13 +6190,16 @@ def parse_arguments():
     parser_config.add_argument('-m', '--monitor', dest='monitor', action='store_true', default=False,
                                help='Setup froster as a monitoring cronjob ' +
                                'on an ec2 instance and notify an email address')
+    
+    parser_config.add_argument('-n', '--nih', dest='nih', action='store_true', default=False,
+                               help="Setup NIH reporter configuration")
 
     parser_config.add_argument('-p', '--print', dest='print', action='store_true', default=False,
                                help="Print the current configuration")
 
     parser_config.add_argument('-s', '--s3', dest='s3', action='store_true', default=False,
                                help="Setup s3 bucket configuration")
-    
+
     parser_config.add_argument('-l', '--slurm', dest='slurm', action='store_true', default=False,
                                help="Setup slurm configuration")
 
