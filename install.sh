@@ -100,7 +100,7 @@ check_apt_dependencies() {
     fi
 }
 
-# Backup older installations (if any)
+# Backup older installations (if any) but keep the froster-archive.json file
 backup_old_installation() {
 
     echo
@@ -108,14 +108,47 @@ backup_old_installation() {
 
     # Back up (if any) older froster data files
     if [[ -d ${HOME}/.local/share/froster ]]; then
+
+        # Remove the froster backup directory
+        rm -rf ${HOME}/.local/share/froster.bak
+
+        # Move the froster directory to froster.bak
         mv -f ${HOME}/.local/share/froster ${HOME}/.local/share/froster.bak
+
+        # Keep the froster-archives.json file (if any)
+        if [[ -f ${HOME}/.local/share/froster.bak/froster-archives.json ]]; then
+            # Create the froster directory again
+            mkdir -p ${HOME}/.local/share/froster
+
+            # Copy the froster-archives.json file to the data directory
+            cp -f ${HOME}/.local/share/froster.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+        fi
+        echo
         echo "Data back up at ${HOME}/.local/share/froster.bak"
+        echo
     fi
 
     # Back up (if any) older froster configurations
     if [[ -d ${HOME}/.config/froster ]]; then
+
+        # Remove the froster backup config directory
+        rm -rf ${HOME}/.config/froster.bak
+
+        # Move the froster config directory to froster.bak
         mv -f ${HOME}/.config/froster ${HOME}/.config/froster.bak
+
+        # Keep the froster-archives.json file (if any)
+        if [[ -f ${HOME}/.config/froster.bak/froster-archives.json ]]; then
+            # Create the froster directory again
+            mkdir -p ${HOME}/.local/share/froster
+
+            # Copy the froster-archives.json file to the data directory
+            cp -f ${HOME}/.config/froster.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+        fi
+
+        echo
         echo "Config back up at ${HOME}/.config/froster.bak"
+        echo
     fi
 
     # Remove old files
