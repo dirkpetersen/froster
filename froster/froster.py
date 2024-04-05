@@ -5084,14 +5084,15 @@ def __subcmd_config_user(cfg: ConfigManager):
         config.write(configfile)
 
 # TODO: Move this function to ConfigManager class
+
+
 def __move_config_to_shared(cfg: ConfigManager):
 
     # Ask the user if they want to move the configuration shared sections (if any) to the shared directory
     if os.path.isfile(cfg.shared_config_file):
         print(
-            f"\nNOTE: Using shared configuration file found in {cfg.shared_config_file}")
-        return 
-
+            f"\nNOTE: Using shared configuration file found in {cfg.shared_config_file}\n")
+        return
 
     # Clean up both configuration files
     local_config = configparser.ConfigParser()
@@ -5181,7 +5182,7 @@ def __subcmd_config_shared(cfg: ConfigManager):
         if os.path.isfile(os.path.join(shared_config_dir, cfg.archive_json_file_name)):
             # If the froster-archives.json file is found in the shared config directory we are done here
             print(
-                f"\nNOTE: the {cfg.archive_json_file_name} file was found in the shared config directory")
+                f"\nNOTE: the {cfg.archive_json_file_name} file was found in the shared config directory\n")
         else:
             print(
                 f"\nNOTE: the {cfg.archive_json_file_name} file was NOT found in the shared config directory")
@@ -5362,18 +5363,17 @@ def __subcmd_config_nih(cfg: ConfigManager):
     # Create a ConfigParser object
     config = configparser.ConfigParser()
 
-    # if exists, read the config.ini file
-    if cfg.is_shared:
-        if os.path.exists(cfg.shared_config_file):
-            config.read(cfg.shared_config_file)
+    # Get the config file
+    file = cfg.shared_config_file if cfg.is_shared else cfg.config_file
+
+    # if exists, read the config file
+    if os.path.exists(file):
+        config.read(file)
     else:
-        if os.path.exists(cfg.config_file):
-            config.read(cfg.config_file)
-        else:
-            print(f'\n*** NO CONFIGURATION FOUND ***')
-            print('\nYou can configure froster using the command:')
-            print('    froster config\n')
-            return
+        print(f'\n*** NO CONFIGURATION FOUND ***')
+        print('\nYou can configure froster using the command:')
+        print('    froster config\n')
+        return
 
     # Configure NIH
     print(f'\n*** NIH S3 CONFIGURATION ***\n')
@@ -5385,12 +5385,8 @@ def __subcmd_config_nih(cfg: ConfigManager):
     config['NIH']['is_nih'] = str(is_nih)
 
     # Write the config object to the config file
-    if cfg.is_shared:
-        with open(cfg.shared_config_file, 'w') as configfile:
-            config.write(configfile)
-    else:
-        with open(cfg.config_file, 'w') as configfile:
-            config.write(configfile)
+    with open(file, 'w') as configfile:
+        config.write(configfile)
 
     # Write the config object to the config file
     cfg.is_nih = is_nih
@@ -5401,18 +5397,17 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     # Create a ConfigParser object
     config = configparser.ConfigParser()
 
-    # if exists, read the config.ini file
-    if cfg.is_shared:
-        if os.path.exists(cfg.shared_config_file):
-            config.read(cfg.shared_config_file)
+    # Get the config file
+    file = cfg.shared_config_file if cfg.is_shared else cfg.config_file
+
+    # if exists, read the config file
+    if os.path.exists(file):
+        config.read(file)
     else:
-        if os.path.exists(cfg.config_file):
-            config.read(cfg.config_file)
-        else:
-            print(f'\n*** NO CONFIGURATION FOUND ***')
-            print('\nYou can configure froster using the command:')
-            print('    froster config\n')
-            return
+        print(f'\n*** NO CONFIGURATION FOUND ***')
+        print('\nYou can configure froster using the command:')
+        print('    froster config\n')
+        return
 
     config['S3'] = {}
 
@@ -5490,12 +5485,8 @@ def __subcmd_config_aws_s3(cfg: ConfigManager, aws: AWSBoto):
     cfg.storage_class = storage_class
 
     # Write the config object to the config file
-    if cfg.is_shared:
-        with open(cfg.shared_config_file, 'w') as configfile:
-            config.write(configfile)
-    else:
-        with open(cfg.config_file, 'w') as configfile:
-            config.write(configfile)
+    with open(file, 'w') as configfile:
+        config.write(configfile)
 
 
 def __subcmd_config_slurm(args, cfg: ConfigManager):
@@ -5505,18 +5496,17 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
         # Create a ConfigParser object
         config = configparser.ConfigParser()
 
+        # Get the config file
+        file = cfg.shared_config_file if cfg.is_shared else cfg.config_file
+
         # if exists, read the config.ini file
-        if cfg.is_shared:
-            if os.path.exists(cfg.shared_config_file):
-                config.read(cfg.shared_config_file)
+        if os.path.exists(file):
+            config.read(file)
         else:
-            if os.path.exists(cfg.config_file):
-                config.read(cfg.config_file)
-            else:
-                print(f'\n*** NO CONFIGURATION FOUND ***')
-                print('\nYou can configure froster using the command:')
-                print('    froster config\n')
-                return
+            print(f'\n*** NO CONFIGURATION FOUND ***')
+            print('\nYou can configure froster using the command:')
+            print('    froster config\n')
+            return
 
         config['SLURM'] = {}
 
@@ -5562,12 +5552,8 @@ def __subcmd_config_slurm(args, cfg: ConfigManager):
             config['SLURM']['lscratch_root'] = lscratch_root
 
         # Write the config object to the config file
-        if cfg.is_shared:
-            with open(cfg.shared_config_file, 'w') as configfile:
-                config.write(configfile)
-        else:
-            with open(cfg.config_file, 'w') as configfile:
-                config.write(configfile)
+        with open(file, 'w') as configfile:
+            config.write(configfile)
     else:
         print(f'\n*** SLURM NOT FOUND: Nothing to configure ***\n')
 
@@ -5637,7 +5623,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 Local configuration: {cfg.config_file}
 Shared configuration: {cfg.shared_config_file}
 
-You can overwrite specific sections in the configuration file. Check options using the command:
+You can overwrite specific configuration sections. Check options using the command:
     froster config --help
 
 You can print the current configuration using the command:
@@ -6550,8 +6536,6 @@ def main():
             subcmd_credentials(args, aws)
         else:
             parser.print_help()
-
-        print()
 
     except KeyboardInterrupt:
         print('Keyboard interrupt\n')
