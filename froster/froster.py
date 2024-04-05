@@ -2518,8 +2518,7 @@ class AWSBoto:
                        output='json'):
 
         # If it does not exist, create aws directory
-        if not os.path.exists(self.cfg.aws_dir):
-            os.makedirs(self.cfg.aws_dir, mode=0o775)
+        os.makedirs(self.cfg.aws_dir, exist_ok=True, mode=0o775)
 
         # aws config file
 
@@ -5176,8 +5175,7 @@ def __subcmd_config_shared(cfg: ConfigManager):
         shared_config_dir = os.path.expanduser(shared_config_dir)
 
         # Create the directory in case it does not exist
-        if not os.path.exists(shared_config_dir):
-            os.makedirs(shared_config_dir, exist_ok=True, mode=0o775)
+        os.makedirs(shared_config_dir, exist_ok=True, mode=0o775)
 
         # Ask the user if they want to move the froster-archives.json file to the shared directory
         if os.path.isfile(os.path.join(shared_config_dir, cfg.archive_json_file_name)):
