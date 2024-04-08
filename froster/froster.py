@@ -5619,22 +5619,6 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
         __subcmd_config_print(cfg)
         return
 
-    configuration_found_message = f"""
-Local configuration: {cfg.config_file}
-Shared configuration: {cfg.shared_config_file}
-
-You can overwrite specific configuration sections. Check options using the command:
-    froster config --help
-
-You can print the current configuration using the command:
-    froster config --print
-"""
-
-    # if there is a shared configuration file, make the user aware of it
-    if cfg.is_shared and os.path.exists(cfg.shared_config_file):
-        print(configuration_found_message)
-        return
-
     print(f'\n*****************************')
     print(f'*** FROSTER CONFIGURATION ***')
     print(f'*****************************\n')
@@ -5657,7 +5641,16 @@ You can print the current configuration using the command:
 
     # If shared configuration and shared_config.ini file exists, then use it
     if cfg.is_shared and os.path.exists(cfg.shared_config_file):
-        print(configuration_found_message)
+        print(f"""
+Local configuration: {cfg.config_file}
+Shared configuration: {cfg.shared_config_file}
+
+You can overwrite specific configuration sections. Check options using the command:
+    froster config --help
+
+You can print the current configuration using the command:
+    froster config --print
+""")
     else:
 
         # nih configuration
