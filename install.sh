@@ -1,21 +1,38 @@
 #! /bin/bash
 
-# Make sure script ends as soon as an error arises
-set -e
+#################
+### VARIABLES ###
+#################
+
+# Variables of pwalk third-party tool froster is using
+pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
+pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
+pwalk_path=filesystem-reporting-tools-${pwalk_commit}
+
 
 #####################
 ### ERROR HANDLER ###
 #####################
 
-# Define error handler function
+# Make sure script ends as soon as an error arises
 set -e
 
+# Define error handler function
 trap 'catch $? $BASH_COMMAND' EXIT
 
 catch() {
     if [ "$1" != "0" ]; then
         # error handling goes here
         echo "Error: $2: exit code $1"
+
+        echo "Rolling back installation..."
+        pipx uninstall froster >/dev/null 2>&1
+        rm -rf ${pwalk_path} >/dev/null 2>&1
+        rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+        echo "    ...done"
+
+        echo
+        echo "Installation failed!"
     fi
 }
 
@@ -106,48 +123,53 @@ backup_old_installation() {
     echo
     echo "Backing up older froster installation (if any)..."
 
+    # Get the current date in YYYYMMDD format
+    date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S)
+
     # Back up (if any) older froster data files
     if [[ -d ${HOME}/.local/share/froster ]]; then
 
-        # Remove the froster backup directory
-        rm -rf ${HOME}/.local/share/froster.bak
-
-        # Move the froster directory to froster.bak
-        mv -f ${HOME}/.local/share/froster ${HOME}/.local/share/froster.bak
+        # Move the froster directory to froster_YYYYMMDD.bak
+        mv -f ${HOME}/.local/share/froster ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak
 
         # Keep the froster-archives.json file (if any)
-        if [[ -f ${HOME}/.local/share/froster.bak/froster-archives.json ]]; then
-            # Create the froster directory again
+        if [[ -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+            # Create the froster directory if it does not exist
             mkdir -p ${HOME}/.local/share/froster
 
             # Copy the froster-archives.json file to the data directory
-            cp -f ${HOME}/.local/share/froster.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+            cp -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
         fi
         echo
-        echo "Data back up at ${HOME}/.local/share/froster.bak"
-        echo
+        echo "Data back up at ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak"
     fi
 
     # Back up (if any) older froster configurations
     if [[ -d ${HOME}/.config/froster ]]; then
 
-        # Remove the froster backup config directory
-        rm -rf ${HOME}/.config/froster.bak
-
         # Move the froster config directory to froster.bak
-        mv -f ${HOME}/.config/froster ${HOME}/.config/froster.bak
+        mv -f ${HOME}/.config/froster ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak
+
+        # Keep the config.ini file (if any)
+        if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
+            # Create the froster directory if it does not exist
+            mkdir -p ${HOME}/.config/froster
+
+            # Copy the config file to the data directory
+            cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ${HOME}/.config/froster/config.ini
+        fi
 
         # Keep the froster-archives.json file (if any)
-        if [[ -f ${HOME}/.config/froster.bak/froster-archives.json ]]; then
-            # Create the froster directory again
+        if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+            # Create the froster directory if it does not exist
             mkdir -p ${HOME}/.local/share/froster
 
             # Copy the froster-archives.json file to the data directory
-            cp -f ${HOME}/.config/froster.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+            cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
         fi
 
         echo
-        echo "Config back up at ${HOME}/.config/froster.bak"
+        echo "Config back up at ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak"
         echo
     fi
 
@@ -178,11 +200,6 @@ install_pwalk() {
     echo
     echo "Installing third-party dependency: pwalk... "
 
-    # Variables of pwalk third-party tool froster is using
-    pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
-    pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
-    pwalk_path=filesystem-reporting-tools-${pwalk_commit}
-
     # Gather pwalk repository files
     curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1
 
@@ -190,7 +207,7 @@ install_pwalk() {
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1
 
     # Move pwalk to froster's binaries folder
-    mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+    mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
     rm -rf ${pwalk_path} >/dev/null 2>&1
@@ -226,7 +243,7 @@ install_rclone() {
     unzip rclone-current-linux-*.zip >/dev/null 2>&1
 
     # Move rclone to froster's binaries folder
-    mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+    mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
 
     # Remove the downloaded zip file
     rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
@@ -260,6 +277,6 @@ echo
 echo "Installation complete!"
 
 echo
-echo "You will need to open a new terminal or refresh your current terminal session using:"
+echo "You will need to open a new terminal or refresh your current terminal session by running command:"
 echo "  source ~/.bashrc"
 echo
