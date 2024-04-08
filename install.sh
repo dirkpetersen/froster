@@ -1,5 +1,8 @@
 #! /bin/bash
 
+# Make sure script ends as soon as an error arises
+set -e
+
 #################
 ### VARIABLES ###
 #################
@@ -8,14 +11,12 @@
 pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
 pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
 pwalk_path=filesystem-reporting-tools-${pwalk_commit}
-
+    
+date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
 
 #####################
 ### ERROR HANDLER ###
 #####################
-
-# Make sure script ends as soon as an error arises
-set -e
 
 # Define error handler function
 trap 'catch $? $BASH_COMMAND' EXIT
@@ -27,6 +28,17 @@ catch() {
 
         echo "Rolling back installation..."
         pipx uninstall froster >/dev/null 2>&1
+
+        # Restore (if any) backed up froster config files
+        if [[ -d ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
+            mv -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.config/froster >/dev/null 2>&1
+        fi
+
+        # Restore (if any) backed up froster data files
+        if [[ -d ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
+            mv -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.local/share/froster >/dev/null 2>&1
+        fi
+
         rm -rf ${pwalk_path} >/dev/null 2>&1
         rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
         echo "    ...done"
@@ -122,9 +134,6 @@ backup_old_installation() {
 
     echo
     echo "Backing up older froster installation (if any)..."
-
-    # Get the current date in YYYYMMDD format
-    date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S)
 
     # Back up (if any) older froster data files
     if [[ -d ${HOME}/.local/share/froster ]]; then
