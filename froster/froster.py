@@ -305,62 +305,68 @@ class ConfigManager:
 
     def fix_tree_permissions(self, target_dir):
         try:
+            # Check if the target directory exists
             if not os.path.isdir(target_dir):
-                print(
-                    f"Error: '{target_dir}' is not a directory", file=sys.stderr)
-                return False
+                raise ValueError(f'tried to fix permissions of a non-directory "{target_dir}"')
+            
             # Get the group ID of the target directory
             gid = os.lstat(target_dir).st_gid
+
             for root, dirs, files in os.walk(target_dir):
                 # Check and change the group of the directory
-                self.fix_permissions_if_needed(root, gid)
+                # self.fix_permissions_if_needed(root, gid)
+
+                current_mode = os.lstat(root).st_mode
+                folder_mode = current_mode | 0o2775
+                os.chmod(root, folder_mode)
+
                 # Check and change the group of each file in the directory
                 for file in files:
+                    if file.endswith('.pem'):
+                        continue
                     file_path = os.path.join(root, file)
                     self.fix_permissions_if_needed(file_path, gid)
-            return True
+    
         except Exception as e:
             print(
                 f"Error in {inspect.currentframe().f_code.co_name} function: {e}", file=sys.stderr)
             sys.exit(1)
 
-    def fix_permissions_if_needed(self, path, gid=None):
-        # setgid, g+rw, o+r and optionally enforce gid (group)
-        # fix: different setup mey be needed to handle symlinks
-        try:
-            current_mode = os.lstat(path).st_mode
-            # Add user rw, group rw and others read # 0o060 | 0o004
-            new_mode = current_mode | 0o664
-            if new_mode != current_mode:
-                # new_mode = current_mode | 0o7077 # clear group and other permission
-                if not path.endswith('.pem'):
-                    os.chmod(path, new_mode)
-                    print(
-                        f"\n NOTE: Changed permissions of '{path}' from {oct(current_mode)} to {oct(new_mode)}\n")
-                    current_mode = os.lstat(path).st_mode
-            if os.path.isdir(path):
-                new_mode = current_mode | 0o2000
-                if new_mode != current_mode:  # Check if setgid bit is not set
-                    os.chmod(path, new_mode)
-                    current_mode = os.lstat(path).st_mode
-                    print(f"\nNOTE: Set setgid bit on directory '{path}'\n")
-                new_mode = current_mode | 0o0111
-                if new_mode != current_mode:  # Check if execute bit is set on dirs
-                    os.chmod(path, new_mode)
-                    print(f"\nNOTE: Set execute bits on directory '{path}'\n")
-            current_gid = os.lstat(path).st_gid
-            if not gid:
-                gid = current_gid
-            if current_gid != gid:
-                current_group_name = grp.getgrgid(current_gid).gr_name
-                os.chown(path, -1, gid)  # -1 means don't change the user
-                print(
-                    f"\n NOTE: Changed group of '{path}' from '{current_group_name}' to '{grp.getgrgid(gid).gr_name}'\n")
-            return True
-        except Exception as e:
-            print(
-                f"Error in {inspect.currentframe().f_code.co_name} function: {e}", file=sys.stderr)
-            sys.exit(1)
+    def assure_permissions_and_group(self, directory):
+
+        if not os.path.isdir(directory):
+            raise ValueError(f'{inspect.currentframe().f_code.co_name}: tried to fix permissions of a non-directory "{directory}"')
+        
+        # Get the group ID of the directory
+        dir_stat = os.stat(directory)
+        dir_gid = dir_stat.st_gid
+
+        # Change the permissions of the directory to 0o2775
+        os.chmod(directory, 0o2775)
+
+        # Iterate over all files and directories in the directory and its subdirectories
+        for root, dirs, files in os.walk(directory):
+            for dir in dirs:
+                dir_path = os.path.join(root, dir)
+                # Change the permissions of the subdirectory to 0o2775
+                os.chmod(dir_path, 0o2775)
+
+            for file in files:
+                path = os.path.join(root, file)
+
+                # Get the file extension
+                _, extension = os.path.splitext(path)
+
+                # If the file is a .pem file
+                if extension == '.pem':
+                    # Change the permissions to 400
+                    os.chmod(path, 0o400)
+                else:
+                    # Change the permissions to 664
+                    os.chmod(path, 0o664)
+
+                # Change the group ID to the same as the directory
+                os.chown(path, -1, dir_gid)
 
     def replace_symlinks_with_realpaths(self, folders):
         cleaned_folders = []
@@ -6493,7 +6499,7 @@ def main():
             sys.exit(0)
 
         if cfg.is_shared and cfg.shared_dir:
-            cfg.fix_tree_permissions(cfg.shared_dir)
+            cfg.assure_permissions_and_group(cfg.shared_dir)
 
         if args.subcmd in ['archive', 'delete', 'restore']:
             # remove folders that are not writable from args.folders
