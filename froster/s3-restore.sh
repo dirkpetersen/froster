@@ -33,8 +33,8 @@ echo "Using ~/.aws profile: ${RCLONE_S3_PROFILE}"
 
 # check if this is a shared config
 CFG_ROOT=~/.froster/config
-if [[ -e ${CFG_ROOT}/shared_config_dir ]]; then
-  CFG_ROOT=$(cat ${CFG_ROOT}/shared_config_dir)
+if [[ -e ${CFG_ROOT}/shared_dir ]]; then
+  CFG_ROOT=$(cat ${CFG_ROOT}/shared_dir)
   if [[ ! -d ${CFG_ROOT} ]]; then
     echo "Config root ${CFG_ROOT} not found"
     exit 1

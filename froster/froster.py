@@ -124,6 +124,9 @@ class ConfigManager:
         self.min_index_folder_size_avg_mib = 10
         self.max_hotspots_display_entries = 5000
 
+        # Froster's ssh default key name
+        self.ssh_key_name = 'froster-ec2'
+
         # Check if there is a ~/.config/froster/config.ini file and populate the variables
         if os.path.exists(self.config_file):
 
@@ -753,11 +756,11 @@ class ConfigManager:
 
     def ses_verify_requests_sent(self, email_list):
         '''Set the ses verify requests sent email list in configuration file'''
-        
+
         if not email_list:
             raise ValueError('No email list provided')
 
-        # Write the config object to the config file        
+        # Write the config object to the config file
         self.__set_configuration_entry(
             'CLOULD', 'ses_verify_requests_sent', email_list)
 
@@ -767,7 +770,7 @@ class ConfigManager:
         if not instance:
             raise ValueError('No instance provided')
 
-        # Write the config object to the config file        
+        # Write the config object to the config file
         self.__set_configuration_entry('CLOULD', 'ec2_last_instance', instance)
 
     def set_nih(self):
@@ -2367,7 +2370,7 @@ class Archiver:
     def _get_hotspots_path(self, folder):
         # get a full path name of a new hotspots file
         # based on a folder name that has been crawled
-        hsfld = os.path.join(self.cfg.shared_config_dir, 'hotspots')
+        hsfld = os.path.join(self.cfg.shared_dir, 'hotspots')
         os.makedirs(hsfld, exist_ok=True, mode=0o775)
         return os.path.join(hsfld, self._get_hotspots_file(folder))
 
@@ -2478,11 +2481,11 @@ class AWSBoto:
 
         if not bucket_name:
             raise ValueError('No bucket name provided')
-        
+
         try:
             # Get the bucket Access Control List (ACL)
             bucket_info = self.s3_client.get_bucket_acl(Bucket=bucket_name)
-            
+
             # Access the 'Permission' key
             permission = bucket_info['Grants'][0]['Permission']
 
@@ -2560,7 +2563,7 @@ class AWSBoto:
 
             # Check that we can get the caller identity
             sts.get_caller_identity()
-            
+
             # Credentials are valid
             return True
 
@@ -2755,7 +2758,7 @@ class AWSBoto:
 
     def get_hostname(self):
         ''' Get the hostname of the current session'''
-        
+
         if (hasattr(self, 's3_client')):
             ep = self.s3_client.meta.endpoint_url
             return urllib.parse.urlparse(ep).hostname
@@ -2781,7 +2784,6 @@ class AWSBoto:
             s = boto3.Session()
             dynamodb_regions = s.get_available_regions('dynamodb')
             return dynamodb_regions
-
 
         # print(regions)
         # regions = [i for i in regions if not i.startswith('ap-')]
@@ -2818,9 +2820,10 @@ class AWSBoto:
         ''' Set the AWS profile for the current session'''
 
         try:
-            
+
             # Initialize a Boto3 session using the configured profile
-            session = boto3.Session(profile_name=profile_name, region_name=region)
+            session = boto3.Session(
+                profile_name=profile_name, region_name=region)
 
             # Initialize the AWS clients
             self.ce_client = session.client('ce')
@@ -2829,10 +2832,10 @@ class AWSBoto:
             self.s3_client = session.client('s3')
             self.ses_client = session.client('ses')
             self.sts_client = session.client('sts')
-            
+
             # TODO: This is for _ec2_create_instance function. Review if we really needed
             self.session = session
-            
+
         except Exception as e:
             pass
 
@@ -2859,7 +2862,7 @@ class AWSBoto:
         # TODO: function pendint to review
         print(f'TODO: function {inspect.stack()[0][3]} pending to review')
         exit(1)
-        
+
         # check all the buckets that have been used for archiving
         sufficient = True
         myaccess = 'read'
@@ -2928,7 +2931,7 @@ class AWSBoto:
         prof = self._ec2_create_iam_policy_roles_ec2profile()
         iid, ip = self._ec2_create_instance(s3size, prof)
         print(' Waiting for ssh host to become ready ...')
-        if not self.cfg.wait_for_ssh_ready(ip):
+        if not self.wait_for_ssh_ready(ip):
             return False
 
         bootstrap_restore = self._ec2_user_space_script(iid)
@@ -2980,10 +2983,8 @@ class AWSBoto:
         if ret.stdout or ret.stderr:
             print(ret.stdout, ret.stderr)
 
-        archive_json = os.path.join(
-            self.cfg.shared_config_dir, self.cfg.archive_json_file_name)
         ret = self.ssh_upload(
-            'ec2-user', ip, archive_json, "~/.froster/config/")
+            'ec2-user', ip, self.cfg.archive_json, "~/.config/froster/")
         if ret.stdout or ret.stderr:
             print(ret.stdout, ret.stderr)
 
@@ -3040,7 +3041,8 @@ class AWSBoto:
         user_name = user['User']['UserName']
 
         # Check if policy already exists for the user
-        existing_policies = self.iam_client.list_user_policies(UserName=user_name)
+        existing_policies = self.iam_client.list_user_policies(
+            UserName=user_name)
         if policy_name in existing_policies['PolicyNames']:
             print(f"{policy_name} already exists for user {user_name}.")
             return
@@ -3058,7 +3060,7 @@ class AWSBoto:
     def _ec2_create_iam_policy_roles_ec2profile(self):
         # create all the IAM requirement to allow an ec2 instance to
         # 1. self destruct, 2. monitor cost with CE and 3. send emails via SES
-        
+
       # Step 0: Create IAM self destruct and EC2 read policy
         policy_document = {
             "Version": "2012-10-17",
@@ -3422,25 +3424,25 @@ class AWSBoto:
             return False
 
         # Create a new EC2 key pair
-        key_path = os.path.join(self.cfg.shared_config_dir,
-                                'cloud', f'{self.cfg.ssh_key_name}.pem')
+        key_dir = self.cfg.shared_dir if self.cfg.is_shared else self.cfg.config_dir
+        key_path = os.path.join(key_dir, f'{self.cfg.ssh_key_name}.pem')
         if not os.path.exists(key_path):
             try:
-                self.ec2_client.describe_key_pairs(KeyNames=[self.cfg.ssh_key_name])
+                self.ec2_client.describe_key_pairs(
+                    KeyNames=[self.cfg.ssh_key_name])
                 # If the key pair exists, delete it
                 self.ec2_client.delete_key_pair(KeyName=self.cfg.ssh_key_name)
             except self.ec2_client.exceptions.ClientError:
                 # Key pair doesn't exist in AWS, no need to delete
                 pass
-            key_pair = ec2_resource.create_key_pair(KeyName=self.cfg.ssh_key_name)
-            os.makedirs(os.path.join(
-                self.cfg.shared_config_dir, 'cloud'), exist_ok=True, mode=0o775)
+            key_pair = ec2_resource.create_key_pair(
+                KeyName=self.cfg.ssh_key_name)
             with open(key_path, 'w') as key_file:
                 key_file.write(key_pair.key_material)
             os.chmod(key_path, 0o640)  # Set file permission to 600
 
         mykey_path = os.path.join(
-            self.cfg.shared_config_dir, 'cloud', f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
+            self.cfg.shared_dir, f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
         if not os.path.exists(mykey_path):
             shutil.copyfile(key_path, mykey_path)
             os.chmod(mykey_path, 0o600)  # Set file permission to 600
@@ -3533,7 +3535,7 @@ class AWSBoto:
 
         # Save the last instance IP address
         self.cfg.set_ec2_last_instance(instance.public_ip_address)
-        
+
         return instance_id, instance.public_ip_address
 
     def ec2_terminate_instance(self, ip):
@@ -3611,10 +3613,9 @@ class AWSBoto:
         return ilist
 
     def _ssh_get_key_path(self):
-        key_path = os.path.join(self.cfg.shared_config_dir,
-                                'cloud', f'{self.cfg.ssh_key_name}.pem')
+        key_path = os.path.join(self.cfg.shared_dir, f'{self.cfg.ssh_key_name}.pem')
         mykey_path = os.path.join(
-            self.cfg.shared_config_dir, 'cloud', f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
+            self.cfg.shared_dir, f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
         if not os.path.exists(key_path):
             print(
                 f'{key_path} does not exist. Please create it by launching "froster restore --aws"')
@@ -3728,7 +3729,7 @@ class AWSBoto:
                 print(f'Client Error: {e}')
         except Exception as e:
             print(f'Other Error: {e}')
-            
+
         self.cfg.ses_verify_requests_sent(email_list)
 
         try:
@@ -3832,7 +3833,8 @@ class AWSBoto:
             policy_name, policy_document)
 
         # Step 2: Retrieve the IAM instance profile attached to the EC2 instance
-        response = self.ec2_client.describe_instances(InstanceIds=[instance_id])
+        response = self.ec2_client.describe_instances(
+            InstanceIds=[instance_id])
         instance_data = response['Reservations'][0]['Instances'][0]
         if 'IamInstanceProfile' not in instance_data:
             print(
@@ -4673,9 +4675,9 @@ class SlurmEssentials:
         self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
         self.jobs = []
         self.job_info = {}
-        self.partition = cfg.read('hpc', 'slurm_partition')
-        self.qos = cfg.read('hpc', 'slurm_qos')
-        self.walltime = cfg.read('hpc', 'slurm_walltime', '7-0')
+        self.partition = cfg.slurm_partition
+        self.qos = cfg.slurm_qos
+        self.walltime = f'{cfg.slurm_walltime_days}-{cfg.slurm_walltime_hours}'
         self._add_lines_from_cfg()
 
     def add_line(self, line):
@@ -4688,9 +4690,9 @@ class SlurmEssentials:
         return future_time.strftime("%Y-%m-%dT%H:%M")
 
     def _add_lines_from_cfg(self):
-        slurm_lscratch = self.cfg.read('hpc', 'slurm_lscratch')
-        lscratch_mkdir = self.cfg.read('hpc', 'lscratch_mkdir')
-        lscratch_root = self.cfg.read('hpc', 'lscratch_root')
+        slurm_lscratch = self.cfg.slurm_lscratch
+        lscratch_mkdir = self.cfg.lscratch_mkdir
+        lscratch_root = self.cfg.lscratch_root
         if slurm_lscratch:
             self.add_line(f'#SBATCH {slurm_lscratch}')
         self.add_line(f'{lscratch_mkdir}')
@@ -4713,7 +4715,7 @@ class SlurmEssentials:
         for line in non_sbatch_lines:
             reordered_script.write(line)
         # add a local scratch teardown, if configured
-        reordered_script.write(self.cfg.read('hpc', 'lscratch_rmdir'))
+        reordered_script.write(self.cfg.lscratch_rmdir)
         reordered_script.seek(0)
         return reordered_script
 
@@ -4727,8 +4729,7 @@ class SlurmEssentials:
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             if 'Invalid generic resource' in result.stderr:
-                print('Invalid generic resource request. Please remove or change file:')
-                print(os.path.join(self.shared_dir, 'hpc', 'slurm_lscratch'))
+                print('Invalid generic resource request. Please change configuration of slurm_lscratch')
             else:
                 raise RuntimeError(
                     f"Error running sbatch: {result.stderr.strip()}")
@@ -5248,7 +5249,7 @@ def subcmd_archive(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
 
     archmeta = []
     if not args.folders:
-        hsfolder = os.path.join(cfg.shared_config_dir, 'hotspots')
+        hsfolder = os.path.join(cfg.shared_dir, 'hotspots')
         if not os.path.exists(hsfolder):
             print("No folders to archive in arguments and no Hotspots CSV files found!")
             print('Run: froster archive "/your/folder/to/archive"')
@@ -5696,7 +5697,7 @@ def subcmd_umount(args, cfg):
         print('Done!', flush=True)
 
 
-def subcmd_ssh(args, cfg, aws):
+def subcmd_ssh(args, cfg: ConfigManager, aws: AWSBoto):
 
     ilist = aws.ec2_list_instances('Name', 'FrosterSelfDestruct')
     ips = [sublist[0] for sublist in ilist if sublist]
@@ -5718,11 +5719,10 @@ def subcmd_ssh(args, cfg, aws):
             myhost = args.sshargs[0]
             remote_path = ''
     else:
-        myhost = cfg.read('cloud', 'ec2_last_instance')
+        myhost = cfg.ec2_last_instance
     if ips and not myhost in ips:
         print(f'{myhost} is no longer running, replacing with {ips[-1]}')
         myhost = ips[-1]
-        # cfg.write('cloud', 'ec2_last_instance', myhost)
     if args.subcmd == 'ssh':
         print(f'Connecting to {myhost} ...')
         aws.ssh_execute('ec2-user', myhost)
@@ -5759,7 +5759,7 @@ def subcmd_credentials(args, aws: AWSBoto):
         print('\nYou can configure AWS credentials using the command:')
         print('    froster config --aws\n')
         sys.exit(0)
-        
+
     print(args.folders)
     exit(0)
     aws.check_bucket_access_folders(args.folders)
@@ -6002,7 +6002,7 @@ def main():
 
         # Init AWS Boto
         aws = AWSBoto(args, cfg, arch)
-        
+
         # Print current version of froster
         if args.version:
             print_version()
@@ -6058,7 +6058,8 @@ def main():
         function_name = traceback_details[-1][2]
         file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 
-        print(f'\nError: {file_name}: {function_name}: {exc_tb.tb_lineno}: {exc_value}\n')
+        print(
+            f'\nError: {file_name}: {function_name}: {exc_tb.tb_lineno}: {exc_value}\n')
 
         sys.exit(1)
 
