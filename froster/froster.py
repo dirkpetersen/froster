@@ -141,6 +141,10 @@ class ConfigManager:
             self.aws_profile = config.get(
                 'AWS', 'aws_profile', fallback=None)
 
+            # AWS region
+            self.aws_region = config.get(
+                'AWS', 'aws_region', fallback=None)
+
             # Shared configuration
             self.is_shared = config.getboolean(
                 'SHARED', 'is_shared', fallback=False)
@@ -387,7 +391,7 @@ class ConfigManager:
                 "", reason="Path does not exist")
         return True
 
-    def print_config_files(self):
+    def print_config(self):
         '''Print the configuration files'''
 
         if os.path.exists(self.config_file):
@@ -506,14 +510,14 @@ class ConfigManager:
 
         # Ask user to choose an existing aws profile or create a new one
         aws_profile = inquirer.list_input("Choose your aws profile",
-                                          choices = aws_profiles)
+                                          choices=aws_profiles)
 
         # Check if user wants to create a new aws profile
         if aws_profile == '+ Create new profile':
 
             # Get new profile name
             aws_new_profile_name = inquirer.text(
-                message="Enter new profile name", validate = self.__inquirer_check_required)
+                message="Enter new profile name", validate=self.__inquirer_check_required)
 
             # If new profile name already exists, then prompt user if we should overwrite it
             if aws_new_profile_name in aws_profiles:
@@ -535,8 +539,8 @@ class ConfigManager:
             # Check if the provided aws credentials are valid
             print("\nChecking AWS credentials...")
 
-            if aws.check_credentials(aws_access_key_id = aws_access_key_id,
-                                    aws_secret_access_key = aws_secret_access_key):
+            if aws.check_credentials(aws_access_key_id=aws_access_key_id,
+                                     aws_secret_access_key=aws_secret_access_key):
                 print('    ...AWS credentials are valid\n')
             else:
                 print('    ...AWS credentials are NOT valid\n')
@@ -549,16 +553,16 @@ class ConfigManager:
 
             # Ask user to choose a region
             region = inquirer.list_input("Choose your region",
-                                         choices = aws_regions)
+                                         choices=aws_regions)
 
             # Create new profile in ~/.aws/credentials
-            self.__set_aws_credentials(aws_profile_name = aws_new_profile_name,
-                                       aws_access_key_id = aws_access_key_id,
-                                       aws_secret_access_key = aws_secret_access_key) 
+            self.__set_aws_credentials(aws_profile_name=aws_new_profile_name,
+                                       aws_access_key_id=aws_access_key_id,
+                                       aws_secret_access_key=aws_secret_access_key)
 
             # Create new profile in ~/.aws/config
-            self.__set_aws_config(aws_profile_name = aws_new_profile_name,
-                                  region = region)
+            self.__set_aws_config(aws_profile_name=aws_new_profile_name,
+                                  region=region)
 
         else:
             # EXISTING PROFILE CONFIGURATION
@@ -566,7 +570,7 @@ class ConfigManager:
             # Check if the provided aws credentials are valid
             print("\nChecking AWS credentials...")
 
-            if aws.check_credentials(aws_profile = aws_profile):
+            if aws.check_credentials(aws_profile=aws_profile):
                 print('    ...AWS credentials are valid\n')
             else:
                 print('    ...AWS credentials are NOT valid\n')
@@ -577,32 +581,36 @@ class ConfigManager:
             print('    ...AWS credentials are valid\n')
 
             # Check the seletected profile region
-            aws_profile_region = self.__set_aws_get_config_region(aws_profile = aws_profile)
+            aws_profile_region = self.__set_aws_get_config_region(
+                aws_profile=aws_profile)
 
             # Get list of AWS regions
             aws_regions = aws.get_regions()
 
             # Ask user to choose a region
             region = inquirer.list_input("Choose your region",
-                                         default = aws_profile_region,
-                                         choices = aws_regions)
+                                         default=aws_profile_region,
+                                         choices=aws_regions)
 
             if region != aws_profile_region:
                 # Update region in the config file
-                self.__set_aws_config(aws_profile_name = aws_profile,
-                                      region = region)
+                self.__set_aws_config(aws_profile_name=aws_profile,
+                                      region=region)
 
         # Get the profile name
         if aws_profile == '+ Create new profile':
             profile_name = aws_new_profile_name
         else:
             profile_name = aws_profile
-            
+
         # Store aws profile in the config file
         self.__set_configuration_entry('AWS', 'aws_profile', profile_name)
-        
+
+        # Store aws region in the config file
+        self.__set_configuration_entry('AWS', 'aws_region', region)
+
         # Set the AWS profile in the boto3 session
-        aws.set_session(aws_profile = profile_name)
+        aws.set_session(profile_name, region)
 
         print(f'*** AWS CONFIGURATION DONE ***\n')
 
@@ -617,7 +625,7 @@ class ConfigManager:
 
         # If it does not exist, create aws directory
         os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
-    
+
         # Create a aws config ConfigParser object
         aws_config = configparser.ConfigParser()
 
@@ -628,7 +636,7 @@ class ConfigManager:
         # If it does not exist, create a new profile in the aws config file
         if not aws_config.has_section(aws_profile_name):
             aws_config.add_section(aws_profile_name)
-        
+
         # Write the profile with the new region
         aws_config[aws_profile_name]['region'] = region
 
@@ -652,10 +660,10 @@ class ConfigManager:
 
         if not aws_access_key_id:
             raise ValueError('No AWS access key id provided')
-        
+
         if not aws_secret_access_key:
             raise ValueError('No AWS secret access key provided')
-        
+
         # If it does not exist, create aws directory
         os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
 
@@ -682,12 +690,12 @@ class ConfigManager:
 
         # Asure the permissions of the credentials file
         os.chmod(self.aws_credentials_file, 0o600)
-    
+
     def __set_aws_get_config_region(self, aws_profile):
 
         if not aws_profile:
             raise ValueError('No AWS profile provided')
-        
+
         # Check if aws credentials file exists
         if not os.path.exists(self.aws_config_file):
             raise ValueError('AWS config file does not exist')
@@ -702,7 +710,7 @@ class ConfigManager:
             return config.get(aws_profile, 'region')
 
         return
-  
+
     def __set_configuration_entry(self, section, key, value):
         '''Set a configuration entry in the config file'''
 
@@ -748,7 +756,7 @@ class ConfigManager:
         print(f'\n*** NIH S3 CONFIGURATION ***\n')
 
         is_nih = inquirer.confirm(
-            message="Do you want to search and link NIH life sciences grants with your archives?", default = False)
+            message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
 
         self.__set_configuration_entry('NIH', 'is_nih', str(is_nih))
 
@@ -776,8 +784,8 @@ class ConfigManager:
 
         # Ask user to choose an existing aws s3 bucket or create a new one
         s3_bucket = inquirer.list_input("Choose your aws s3 bucket",
-                                        default = self.bucket_name,
-                                        choices = s3_buckets)
+                                        default=self.bucket_name,
+                                        choices=s3_buckets)
 
         # Check if user wants to create a new aws s3 bucket
         if s3_bucket == '+ Create new bucket':
@@ -792,10 +800,11 @@ class ConfigManager:
                 sys.exit(1)
 
             # Create new bucket
-            aws.create_bucket(bucket_name = new_bucket_name)
+            aws.create_bucket(bucket_name=new_bucket_name)
 
             # Store new aws s3 bucket in the config object
-            self.__set_configuration_entry('S3', 'bucket_name', new_bucket_name)
+            self.__set_configuration_entry(
+                'S3', 'bucket_name', new_bucket_name)
         else:
             # Store aws s3 bucket in the config object
             self.__set_configuration_entry('S3', 'bucket_name', s3_bucket)
@@ -808,7 +817,7 @@ class ConfigManager:
         ]
         archive_dir_answer = inquirer.prompt(archive_dir_question)
         archive_dir = archive_dir_answer['archive directory']
-        
+
         # Print newline after this prompt
         print()
 
@@ -817,7 +826,7 @@ class ConfigManager:
 
         # Get the storage class for the selected bucket
         storage_class = inquirer.list_input("Choose the AWS S3 storage class",
-                                            default = self.storage_class,
+                                            default=self.storage_class,
                                             choices={'DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING'})
 
         # Store aws s3 storage class in the config object
@@ -880,12 +889,14 @@ class ConfigManager:
 
         # Set the shared directory in the config file and move the config file shared sections to the shared config file
         if is_shared:
-            self.__set_configuration_entry('SHARED', 'shared_dir', shared_config_dir)
-            self.__set_configuration_entry('SHARED', 'shared_config_file', os.path.join(shared_config_dir, self.shared_config_file_name))
+            self.__set_configuration_entry(
+                'SHARED', 'shared_dir', shared_config_dir)
+            self.__set_configuration_entry('SHARED', 'shared_config_file', os.path.join(
+                shared_config_dir, self.shared_config_file_name))
             self.__set_shared_move_config()
-            
+
         print(f'*** SHARED CONFIGURATION DONE ***\n')
-   
+
     def __set_shared_move_config(self):
         '''Move the local configuration sections to the shared configuration file'''
 
@@ -904,7 +915,7 @@ class ConfigManager:
             return
 
         move_config_to_shared = inquirer.confirm(
-            message="Do you want to move your current configuration to the shared directory?", default = True)
+            message="Do you want to move your current configuration to the shared directory?", default=True)
 
         if move_config_to_shared:
             shutil.copy(self.config_file, self.shared_config_file)
@@ -992,9 +1003,12 @@ class ConfigManager:
                 choices=list(parts[slurm_partition]))
 
             # Set the Slurm configuration in the config file
-            self.__set_configuration_entry('SLURM', 'slurm_walltime_days', slurm_walltime_days)
-            self.__set_configuration_entry('SLURM', 'slurm_walltime_hours', slurm_walltime_hours)
-            self.__set_configuration_entry('SLURM', 'slurm_partition', slurm_partition)
+            self.__set_configuration_entry(
+                'SLURM', 'slurm_walltime_days', slurm_walltime_days)
+            self.__set_configuration_entry(
+                'SLURM', 'slurm_walltime_hours', slurm_walltime_hours)
+            self.__set_configuration_entry(
+                'SLURM', 'slurm_partition', slurm_partition)
             self.__set_configuration_entry('SLURM', 'slurm_qos', slurm_qos)
 
             # TODO: Is this shutil sbatch necessary?
@@ -1008,11 +1022,15 @@ class ConfigManager:
                 lscratch_root = inquirer.text(
                     message="What is the local scratch root? (Optional: press enter to skip)")
 
-                self.__set_configuration_entry('SLURM', 'slurm_lscratch', slurm_lscratch)
-                self.__set_configuration_entry('SLURM', 'lscratch_mkdir', lscratch_mkdir)
-                self.__set_configuration_entry('SLURM', 'lscratch_rmdir', lscratch_rmdir)
-                self.__set_configuration_entry('SLURM', 'lscratch_root', lscratch_root)
-            
+                self.__set_configuration_entry(
+                    'SLURM', 'slurm_lscratch', slurm_lscratch)
+                self.__set_configuration_entry(
+                    'SLURM', 'lscratch_mkdir', lscratch_mkdir)
+                self.__set_configuration_entry(
+                    'SLURM', 'lscratch_rmdir', lscratch_rmdir)
+                self.__set_configuration_entry(
+                    'SLURM', 'lscratch_root', lscratch_root)
+
             print(f'\n*** SLURM CONFIGURATION DONE ***\n')
 
         else:
@@ -2424,6 +2442,7 @@ class Archiver:
 
 
 class AWSBoto:
+    '''AWS handler class. This class is used to interact with AWS services.'''
 
     def __init__(self, args, cfg: ConfigManager, arch: Archiver):
         self.args = args
@@ -2431,8 +2450,67 @@ class AWSBoto:
         self.arch = arch
 
         if hasattr(cfg, 'aws_profile'):
-            if self.check_credentials(aws_profile = cfg.aws_profile):
-                self.set_session(aws_profile = cfg.aws_profile)
+            if self.check_credentials(aws_profile=cfg.aws_profile):
+                self.set_session(profile_name=cfg.aws_profile,
+                                 region=cfg.aws_region)
+
+    def check_bucket_access(self, bucket_name, readwrite=False):
+        '''Check if the user has access to the specified bucket'''
+
+        if not bucket_name:
+            raise ValueError('No bucket name provided')
+        
+        try:
+            # Get the bucket Access Control List (ACL)
+            bucket_info = self.s3_client.get_bucket_acl(Bucket=bucket_name)
+            
+            # Access the 'Permission' key
+            permission = bucket_info['Grants'][0]['Permission']
+
+            if readwrite:
+                return (permission == 'FULL_CONTROL')
+            else:
+                return (permission == 'READ')
+
+        except Exception as e:
+            return False
+
+        # except botocore.exceptions.ClientError as e:
+        #     error_code = e.response['Error']['Code']
+        #     if error_code == '403':
+        #         print(
+        #             f"Error: Access denied to bucket {bucket_name} for profile {self.aws_profile}. Check your permissions.")
+        #     elif error_code == '404':
+        #         print(
+        #             f"Error: Bucket {bucket_name} does not exist in profile {self.aws_profile}.")
+        #         print("run 'froster config' to create this bucket.")
+        #     else:
+        #         print(
+        #             f"Error accessing bucket {bucket_name} in profile {self.aws_profile}: {e}")
+        #     return False
+        # except Exception as e:
+        #     print(
+        #         f"An unexpected error in function check_bucket_access for profile {self.aws_profile}: {e}")
+        #     return False
+
+        # if not readwrite:
+        #     return True
+
+        # # Test write access by uploading a small test file
+        # try:
+        #     test_object_key = "test_write_access.txt"
+        #     s3.put_object(Bucket=bucket_name, Key=test_object_key,
+        #                   Body="Test write access")
+        #     # print(f"Successfully wrote test to {bucket_name}")
+
+        #     # Clean up by deleting the test object
+        #     s3.delete_object(Bucket=bucket_name, Key=test_object_key)
+        #     # print(f"Successfully deleted test object from {bucket_name}")
+        #     return True
+        # except botocore.exceptions.ClientError as e:
+        #     print(
+        #         f"Error: cannot write to bucket {bucket_name} in profile {self.aws_profile}: {e}")
+        #     return False
 
     def check_credentials(self,
                           aws_profile=None,
@@ -2445,20 +2523,25 @@ class AWSBoto:
 
         try:
             if aws_access_key_id and aws_secret_access_key:
-                # Build a STS client with the provided credentials
-                sts = boto3.client('sts',
-                                   aws_access_key_id=aws_access_key_id,
-                                   aws_secret_access_key=aws_secret_access_key)
+                # Build a new STS client with the provided credentials
+                sts = boto3.Session(aws_access_key_id=aws_access_key_id,
+                                    aws_secret_access_key=aws_secret_access_key).client('sts')
+
             elif aws_profile:
-                # Build a STS client with the provided profile
+                # Build a new STS client with the provided profile
                 sts = boto3.Session(profile_name=aws_profile).client('sts')
-            else:
-                # Build a STS client with the current session
+
+            elif hasattr(self, 's3_client'):
+                # Get the current sts_client
                 sts = self.sts_client
+
+            else:
+                raise ValueError(
+                    "No AWS credentials nor profile provided and current AWS session not set.")
 
             # Check that we can get the caller identity
             sts.get_caller_identity()
-
+            
             # Credentials are valid
             return True
 
@@ -2514,23 +2597,21 @@ class AWSBoto:
         #         f"Unexpected error checking s3 credentials: {e}")
         #     return False
 
-    def create_bucket(self, bucket_name):
+    def create_bucket(self, bucket_name, region):
+        '''Create a new S3 bucket with the provided name.'''
 
-        # TODO: Check bucket name constrains
+        if not bucket_name:
+            raise ValueError("Bucket name not provided")
+
+        if not hasattr(self, 's3_client'):
+            raise ValueError("No S3 client found. Set AWS credentials first.")
+
         try:
-
-            # Check if the provided AWS profile has the necessary permissions
-            if not self.check_credentials():
-                print(
-                    f"Error: Cannot create bucket '{bucket_name}' with the current AWS credentials")
-                print('\nYou can configure aws credentials using the command:')
-                print('    froster config --aws\n')
-                sys.exit(0)
 
             print(f'\nCreating bucket {bucket_name}...')
 
-            self.s3_client.create_bucket(Bucket = bucket_name,
-                                         CreateBucketConfiguration={'LocationConstraint': self.region})
+            self.s3_client.create_bucket(Bucket=bucket_name,
+                                         CreateBucketConfiguration={'LocationConstraint': region})
             print(f'    ...bucket created\n')
 
             print(f'\nApplying AES256 encryption to bucket {bucket_name}...')
@@ -2544,8 +2625,8 @@ class AWSBoto:
                 ]
             }
             self.s3_client.put_bucket_encryption(
-                Bucket = bucket_name,
-                ServerSideEncryptionConfiguration = encryption_configuration
+                Bucket=bucket_name,
+                ServerSideEncryptionConfiguration=encryption_configuration
             )
             print(f'    ...encryption applied.\n')
 
@@ -2623,8 +2704,9 @@ class AWSBoto:
         # return True
 
     def get_buckets(self):
-        try:
+        ''' Get a list of all the froster buckets in the current session'''
 
+        try:
             # Get all the buckets
             existing_buckets = self.s3_client.list_buckets()
 
@@ -2642,17 +2724,19 @@ class AWSBoto:
         # TODO: Expand exception handling
         except Exception as e:
             print(f"Error: {e}")
-            print('\nYou can configure aws credentials using the command:')
-            print('    froster config --aws\n')
-            exit(1)
+            sys.exit(1)
 
     def get_endpoint(self):
-        if (hasattr(self, 's3_client')):
+        ''' Get the endpoint URL of the current session'''
+
+        if hasattr(self, 's3_client'):
             return self.s3_client.meta.endpoint_url
         else:
             return None
 
     def get_hostname(self):
+        ''' Get the hostname of the current session'''
+        
         if (hasattr(self, 's3_client')):
             ep = self.s3_client.meta.endpoint_url
             return urllib.parse.urlparse(ep).hostname
@@ -2662,8 +2746,7 @@ class AWSBoto:
     def get_profiles(self):
         ''' Get a list of available AWS profiles'''
 
-        profiles = boto3.Session().available_profiles
-        return profiles
+        return boto3.Session().available_profiles
 
     def get_regions(self):
         '''Get the regions for the current session or get default regions.'''
@@ -2675,14 +2758,11 @@ class AWSBoto:
             return region_names
 
         except Exception as e:
-            try:
-                # If current session does not have a region, return default regions
-                s = boto3.Session()
-                dynamodb_regions = s.get_available_regions('dynamodb')
-                return dynamodb_regions
-            except Exception as e:
-                print(f'Error in {inspect.stack()[0][3]}: {e}')
-                sys.exit(1)
+            # If current session does not have a region, return default regions
+            s = boto3.Session()
+            dynamodb_regions = s.get_available_regions('dynamodb')
+            return dynamodb_regions
+
 
         # print(regions)
         # regions = [i for i in regions if not i.startswith('ap-')]
@@ -2708,42 +2788,34 @@ class AWSBoto:
         #     return ['default-placement', 'us-east-1', '']
 
     def list_objects_in_bucket(self, bucket_name):
+        if not bucket_name:
+            raise ValueError('No bucket name provided')
+
         response = self.s3_client.list_objects_v2(Bucket=bucket_name)
+
         return response.get('Contents', [])
 
-    def set_session(self, aws_profile):
+    def set_session(self, profile_name, region):
         ''' Set the AWS profile for the current session'''
 
-        if not aws_profile:
-            raise ValueError('No AWS profile provided')
-        
-        # Check if aws credentials file exists
-        if not os.path.exists(self.cfg.aws_config_file):
-            raise ValueError('AWS config file does not exist')
+        try:
+            
+            # Initialize a Boto3 session using the configured profile
+            session = boto3.Session(profile_name=profile_name, region_name=region)
 
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
-
-        # Read the aws config file
-        config.read(self.cfg.aws_config_file)
-
-        if config.has_section(aws_profile) and config.has_option(aws_profile, 'region'):
-            self.region = config.get(aws_profile, 'region')
-        else:
-            print('Error: Region not found')
-            print('\nConfigure aws credentials using the command:')
-            print('    froster config --aws')
-            sys.exit(0)
-
-        # Initialize a Boto3 session using the configured profile
-        session = boto3.Session(profile_name = aws_profile,
-                                region_name = self.region)
-
-        # Initialize the AWS clients
-        self.sts_client = session.client('sts')
-        self.s3_client = session.client('s3')
-        self.ec2_client = session.client('ec2')
-        self.ses_client = session.client("ses")
+            # Initialize the AWS clients
+            self.ce_client = session.client('ce')
+            self.ec2_client = session.client('ec2')
+            self.iam_client = session.client('iam')
+            self.s3_client = session.client('s3')
+            self.ses_client = session.client('ses')
+            self.sts_client = session.client('sts')
+            
+            # TODO: This is for _ec2_create_instance function. Review if we really needed
+            self.session = session
+            
+        except Exception as e:
+            pass
 
     def get_time_zone(self):
         '''Get the current time zone string from the system'''
@@ -2759,17 +2831,19 @@ class AWSBoto:
             return current_tz_str
 
         except Exception as e:
-            print(f'Error: {e}')
+            print(f'Error: {e}. Using default value "America/Los_Angeles"')
             return ('America/Los_Angeles')
 
 ####################################################################################################
 
-    def check_bucket_access_folders(self, folders, readwrite=False):
+    def check_bucket_access_folders(self, folders):
+        # TODO: function pendint to review
+        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+        exit(1)
+        
         # check all the buckets that have been used for archiving
         sufficient = True
         myaccess = 'read'
-        if readwrite:
-            myaccess = 'write'
         buckets = []
         for folder in folders:
             bucket, *_ = self.arch.archive_get_bucket_info(folder)
@@ -2780,68 +2854,12 @@ class AWSBoto:
                 sufficient = False
         buckets = list(set(buckets))  # remove dups
         for bucket in buckets:
-            if not self.check_bucket_access(bucket, readwrite):
+            if not self.check_bucket_access(bucket):
                 print(f' You have no {myaccess} access to bucket "{bucket}" !')
                 sufficient = False
         return sufficient
 
-    def check_bucket_access(self, bucket_name, readwrite=False, profile=None):
-        # TODO: function pendint to review
-        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
-        exit(1)
-
-        if not bucket_name:
-            print('check_bucket_access: bucket_name empty. You may have not yet configured a S3 bucket name. Please run "froster config" first')
-            sys.exit(1)
-        if not self.check_credentials(profile):
-            print('check_credentials failed. Please edit file ~/.aws/credentials')
-            return False
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ep_url = self.get_endpoint()
-        s3 = session.client('s3', endpoint_url=ep_url)
-
-        try:
-            # Check if bucket exists
-            s3.head_bucket(Bucket=bucket_name)
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == '403':
-                print(
-                    f"Error: Access denied to bucket {bucket_name} for profile {self.aws_profile}. Check your permissions.")
-            elif error_code == '404':
-                print(
-                    f"Error: Bucket {bucket_name} does not exist in profile {self.aws_profile}.")
-                print("run 'froster config' to create this bucket.")
-            else:
-                print(
-                    f"Error accessing bucket {bucket_name} in profile {self.aws_profile}: {e}")
-            return False
-        except Exception as e:
-            print(
-                f"An unexpected error in function check_bucket_access for profile {self.aws_profile}: {e}")
-            return False
-
-        if not readwrite:
-            return True
-
-        # Test write access by uploading a small test file
-        try:
-            test_object_key = "test_write_access.txt"
-            s3.put_object(Bucket=bucket_name, Key=test_object_key,
-                          Body="Test write access")
-            # print(f"Successfully wrote test to {bucket_name}")
-
-            # Clean up by deleting the test object
-            s3.delete_object(Bucket=bucket_name, Key=test_object_key)
-            # print(f"Successfully deleted test object from {bucket_name}")
-            return True
-        except botocore.exceptions.ClientError as e:
-            print(
-                f"Error: cannot write to bucket {bucket_name} in profile {self.aws_profile}: {e}")
-            return False
-
-    def _get_s3_data_size(self, folders, profile=None):
+    def _get_s3_data_size(self, folders):
         """
         Get the size of data in GiB aggregated from multiple 
         S3 buckets from froster archives identified by a 
@@ -2849,10 +2867,6 @@ class AWSBoto:
 
         :return: Size of the data in GiB.
         """
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        s3 = session.client('s3')
-
         # Initialize total size
         total_size_bytes = 0
 
@@ -2861,7 +2875,7 @@ class AWSBoto:
             buc, pre, recur, _ = self.arch.archive_get_bucket_info(fld)
             # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
             # Use paginator to handle buckets with large number of objects
-            paginator = s3.get_paginator('list_objects_v2')
+            paginator = self.s3_client.get_paginator('list_objects_v2')
             for page in paginator.paginate(Bucket=buc, Prefix=pre):
                 if "Contents" in page:  # Ensure there are objects under the specified prefix
                     for obj in page['Contents']:
@@ -2887,15 +2901,13 @@ class AWSBoto:
         print("Timeout reached without SSH server being ready.")
         return False
 
-    def ec2_deploy(self, folders, s3size=None, aws_profile=None):
+    def ec2_deploy(self, folders, s3size=NotImplementedError):
 
-        if not aws_profile:
-            aws_profile = self.cfg.aws_profile
         if s3size != 0:
-            s3size = self._get_s3_data_size(folders, aws_profile)
+            s3size = self._get_s3_data_size(folders)
         print(f"Total data in all folders: {s3size:.2f} GiB")
         prof = self._ec2_create_iam_policy_roles_ec2profile()
-        iid, ip = self._ec2_create_instance(s3size, prof, aws_profile)
+        iid, ip = self._ec2_create_instance(s3size, prof)
         print(' Waiting for ssh host to become ready ...')
         if not self.cfg.wait_for_ssh_ready(ip):
             return False
@@ -2959,21 +2971,18 @@ class AWSBoto:
         self.send_email_ses(self.cfg.email, self.cfg.email, 'Froster restore on EC2',
                             f'this command line was executed on host {ip}:\n{cmdline}')
 
-    def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc, profile=None):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
+    def _ec2_create_or_get_iam_policy(self, pol_name, pol_doc):
 
         policy_arn = None
         try:
-            response = iam.create_policy(
+            response = self.iam_client.create_policy(
                 PolicyName=pol_name,
                 PolicyDocument=json.dumps(pol_doc)
             )
             policy_arn = response['Policy']['Arn']
             print(f"Policy created with ARN: {policy_arn}")
-        except iam.exceptions.EntityAlreadyExistsException as e:
-            policies = iam.list_policies(Scope='Local')
+        except self.iam_client.exceptions.EntityAlreadyExistsException as e:
+            policies = self.iam_client.list_policies(Scope='Local')
             # Scope='Local' for customer-managed policies,
             # 'AWS' for AWS-managed policies
             for policy in policies['Policies']:
@@ -2992,13 +3001,7 @@ class AWSBoto:
             print('Other Error:', e)
         return policy_arn
 
-    def _ec2_create_froster_iam_policy(self, profile=None):
-        # Initialize session with specified profile or default
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-
-        # Create IAM client
-        iam = session.client('iam')
+    def _ec2_create_froster_iam_policy(self):
 
         # Define policy name and policy document
         policy_name = 'FrosterEC2DescribePolicy'
@@ -3014,17 +3017,17 @@ class AWSBoto:
         }
 
         # Get current IAM user's details
-        user = iam.get_user()
+        user = self.iam_client.get_user()
         user_name = user['User']['UserName']
 
         # Check if policy already exists for the user
-        existing_policies = iam.list_user_policies(UserName=user_name)
+        existing_policies = self.iam_client.list_user_policies(UserName=user_name)
         if policy_name in existing_policies['PolicyNames']:
             print(f"{policy_name} already exists for user {user_name}.")
             return
 
         # Create policy for user
-        iam.put_user_policy(
+        self.iam_client.put_user_policy(
             UserName=user_name,
             PolicyName=policy_name,
             PolicyDocument=json.dumps(policy_document)
@@ -3033,13 +3036,10 @@ class AWSBoto:
         print(
             f"Policy {policy_name} attached successfully to user {user_name}.")
 
-    def _ec2_create_iam_policy_roles_ec2profile(self, profile=None):
+    def _ec2_create_iam_policy_roles_ec2profile(self):
         # create all the IAM requirement to allow an ec2 instance to
         # 1. self destruct, 2. monitor cost with CE and 3. send emails via SES
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
-
+        
       # Step 0: Create IAM self destruct and EC2 read policy
         policy_document = {
             "Version": "2012-10-17",
@@ -3073,7 +3073,7 @@ class AWSBoto:
         policy_name = 'FrosterSelfDestructPolicy'
 
         destruct_policy_arn = self._ec2_create_or_get_iam_policy(
-            policy_name, policy_document, profile)
+            policy_name, policy_document)
 
         # 1. Create an IAM role
         trust_policy = {
@@ -3089,12 +3089,12 @@ class AWSBoto:
 
         role_name = "FrosterEC2Role"
         try:
-            iam.create_role(
+            self.iam_client.create_role(
                 RoleName=role_name,
                 AssumeRolePolicyDocument=json.dumps(trust_policy),
                 Description='Froster role allows Billing, SES and Terminate'
             )
-        except iam.exceptions.EntityAlreadyExistsException:
+        except self.iam_client.exceptions.EntityAlreadyExistsException:
             print(f'Role {role_name} already exists.')
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
@@ -3112,21 +3112,21 @@ class AWSBoto:
 
         try:
 
-            iam.attach_role_policy(
+            self.iam_client.attach_role_policy(
                 RoleName=role_name,
                 PolicyArn=cost_explorer_policy
             )
 
-            iam.attach_role_policy(
+            self.iam_client.attach_role_policy(
                 RoleName=role_name,
                 PolicyArn=ses_policy
             )
 
-            iam.attach_role_policy(
+            self.iam_client.attach_role_policy(
                 RoleName=role_name,
                 PolicyArn=destruct_policy_arn
             )
-        except iam.exceptions.PolicyNotAttachableException as e:
+        except self.iam_client.exceptions.PolicyNotAttachableException as e:
             print(
                 f"Policy {e.policy_arn} is not attachable. Please check your permissions.")
             return False
@@ -3143,14 +3143,14 @@ class AWSBoto:
         # 3. Create an instance profile and associate it with the role
         instance_profile_name = "FrosterEC2Profile"
         try:
-            iam.create_instance_profile(
+            self.iam_client.create_instance_profile(
                 InstanceProfileName=instance_profile_name
             )
-            iam.add_role_to_instance_profile(
+            self.iam_client.add_role_to_instance_profile(
                 InstanceProfileName=instance_profile_name,
                 RoleName=role_name
             )
-        except iam.exceptions.EntityAlreadyExistsException:
+        except self.iam_client.exceptions.EntityAlreadyExistsException:
             print(f'Profile {instance_profile_name} already exists.')
             return instance_profile_name
         except botocore.exceptions.ClientError as e:
@@ -3171,29 +3171,26 @@ class AWSBoto:
 
         return instance_profile_name
 
-    def _ec2_create_and_attach_security_group(self, instance_id, profile=None):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ec2 = session.resource('ec2')
-        client = session.client('ec2')
+    def _ec2_create_and_attach_security_group(self, instance_id):
 
+        ec2_resource = self.session.resource('ec2')
         group_name = 'SSH-HTTP-ICMP'
 
         # Check if security group already exists
-        security_groups = client.describe_security_groups(
+        security_groups = self.ec2_client.describe_security_groups(
             Filters=[{'Name': 'group-name', 'Values': [group_name]}])
         if security_groups['SecurityGroups']:
             security_group_id = security_groups['SecurityGroups'][0]['GroupId']
         else:
             # Create security group
-            response = client.create_security_group(
+            response = self.ec2_client.create_security_group(
                 GroupName=group_name,
                 Description='Allows SSH and ICMP inbound traffic'
             )
             security_group_id = response['GroupId']
 
             # Allow ports 22, 80, 443, 8000-9000, ICMP
-            client.authorize_security_group_ingress(
+            self.ec2_client.authorize_security_group_ingress(
                 GroupId=security_group_id,
                 IpPermissions=[
                     {
@@ -3229,7 +3226,7 @@ class AWSBoto:
             )
 
         # Attach the security group to the instance
-        instance = ec2.Instance(instance_id)
+        instance = ec2_resource.Instance(instance_id)
         current_security_groups = [sg['GroupId']
                                    for sg in instance.security_groups]
 
@@ -3240,12 +3237,9 @@ class AWSBoto:
 
         return security_group_id
 
-    def _ec2_get_latest_amazon_linux2_ami(self, profile=None):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ec2_client = session.client('ec2')
+    def _ec2_get_latest_amazon_linux2_ami(self):
 
-        response = ec2_client.describe_images(
+        response = self.ec2_client.describe_images(
             Filters=[
                 {'Name': 'name', 'Values': ['al2023-ami-*']},
                 {'Name': 'state', 'Values': ['available']},
@@ -3369,7 +3363,7 @@ class AWSBoto:
         echo 'echo "type \\"conda deactivate\\" to leave current conda environment"' >> ~/.bash_profile
         ''').strip()
 
-    def _ec2_create_instance(self, required_space, iamprofile=None, profile=None):
+    def _ec2_create_instance(self, required_space, iamprofile=None):
         # to avoid egress we are creating an EC2 instance
         # with ephemeral (local) disk for a temporary restore
         #
@@ -3391,10 +3385,7 @@ class AWSBoto:
                           't3a.micro': 5,
                           }
 
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ec2 = session.resource('ec2')
-        client = session.client('ec2')
+        ec2_resource = self.session.resource('ec2')
 
         if required_space > 1:
             required_space = required_space + 5  # avoid low disk space in micro instances
@@ -3416,13 +3407,13 @@ class AWSBoto:
                                 'cloud', f'{self.cfg.ssh_key_name}.pem')
         if not os.path.exists(key_path):
             try:
-                client.describe_key_pairs(KeyNames=[self.cfg.ssh_key_name])
+                self.ec2_client.describe_key_pairs(KeyNames=[self.cfg.ssh_key_name])
                 # If the key pair exists, delete it
-                client.delete_key_pair(KeyName=self.cfg.ssh_key_name)
-            except client.exceptions.ClientError:
+                self.ec2_client.delete_key_pair(KeyName=self.cfg.ssh_key_name)
+            except self.ec2_client.exceptions.ClientError:
                 # Key pair doesn't exist in AWS, no need to delete
                 pass
-            key_pair = ec2.create_key_pair(KeyName=self.cfg.ssh_key_name)
+            key_pair = ec2_resource.create_key_pair(KeyName=self.cfg.ssh_key_name)
             os.makedirs(os.path.join(
                 self.cfg.shared_config_dir, 'cloud'), exist_ok=True, mode=0o775)
             with open(key_path, 'w') as key_file:
@@ -3435,7 +3426,7 @@ class AWSBoto:
             shutil.copyfile(key_path, mykey_path)
             os.chmod(mykey_path, 0o600)  # Set file permission to 600
 
-        imageid = self._ec2_get_latest_amazon_linux2_ami(profile)
+        imageid = self._ec2_get_latest_amazon_linux2_ami()
         print(f'Using Image ID: {imageid}')
 
         # print(f'*** userdata-script:\n{self._ec2_user_data_script()}')
@@ -3451,7 +3442,7 @@ class AWSBoto:
 
         try:
             # Create EC2 instance
-            instance = ec2.create_instances(
+            instance = ec2_resource.create_instances(
                 ImageId=imageid,
                 MinCount=1,
                 MaxCount=1,
@@ -3487,7 +3478,7 @@ class AWSBoto:
             'Value': instance_id
         }
         try:
-            ec2.create_tags(Resources=[instance_id], Tags=[tag])
+            ec2_resource.create_tags(Resources=[instance_id], Tags=[tag])
         except Exception as e:
             self.cfg.printdbg('Error creating Tags: {e}')
 
@@ -3497,7 +3488,7 @@ class AWSBoto:
         delay_time = 10  # check every 10 seconds, adjust as needed
         max_attempts = max_wait_time // delay_time
 
-        waiter = client.get_waiter('instance_running')
+        waiter = self.ec2_client.get_waiter('instance_running')
         progress = self._create_progress_bar(max_attempts)
 
         for attempt in range(max_attempts):
@@ -3513,7 +3504,7 @@ class AWSBoto:
         instance.reload()
 
         grpid = self._ec2_create_and_attach_security_group(
-            instance_id, profile)
+            instance_id)
         if grpid:
             print(f'Security Group "{grpid}" attached.')
         else:
@@ -3544,13 +3535,10 @@ class AWSBoto:
 
         return instance_id, instance.public_ip_address
 
-    def ec2_terminate_instance(self, ip, profile=None):
+    def ec2_terminate_instance(self, ip):
         # terminate instance
         # with ephemeral (local) disk for a temporary restore
 
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ec2 = session.client('ec2')
         # ips = self.ec2_list_ips(self, 'Name', 'FrosterSelfDestruct')
         # Use describe_instances with a filter for the public IP address to find the instance ID
         filters = [{
@@ -3560,7 +3548,7 @@ class AWSBoto:
 
         if not ip.startswith('i-'):  # this an ip and not an instance ID
             try:
-                response = ec2.describe_instances(Filters=filters)
+                response = self.ec2_client.describe_instances(Filters=filters)
             except botocore.exceptions.ClientError as e:
                 print(f'Error: {e}')
                 return False
@@ -3575,20 +3563,17 @@ class AWSBoto:
         else:
             instance_id = ip
         # Terminate the instance
-        ec2.terminate_instances(InstanceIds=[instance_id])
+        self.ec2_client.terminate_instances(InstanceIds=[instance_id])
 
         print(f"EC2 Instance {instance_id} ({ip}) is being terminated !")
 
-    def ec2_list_instances(self, tag_name, tag_value, profile=None):
+    def ec2_list_instances(self, tag_name, tag_value):
         """
         List all IP addresses of running EC2 instances with a specific tag name and value.
         :param tag_name: The name of the tag
         :param tag_value: The value of the tag
         :return: List of IP addresses
         """
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        ec2 = session.client('ec2')
 
         # Define the filter
         filters = [
@@ -3604,7 +3589,7 @@ class AWSBoto:
 
         # Make the describe instances call
         try:
-            response = ec2.describe_instances(Filters=filters)
+            response = self.ec2_client.describe_instances(Filters=filters)
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
@@ -3832,14 +3817,10 @@ class AWSBoto:
 
         # print(f"Policy {policy_arn} attached to user {username}")
 
-    def send_ec2_costs(self, instance_id, profile=None):
+    def send_ec2_costs(self, instance_id):
         pass
 
-    def _ec2_create_iam_costexplorer_ses(self, instance_id, profile=None):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
-        ec2 = session.client('ec2')
+    def _ec2_create_iam_costexplorer_ses(self, instance_id):
 
         # Define the policy
         policy_document = {
@@ -3866,10 +3847,10 @@ class AWSBoto:
         policy_name = "CostExplorerSESPolicy"
 
         policy_arn = self._ec2_create_or_get_iam_policy(
-            policy_name, policy_document, profile)
+            policy_name, policy_document)
 
         # Step 2: Retrieve the IAM instance profile attached to the EC2 instance
-        response = ec2.describe_instances(InstanceIds=[instance_id])
+        response = self.ec2_client.describe_instances(InstanceIds=[instance_id])
         instance_data = response['Reservations'][0]['Instances'][0]
         if 'IamInstanceProfile' not in instance_data:
             print(
@@ -3882,28 +3863,25 @@ class AWSBoto:
         instance_profile_name = instance_profile_arn.split('/')[-1]
 
         # Step 3: Fetch the role name from the instance profile
-        response = iam.get_instance_profile(
+        response = self.iam_client.get_instance_profile(
             InstanceProfileName=instance_profile_name)
         role_name = response['InstanceProfile']['Roles'][0]['RoleName']
 
         # Step 4: Attach the desired policy to the role
         try:
-            iam.attach_role_policy(
+            self.iam_client.attach_role_policy(
                 RoleName=role_name,
                 PolicyArn=policy_arn
             )
             print(f"Policy {policy_arn} attached to role {role_name}")
-        except iam.exceptions.NoSuchEntityException:
+        except self.iam_client.exceptions.NoSuchEntityException:
             print(f"Role {role_name} does not exist!")
-        except iam.exceptions.InvalidInputException as e:
+        except self.iam_client.exceptions.InvalidInputException as e:
             print(f"Invalid input: {e}")
         except Exception as e:
             print(f"Other Error: {e}")
 
-    def _ec2_create_iam_self_destruct_role(self, profile):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        iam = session.client('iam')
+    def _ec2_create_iam_self_destruct_role(self):
 
         # Step 1: Create IAM policy
         policy_document = {
@@ -3924,7 +3902,7 @@ class AWSBoto:
         policy_name = 'SelfDestructPolicy'
 
         policy_arn = self._ec2_create_or_get_iam_policy(
-            policy_name, policy_document, profile)
+            policy_name, policy_document)
 
         # Step 2: Create an IAM role and attach the policy
         trust_relationship = {
@@ -3942,15 +3920,15 @@ class AWSBoto:
 
         role_name = 'SelfDestructRole'
         try:
-            iam.create_role(
+            self.iam_client.create_role(
                 RoleName=role_name,
                 AssumeRolePolicyDocument=json.dumps(trust_relationship),
                 Description='Allows EC2 instances to call AWS services on your behalf.'
             )
-        except iam.exceptions.EntityAlreadyExistsException:
+        except self.iam_client.exceptions.EntityAlreadyExistsException:
             print('IAM SelfDestructRole already exists.')
 
-        iam.attach_role_policy(
+        self.iam_client.attach_role_policy(
             RoleName=role_name,
             PolicyArn=policy_arn
         )
@@ -4153,17 +4131,12 @@ class AWSBoto:
                 break
         return count >= min_idle_cnt
 
-    def _monitor_get_ec2_costs(self, profile=None):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-
-        # Set up boto3 client for Cost Explorer
-        ce = session.client('ce')
-        sts = session.client('sts')
+    def _monitor_get_ec2_costs(self):
 
         # Identify current user/account
-        identity = sts.get_caller_identity()
+        identity = self.sts_client.get_caller_identity()
         user_arn = identity['Arn']
+
         # Check if it's the root user
         is_root = ":root" in user_arn
 
@@ -4174,7 +4147,7 @@ class AWSBoto:
         yesterday = (today - datetime.timedelta(days=1)).date()
 
         # Fetch EC2 cost of the current month
-        monthly_response = ce.get_cost_and_usage(
+        monthly_response = self.ce_client.get_cost_and_usage(
             TimePeriod={
                 'Start': str(first_day_of_month),
                 'End': str(today.date())
@@ -4200,7 +4173,7 @@ class AWSBoto:
         else:
             # Assuming a tag `CreatedBy` (change as per your tagging system)
             user_name = user_arn.split('/')[-1]
-            user_monthly_response = ce.get_cost_and_usage(
+            user_monthly_response = self.ce_client.get_cost_and_usage(
                 TimePeriod={
                     'Start': str(first_day_of_month),
                     'End': str(today.date())
@@ -4229,7 +4202,7 @@ class AWSBoto:
             user_monthly_unit = user_monthly_response['ResultsByTime'][0]['Total']['UnblendedCost']['Unit']
 
         # Fetch cost of each EC2 instance type in the last 24 hours
-        daily_response = ce.get_cost_and_usage(
+        daily_response = self.ce_client.get_cost_and_usage(
             TimePeriod={
                 'Start': str(yesterday),
                 'End': str(today.date())
@@ -4254,7 +4227,7 @@ class AWSBoto:
             # Using monthly unit since it should be the same for daily
             user_daily_unit = monthly_unit
         else:
-            user_daily_response = ce.get_cost_and_usage(
+            user_daily_response = self.ce_client.get_cost_and_usage(
                 TimePeriod={
                     'Start': str(yesterday),
                     'End': str(today.date())
@@ -5106,7 +5079,7 @@ class NIHReporter:
         return sets
 
 
-def args_version():
+def print_version():
 
     print(f'froster v{__version__}\n')
     print(f'Tools version:')
@@ -5168,7 +5141,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
         return
 
     if args.print:
-        cfg.print_config_files()
+        cfg.print_config()
         return
 
     if args.monitor:
@@ -5196,6 +5169,10 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     # If shared configuration and shared_config.ini file exists, then use it
     if cfg.is_shared and os.path.exists(cfg.shared_config_file):
+        print(f'\n**********************************')
+        print(f'*** FROSTER CONFIGURATION DONE ***')
+        print(f'**********************************\n')
+
         print(textwrap.dedent(f'''
             Local configuration: {cfg.config_file}
             Shared configuration: {cfg.shared_config_file}
@@ -5791,8 +5768,18 @@ def subcmd_ssh(args, cfg, aws):
 
 
 def subcmd_credentials(args, aws: AWSBoto):
-    print("Checking credentials...")
-    aws.check_credentials()
+    print("\nChecking AWS credentials...")
+
+    if aws.check_credentials():
+        print('    ...AWS credentials are valid\n')
+    else:
+        print('    ...AWS credentials are NOT valid\n')
+        print('\nYou can configure AWS credentials using the command:')
+        print('    froster config --aws\n')
+        sys.exit(0)
+        
+    print(args.folders)
+    exit(0)
     aws.check_bucket_access_folders(args.folders)
 
 
@@ -6033,10 +6020,10 @@ def main():
 
         # Init AWS Boto
         aws = AWSBoto(args, cfg, arch)
-
+        
         # Print current version of froster
         if args.version:
-            args_version()
+            print_version()
             sys.exit(0)
 
         if cfg.is_shared and cfg.shared_dir:
@@ -6082,14 +6069,15 @@ def main():
         sys.exit(0)
 
     except Exception as exc:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        traceback_details = traceback.extract_tb(exc_traceback)
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        traceback_details = traceback.extract_tb(exc_tb)
 
         # Get the last call stack. The third element in the tuple is the function name
-        last_call = traceback_details[-1]
-        function_name = last_call[2]
+        function_name = traceback_details[-1][2]
+        file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 
-        print(f'Error in function {function_name}: {exc_value}')
+        print(f'\nError: {file_name}: {function_name}: {exc_tb.tb_lineno}: {exc_value}\n')
+
         sys.exit(1)
 
 
