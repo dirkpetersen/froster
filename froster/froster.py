@@ -751,6 +751,25 @@ class ConfigManager:
         # Set the value in the config object
         setattr(self, key, value)
 
+    def ses_verify_requests_sent(self, email_list):
+        '''Set the ses verify requests sent email list in configuration file'''
+        
+        if not email_list:
+            raise ValueError('No email list provided')
+
+        # Write the config object to the config file        
+        self.__set_configuration_entry(
+            'CLOULD', 'ses_verify_requests_sent', email_list)
+
+    def set_ec2_last_instance(self, instance):
+        '''Set the last ec2 instance in configuration file'''
+
+        if not instance:
+            raise ValueError('No instance provided')
+
+        # Write the config object to the config file        
+        self.__set_configuration_entry('CLOULD', 'ec2_last_instance', instance)
+
     def set_nih(self):
 
         print(f'\n*** NIH S3 CONFIGURATION ***\n')
@@ -3512,27 +3531,9 @@ class AWSBoto:
         instance.wait_until_running()
         print(f'Instance IP: {instance.public_ip_address}')
 
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
-
-        # Get the config file
-        file = self.cfg.shared_config_file if self.cfg.is_shared else self.cfg.config_file
-        if os.path.exists(file):
-            config.read(file)
-        else:
-            print(f'\n*** NO CONFIGURATION FOUND ***')
-            print('\nYou can configure froster using the command:')
-            print('    froster config\n')
-            return
-
-        # Populate the config object with the answers
-        config['CLOULD'] = {}
-        config['CLOULD']['ec2_last_instance'] = instance.public_ip_address
-
-        # Write the config object to the config file
-        with open(file, 'w') as configfile:
-            config.write(configfile)
-
+        # Save the last instance IP address
+        self.cfg.set_ec2_last_instance(instance.public_ip_address)
+        
         return instance_id, instance.public_ip_address
 
     def ec2_terminate_instance(self, ip):
@@ -3705,14 +3706,14 @@ class AWSBoto:
 
         checks = [sender, to]
         checks = list(set(checks))  # remove duplicates
-        checked = []
+        email_list = []
 
         try:
             for check in checks:
                 if check not in verified_email_addr and check not in ses_verify_requests_sent:
                     response = self.ses_client.verify_email_identity(
                         EmailAddress=check)
-                    checked.append(check)
+                    email_list.append(check)
                     print(
                         f'{check} was used for the first time, verification email sent.')
                     print(
@@ -3727,27 +3728,8 @@ class AWSBoto:
                 print(f'Client Error: {e}')
         except Exception as e:
             print(f'Other Error: {e}')
-
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
-
-        # Get the config file
-        file = self.cfg.shared_config_file if self.cfg.is_shared else self.cfg.config_file
-        if os.path.exists(file):
-            config.read(file)
-        else:
-            print(f'\n*** NO CONFIGURATION FOUND ***')
-            print('\nYou can configure froster using the command:')
-            print('    froster config\n')
-            return
-
-        # Populate the config object with the answers
-        config['CLOULD'] = {}
-        config['CLOULD']['ses_verify_requests_sent'] = checked
-
-        # Write the config object to the config file
-        with open(file, 'w') as configfile:
-            config.write(configfile)
+            
+        self.cfg.ses_verify_requests_sent(email_list)
 
         try:
             response = self.ses_client.send_email(
