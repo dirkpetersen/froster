@@ -127,6 +127,9 @@ class ConfigManager:
         # Froster's ssh default key name
         self.ssh_key_name = 'froster-ec2'
 
+        # Hotspots dir
+        self.hotspots_dir = os.path.join(self.data_dir, 'hotspots')
+
         # Check if there is a ~/.config/froster/config.ini file and populate the variables
         if os.path.exists(self.config_file):
 
@@ -162,6 +165,9 @@ class ConfigManager:
 
                 self.archive_json = os.path.join(
                     self.shared_dir, self.archive_json_file_name)
+
+                self.shared_hotspots_dir = os.path.join(
+                    self.shared_dir, 'hotspots')
 
                 # Change config file if this is a shared configuration
                 config.read(self.shared_config_file)
@@ -411,31 +417,6 @@ class ConfigManager:
             print(f'\n*** NO CONFIGURATION FOUND ***')
             print('\nYou can configure froster using the command:')
             print('    froster config')
-
-    def printdbg(self, *args, **kwargs):
-        # TODO: OHSU-96: To be changed for a logger
-        # use inspect to get the name of the calling function
-        if self.args.debug:
-            current_frame = inspect.currentframe()
-            calling_function = current_frame.f_back.f_code.co_name
-            print(f' DBG {calling_function}():', args, kwargs)
-
-    def replace_symlinks_with_realpaths(self, folders):
-        '''Replace symlinks with real paths'''
-
-        cleaned_folders = []
-
-        for folder in folders:
-            try:
-                # Split the path into its components
-                folder = os.path.expanduser(folder)
-                cleaned_folders.append(os.path.realpath(folder))
-            except Exception as e:
-                print(f"Error processing '{folder}': {e}")
-
-        self.printdbg('cleaned_folders:', cleaned_folders)
-
-        return cleaned_folders
 
     def set_env_vars(self, profile):
         '''Set the environment variables for the AWS profile'''
@@ -1086,7 +1067,8 @@ class Archiver:
 
         self.grants = []
 
-    def index(self, pwalkfolder):
+    def index(self, pwalkfolder, pwalkcsv, pwalkcopy, cores):
+        '''Index the given folder for archiving'''
 
         # move down to class
         daysaged = [5475, 3650, 1825, 1095, 730, 365, 90, 30]
@@ -1094,61 +1076,97 @@ class Archiver:
         # GiB=1073741824
         # MiB=1048576
 
-        # Connect to an in-memory DuckDB instance
-        con = duckdb.connect(':memory:')
-        con.execute(f'PRAGMA threads={self.args.cores};')
-
-        locked_dirs = ''
-        with tempfile.NamedTemporaryFile() as tmpfile:
-            with tempfile.NamedTemporaryFile() as tmpfile2:
-                if not self.args.pwalkcsv:
-                    pwalk_path = os.path.join(sys.prefix, 'bin', 'pwalk')
-                    pwalkcmd = f'{pwalk_path} --NoSnap --one-file-system --header'
-                    # 2> {tmpfile2.name}.err'
-                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {tmpfile2.name}'
-                    self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
+        with tempfile.NamedTemporaryFile() as pwalk_output_folders:
+            with tempfile.NamedTemporaryFile() as pwalk_output:
+                
+                # If pwalkcsv is not provided, run pwalk to get folder metadata
+                if not pwalkcsv:
+                    
+                    # Build the pwalk command
+                    pwalk_bin = os.path.join(sys.prefix, 'bin', 'pwalk')
+                    pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
+                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {pwalk_output.name}'
+                    
+                    # Print the pwalk command
+                    printdbg(f' Running {mycmd} ...', flush=True)
+                    
+                    # Run the pwalk command
                     ret = subprocess.run(mycmd, shell=True,
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    # Check if the pwalk command was successful
                     if ret.returncode != 0:
-                        print(
-                            f'pwalk run failed: {mycmd} Error:\n{ret.stderr}')
-                        return False
-                    lines = ret.stderr.decode(
-                        'utf-8', errors='ignore').splitlines()
-                    locked_dirs = '\n'.join(
-                        [l for l in lines if "Locked Dir:" in l])
-                    pwalkcsv = tmpfile2.name
-                else:
-                    pwalkcsv = self.args.pwalkcsv
-                with tempfile.NamedTemporaryFile() as tmpfile3:
-                    # copy/backup pwalk csv file to network location
-                    if self.args.pwalkcopy:
-                        print(
-                            f' Copying and cleaning {pwalkcsv} to {self.args.pwalkcopy}, please wait ... ', flush=True, end="")
-                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalkcsv} > {self.args.pwalkcopy}'
-                        self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
-                        result = subprocess.run(mycmd, shell=True)
-                        print('Done!', flush=True)
-                        if result.returncode != 0:
-                            print(f"File conversion failed: {mycmd}")
-                            return False
-                    # removing all files from pwalk output, keep only folders
-                    mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {tmpfile3.name}'
-                    self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
+                        print(f'pwalk run failed: {mycmd} Error:\n{ret.stderr}')
+                        sys.exit(1)
+                        
+                    # Get the locked directories from the pwalk command output
+                    lines = ret.stderr.decode('utf-8', errors='ignore').splitlines()
+                    locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l])
+                    
+                    # Store the pwalk command output
+                    pwalkcsv = pwalk_output.name
+
+                # If pwalkcopy_path is provided, copy the pwalkcsv file to the specified location
+                if pwalkcopy:
+
+                    print(f' Copying and cleaning {pwalkcsv} to {pwalkcopy}, please wait ... ', flush=True, end="")
+                    
+                    # Build the copy command
+                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalkcsv} > {pwalkcopy}'
+
+                    # Print the copy command
+                    printdbg(f' Running {mycmd}...', flush=True)
+
+                    # Run the copy command
                     result = subprocess.run(mycmd, shell=True)
+
+                    # Check if the copy command was successful
                     if result.returncode != 0:
-                        print(f"Folder extraction failed: {mycmd}")
-                        return False
+                        print(f'\nError: File conversion failed: {mycmd}\n')
+                        sys.exit(1)
+                    else:
+                        printdbg('    ...done\n')
+
+                # Removing all files from pwalk output, keep only folders
+                with tempfile.NamedTemporaryFile() as only_folders:
+                    
+                    # Build the files removing command
+                    mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {only_folders.name}'
+
+                    # Print the files removing command
+                    printdbg(f' Running {mycmd}...', flush=True)
+
+                    # Run the files removing command
+                    result = subprocess.run(mycmd, shell=True)
+
+                    # Check if the files removing command was successful
+                    if result.returncode != 0:
+                        print(f"\nFolder extraction failed: {mycmd}\n")
+                        sys.exit(1)
+                    else:
+                        printdbg('    ...done\n')
+                    
                     # Temp hack: e.g. Revista_Española_de_Quimioterapia in Spellman
                     # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
                     # pwalk does already output UTF-8, weird, probably duckdb error
-                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {tmpfile3.name} > {tmpfile.name}'
-                    self.cfg.printdbg(f' Running {mycmd} ...', flush=True)
-                    result = subprocess.run(mycmd, shell=True)
-                    if result.returncode != 0:
-                        print(f"File conversion failed: {mycmd}")
-                        return False
 
+                    # Build the file conversion command
+                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {only_folders.name} > {pwalk_output_folders.name}'
+
+                    # Print the file conversion command
+                    printdbg(f' Running {mycmd}...', flush=True)
+
+                    # Run the file conversion command
+                    result = subprocess.run(mycmd, shell=True)
+
+                    # Check if the file conversion command was successful
+                    if result.returncode != 0:
+                        print(f"File conversion failed: {mycmd}\n")
+                        sys.exit(1)
+                    else:
+                        printdbg('    ...done\n')
+
+            # Build the SQL query on the CSV file
             sql_query = f"""SELECT UID as User,
                             st_atime as AccD, st_mtime as ModD,
                             pw_dirsum/1073741824 as GiB, 
@@ -1156,28 +1174,34 @@ class Archiver:
                             filename as Folder, GID as Group,
                             pw_dirsum/1099511627776 as TiB,
                             pw_fcount as FileCount, pw_dirsum as DirSize
-                        FROM read_csv_auto('{tmpfile.name}', 
+                        FROM read_csv_auto('{pwalk_output_folders.name}', 
                                 ignore_errors=1)
                         WHERE pw_fcount > -1 AND pw_dirsum > 0
                         ORDER BY pw_dirsum Desc
                     """  # pw_dirsum > 1073741824
-            self.cfg.printdbg(
-                f' Running SQL query on CSV file {tmpfile.name} ...', flush=True)
+            
+            printdbg(
+                f'Running SQL query on CSV file {pwalk_output_folders.name} ...', flush=True)
+            
+            # Connect to an in-memory DuckDB instance
+            con = duckdb.connect(':memory:')
+            con.execute(f'PRAGMA threads={cores};')
+
+            # Execute the SQL query
             rows = con.execute(sql_query).fetchall()
-            # also query 'parent-inode' as pi,
 
             # Get the column names
             header = con.execute(sql_query).description
 
+        # Set up variables for the hotspots
         totalbytes = 0
-        agedbytes = []
-        for i in daysaged:
-            agedbytes.append(0)
         numhotspots = 0
+        agedbytes = [0] * len(daysaged)
 
+        # Get the path to the hotspots CSV file
         mycsv = self._get_hotspots_path(pwalkfolder)
-        self.cfg.printdbg(
-            f' Running filter and write results to CSV file {mycsv} ...', flush=True)
+
+        printdbg(f' Running filter and write results to CSV file {mycsv} ...', flush=True)
 
         with tempfile.NamedTemporaryFile() as tmpcsv:
             with open(tmpcsv.name, 'w') as f:
@@ -1203,7 +1227,7 @@ class Archiver:
                             if row[1] > daysaged[i]:
                                 if i == 0:
                                     # Is this really 15 years ?
-                                    self.cfg.printdbg(
+                                    printdbg(
                                         f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})', flush=True)
                                 agedbytes[i] += row[9]
             if numhotspots > 0:
@@ -1212,15 +1236,13 @@ class Archiver:
                 self.get_user_hotspot(mycsv)
 
         if numhotspots > 0:
-            # dedented multi-line retaining \n
             print(textwrap.dedent(f'''       
                 Wrote {os.path.basename(mycsv)}
                 with {numhotspots} hotspots >= {self.thresholdGB} GiB 
                 with a total disk use of {round(totalbytes/TiB,3)} TiB
                 '''), flush=True)
             lastagedbytes = 0
-            print(
-                f'Histogram for {len(rows)} total folders processed:', flush=True)
+            print(f'Histogram for {len(rows)} total folders processed:', flush=True)
             for i in range(0, len(daysaged)):
                 if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
                     # dedented multi-line removing \n
@@ -1232,7 +1254,7 @@ class Archiver:
             print('')
         else:
             print(
-                f'No folders larger than {self.thresholdGB} GiB found under {pwalkfolder}', flush=True)
+                f'No folders larger than {self.thresholdGB} GiB found under {pwalkfolder}\n', flush=True)
 
         if locked_dirs:
             print('\n'+locked_dirs, flush=True)
@@ -1240,9 +1262,8 @@ class Archiver:
             \n   WARNING: You cannot access the locked folder(s) 
             above, because you don't have permissions to see
             their content. You will not be able to archive these
-            folders until you have the permissions granted.
+            folders until you have the permissions granted.\n
             '''), flush=True)
-        self.cfg.printdbg(f' Done indexing {pwalkfolder}!', flush=True)
 
     def archive(self, folder, meta, isrecursive=False, issubfolder=False):
 
@@ -1295,7 +1316,7 @@ class Archiver:
                           '--exclude', 'Froster.allfiles.csv',
                           '--exclude', 'Where-did-the-files-go.txt'
                           )
-        self.cfg.printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
+        printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
         # print ('Message:', ret['msg'].replace('\n',';'))
         if ret['stats']['errors'] > 0:
             print('Last Error:', ret['stats']['lastError'])
@@ -1328,7 +1349,7 @@ class Archiver:
             self._upload_file_to_s3(allf_s, self.cfg.bucket, allf_d)
 
         ret = rclone.checksum(hashfile, target, '--max-depth', '1')
-        self.cfg.printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
+        printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
         if ret['stats']['errors'] > 0:
             print('Last Error:', ret['stats']['lastError'])
             print('Checksum test was not successful.')
@@ -1452,8 +1473,8 @@ class Archiver:
                 writer.writerows(writable_folders)
             return user_csv
         except Exception as e:
-            print(f"Error in get_user_hotspot:\n{e}")
-            return False
+            print(f"\nError in get_user_hotspot: {e}\n")
+            sys.exit(1)
 
     def test_write(self, directory):
         testpath = os.path.join(directory, f'.froster.test.{self.cfg.whoami}')
@@ -1843,7 +1864,7 @@ class Archiver:
                         '''))
                         continue
                 ret = rclone.checksum(hashfile, afolder, '--max-depth', '1')
-                self.cfg.printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
+                printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
                 if ret['stats']['errors'] > 0:
                     print('Last Error:', ret['stats']['lastError'])
                     print('Checksum test was not successful.')
@@ -1862,7 +1883,7 @@ class Archiver:
                     if os.path.isfile(dpath) or os.path.islink(dpath):
                         os.remove(dpath)
                         deleted_files.append(dfile)
-                        self.cfg.printdbg(
+                        printdbg(
                             f"File '{dpath}' deleted successfully.")
 
                 # if there is a restore that needs to be deleted a second time
@@ -1930,7 +1951,7 @@ class Archiver:
             if os.path.isfile(fp) or os.path.islink(fp):
                 os.remove(fp)
                 deleted.append(f)
-        self.cfg.printdbg(
+        printdbg(
             f'Files deleted in _delete_tar_content: {", ".join(deleted)}')
 
         return deleted
@@ -1954,7 +1975,7 @@ class Archiver:
                     if row['Tarred'] == 'Yes':
                         if not row['File'] in files:
                             files.append(row['File'])
-        self.cfg.printdbg(
+        printdbg(
             f'Files founds in _get_tar_content: {", ".join(files)}')
         return files
 
@@ -1969,7 +1990,7 @@ class Archiver:
             if rowdict['archive_mode'] == "Recursive":
                 recursive = True
         if folder != rowdict['local_folder']:
-            self.cfg.printdbg(
+            printdbg(
                 f"rowdict[local_folder]: {rowdict['local_folder']}")
             # try to restore from subdir, we need to check if archived recursively
             if not recursive:
@@ -2011,7 +2032,7 @@ class Archiver:
             print(f'Copying files from archive to "{target}" ...')
             ret = rclone.copy(source, target, '--max-depth', '1')
 
-        self.cfg.printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
+        printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
         # print ('Message:', ret['msg'].replace('\n',';'))
         if ret['stats']['errors'] > 0:
             print('Last Error:', ret['stats']['lastError'])
@@ -2067,7 +2088,7 @@ class Archiver:
                     return False
                 hashfile = os.path.join(restpath, '.froster-restored.md5sum')
                 ret = rclone.checksum(hashfile, source, '--max-depth', '1')
-                self.cfg.printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
+                printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
                 if ret['stats']['errors'] > 0:
                     print('Last Error:', ret['stats']['lastError'])
                     print('Checksum test was not successful.')
@@ -2156,7 +2177,7 @@ class Archiver:
                         }
                     )
                     triggered_keys.append(object_key)
-                    self.cfg.printdbg(
+                    printdbg(
                         f'Restore request initiated for {object_key} using {ret_opt} retrieval.')
                 except botocore.exceptions.ClientError as e:
                     if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
@@ -2194,7 +2215,7 @@ class Archiver:
         try:
             return pwd.getpwuid(uid)[0]
         except:
-            self.cfg.printdbg(f'uid2user: Error converting uid {uid}')
+            printdbg(f'uid2user: Error converting uid {uid}')
             return uid
 
     def gid2group(self, gid):
@@ -2202,13 +2223,13 @@ class Archiver:
         try:
             return grp.getgrgid(gid)[0]
         except:
-            self.cfg.printdbg(f'gid2group: Error converting gid {gid}')
+            printdbg(f'gid2group: Error converting gid {gid}')
             return gid
 
     def daysago(self, unixtime):
         # how many days ago is this epoch time ?
         if not unixtime:
-            self.cfg.printdbg(
+            printdbg(
                 'daysago: an integer is required (got type NoneType)')
             return 0
         diff = datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
@@ -2246,7 +2267,7 @@ class Archiver:
         recursive = False
         glacier = False
         rowdict = self.archive_json_get_row(folder)
-        self.cfg.printdbg(f'path: {folder} rowdict: {rowdict}')
+        printdbg(f'path: {folder} rowdict: {rowdict}')
         if rowdict == None:
             return None, None, recursive, glacier
         if 'archive_mode' in rowdict:
@@ -2263,7 +2284,7 @@ class Archiver:
     def archive_json_get_row(self, path_name):
         # get an archive record
         if not os.path.exists(self.archive_json):
-            self.cfg.printdbg(
+            printdbg(
                 f'archive_json_get_row: {self.archive_json} does not exist')
             return None
         with open(self.archive_json, 'r') as file:
@@ -2286,7 +2307,7 @@ class Archiver:
                 if trypath in data:
                     data[trypath]['subdir'] = path_name
                     return data[trypath]
-            self.cfg.printdbg(
+            printdbg(
                 f'archive_json_get_row: {path_name} not found in {self.archive_json}')
             return None
 
@@ -2367,12 +2388,18 @@ class Archiver:
             last_modified_time = folder_mtime
         return last_modified_time
 
+
     def _get_hotspots_path(self, folder):
-        # get a full path name of a new hotspots file
-        # based on a folder name that has been crawled
-        hsfld = os.path.join(self.cfg.shared_dir, 'hotspots')
-        os.makedirs(hsfld, exist_ok=True, mode=0o775)
-        return os.path.join(hsfld, self._get_hotspots_file(folder))
+        ''' Get a full path name of a new hotspots file'''
+
+        # Take the correct hotspots directory
+        hotspotdir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
+
+        # create hotspots directory if it does not exist
+        os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
+
+        # Get the full path name of the new hotspots file
+        return os.path.join(hotspotdir, self._get_hotspots_file(folder))
 
     def _get_hotspots_file(self, folder):
         # get a full path name of a new hotspots file
@@ -2382,11 +2409,9 @@ class Archiver:
         hsfile = folder.replace('/', '+') + '.csv'
         for mnt in mountlist:
             if folder.startswith(mnt['mount_point']):
-                traildir = self._get_last_directory(
-                    mnt['mount_point'])
+                traildir = self._get_last_directory(mnt['mount_point'])
                 hsfile = folder.replace(mnt['mount_point'], '')
-                hsfile = hsfile.replace('/', '+') + '.csv'
-                hsfile = f'@{traildir}{hsfile}'
+                hsfile = f'@{traildir}/{hsfile}'
                 if len(hsfile) > 255:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
         return hsfile
@@ -2405,20 +2430,25 @@ class Archiver:
         return 0
 
     def _get_last_directory(self, path):
+        
         # Remove any trailing slashes
         path = path.rstrip(os.path.sep)
+
         # Split the path by the separator
         path_parts = path.split(os.path.sep)
+
         # Return the last directory
         return path_parts[-1]
 
-    def _get_mount_info(self, fs_types=None):
+    def _get_mount_info(self):
         file_path = '/proc/self/mountinfo'
-        if fs_types is None:
-            fs_types = {'nfs', 'nfs4', 'cifs', 'smb', 'afs', 'ncp',
-                        'ncpfs', 'glusterfs', 'ceph', 'beegfs',
-                        'lustre', 'orangefs', 'wekafs', 'gpfs'}
+
+        fs_types = {'nfs', 'nfs4', 'cifs', 'smb', 'afs', 'ncp',
+                    'ncpfs', 'glusterfs', 'ceph', 'beegfs',
+                    'lustre', 'orangefs', 'wekafs', 'gpfs'}
+
         mountinfo_list = []
+
         with open(file_path, 'r') as f:
             for line in f:
                 fields = line.strip().split(' ')
@@ -2454,7 +2484,7 @@ class Archiver:
             # Upload the file with Intelligent-Tiering storage class
             s3.upload_file(filename, bucket, object_name, ExtraArgs={
                            'StorageClass': 'INTELLIGENT_TIERING'})
-            self.cfg.printdbg(
+            printdbg(
                 f"File {object_name} uploaded to Intelligent-Tiering storage class!")
             # print(f"File {filename} uploaded successfully to Intelligent-Tiering storage class!")
         except Exception as e:
@@ -3013,7 +3043,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
@@ -3120,7 +3150,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
@@ -3154,7 +3184,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
@@ -3177,7 +3207,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
@@ -3501,7 +3531,7 @@ class AWSBoto:
         try:
             ec2_resource.create_tags(Resources=[instance_id], Tags=[tag])
         except Exception as e:
-            self.cfg.printdbg('Error creating Tags: {e}')
+            printdbg('Error creating Tags: {e}')
 
         print(f'Launching instance {instance_id} ... please wait ...')
 
@@ -3596,7 +3626,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
                 print(f'Client Error: {e}')
@@ -3613,7 +3643,8 @@ class AWSBoto:
         return ilist
 
     def _ssh_get_key_path(self):
-        key_path = os.path.join(self.cfg.shared_dir, f'{self.cfg.ssh_key_name}.pem')
+        key_path = os.path.join(self.cfg.shared_dir,
+                                f'{self.cfg.ssh_key_name}.pem')
         mykey_path = os.path.join(
             self.cfg.shared_dir, f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
         if not os.path.exists(key_path):
@@ -3640,7 +3671,7 @@ class AWSBoto:
                 print(f'Error executing "{cmd}."')
         else:
             subprocess.run(cmd, shell=True, capture_output=False, text=True)
-        self.cfg.printdbg(f'ssh command line: {cmd}')
+        printdbg(f'ssh command line: {cmd}')
         return None
 
     def ssh_upload(self, user, host, local_path, remote_path, is_string=False):
@@ -3698,7 +3729,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
             else:
                 print(f'Client Error: {e}')
@@ -3723,7 +3754,7 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
             else:
                 print(f'Client Error: {e}')
@@ -3755,7 +3786,7 @@ class AWSBoto:
             if error_code == 'MessageRejected':
                 print(f'Message was rejected, Error: {e}')
             elif error_code == 'AccessDenied':
-                self.cfg.printdbg(
+                printdbg(
                     f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
                 if not self.args.debug:
                     print(
@@ -4464,7 +4495,7 @@ class Rclone:
         command = self._add_opt(command, '--verbose')
         command = self._add_opt(command, '--use-json-log')
 
-        self.cfg.printdbg('Rclone command:', " ".join(command))
+        printdbg('Rclone command:', " ".join(command))
         try:
             ret = subprocess.run(command, capture_output=True,
                                  text=True, env=self.cfg.envrn)
@@ -4500,7 +4531,7 @@ class Rclone:
         # command = self._add_opt(command, '--verbose')
         # command = self._add_opt(command, '--use-json-log')
         cmdline = " ".join(command)
-        self.cfg.printdbg('Rclone command:', cmdline)
+        printdbg('Rclone command:', cmdline)
         try:
             ret = subprocess.Popen(command, preexec_fn=os.setsid, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, text=True, env=self.cfg.envrn)
@@ -4729,7 +4760,8 @@ class SlurmEssentials:
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             if 'Invalid generic resource' in result.stderr:
-                print('Invalid generic resource request. Please change configuration of slurm_lscratch')
+                print(
+                    'Invalid generic resource request. Please change configuration of slurm_lscratch')
             else:
                 raise RuntimeError(
                     f"Error running sbatch: {result.stderr.strip()}")
@@ -5179,42 +5211,54 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
 
 def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
+    '''Index folders for Froster.'''
 
-    cfg.printdbg(" Command line:", args.cores, args.noslurm,
-                 args.pwalkcsv, args.folders, flush=True)
-
+    # Check if user provided at least one argument
     if not args.folders:
-        print('you must point to at least one folder in your command line')
-        return False
-    args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
-    if args.pwalkcsv and not os.path.exists(args.pwalkcsv):
-        print(f'File "{args.pwalkcsv}" does not exist.')
-        return False
+        print('\nError: You should point to at least one folder. Check the index command usage with "froster index --help"\n')
+        exit(0)
 
-    for fld in args.folders:
-        if not os.path.isdir(fld):
-            print(f'The folder {fld} does not exist.')
-            if not args.pwalkcsv:
-                return False
+    # Check if the provided pwalk CSV file exists
+    if args.pwalkcsv and not os.path.isfile(args.pwalkcsv):
+        print(f'\nError: File "{args.pwalkcsv}" does not exist.\n')
+        exit(0)
 
+    # Check if the provided pwalk copy folder exists
+    if args.pwalkcopy and not os.path.isdir(args.pwalkcopy):
+        print(f'\nError: Folder "{args.pwalkcopy}" does not exist.\n')
+        exit(0)
+        
+    # Check if all the provided folders exist
+    for folder in args.folders:
+        if not os.path.isdir(folder):
+            print(f'\nError: The folder {folder} does not exist.\n')
+            exit(0)
+    
+    # Print the command line arguments only if debug mode is enabled
+    printdbg(" Command line:", args.cores, args.noslurm,
+             args.pwalkcsv, args.folders, flush=True)
+
+    # Clean the provided paths
+    args.folders = clean_paths(args.folders)
+    
+    # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
-        for fld in args.folders:
-            fld = fld.rstrip(os.path.sep)
-            print(f'Indexing folder {fld}, please wait ...', flush=True)
-            arch.index(fld)
+        for folder in args.folders:
+            print(f'\nIndexing folder {folder}...\n', flush=True)
+            arch.index(folder, args.pwalkcsv, args.pwalkcopy, args.cores)
+            print(f'    ...{folder} indexed.\n', flush=True)
     else:
         se = SlurmEssentials(args, cfg)
         label = arch._get_hotspots_file(args.folders[0]).replace('.csv', '')
         label = label.replace(' ', '_')
         shortlabel = os.path.basename(args.folders[0])
-        myjobname = f'froster:index:{shortlabel}'
-        email = cfg.email
-        se.add_line(f'#SBATCH --job-name={myjobname}')
+
+        se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
         se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
         se.add_line(f'#SBATCH --mem=64G')
         se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --mail-user={cfg.email}')
         se.add_line(f'#SBATCH --time={se.walltime}')
         if se.partition:
             se.add_line(f'#SBATCH --partition={se.partition}')
@@ -5311,7 +5355,7 @@ def subcmd_archive(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
         args.folders.append(retline[5])
 
     else:
-        args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+        args.folders = clean_paths(args.folders)
 
     if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
         print(f'Profile "{args.aws_profile}" not found.')
@@ -5407,10 +5451,10 @@ def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
     global TABLECSV
     global SELECTEDFILE
 
-    cfg.printdbg("restore:", args.cores, args.aws_profile, args.noslurm,
-                 args.days, args.retrieveopt, args.nodownload, args.folders)
+    printdbg("restore:", args.cores, args.aws_profile, args.noslurm,
+             args.days, args.retrieveopt, args.nodownload, args.folders)
     fld = '" "'.join(args.folders)
-    cfg.printdbg(f'default cmdline: froster restore "{fld}"')
+    printdbg(f'default cmdline: froster restore "{fld}"')
 
     # *********
     if args.monitor:
@@ -5431,17 +5475,17 @@ def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
         if len(retline) < 2:
             print('Error: froster-archives table did not return result')
             return False
-        cfg.printdbg("subcmd_restore dialog returns:", retline)
+        printdbg("subcmd_restore dialog returns:", retline)
         args.folders.append(retline[0])
         if retline[2]:
             cfg.aws_profile = retline[2]
             args.aws_profile = cfg.aws_profile
             cfg.set_env_vars(cfg.aws_profile)
-            cfg.printdbg("AWS profile:", cfg.aws_profile)
+            printdbg("AWS profile:", cfg.aws_profile)
     else:
         pass
         # we actually want to support symlinks
-        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+        # args.folders = clean_paths(args.folders)
 
     if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
         print(f'Profile "{args.aws_profile}" not found.')
@@ -5496,7 +5540,7 @@ def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
                         cmdline = cmdline.replace('/froster.py ', '/froster ')
                     if not fld in cmdline:
                         cmdline = f'{cmdline} "{fld}"'
-                    cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
+                    printdbg(f'Command line passed to Slurm:\n{cmdline}')
                     se.add_line(cmdline)
                     jobid = se.sbatch()
                     print(
@@ -5535,7 +5579,7 @@ def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
         if not args.folders[0] in cmdline:
             folders = '" "'.join(args.folders)
             cmdline = f'{cmdline} "{folders}"'
-        cfg.printdbg(f'Command line passed to Slurm:\n{cmdline}')
+        printdbg(f'Command line passed to Slurm:\n{cmdline}')
         se.add_line(cmdline)
         jobid = se.sbatch()
         print(f'Submitted froster restore job: {jobid}')
@@ -5550,9 +5594,9 @@ def subcmd_delete(args, cfg, arch, aws):
     global TABLECSV
     global SELECTEDFILE
 
-    cfg.printdbg("delete:", args.aws_profile, args.folders)
+    printdbg("delete:", args.aws_profile, args.folders)
     fld = '" "'.join(args.folders)
-    cfg.printdbg(f'default cmdline: froster delete "{fld}"')
+    printdbg(f'default cmdline: froster delete "{fld}"')
 
     if not args.folders:
         TABLECSV = arch.archive_json_get_csv(
@@ -5567,7 +5611,7 @@ def subcmd_delete(args, cfg, arch, aws):
         if len(retline) < 2:
             print('Error: froster-archives table did not return result')
             return False
-        cfg.printdbg("dialog returns:", retline)
+        printdbg("dialog returns:", retline)
         args.folders.append(retline[0])
         if retline[2]:
             cfg.aws_profile = retline[2]
@@ -5576,7 +5620,7 @@ def subcmd_delete(args, cfg, arch, aws):
     else:
         pass
         # we actually want to support symlinks
-        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+        # args.folders = clean_paths(args.folders)
 
     if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
         print(f'Profile "{args.aws_profile}" not found.')
@@ -5590,7 +5634,7 @@ def subcmd_delete(args, cfg, arch, aws):
         print(
             f'Deleting archived files in "{fld}", please wait ...', flush=True)
         if not arch.delete(fld):
-            cfg.printdbg(
+            printdbg(
                 f'  Archiver.delete({fld}) returned False', flush=True)
 
 
@@ -5601,9 +5645,9 @@ def subcmd_mount(args, cfg, arch, aws):
     global TABLECSV
     global SELECTEDFILE
 
-    cfg.printdbg("mount:", args.aws_profile, args.mountpoint, args.folders)
+    printdbg("mount:", args.aws_profile, args.mountpoint, args.folders)
     fld = '" "'.join(args.folders)
-    cfg.printdbg(f'default cmdline: froster mount "{fld}"')
+    printdbg(f'default cmdline: froster mount "{fld}"')
 
     interactive = False
     if not args.folders:
@@ -5620,7 +5664,7 @@ def subcmd_mount(args, cfg, arch, aws):
         if len(retline) < 2:
             print('Error: froster-archives table did not return result')
             return False
-        cfg.printdbg("dialog returns:", retline)
+        printdbg("dialog returns:", retline)
         args.folders.append(retline[0])
         if retline[2]:
             cfg.aws_profile = retline[2]
@@ -5629,7 +5673,7 @@ def subcmd_mount(args, cfg, arch, aws):
     else:
         pass
         # we actually want to support symlinks
-        # args.folders = cfg.replace_symlinks_with_realpaths(args.folders)
+        # args.folders = clean_paths(args.folders)
 
     if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
         print(f'Profile "{args.aws_profile}" not found.')
@@ -5684,7 +5728,7 @@ def subcmd_umount(args, cfg):
     if len(mounts) == 0:
         print("No Rclone mounts on this computer.")
         return False
-    folders = cfg.replace_symlinks_with_realpaths(args.folders)
+    folders = clean_paths(args.folders)
     if len(folders) == 0:
         TABLECSV = "\n".join(mounts)
         TABLECSV = "Mountpoint\n"+TABLECSV
@@ -5793,7 +5837,7 @@ def parse_arguments():
                                                help=textwrap.dedent(f'''
             Credential manager
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    parser_credentials.add_argument('--check', '-c', dest='crd-check', action='store_true', default=False,
+    parser_credentials.add_argument('-c', '--check', dest='crd-check', action='store_true',
                                     help="Check if there are valid credentials on default routes.")
 
     # ***
@@ -5804,29 +5848,29 @@ def parse_arguments():
             You will need to answer a few questions about your cloud and hpc setup.
         '''), formatter_class=argparse.RawTextHelpFormatter)
 
-    parser_config.add_argument('-a', '--aws', dest='aws', action='store_true', default=False,
+    parser_config.add_argument('-a', '--aws', dest='aws', action='store_true',
                                help="Setup AWS profile")
 
-    parser_config.add_argument('-m', '--monitor', dest='monitor', action='store_true', default=False,
+    parser_config.add_argument('-m', '--monitor', dest='monitor', action='store_true',
                                help='Setup froster as a monitoring cronjob ' +
                                'on an ec2 instance and notify the user email address')
 
-    parser_config.add_argument('-n', '--nih', dest='nih', action='store_true', default=False,
+    parser_config.add_argument('-n', '--nih', dest='nih', action='store_true',
                                help="Setup NIH reporter configuration")
 
-    parser_config.add_argument('-p', '--print', dest='print', action='store_true', default=False,
+    parser_config.add_argument('-p', '--print', dest='print', action='store_true',
                                help="Print the current configuration")
 
-    parser_config.add_argument('-3', '--s3', dest='s3', action='store_true', default=False,
+    parser_config.add_argument('-3', '--s3', dest='s3', action='store_true',
                                help="Setup s3 bucket configuration")
 
-    parser_config.add_argument('-s', '--shared', dest='shared', action='store_true', default=False,
+    parser_config.add_argument('-s', '--shared', dest='shared', action='store_true',
                                help="Setup shared configuration")
 
-    parser_config.add_argument('-l', '--slurm', dest='slurm', action='store_true', default=False,
+    parser_config.add_argument('-l', '--slurm', dest='slurm', action='store_true',
                                help="Setup slurm configuration")
 
-    parser_config.add_argument('-u', '--user', dest='user', action='store_true', default=False,
+    parser_config.add_argument('-u', '--user', dest='user', action='store_true',
                                help="Setup user specific configuration")
 
     # ***
@@ -5838,19 +5882,16 @@ def parse_arguments():
             index job will be automatically submitted to Slurm if the Slurm tools are
             found.
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    parser_index.add_argument('--pwalk-csv', '-p', dest='pwalkcsv', action='store', default='',
-                              help='If someone else has already created CSV files using pwalk ' +
-                              'you can enter a specific pwalk CSV file here and are not ' +
-                              'required to run the time consuming pwalk.' +
-                              '')
-    parser_index.add_argument('--pwalk-copy', '-y', dest='pwalkcopy', action='store', default='',
-                              help='Create this backup copy of a newly generated pwalk CSV file. ' +
-                              'By default the pwalk csv file will only be gnerated in temp space ' +
-                              'and then deleted.' +
-                              '')
+    
     parser_index.add_argument('folders', action='store', default=[],  nargs='*',
-                              help='folders you would like to index (separated by space), ' +
+                              help='Folders you would like to index (separated by space), ' +
                               'using the pwalk file system crawler ')
+    
+    parser_index.add_argument('-p', '--pwalk-csv', dest='pwalkcsv', action='store', default='',
+                              help='Use an existing pwalk CSV file instead of generating a new one.')
+
+    parser_index.add_argument('-y', '--pwalk-copy', dest='pwalkcopy', action='store', default='',
+                              help='Path where the pwalk CSV file should be copied to.')
 
     # ***
 
@@ -5976,6 +6017,31 @@ def parse_arguments():
 
     return parser
 
+# TODO: OHSU-103: Move this function to utils module
+# TODO: OHSU-96: To be changed for a logger
+def printdbg(*args, **kwargs):
+    if is_debug:
+        current_frame = inspect.currentframe()
+        calling_function = current_frame.f_back.f_code.co_name
+        print(f' DBG {calling_function}():', args, kwargs)
+
+# TODO: OHSU-103: Move this function to utils module
+def clean_paths(paths):
+    '''Clean paths by expanding user and symlinks, and removing trailing slashes.'''
+
+    cleaned_paths = []
+
+    for path in paths:
+        try:
+            # Split the path into its components
+            cleaned_paths.append(os.path.realpath(os.path.expanduser(path).rstrip(os.path.sep))
+)
+        except Exception as e:
+            print(f"Error processing '{path}': {e}")
+
+    printdbg('cleaned_folders:', cleaned_paths)
+
+    return cleaned_paths
 
 def main():
 
@@ -5988,6 +6054,10 @@ def main():
         # parse arguments using python's internal module argparse.py
         parser = parse_arguments()
         args = parser.parse_args()
+
+        # TODO: OHSU-96: To be changed for a logger
+        global is_debug
+        is_debug = args.debug
 
         # Declaring variables
         TABLECSV = ''  # CSV string for DataTable
@@ -6059,7 +6129,7 @@ def main():
         file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 
         print(
-            f'\nError: {file_name}: {function_name}: {exc_tb.tb_lineno}: {exc_value}\n')
+            f'\nError: file {file_name}: function {function_name}: line {exc_tb.tb_lineno}: {exc_value}\n')
 
         sys.exit(1)
 
