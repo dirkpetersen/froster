@@ -1202,40 +1202,36 @@ class Archiver:
         # Get the path to the hotspots CSV file
         mycsv = self.get_hotspots_path(folder)
 
-        with tempfile.NamedTemporaryFile() as tmpcsv:
-            with open(tmpcsv.name, 'w') as f:
-                writer = csv.writer(f, dialect='excel')
-                writer.writerow([col[0] for col in header])
-                # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
-                for r in rows:
-                    row = list(r)
-                    if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
-                        atime = self._get_newest_file_atime(row[5], row[1])
-                        mtime = self._get_newest_file_mtime(row[5], row[2])
-                        row[0] = self.uid2user(row[0])
-                        row[1] = self.daysago(atime)
-                        row[2] = self.daysago(mtime)
-                        row[3] = int(row[3])
-                        row[4] = int(row[4])
-                        row[6] = self.gid2group(row[6])
-                        row[7] = int(row[7])
-                        writer.writerow(row)
-                        numhotspots += 1
-                        totalbytes += row[9]
-                        for i in range(0, len(daysaged)):
-                            if row[1] > daysaged[i]:
-                                if i == 0:
-                                    # Is this really 15 years ?
-                                    printdbg(
-                                        f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})', flush=True)
-                                agedbytes[i] += row[9]
-
-            # Write the csv file even if not hotpots found.
-            # This file is proof that indexer was run on this folder
-            shutil.copyfile(tmpcsv.name, mycsv)
+        # Write the hotspots to the CSV file
+        with open(mycsv, 'w') as f:
+            writer = csv.writer(f, dialect='excel')
+            writer.writerow([col[0] for col in header])
+            # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
+            for r in rows:
+                row = list(r)
+                if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
+                    atime = self._get_newest_file_atime(row[5], row[1])
+                    mtime = self._get_newest_file_mtime(row[5], row[2])
+                    row[0] = self.uid2user(row[0])
+                    row[1] = self.daysago(atime)
+                    row[2] = self.daysago(mtime)
+                    row[3] = int(row[3])
+                    row[4] = int(row[4])
+                    row[6] = self.gid2group(row[6])
+                    row[7] = int(row[7])
+                    writer.writerow(row)
+                    numhotspots += 1
+                    totalbytes += row[9]
+                    for i in range(0, len(daysaged)):
+                        if row[1] > daysaged[i]:
+                            if i == 0:
+                                # Is this really 15 years ?
+                                printdbg(
+                                    f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})', flush=True)
+                            agedbytes[i] += row[9]
 
         print(textwrap.dedent(f'''       
-            Wrote {os.path.basename(mycsv)}
+            Wrote {mycsv}
                 with {numhotspots} hotspots >= {self.thresholdGB} GiB 
                 with a total disk use of {round(totalbytes/TiB,3)} TiB
             '''), flush=True)
@@ -5239,7 +5235,7 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
                 print(f'\n    ...folder indexed and output copied\n', flush=True)
             else:
 
-                print(f'\nIndexing folder {folder}...', flush=True)
+                print(f'\nIndexing folder "{folder}"...', flush=True)
 
                 # Get the path to the hotspots CSV file
                 folder_hotspot = arch.get_hotspots_path(folder)
@@ -5249,7 +5245,7 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
                     print(f'    ...folder already indexed at {folder_hotspot}\n', flush=True)
                 else:
                     arch.index(folder)
-                    print(f'\n    ...folder {folder} indexed.\n', flush=True)
+                    print(f'\n    ...folder indexed.\n', flush=True)
     else:
         # TODO: Review slurm implementation regarding new changes
         se = SlurmEssentials(args, cfg)
