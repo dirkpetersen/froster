@@ -1151,7 +1151,7 @@ class Archiver:
                         print(f"\nError: command {mycmd} failed with returncode {result.returncode}\n")
                         sys.exit(1)
 
-                    # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
+                    # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
                     # pwalk does already output UTF-8, weird, probably duckdb error
 
                     # Build the file conversion command
