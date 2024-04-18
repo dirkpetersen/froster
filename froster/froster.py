@@ -80,6 +80,11 @@ class ConfigManager:
         self.archive_json_file_name = 'froster-archives.json'
         self.shared_config_file_name = 'shared_config.ini'
 
+        # Initialize the variables that check if specific configuration sections have been initialized
+        self.user_init = False
+        self.aws_init = False
+        self.s3_init = False
+
         # Whoami
         self.whoami = getpass.getuser()
 
@@ -143,6 +148,10 @@ class ConfigManager:
             self.name = config.get('USER', 'name', fallback=None)
             self.email = config.get('USER', 'email', fallback=None)
 
+            # Check if user configuration is complete
+            if self.name and self.email:
+                self.user_init = True
+
             # AWS profile
             self.aws_profile = config.get(
                 'AWS', 'aws_profile', fallback=None)
@@ -150,6 +159,10 @@ class ConfigManager:
             # AWS region
             self.aws_region = config.get(
                 'AWS', 'aws_region', fallback=None)
+            
+            # Check if aws configuration is complete
+            if self.aws_profile and self.aws_region:
+                self.aws_init = True
 
             # Shared configuration
             self.is_shared = config.getboolean(
@@ -186,6 +199,10 @@ class ConfigManager:
             # Store aws s3 storage class in the config object
             self.storage_class = config.get(
                 'S3', 'storage_class', fallback=None)
+            
+            # Check if s3 configuration is complete
+            if self.bucket_name and self.archive_dir and self.storage_class:
+                self.s3_init = True
 
             # Slurm configuration
             self.slurm_walltime_days = config.get(
@@ -483,6 +500,12 @@ class ConfigManager:
         return True
 
     def set_aws(self, aws: 'AWSBoto'):
+
+        if not self.user_init:
+            print(f'\nUser configuration is missing')
+            print('You can configure user settings using the command:')
+            print('    froster config --user\n')
+            sys.exit(0)
 
         print(f'\n*** AWS CONFIGURATION ***\n')
 
@@ -1067,7 +1090,7 @@ class Archiver:
 
         self.grants = []
 
-    def index(self, pwalkfolder, pwalkcsv, pwalkcopy, cores):
+    def index(self, folder):
         '''Index the given folder for archiving'''
 
         # move down to class
@@ -1076,122 +1099,100 @@ class Archiver:
         # GiB=1073741824
         # MiB=1048576
 
-        with tempfile.NamedTemporaryFile() as pwalk_output_folders:
-            with tempfile.NamedTemporaryFile() as pwalk_output:
-                
-                # If pwalkcsv is not provided, run pwalk to get folder metadata
-                if not pwalkcsv:
-                    
+        # Run pwalk on given folder
+        with tempfile.NamedTemporaryFile() as pwalk_output:
+            with tempfile.NamedTemporaryFile() as pwalk_output_folders:
+                with tempfile.NamedTemporaryFile() as pwalk_output_folders_converted:
+
                     # Build the pwalk command
                     pwalk_bin = os.path.join(sys.prefix, 'bin', 'pwalk')
                     pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
-                    mycmd = f'{pwalkcmd} "{pwalkfolder}" > {pwalk_output.name}'
-                    
-                    # Print the pwalk command
-                    printdbg(f' Running {mycmd} ...', flush=True)
+                    mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
                     
                     # Run the pwalk command
                     ret = subprocess.run(mycmd, shell=True,
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     
                     # Check if the pwalk command was successful
                     if ret.returncode != 0:
-                        print(f'pwalk run failed: {mycmd} Error:\n{ret.stderr}')
+                        print(f"\nError: command {mycmd} failed with returncode {ret.returncode}\n")
                         sys.exit(1)
+
+                    # If pwalkcopy location provided, then copy the pwalk output file to the specified location
+                    if self.args.pwalkcopy:
+
+                        copy_filename = folder.replace('/', '+') + '.csv'
+                        copy_file_path = os.path.join(self.args.pwalkcopy, copy_filename)
+
+                        print(f'\nCopying pwalk output to {copy_file_path}... ')
                         
-                    # Get the locked directories from the pwalk command output
-                    lines = ret.stderr.decode('utf-8', errors='ignore').splitlines()
-                    locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l])
-                    
-                    # Store the pwalk command output
-                    pwalkcsv = pwalk_output.name
+                        # Build the copy command
+                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
 
-                # If pwalkcopy_path is provided, copy the pwalkcsv file to the specified location
-                if pwalkcopy:
+                        # Run the copy command
+                        result = subprocess.run(mycmd, shell=True)
 
-                    print(f' Copying and cleaning {pwalkcsv} to {pwalkcopy}, please wait ... ', flush=True, end="")
-                    
-                    # Build the copy command
-                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalkcsv} > {pwalkcopy}'
+                        # Check if the copy command was successful
+                        if result.returncode != 0:
+                            print(
+                                f"\nError: command {mycmd} failed with returncode {result.returncode}\n")
+                            sys.exit(1)
+                        else:
+                            print('    ...copy done')
 
-                    # Print the copy command
-                    printdbg(f' Running {mycmd}...', flush=True)
-
-                    # Run the copy command
-                    result = subprocess.run(mycmd, shell=True)
-
-                    # Check if the copy command was successful
-                    if result.returncode != 0:
-                        print(f'\nError: File conversion failed: {mycmd}\n')
-                        sys.exit(1)
-                    else:
-                        printdbg('    ...done\n')
-
-                # Removing all files from pwalk output, keep only folders
-                with tempfile.NamedTemporaryFile() as only_folders:
-                    
                     # Build the files removing command
-                    mycmd = f'grep -v ",-1,0$" "{pwalkcsv}" > {only_folders.name}'
-
-                    # Print the files removing command
-                    printdbg(f' Running {mycmd}...', flush=True)
+                    mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
 
                     # Run the files removing command
                     result = subprocess.run(mycmd, shell=True)
 
                     # Check if the files removing command was successful
                     if result.returncode != 0:
-                        print(f"\nFolder extraction failed: {mycmd}\n")
+                        print(f"\nError: command {mycmd} failed with returncode {result.returncode}\n")
                         sys.exit(1)
-                    else:
-                        printdbg('    ...done\n')
-                    
-                    # Temp hack: e.g. Revista_Española_de_Quimioterapia in Spellman
+
                     # Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
                     # pwalk does already output UTF-8, weird, probably duckdb error
 
                     # Build the file conversion command
-                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {only_folders.name} > {pwalk_output_folders.name}'
-
-                    # Print the file conversion command
-                    printdbg(f' Running {mycmd}...', flush=True)
+                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} -o {pwalk_output_folders_converted.name}'
 
                     # Run the file conversion command
                     result = subprocess.run(mycmd, shell=True)
 
                     # Check if the file conversion command was successful
                     if result.returncode != 0:
-                        print(f"File conversion failed: {mycmd}\n")
+                        print(f"\nError: command {mycmd} failed with returncode {result.returncode}\n")
                         sys.exit(1)
-                    else:
-                        printdbg('    ...done\n')
 
-            # Build the SQL query on the CSV file
-            sql_query = f"""SELECT UID as User,
-                            st_atime as AccD, st_mtime as ModD,
-                            pw_dirsum/1073741824 as GiB, 
-                            pw_dirsum/1048576/pw_fcount as MiBAvg,                            
-                            filename as Folder, GID as Group,
-                            pw_dirsum/1099511627776 as TiB,
-                            pw_fcount as FileCount, pw_dirsum as DirSize
-                        FROM read_csv_auto('{pwalk_output_folders.name}', 
-                                ignore_errors=1)
-                        WHERE pw_fcount > -1 AND pw_dirsum > 0
-                        ORDER BY pw_dirsum Desc
-                    """  # pw_dirsum > 1073741824
-            
-            printdbg(
-                f'Running SQL query on CSV file {pwalk_output_folders.name} ...', flush=True)
-            
-            # Connect to an in-memory DuckDB instance
-            con = duckdb.connect(':memory:')
-            con.execute(f'PRAGMA threads={cores};')
+                    # Build the SQL query on the CSV file
+                    sql_query = f"""SELECT UID as User,
+                                    st_atime as AccD, st_mtime as ModD,
+                                    pw_dirsum/1073741824 as GiB, 
+                                    pw_dirsum/1048576/pw_fcount as MiBAvg,                            
+                                    filename as Folder, GID as Group,
+                                    pw_dirsum/1099511627776 as TiB,
+                                    pw_fcount as FileCount, pw_dirsum as DirSize
+                                FROM read_csv_auto('{pwalk_output_folders_converted.name}', 
+                                        ignore_errors=1)
+                                WHERE pw_fcount > -1 AND pw_dirsum > 0
+                                ORDER BY pw_dirsum Desc
+                            """  # pw_dirsum > 1073741824
+    
+                    # Connect to an in-memory DuckDB instance
+                    duckdb_connection = duckdb.connect(':memory:')
 
-            # Execute the SQL query
-            rows = con.execute(sql_query).fetchall()
+                    # Set the number of threads to use
+                    duckdb_connection.execute(f'PRAGMA threads={self.args.cores};')
 
-            # Get the column names
-            header = con.execute(sql_query).description
+                    # Execute the SQL query
+                    rows = duckdb_connection.execute(sql_query).fetchall()
+
+                    # Get the column names
+                    header = duckdb_connection.execute(sql_query).description
+
+                    # Close the DuckDB connection
+                    duckdb_connection.close()
 
         # Set up variables for the hotspots
         totalbytes = 0
@@ -1199,9 +1200,7 @@ class Archiver:
         agedbytes = [0] * len(daysaged)
 
         # Get the path to the hotspots CSV file
-        mycsv = self._get_hotspots_path(pwalkfolder)
-
-        printdbg(f' Running filter and write results to CSV file {mycsv} ...', flush=True)
+        mycsv = self.get_hotspots_path(folder)
 
         with tempfile.NamedTemporaryFile() as tmpcsv:
             with open(tmpcsv.name, 'w') as f:
@@ -1230,40 +1229,30 @@ class Archiver:
                                     printdbg(
                                         f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})', flush=True)
                                 agedbytes[i] += row[9]
-            if numhotspots > 0:
-                shutil.copyfile(tmpcsv.name, mycsv)
-                # filter hotspots file for folders to which the current user has write access
-                self.get_user_hotspot(mycsv)
 
-        if numhotspots > 0:
-            print(textwrap.dedent(f'''       
-                Wrote {os.path.basename(mycsv)}
+            # Write the csv file even if not hotpots found.
+            # This file is proof that indexer was run on this folder
+            shutil.copyfile(tmpcsv.name, mycsv)
+
+        print(textwrap.dedent(f'''       
+            Wrote {os.path.basename(mycsv)}
                 with {numhotspots} hotspots >= {self.thresholdGB} GiB 
                 with a total disk use of {round(totalbytes/TiB,3)} TiB
-                '''), flush=True)
-            lastagedbytes = 0
-            print(f'Histogram for {len(rows)} total folders processed:', flush=True)
-            for i in range(0, len(daysaged)):
-                if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
-                    # dedented multi-line removing \n
-                    print(textwrap.dedent(f'''  
-                    {round(agedbytes[i]/TiB,3)} TiB have not been accessed 
-                    for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
-                    ''').replace('\n', ''), flush=True)
-                lastagedbytes = agedbytes[i]
-            print('')
-        else:
-            print(
-                f'No folders larger than {self.thresholdGB} GiB found under {pwalkfolder}\n', flush=True)
-
-        if locked_dirs:
-            print('\n'+locked_dirs, flush=True)
-            print(textwrap.dedent(f'''
-            \n   WARNING: You cannot access the locked folder(s) 
-            above, because you don't have permissions to see
-            their content. You will not be able to archive these
-            folders until you have the permissions granted.\n
             '''), flush=True)
+        
+
+        print(f'Total folders processed: {len(rows)}', flush=True)
+
+        lastagedbytes = 0
+        for i in range(0, len(daysaged)):
+            if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
+                # dedented multi-line removing \n
+                print(textwrap.dedent(f'''  
+                {round(agedbytes[i]/TiB,3)} TiB have not been accessed 
+                for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
+                ''').replace('\n', ''), flush=True)
+            lastagedbytes = agedbytes[i]
+
 
     def archive(self, folder, meta, isrecursive=False, issubfolder=False):
 
@@ -1407,25 +1396,31 @@ class Archiver:
                 continue
         return True
 
-    def archive_batch(self):
+    def archive_batch(self, file):
 
-        print(f'\nProcessing hotspots file {SELECTEDFILE}!')
+        print(f'\nProcessing hotspots file {file}')
 
         agefld = 'AccD'
+
         if self.args.agemtime:
             agefld = 'ModD'
 
         # Initialize a connection to an in-memory database
-        conn = duckdb.connect(database=':memory:', read_only=False)
-        conn.execute(f'PRAGMA threads={self.args.cores};')
+        duckdb_connection = duckdb.connect(database=':memory:', read_only=False)
+
+        # Set the number of threads to use
+        duckdb_connection.execute(f'PRAGMA threads={self.args.cores};')
 
         # Register CSV file as a virtual table
-        conn.execute(
-            f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{SELECTEDFILE}')")
+        duckdb_connection.execute(
+            f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{file}')")
 
         # Now, you can run SQL queries on this virtual table
-        rows = conn.execute(
-            f"SELECT * FROM hs WHERE {agefld} > {self.args.older} and GiB > {self.args.larger} ").fetchall()
+        rows = duckdb_connection.execute(
+            f"SELECT * FROM hs WHERE {agefld} >= {self.args.older} and GiB >= {self.args.larger} ").fetchall()
+
+        # Close the DuckDB connection
+        duckdb_connection.close()
 
         totalspace = 0
         cmdline = ""
@@ -1438,10 +1433,6 @@ class Archiver:
         print(
             f'Total space to archive: {format(round(totalspace, 3),",")} GiB\n')
 
-        # Don't forget to close the connection when done
-        conn.close()
-
-        return True
 
     def get_user_hotspot(self, hotspot_csv):
         # Reduce a hotspots file to the folders that the user has write access to
@@ -1640,14 +1631,13 @@ class Archiver:
                 if e.errno == 13:
                     print(
                         "Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
-                    return 13
+                    sys.exit(13)
                 else:
                     print(f"An unexpected PermissionError occurred:\n{e}")
-                    return False
+                    sys.exit(1)
             except Exception as e:
                 print(f"An unexpected error occurred:\n{e}")
-                return False
-        return True
+                sys.exit(1)
 
     def _tar_small_files(self, directory, smallsize=1024, recursive=False):
         for root, dirs, files in self._walker(directory):
@@ -2341,9 +2331,8 @@ class Archiver:
     def _get_newest_file_atime(self, folder_path, folder_atime=None):
         # Because the folder atime is reset when crawling we need
         # to lookup the atime of the last accessed file in this folder
-        if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
-            if self.args.debug and not self.args.pwalkcsv:
-                print(f" Invalid folder path: {folder_path}")
+        if not folder_path or not os.path.exists(folder_path):
+            print(f" Invalid folder path: {folder_path}")
             return folder_atime
         last_accessed_time = None
         try:
@@ -2366,10 +2355,10 @@ class Archiver:
     def _get_newest_file_mtime(self, folder_path, folder_mtime=None):
         # Because the folder atime is reset when crawling we need
         # to lookup the atime of the last modified file in this folder
-        if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
-            if self.args.debug and not self.args.pwalkcsv:
-                print(f" Invalid folder path: {folder_path}")
+        if not folder_path or not os.path.exists(folder_path):
+            print(f" Invalid folder path: {folder_path}")
             return folder_mtime
+    
         last_modified_time = None
         try:
             subobjects = os.listdir(folder_path)
@@ -2389,7 +2378,7 @@ class Archiver:
         return last_modified_time
 
 
-    def _get_hotspots_path(self, folder):
+    def get_hotspots_path(self, folder):
         ''' Get a full path name of a new hotspots file'''
 
         # Take the correct hotspots directory
@@ -2411,7 +2400,7 @@ class Archiver:
             if folder.startswith(mnt['mount_point']):
                 traildir = self._get_last_directory(mnt['mount_point'])
                 hsfile = folder.replace(mnt['mount_point'], '')
-                hsfile = f'@{traildir}/{hsfile}'
+                hsfile = f'@{traildir}+{hsfile}'
                 if len(hsfile) > 255:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
         return hsfile
@@ -2501,13 +2490,15 @@ class AWSBoto:
         self.cfg = cfg
         self.arch = arch
 
+        self.valid_session = False
+
         if hasattr(cfg, 'aws_profile'):
             if self.check_credentials(aws_profile=cfg.aws_profile):
                 self.set_session(profile_name=cfg.aws_profile,
                                  region=cfg.aws_region)
 
     def check_bucket_access(self, bucket_name, readwrite=False):
-        '''Check if the user has access to the specified bucket'''
+        '''Check if the user has access to the given bucket'''
 
         if not bucket_name:
             raise ValueError('No bucket name provided')
@@ -2865,6 +2856,9 @@ class AWSBoto:
 
             # TODO: This is for _ec2_create_instance function. Review if we really needed
             self.session = session
+
+            # Store that the session is valid
+            self.valid_session = True
 
         except Exception as e:
             pass
@@ -5215,14 +5209,9 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
 
     # Check if user provided at least one argument
     if not args.folders:
-        print('\nError: You should point to at least one folder. Check the index command usage with "froster index --help"\n')
+        print('\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
         exit(0)
-
-    # Check if the provided pwalk CSV file exists
-    if args.pwalkcsv and not os.path.isfile(args.pwalkcsv):
-        print(f'\nError: File "{args.pwalkcsv}" does not exist.\n')
-        exit(0)
-
+    
     # Check if the provided pwalk copy folder exists
     if args.pwalkcopy and not os.path.isdir(args.pwalkcopy):
         print(f'\nError: Folder "{args.pwalkcopy}" does not exist.\n')
@@ -5235,8 +5224,7 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
             exit(0)
     
     # Print the command line arguments only if debug mode is enabled
-    printdbg(" Command line:", args.cores, args.noslurm,
-             args.pwalkcsv, args.folders, flush=True)
+    printdbg(" Command line:", args.cores, args.noslurm, args.folders, flush=True)
 
     # Clean the provided paths
     args.folders = clean_paths(args.folders)
@@ -5244,10 +5232,26 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
     # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
     if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
         for folder in args.folders:
-            print(f'\nIndexing folder {folder}...\n', flush=True)
-            arch.index(folder, args.pwalkcsv, args.pwalkcopy, args.cores)
-            print(f'    ...{folder} indexed.\n', flush=True)
+
+            if args.pwalkcopy:
+                print(f'Running pwalk and copying output to {args.pwalkcopy}...')
+                arch.index(folder)
+                print(f'\n    ...folder indexed and output copied\n', flush=True)
+            else:
+
+                print(f'\nIndexing folder {folder}...', flush=True)
+
+                # Get the path to the hotspots CSV file
+                folder_hotspot = arch.get_hotspots_path(folder)
+
+                # If the folder is already indexed don't run pwalk again
+                if os.path.isfile(folder_hotspot):
+                    print(f'    ...folder already indexed at {folder_hotspot}\n', flush=True)
+                else:
+                    arch.index(folder)
+                    print(f'\n    ...folder {folder} indexed.\n', flush=True)
     else:
+        # TODO: Review slurm implementation regarding new changes
         se = SlurmEssentials(args, cfg)
         label = arch._get_hotspots_file(args.folders[0]).replace('.csv', '')
         label = label.replace(' ', '_')
@@ -5276,59 +5280,79 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
         print(f' tail -f froster-index-{label}-{jobid}.out')
 
 
-def subcmd_archive(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver, aws: AWSBoto):
-    # TODO: function pendint to review
-    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
-    exit(1)
+def subcmd_archive(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
+    '''Archive folders for Froster.'''
 
     global TABLECSV
     global SELECTEDFILE
 
-    if args.debug:
-        print("archive:", args.cores, args.aws_profile, args.noslurm,
-              args.larger, args.older, args.agemtime, args.folders)
+    printdbg("archive:", args.cores, args.aws_profile, args.noslurm, args.larger, args.older, args.agemtime, args.folders)
+        
     fld = '" "'.join(args.folders)
-    if args.debug:
-        print(f'default cmdline: froster.py archive "{fld}"')
 
     archmeta = []
-    if not args.folders:
-        hsfolder = os.path.join(cfg.shared_dir, 'hotspots')
-        if not os.path.exists(hsfolder):
-            print("No folders to archive in arguments and no Hotspots CSV files found!")
-            print('Run: froster archive "/your/folder/to/archive"')
-            return False
-        csv_files = [f for f in os.listdir(
-            hsfolder) if fnmatch.fnmatch(f, '*.csv')]
+
+    # If the user provided the folders argument, then use them.
+    # Otherwise, check if there are Hotspots CSV files in the shared directory.
+    if args.folders:
+        # Use given folders
+        args.folders = clean_paths(args.folders)
+
+    else:
+        # Get the 
+        hotspots_dir = cfg.shared_hotspots_dir if cfg.is_shared else cfg.hotspots_dir
+
+        # Check if the Hotspots directory exists
+        if not os.path.exists(hotspots_dir):
+            print('\nNo folders to archive in arguments and no Hotspots CSV files found.')
+            
+            print('\nFor archive a specific folder run:')
+            print('    froster archive "/your/folder/to/archive"')
+            
+            print('\n For index a folder a find hotspots run:')
+            print('    froster index "/your/folder/to/index"\n')
+            sys.exit(0)
+        
+        # Get all the CSV files in the hotspots directory
+        csv_files = [f for f in os.listdir(hotspots_dir) if fnmatch.fnmatch(f, '*.csv')]
+        
+        # Check if there are CSV files, if don't there are no folders to archive
         if len(csv_files) == 0:
-            print("No folders to archive in arguments and no Hotspots CSV files found!")
-            print('Run: froster archive "/your/folder/to/archive"')
-            return False
+            print('\nNo folders to archive in arguments and no Hotspots CSV files found.')
+
+            print('\nFor archive a specific folder run:')
+            print('    froster archive "/your/folder/to/archive"')
+            sys.exit(0)
+
         # Sort the CSV files by their modification time in descending order (newest first)
         csv_files.sort(key=lambda x: os.path.getmtime(
-            os.path.join(hsfolder, x)), reverse=True)
-        # if there are multiple files allow for selection
-        if len(csv_files) > 1:
-            TABLECSV = '"Select a Hotspot file"\n' + '\n'.join(csv_files)
-            app = TableArchive()
-            retline = app.run()
-            if not retline:
-                return False
-            SELECTEDFILE = os.path.join(hsfolder, retline[0])
-        else:
-            SELECTEDFILE = os.path.join(hsfolder, csv_files[0])
-        if args.larger > 0 and args.older > 0:
-            # implement archiving batchmode
-            arch.archive_batch()
-            return
-        elif args.larger > 0 or args.older > 0:
-            print('You need to combine both "--older <days> and --larger <GiB> options')
+            os.path.join(hotspots_dir, x)), reverse=True)
+    
+        # Get the Hotspot file from the user
+        TABLECSV = '"Select a Hotspot file"\n' + '\n'.join(csv_files)
+        app = TableArchive()
+        retline = app.run()
+        if not retline:
+            sys.exit(0)
+        
+        # Get the selected CSV file
+        file_selected = os.path.join(hotspots_dir, retline[0])
+
+        # Check args for larger and older
+        if args.larger > 0 or args.older > 0:
+            
+            arch.archive_batch(file=file_selected)
+            
             return
 
+
         SELECTEDFILE = arch.get_user_hotspot(SELECTEDFILE)
+
         app = TableHotspots()
         retline = app.run()
         # print('Retline:', retline)
+
+        exit("patata")
         if not retline:
             return False
         if len(retline) < 6:
@@ -5353,15 +5377,6 @@ def subcmd_archive(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
             return False
 
         args.folders.append(retline[5])
-
-    else:
-        args.folders = clean_paths(args.folders)
-
-    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.aws_profile}" not found.')
-        return False
-    if not aws.check_bucket_access(cfg.bucket, readwrite=True):
-        return False
 
     # if recursive archiving, check if we can read all files
     if args.recursive:
@@ -5796,7 +5811,7 @@ def subcmd_ssh(args, cfg: ConfigManager, aws: AWSBoto):
 def subcmd_credentials(args, aws: AWSBoto):
     print("\nChecking AWS credentials...")
 
-    if aws.check_credentials():
+    if  aws.valid_session:
         print('    ...AWS credentials are valid\n')
     else:
         print('    ...AWS credentials are NOT valid\n')
@@ -5804,8 +5819,6 @@ def subcmd_credentials(args, aws: AWSBoto):
         print('    froster config --aws\n')
         sys.exit(0)
 
-    print(args.folders)
-    exit(0)
     aws.check_bucket_access_folders(args.folders)
 
 
@@ -5886,12 +5899,9 @@ def parse_arguments():
     parser_index.add_argument('folders', action='store', default=[],  nargs='*',
                               help='Folders you would like to index (separated by space), ' +
                               'using the pwalk file system crawler ')
-    
-    parser_index.add_argument('-p', '--pwalk-csv', dest='pwalkcsv', action='store', default='',
-                              help='Use an existing pwalk CSV file instead of generating a new one.')
 
     parser_index.add_argument('-y', '--pwalk-copy', dest='pwalkcopy', action='store', default='',
-                              help='Path where the pwalk CSV file should be copied to.')
+                              help='Directory where the pwalk CSV file should be copied to.')
 
     # ***
 
@@ -6100,7 +6110,7 @@ def main():
         elif args.subcmd in ['index', 'ind']:
             subcmd_index(args, cfg, arch)
         elif args.subcmd in ['archive', 'arc']:
-            subcmd_archive(args, cfg, arch, aws)
+            subcmd_archive(args, cfg, arch)
         elif args.subcmd in ['restore', 'rst']:
             subcmd_restore(args, cfg, arch, aws)
         elif args.subcmd in ['delete', 'del']:
