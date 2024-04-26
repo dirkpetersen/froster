@@ -845,14 +845,11 @@ class ConfigManager:
             self.__set_configuration_entry('S3', 'bucket_name', s3_bucket)
 
         # Get the archive directory in the selected bucket
-        # TODO: make this inquiring in shortchut mode once this PR is merged: https://github.com/magmax/python-inquirer/pull/543
-        archive_dir_question = [
-            inquirer.Path(
-                'archive directory', message='Enter the archive directory inside your S3 bucket')
-        ]
-        archive_dir_answer = inquirer.prompt(archive_dir_question)
-        archive_dir = archive_dir_answer['archive directory']
-
+        archive_dir = inquirer.text(
+            message = 'Enter the archive directory name inside your S3 bucket',
+            default = 'froster',
+            validate = self.__inquirer_check_required)
+        
         # Print newline after this prompt
         print()
 
@@ -938,7 +935,7 @@ class ConfigManager:
         # If shared configuration file exists, nothing to move
         if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
             print(
-                f"\nNOTE: Using shared configuration file found in {self.shared_config_file}\n")
+                f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
             return
 
         # Clean up both configuration files
@@ -1094,8 +1091,17 @@ class Archiver:
         global MAXHOTSPOTS
         MAXHOTSPOTS = int(x) if x else 5000
 
-        self.dirmetafiles = ['Froster.allfiles.csv', 'Froster.smallfiles.tar',
-                             '.froster.md5sum', '.froster-restored.md5sum', 'Where-did-the-files-go.txt']
+        self.smallfiles_tar_filename = 'Froster.smallfiles.tar'
+        self.allfiles_csv_filename = 'Froster.allfiles.csv'
+        self.md5sum_filename = '.froster.md5sum'
+        self.md5sum_restored_filename = '.froster-restored.md5sum'
+        self.where_did_the_files_go_filename = 'Where-did-the-files-go.txt'
+
+        self.dirmetafiles = [self.allfiles_csv_filename,
+                             self.smallfiles_tar_filename,
+                             self.md5sum_filename,
+                             self.md5sum_restored_filename,
+                             self.where_did_the_files_go_filename]
 
         self.grants = []
 
@@ -1398,12 +1404,8 @@ class Archiver:
             # We should never end up here
             raise ValueError("Invalid option selected.")
 
-        # Clean the provided paths
-        folders_to_archive = clean_paths(folders_to_archive)
-
         # Archive the selected folders
         self.archive(folders_to_archive)
-
 
     def _is_recursive_collision(self, folders):
         '''Check if there is a collision between folders and recursive flag'''
@@ -1429,7 +1431,7 @@ class Archiver:
 
         return is_collision
 
-    def _archive_slurm(self, folders):
+    def _archive_slurm(self, folders, is_recursive, nih):
         se = SlurmEssentials(self.args, self.cfg)
         label = folders[0].replace('/', '+')
         label = label.replace(' ', '_')
@@ -1465,11 +1467,172 @@ class Archiver:
         print(f'Check Job Output:')
         print(f' tail -f froster-archive-{label}-{jobid}.out')
 
+    def archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar):
+        '''Archive the given folder'''
+
+        # Set workflow execution flags
+        is_folder_tarred = False
+        is_folder_archived = False
+        is_froster_allfiles_generated = False
+        is_checksum_generated = False
+        is_checksum_correct = False
+
+        try:
+            s3_dest = os.path.join(
+                f':s3:{self.cfg.bucket_name}',
+                self.cfg.archive_dir,
+                folder_to_archive.lstrip(os.path.sep))
+
+            # TODO: vmachado: review this code
+            if os.path.isfile(os.path.join(folder_to_archive, ".froster.md5sum")):
+                print(
+                    f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
+                print('You need to manually delete the file before you can proceed.\n')
+
+                sys.exit(1)
+
+            # Check if the folder is empty
+            with os.scandir(folder_to_archive) as entries:
+                if not any(True for _ in entries):
+                    print(f'\nFolder {folder_to_archive} is empty, skipping.\n')
+                    return
+
+            print(f'\nARCHIVING {folder_to_archive}')
+
+            if is_tar:
+                print(f'\n    Generating Froster.allfiles.csv and tar small files...')
+            else:
+                print(f'\n    Generating Froster.allfiles.csv...')
+
+            # Generate Froster.allfiles.csv and if is_tar tar small files
+            if self._gen_allfiles_and_tar(folder_to_archive, self.thresholdKB, is_tar):
+                is_froster_allfiles_generated = True
+                print(f'        ...done')
+            else:
+                # Something failed, exit
+                print(f'        ...FAILED\n')
+                return
+
+            # Generate md5 checksums for all files in the folder
+            print(f'\n    Generating checksums...')
+            if self._gen_md5sums(folder_to_archive, self.md5sum_filename):
+                is_checksum_generated = True
+                print('        ...done')
+            else:
+                # Something failed, exit
+                print('        ...FAILED\n')
+                return
+
+            # Get the path to the hashfile
+            hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
+
+            # Create an Rclone object
+            rclone = Rclone(self.args, self.cfg)
+
+            # Archive the folder to S3
+            print(f'\n    Uploading files...')
+            ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
+                              '--exclude', self.md5sum_filename,
+                              '--exclude', self.md5sum_restored_filename,
+                              '--exclude', self.allfiles_csv_filename,
+                              '--exclude', self.where_did_the_files_go_filename
+                              )
+            
+            if ret:
+                print('        ...done')
+                is_folder_archived = True
+            else:
+                print('        ...FAILED\n')
+                return
+
+            # Get the path to the allfiles CSV file
+            allfiles_source = os.path.join(folder_to_archive, self.allfiles_csv_filename)
+
+            print(f'\n    Uploading Froster.allfiles.csv file...')
+
+            # Change the storage class to INTELLIGENT_TIERING
+            rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = 'INTELLIGENT_TIERING'
+
+            # Archive the allfiles CSV file to S3 INTELLIGENT_TIERING
+            ret = rclone.copy(allfiles_source, s3_dest, '--max-depth', '1', '--links',
+                              '--exclude', self.md5sum_filename,
+                              '--exclude', self.md5sum_restored_filename,
+                              '--exclude', self.allfiles_csv_filename,
+                              '--exclude', self.where_did_the_files_go_filename
+                              )
+            
+            # Change the storage class back to the user preference
+            rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
+            
+            if ret:
+                print('        ...done')
+                is_folder_archived = True
+            else:
+                print('        ...FAILED\n')
+                return
+
+            print(f'\n    Verifying checksums...')
+            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+            if ret:
+                print('        ...done')
+                is_checksum_correct = True
+            else:
+                print('        ...FAILED\n')
+                return
+            
+            # Add the metadata to the archive JSON file ONLY if this is not a subfolder
+            if not is_subfolder:
+                # Get current timestamp
+                timestamp = datetime.datetime.now().isoformat()
+
+                # Get the archive mode
+                if is_recursive:
+                    archive_mode = "Recursive"
+                else:
+                    archive_mode = "Single"
+
+                # Generate the metadata dictionary
+                new_entry = {'local_folder': folder_to_archive,
+                        'archive_folder': s3_dest,
+                        's3_storage_class': self.cfg.storage_class,
+                        'profile': self.cfg.aws_profile,
+                        'archive_mode': archive_mode,
+                        'timestamp': timestamp,
+                        'timestamp_archive': timestamp,
+                        'user': getpass.getuser()
+                        }
+                
+                # Add NIH information to the metadata dictionary
+                if nih:
+                    new_entry['nih_project'] = nih[0]
+                    new_entry['nih_project_url'] = nih[6]
+                    new_entry['nih_project_pi'] = nih[3]
+
+                # Write the metadata to the archive JSON file
+                self._archive_json_add_entry(key = folder_to_archive.rstrip(os.path.sep),
+                                             value = new_entry)
+
+            # Print the final message
+            print(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
+            print(f'\n    LOCAL SOURCE:       "{folder_to_archive}"')
+            print(f'    AWS S3 DESTINATION: "{s3_dest}"\n')
+            print(f'    All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
+
+        except Exception:
+            print_error()
+
     def archive(self, folders):
         '''Archive the given folders'''
     
-        # Set the recursive flag
-        is_recursive = self.args.recursive
+        # Clean the provided paths
+        folders = clean_paths(folders)
+        
+        # Set flags
+        is_recursive = self.args.recursive,
+        is_nih = self.cfg.is_nih
+        is_nih = self.args.nih  # nih example: R01NR018762
+        is_slurm = shutil.which('sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
+        is_tar = not self.args.notar
 
         # Check if there is a conflict between folders and recursive flag,
         # i.e. recursive flag is set and a folder is a subdirectory of another one
@@ -1480,138 +1643,34 @@ class Archiver:
                 sys.exit(1)
 
         # Check if we can read & write all files and folders
-        if not self._is_correct_files_folders_permissions(folders=folders, is_recursive=self.args.recursive):
+        if not self._is_correct_files_folders_permissions(folders, is_recursive):
             print('\nError: Cannot read or write to all files and folders.\n')
             print(
                 f'You can check the permissions of the files and folders using the command:')
             print(f'    froster archive --permissions "/your/folder/to/archive"\n')
             sys.exit(1)
 
-        if self.cfg.is_nih:
+        nih = ''
+
+        if is_nih:
             app = TableNIHGrants()
-            archmeta = app.run()
+            nih = app.run()
 
-        # for folder in folders:
+        if is_slurm:
+            self._archive_slurm(folders, is_recursive, nih)
+        else:
+            for folder in folders:
+                if is_recursive:
+                    for root, dirs, files in self._walker(folder):
+                        if folder == root:
+                            is_subfolder = False
+                        else:
+                            is_subfolder = True
 
-        #     if is_recursive:
-        #         print(
-        #             f'Archiving folder "{folder}" and subfolders, please wait ...', flush=True)
-        #         if not self.archive_recursive(folder, archmeta):
-        #             if self.args.debug:
-        #                 print(
-        #                     f'  Archiver.archive_recursive({folder}) returned False', flush=True)
-
-
-        exit("patata")
-        # archivepath = os.path.join(self.cfg.bucket_name, self.cfg.archive_dir)
-        # source = os.path.abspath(folder)
-        # target = os.path.join(f':s3:{archivepath}',
-        #                       source.lstrip(os.path.sep))
-
-        # if os.path.isfile(os.path.join(source, ".froster.md5sum")):
-        #     print(
-        #         f'  The hashfile ".froster.md5sum" already exists in {source} from a previous archiving process.')
-        #     print('  You need to manually rename the file before you can proceed.')
-        #     print('')
-        #     return False
-
-        # if not [f for f in os.listdir(source) if os.path.isfile(os.path.join(source, f))]:
-        #     print("    Folder is empty, skipping")
-        #     return True
-
-        # if not self.args.notar:
-        #     ret = self._tar_small_files(source, self.thresholdKB)
-        #     if ret == 13:  # cannot write to folder
-        #         return False
-        #     elif not ret:
-        #         print('  Could not create Froster.smallfiles.tar')
-        #         print('  Perhaps there are no files or the folder does not exist?')
-        #         return False
-
-        # ret = self._gen_md5sums(source, '.froster.md5sum')
-        # if ret == 13:  # cannot write to folder
-        #     return False
-        # elif not ret:
-        #     print('  Could not create hashfile .froster.md5sum.')
-        #     print('  Perhaps there are no files or the folder does not exist?')
-        #     return False
-        # hashfile = os.path.join(source, '.froster.md5sum')
-
-        # rclone = Rclone(self.args, self.cfg)
-
-        # print('  Copying files to archive ... ', end="")
-        # ret = rclone.copy(source, target, '--max-depth', '1', '--links',
-        #                   '--exclude', '.froster.md5sum',
-        #                   '--exclude', '.froster-restored.md5sum',
-        #                   '--exclude', 'Froster.allfiles.csv',
-        #                   '--exclude', 'Where-did-the-files-go.txt'
-        #                   )
-        # printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
-        # # print ('Message:', ret['msg'].replace('\n',';'))
-        # if ret['stats']['errors'] > 0:
-        #     print('Last Error:', ret['stats']['lastError'])
-        #     print('Copying was not successful.')
-        #     return False
-        # print('Done.')
-
-        # ttransfers = ret['stats']['totalTransfers']
-        # tbytes = ret['stats']['totalBytes']
-        # if self.args.debug:
-        #     print('\n')
-        #     print('Speed:', ret['stats']['speed'])
-        #     print('Transfers:', ret['stats']['transfers'])
-        #     print('Tot Transfers:', ret['stats']['totalTransfers'])
-        #     print('Tot Bytes:', ret['stats']['totalBytes'])
-        #     print('Tot Checks:', ret['stats']['totalChecks'])
-
-        # #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019,
-        # #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found',
-        # #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0,
-        # #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}
-
-        # # upload of Froster.allfiles.csv to INTELLIGENT_TIERING
-        # #
-        # allf_s = os.path.join(source, 'Froster.allfiles.csv')
-        # allf_d = os.path.join(self.cfg.archive_dir,
-        #                       source.lstrip(os.path.sep),
-        #                       'Froster.allfiles.csv')
-        # if os.path.exists(allf_s):
-        #     self._upload_file_to_s3(allf_s, self.cfg.bucket, allf_d)
-
-        # ret = rclone.checksum(hashfile, target, '--max-depth', '1')
-        # printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
-        # if ret['stats']['errors'] > 0:
-        #     print('Last Error:', ret['stats']['lastError'])
-        #     print('Checksum test was not successful.')
-        #     return False
-
-        # # If success, write metadata to cfg.archive_json_file_name database
-        # s3_storage_class = os.getenv(
-        #     'RCLONE_S3_STORAGE_CLASS', 'INTELLEGENT_TIERING')
-        # timestamp = datetime.datetime.now().isoformat()
-        # archive_mode = "Single"
-        # if isrecursive:
-        #     archive_mode = "Recursive"
-        # # meta = #['R41HL129728', '2016-09-30', '2017-07-31', 'MOLLER, DAVID ROBERT',
-        # # 'Developing a Diagnostic Blood Test for Sarcoidosis', 'SARCOIDOSIS DIAGNOSTIC TESTING, LLC',
-        # #  'https://reporter.nih.gov/project-details/9331239', '12519577']
-        # dictrow = {'local_folder': source, 'archive_folder': target,
-        #            's3_storage_class': s3_storage_class,
-        #            'profile': self.cfg.aws_profile, 'archive_mode': archive_mode,
-        #            'timestamp': timestamp, 'timestamp_archive': timestamp,
-        #            'user': getpass.getuser()
-        #            }
-        # if meta:
-        #     dictrow['nih_project'] = meta[0]
-        #     dictrow['nih_project_url'] = meta[6]
-        #     dictrow['nih_project_pi'] = meta[3]
-
-        # if not issubfolder:
-        #     self._archive_json_put_row(source, dictrow)
-
-        # total = self.convert_size(tbytes)
-        # print(
-        #     f'  Source and archive are identical. {ttransfers} files with {total} transferred.\n')
+                        self.archive_locally(root, is_recursive, nih, is_subfolder, is_tar)
+                else:
+                    is_subfolder = False
+                    self.archive_locally(folder, is_recursive, nih, is_subfolder, is_tar)
 
 
     def get_hotspot_folders(self, hotspot_file):
@@ -1768,187 +1827,224 @@ class Archiver:
                 print()
         return show_progress_bar
 
-    def print_path_rw_info(self, path):
+    def print_paths_rw_info(self, paths):
 
-        # Check if file exists
-        if not os.path.exists(path):
+        if not paths:
+            print('\nError: No file paths provided.\n')
             return
 
-        # Getting the status of the file
-        file_stat = os.lstat(path)
+        for path in paths:
 
-        # Getting the current user and group IDs
-        current_uid = os.getuid()
-        current_gid = os.getgid()
+            # Check if file exists
+            if not os.path.exists(path):
+                continue
+        
+            try:
+                # Getting the status of the file
+                file_stat = os.lstat(path)
 
-        # Checking if the user is the owner
-        is_owner = file_stat.st_uid == current_uid
+                # Getting the current user and group IDs
+                current_uid = os.getuid()
+                current_gid = os.getgid()
+
+                # Checking if the user is the owner
+                is_owner = file_stat.st_uid == current_uid
+
+                # Checking if the user is in the file's group
+                is_group_member = file_stat.st_gid == current_gid or \
+                    any(grp.getgrgid(g).gr_gid ==
+                        file_stat.st_gid for g in os.getgroups())
+
+            except Exception as e:
+                print(f'\nError: {e}\n')
+                return
+
+            # Extracting permission bits
+            permissions = file_stat.st_mode
+
+            # Checking for owner read permission
+            has_owner_read_permission = bool(permissions & stat.S_IRUSR)
+
+            # Checking for group read permission
+            has_group_read_permission = bool(permissions & stat.S_IRGRP)
+
+            # Checking for '444' (read permission for everyone)
+            is_444 = permissions & 0o444 == 0o444
+
+            # Determining if the user can read the file
+            can_read = (is_owner and has_owner_read_permission) or \
+                    (is_group_member and has_group_read_permission) or \
+                is_444
+
+            # Checking for owner write permission
+            has_owner_write_permission = bool(permissions & stat.S_IWUSR)
+
+            # Checking for group write permission
+            has_group_write_permission = bool(permissions & stat.S_IWGRP)
+
+            # Checking for '666' or '777' permissions
+            is_666_or_777 = permissions & 0o666 == 0o666 or permissions & 0o777 == 0o777
+
+            # Determining if the user can delete the file
+            can_write = (is_owner and has_owner_write_permission) or \
+                        (is_group_member and has_group_write_permission) or \
+                is_666_or_777
+
+            # Printing the file's permissions
+            print(f'\nFile: {path}')
+            print(f'\nis_owner: {is_owner}')
+            print(f'has_owner_read_permission: {has_owner_read_permission}')
+            print(f'has_owner_write_permission: {has_owner_write_permission}')
+            print(f'\nis_group_member: {is_group_member}')
+            print(f'has_group_read_permission: {has_group_read_permission}')
+            print(f'has_group_write_permission: {has_group_write_permission}')
+            print(f'\nis_444: {is_444}')
+            print(f'is_666_or_777: {is_666_or_777}')
+            print(f'\ncan_read: {can_read}')
+            print(f'can_write: {can_write}\n')
+
+    def _gen_md5sums(self, directory, hash_file):
+        '''Generate md5sums for all files in the directory and write them to a hash file'''
 
         try:
-            # Checking if the user is in the file's group
-            is_group_member = file_stat.st_gid == current_gid or \
-                any(grp.getgrgid(g).gr_gid ==
-                    file_stat.st_gid for g in os.getgroups())
-        except Exception as e:
-            print(f'Error: {e}')
-            return
+            for root, dirs, files in self._walker(directory):
 
-        # Extracting permission bits
-        permissions = file_stat.st_mode
+                # We only want to generate the hash file in the root directory. Avoid recursion
+                if root != directory:
+                    break
 
-        # Checking for owner read permission
-        has_owner_read_permission = bool(permissions & stat.S_IRUSR)
+                # Build the path to the hash file
+                hashpath = os.path.join(root, hash_file)
 
-        # Checking for group read permission
-        has_group_read_permission = bool(permissions & stat.S_IRGRP)
+                # Set the number of workers
+                max_workers = max(4, int(self.args.cores))
 
-        # Checking for '444' (read permission for everyone)
-        is_444 = permissions & 0o444 == 0o444
-
-        # Determining if the user can read the file
-        can_read = (is_owner and has_owner_read_permission) or \
-                   (is_group_member and has_group_read_permission) or \
-            is_444
-
-        # Checking for owner write permission
-        has_owner_write_permission = bool(permissions & stat.S_IWUSR)
-
-        # Checking for group write permission
-        has_group_write_permission = bool(permissions & stat.S_IWGRP)
-
-        # Checking for '666' or '777' permissions
-        is_666_or_777 = permissions & 0o666 == 0o666 or permissions & 0o777 == 0o777
-
-        # Determining if the user can delete the file
-        can_write = (is_owner and has_owner_write_permission) or \
-                    (is_group_member and has_group_write_permission) or \
-            is_666_or_777
-
-        # Printing the file's permissions
-        print(f'\nFile: {path}')
-        print(f'\nis_owner: {is_owner}')
-        print(f'has_owner_read_permission: {has_owner_read_permission}')
-        print(f'has_owner_write_permission: {has_owner_write_permission}')
-        print(f'\nis_group_member: {is_group_member}')
-        print(f'has_group_read_permission: {has_group_read_permission}')
-        print(f'has_group_write_permission: {has_group_write_permission}')
-        print(f'\nis_444: {is_444}')
-        print(f'is_666_or_777: {is_666_or_777}')
-        print(f'\ncan_read: {can_read}')
-        print(f'can_write: {can_write}\n')
-
-    def _gen_md5sums(self, directory, hash_file, num_workers=4, no_subdirs=True):
-        for root, dirs, files in self._walker(directory):
-            if no_subdirs and root != directory:
-                break
-            hashpath = os.path.join(root, hash_file)
-            try:
-                print(f'  Generating hash file {hash_file} ... ', end='')
                 with open(hashpath, "w") as out_f:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers) as executor:
+
                         tasks = {}
-                        for filen in files:
-                            file_path = os.path.join(root, filen)
-                            # TODO: check if file is readable using other method
-                            # if not self.can_read_file(file_path):
-                            #     print(
-                            #         f'  Cannot add {file_path} to {hash_file} due to permissions, skipping ...')
-                            #     continue
+
+                        for file in files:
+
+                            # Get the file path
+                            file_path = os.path.join(root, file)
+
+                            # Skip froster files
                             if os.path.isfile(file_path) and \
-                                    filen != os.path.basename(hash_file) and \
-                                    filen != "Where-did-the-files-go.txt" and \
-                                    filen != ".froster.md5sum" and \
-                                    filen != ".froster-restored.md5sum":
+                                    file != hash_file and \
+                                    file != self.where_did_the_files_go_filename and \
+                                    file != self.md5sum_filename and \
+                                    file != self.md5sum_restored_filename:
+                                
                                 task = executor.submit(self.md5sum, file_path)
+
                                 tasks[task] = file_path
+
                         for future in concurrent.futures.as_completed(tasks):
-                            filen = os.path.basename(tasks[future])
+                            file = os.path.basename(tasks[future])
                             md5 = future.result()
-                            out_f.write(f"{md5}  {filen}\n")
+                            out_f.write(f"{md5}  {file}\n")
+
+                # Check we generated the hash file
                 if os.path.getsize(hashpath) == 0:
                     os.remove(hashpath)
                     return False
-                print('Done.')
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print(
-                        "Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
-                    sys.exit(13)
                 else:
-                    print(f"An unexpected PermissionError occurred:\n{e}")
-                    sys.exit(1)
-            except Exception as e:
-                print(f"An unexpected error occurred:\n{e}")
-                sys.exit(1)
+                    return True
 
-    def _tar_small_files(self, directory, smallsize=1024, recursive=False):
-        for root, dirs, files in self._walker(directory):
-            if not recursive and root != directory:
-                break
-            tar_path = os.path.join(root, 'Froster.smallfiles.tar')
-            csv_path = os.path.join(root, 'Froster.allfiles.csv')
+        except Exception:
+            print_error()
+            return False
+
+    def _gen_allfiles_and_tar(self, directory, smallsize = 1024, is_tar = True):
+        '''Tar small files in a directory'''
+
+        try:
+            tar_path = os.path.join(directory, self.smallfiles_tar_filename)
+            csv_path = os.path.join(directory, self.allfiles_csv_filename)
+            
             if os.path.exists(tar_path):
-                print(f'Froster.smallfiles.tar alreadly exists in {root}')
-                continue
-            # create a csv file even if there are no small files
-            # if not self._is_small_file_in_dir(root,smallsize):
-            #    continue
-            try:
-                print(f'  Creating Froster.smallfiles.tar ... ', end='')
+                return True
+
+            for root, dirs, files in self._walker(directory):
+                
+                # We only want to tar the files in the root directory. Avoid recursion.
+                if root != directory:
+                    break
+
+                # Flag to check if any files were tarred
                 didtar = False
-                with tarfile.open(tar_path, "w") as tar, open(csv_path, 'w', newline='') as f:
-                    writer = csv.writer(f)
-                    # write the header
+
+                # Create tar file and csv file
+                with tarfile.open(tar_path, "w") as tar_file, open(csv_path, 'w', newline='') as csv_file:
+
+                    # Create csv writer
+                    writer = csv.writer(csv_file)
+                    
+                    # Write the header
                     writer.writerow(["File", "Size(bytes)", "Date-Modified",
                                     "Date-Accessed", "Owner", "Group", "Permissions", "Tarred"])
-                    for filen in files:
-                        file_path = os.path.join(root, filen)
+                    
+                    for file in files:
+                        # Get the file path
+                        file_path = os.path.join(root, file)
+                        
+                        # Skip the csv file
                         if file_path == csv_path:
                             continue
-                        # check if file is larger than X MB
+
+                        # Check if file is larger than X MB
                         size, mtime, atime = self._get_file_stats(file_path)
-                        # get last modified and accessed dates
+
+                        # Get last modified date
                         mdate = datetime.datetime.fromtimestamp(
                             mtime).strftime('%Y-%m-%d %H:%M:%S')
+                        
+                        # Get last accessed date
                         adate = datetime.datetime.fromtimestamp(
                             atime).strftime('%Y-%m-%d %H:%M:%S')
-                        # ownership and permissions
+                        
+                        # Get ownership
                         owner = self.uid2user(os.lstat(file_path).st_uid)
                         group = self.gid2group(os.lstat(file_path).st_gid)
+
+                        # Get permissions
                         permissions = oct(os.lstat(file_path).st_mode)
+
+                        # Set tarred to No
                         tarred = "No"
-                        # write file info to the csv file
-                        if size < smallsize*1024:
+
+                        # Tar the file if it's smaller than the specified size
+                        if is_tar and size < smallsize*1024:
                             # add to tar file
-                            tar.add(file_path, arcname=filen)
+                            tar_file.add(file_path, arcname=file)
+
+                            # Set didtar to True, so we know we tarred a file
                             didtar = True
+
                             # remove original file
                             os.remove(file_path)
-                            tarred = "Yes"
-                        writer.writerow(
-                            [filen, size, mdate, adate, owner, group, permissions, tarred])
-                if didtar:
-                    print('Done.')
-                else:
-                    os.remove(tar_path)
-                    print('No small files to tar.')
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print(
-                        "Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
-                    return 13
-                else:
-                    print(f"An unexpected PermissionError occurred:\n{e}")
-                    return False
-            except Exception as e:
-                print(f"An unexpected error occurred:\n{e}")
-                return False
-                # raise e
-        return True
 
-    def _untar_files(self, directory, recursive=False):
+                            # Set tarred to Yes
+                            tarred = "Yes"
+
+                        # Write file info to the csv file    
+                        writer.writerow(
+                            [file, size, mdate, adate, owner, group, permissions, tarred])
+
+                # Check if we tarred any files
+                if not didtar:
+                    # Remove the tar file if it's empty
+                    os.remove(tar_path)
+            
+            return True
+
+        except Exception as e:
+            if self.args.debug:
+                print_error()
+            return False
+
+    def _untar_files(self, directory, recursive = False):
         for root, dirs, files in self._walker(directory):
             if not recursive and root != directory:
                 break
@@ -2320,7 +2416,7 @@ class Archiver:
                 if len(tarred_files) > 0:
                     self._delete_tar_content(restpath, tarred_files)
 
-                ret = self._gen_md5sums(restpath, '.froster-restored.md5sum')
+                ret = self._gen_md5sums(restpath, self.md5sum_restored_filename)
                 if ret == 13:  # cannot write to folder
                     return False
                 hashfile = os.path.join(restpath, '.froster-restored.md5sum')
@@ -2441,6 +2537,8 @@ class Archiver:
             return None, str(e)
 
     def md5sum(self, file_path):
+        '''Calculate md5sum of a file'''
+
         md5_hash = hashlib.md5()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
@@ -2481,23 +2579,28 @@ class Archiver:
         s = round(size_bytes/p, 3)
         return f"{s} {size_name[i]}"
 
-    def _archive_json_put_row(self, path_name, row_dict):
+    def _archive_json_add_entry(self, key, value):
+        '''Add a new entry to the archive JSON file'''
+
+        # Initialize the data dictionary in case archive_json does not exist
         data = {}
+
+        # Read the archive JSON file
         if os.path.exists(self.archive_json):
             with open(self.archive_json, 'r') as file:
                 try:
                     data = json.load(file)
-                # except json.JSONDecodeError:
                 except:
                     print('Error in Archiver._archive_json_put_row():')
                     print(f'Cannot read {self.archive_json}, file corrupt?')
-                    return None
-        path_name = path_name.rstrip(os.path.sep)  # remove trailing slash
-        # this is a key that can be changed
-        row_dict['local_folder'] = path_name
-        data[path_name] = row_dict
+                    return False
+
+        # Add the new entry to the data dictionary
+        data[key] = value
+
+        # Write the updated data dictionary to the archive JSON file
         with open(self.archive_json, 'w') as file:
-            json.dump(data, file, indent=4)
+            json.dump(data, file, indent = 4)
 
     def archive_get_bucket_info(self, folder):
         # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
@@ -2711,10 +2814,12 @@ class Archiver:
         session = boto3.Session(
             profile_name=profile) if profile else boto3.Session()
         s3 = session.client('s3')
+
         # If S3 object_name was not specified, use the filename
         if object_name is None:
             object_name = os.path.basename(filename)
         try:
+
             # Upload the file with Intelligent-Tiering storage class
             s3.upload_file(filename, bucket, object_name, ExtraArgs={
                            'StorageClass': 'INTELLIGENT_TIERING'})
@@ -4742,10 +4847,25 @@ class TableNIHGrants(App[list]):
 
 
 class Rclone:
-    def __init__(self, args, cfg):
+    def __init__(self, args: argparse.Namespace, cfg: ConfigManager):
+        '''Initialize Rclone object'''
+        
+        # Store the arguments and configuration
         self.args = args
         self.cfg = cfg
+
+        # Set the Rclone executable path
         self.rc = os.path.join(sys.prefix, 'bin', 'rclone')
+        
+        # Set the Rclone environment variables
+        self.envrn = {}
+        self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
+        self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
+        self.envrn['RCLONE_S3_PROFILE'] = self.cfg.aws_profile
+        self.envrn['RCLONE_S3_REGION'] = self.cfg.aws_region
+        self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.cfg.aws_region
+        self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
+
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -4759,42 +4879,53 @@ class Rclone:
     # rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
     # rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
 
-    def _run_rc(self, command):
+    def _run_rclone_command(self, command):
+        '''Run Rclone command'''
 
-        command = self._add_opt(command, '--verbose')
-        command = self._add_opt(command, '--use-json-log')
-
-        printdbg('Rclone command:', " ".join(command))
         try:
+            # Add options to Rclone command
+            command = self._add_opt(command, '--verbose')
+            command = self._add_opt(command, '--use-json-log')
+            command = self._add_opt(command, '--progress')
+
+            # Run the command
             ret = subprocess.run(command, capture_output=True,
-                                 text=True, env=self.cfg.envrn)
-            if ret.returncode != 0:
-                # pass
-                sys.stderr.write(
-                    f'*** Error, Rclone return code > 0:\n{ret.stderr} Command:\n{" ".join(command)}\n\n')
-                # list of exit codes
-                # 0 - success
-                # 1 - Syntax or usage error
-                # 2 - Error not otherwise categorised
-                # 3 - Directory not found
-                # 4 - File not found
-                # 5 - Temporary error (one that more retries might fix) (Retry errors)
-                # 6 - Less serious errors (like 461 errors from dropbox) (NoRetry errors)
-                # 7 - Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)
-                # 8 - Transfer exceeded - limit set by --max-transfer reached
-                # 9 - Operation successful, but no files transferred
+                                 text=True, env=self.envrn)
+            
+            # Check if the command was successful
+            if ret.returncode == 0:
+                # Execution successfull
+                return True
+            
+            if self.args.debug:
+                # Execution failed
+                exit_codes = {
+                    0: "Success",
+                    1: "Syntax or usage error",
+                    2: "Error not otherwise categorised",
+                    3: "Directory not found",
+                    4: "File not found",
+                    5: "Temporary error (one that more retries might fix) (Retry errors)",
+                    6: "Less serious errors (like 461 errors from dropbox) (NoRetry errors)",
+                    7: "Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)",
+                    8: "Transfer exceeded - limit set by --max-transfer reached",
+                    9: "Operation successful, but no files transferred",
+                }
 
-            # lines = ret.stderr.decode('utf-8').splitlines() #needed if you do not use ,text=True
-            # locked_dirs = '\n'.join([l for l in lines if "Locked Dir:" in l])
-            # print("   STDOUT:",ret.stdout)
-            # print("   STDERR:",ret.stderr)
-            # rclone mount --daemon
-            return ret.stdout.strip(), ret.stderr.strip()
+                print(f'\nError: Rclone {command[1]} command failed', file=sys.stderr)
+                print(f'    Command: {" ".join(command)}', file=sys.stderr)
+                print(f'    Return code: {ret.returncode}', file=sys.stderr)
+                print(f'    Error message: {exit_codes[ret.returncode]}\n', file=sys.stderr)
 
-        except Exception as e:
-            print(f'\nRclone Error in _run_rc: {str(e)}, command run:')
-            print(f" ".join(command))
-            return None, str(e)
+            return False
+        except subprocess.CalledProcessError:
+            if self.args.debug:
+                print_error()
+            return False
+        except Exception:
+            if self.args.debug:
+                print_error()
+            return False
 
     def _run_bk(self, command):
         # command = self._add_opt(command, '--verbose')
@@ -4814,39 +4945,26 @@ class Rclone:
             return None
 
     def copy(self, src, dst, *args):
+        '''Copy files from source to destination using Rclone'''
+
+        # Build the copy command
         command = [self.rc, 'copy'] + list(args)
-        command.append(src)  # command.append(f'{src}/')
+        command.append(src)
         command.append(dst)
-        out, err = self._run_rc(command)
-        if out:
-            print(f'rclone copy output: {out}')
-        # print('ret', err)
-        stats, ops = self._parse_log(err)
-        if stats:
-            return stats[-1]  # return the stats
-        else:
-            st = {}
-            st['stats'] = {}
-            st['stats']['errors'] = 1
-            st['stats']['lastError'] = err
-            return st
+        
+        # Run the copy command and return if it was successful
+        return self._run_rclone_command(command)
 
     def checksum(self, md5file, dst, *args):
-        # checksum md5 ./tests/.froster.md5sum
+        '''Check the checksum of a file using Rclone'''
+
         command = [self.rc, 'checksum'] + list(args)
         command.append('md5')
         command.append(md5file)
         command.append(dst)
-        # print("Command:", command)
-        out, err = self._run_rc(command)
-        if out:
-            print(f'rclone checksum output: {out}')
-        # print('ret', err)
-        stats, ops = self._parse_log(err)
-        if stats:
-            return stats[-1]  # return the stats
-        else:
-            return []
+        
+        return self._run_rclone_command(command)
+ 
 
     def mount(self, url, mountpoint, *args):
         if not shutil.which('fusermount3'):
@@ -4902,7 +5020,7 @@ class Rclone:
 
     def version(self):
         command = [self.rc, 'version']
-        return self._run_rc(command)
+        return self._run_rclone_command(command)
 
     def get_mounts(self):
         mounts = []
@@ -4939,12 +5057,14 @@ class Rclone:
                 if mount_point == folder_path and fs_type.startswith('fuse.rclone'):
                     return True
 
-    def _add_opt(self, cmd, option, value=None):
-        if option in cmd:
-            return cmd
-        cmd.append(option)
-        if value:
-            cmd.append(value)
+    def _add_opt(self, cmd, option, value = None):
+        '''Add an option to the command if it is not already present'''
+
+        if option not in cmd:
+            cmd.append(option)
+            if value:
+                cmd.append(value)
+
         return cmd
 
     def _parse_log(self, strstderr):
@@ -5365,7 +5485,7 @@ class NIHReporter:
 
 def print_version():
 
-    print(f'froster v{__version__}\n')
+    print(f'\nfroster v{__version__}\n')
     print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
     print('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
@@ -5511,13 +5631,11 @@ def subcmd_archive(args: argparse.Namespace, arch: Archiver):
     # Check if the user provided the permissions argument
     if args.permissions:
         if not args.folders:
-            print(
-                '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n')
+            print('\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n')
             sys.exit(1)
 
-        for folder in args.folders:
-            arch.print_path_rw_info(folder)
-
+        # Print the permissions of the provided folders
+        arch.print_paths_rw_info(args.folder)
         sys.exit(0)
 
     # Check if the user provided the reset argument
@@ -5543,11 +5661,8 @@ def subcmd_archive(args: argparse.Namespace, arch: Archiver):
             sys.exit(1)
 
         else:
-            # Clean the provided paths
-            folders = clean_paths(args.folders)
-
             # Archive the given folders
-            arch.archive(folders)
+            arch.archive(args.folders)
 
 
 def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver, aws: AWSBoto):
@@ -6022,23 +6137,26 @@ def parse_arguments():
             allows you to archive all matching folders at once.
         '''))
     
-    parser_archive.add_argument('-m', '--mtime', dest='agemtime', action='store_true', default=False,
+    parser_archive.add_argument( '-n', '--nih', dest='nih', action='store_true',
+                                help="Search and Link Metadata from NIH Reporter")  
+    
+    parser_archive.add_argument('-m', '--mtime', dest='agemtime', action='store_true',
                                 help="Use modified file time (mtime) instead of accessed time (atime)")
     
-    parser_archive.add_argument('-r', '--recursive', dest='recursive', action='store_true', default=False,
+    parser_archive.add_argument('-r', '--recursive', dest='recursive', action='store_true',
                                 help="Archive the current folder and all sub-folders")
     
-    parser_archive.add_argument('-s', '--reset', dest='reset', action='store_true', default=False,
+    parser_archive.add_argument('-s', '--reset', dest='reset', action='store_true',
                                 help=textwrap.dedent(f'''
                                                      This will not download any data, but recusively reset a folder 
                                                      from previous (e.g. failed) archiving attempt.
                                                      It will delete .froster.md5sum and extract Froster.smallfiles.tar
                                                      '''))
     
-    parser_archive.add_argument('-t', '--no-tar', dest='notar', action='store_true', default=False,
+    parser_archive.add_argument('-t', '--no-tar', dest='notar', action='store_true',
                                 help="Do not move small files to tar file before archiving")
     
-    parser_archive.add_argument('-d', '--dry-run', dest='dryrun', action='store_true', default=False,
+    parser_archive.add_argument('-d', '--dry-run', dest='dryrun', action='store_true',
                                 help="Execute a test archive without actually copying the data")
 
     # ***
@@ -6048,6 +6166,7 @@ def parse_arguments():
             Remove data from a local filesystem folder that has been confirmed to 
             be archived (through checksum verification). Use this instead of deleting manually
         '''), formatter_class=argparse.RawTextHelpFormatter)
+
     parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
                                help='folders (separated by space) from which you would like to delete files, ' +
                                'you can only delete files that have been archived')
@@ -6125,8 +6244,6 @@ def parse_arguments():
 
 # TODO: OHSU-103: Move this function to utils module
 # TODO: OHSU-96: To be changed for a logger
-
-
 def printdbg(*args, **kwargs):
     if is_debug:
         current_frame = inspect.currentframe()
@@ -6134,8 +6251,6 @@ def printdbg(*args, **kwargs):
         print(f' DBG {calling_function}():', args, kwargs)
 
 # TODO: OHSU-103: Move this function to utils module
-
-
 def clean_paths(paths):
     '''Clean paths by expanding user and symlinks, and removing trailing slashes.'''
 
@@ -6153,6 +6268,20 @@ def clean_paths(paths):
             print(f"Error processing '{path}': {e}")
 
     return cleaned_paths
+
+
+def print_error():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    traceback_details = traceback.extract_tb(exc_tb)
+
+    # Get the last call stack. The third element in the tuple is the function name
+    function_name = traceback_details[-1][2]
+    file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+
+    print(
+        f'\nError: file {file_name}: function {function_name}: line {exc_tb.tb_lineno}: {exc_value}\n')
+
+
 
 
 def main():
@@ -6220,16 +6349,7 @@ def main():
         sys.exit(0)
 
     except Exception as exc:
-        exc_type, exc_value, exc_tb = sys.exc_info()
-        traceback_details = traceback.extract_tb(exc_tb)
-
-        # Get the last call stack. The third element in the tuple is the function name
-        function_name = traceback_details[-1][2]
-        file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-
-        print(
-            f'\nError: file {file_name}: function {function_name}: line {exc_tb.tb_lineno}: {exc_value}\n')
-
+        print_error()
         sys.exit(1)
 
 
