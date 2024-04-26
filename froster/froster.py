@@ -1488,6 +1488,7 @@ class Archiver:
                 print(
                     f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
                 print('You need to manually delete the file before you can proceed.\n')
+                print('\nWARNING: If you proceed, everything will be archived again.\n')
 
                 sys.exit(1)
 
@@ -1538,6 +1539,7 @@ class Archiver:
                               '--exclude', self.where_did_the_files_go_filename
                               )
             
+            # Check if the folder was archived successfully
             if ret:
                 print('        ...done')
                 is_folder_archived = True
@@ -1573,6 +1575,8 @@ class Archiver:
 
             print(f'\n    Verifying checksums...')
             ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+
+            # Check if the checksums are correct
             if ret:
                 print('        ...done')
                 is_checksum_correct = True
@@ -1593,13 +1597,13 @@ class Archiver:
 
                 # Generate the metadata dictionary
                 new_entry = {'local_folder': folder_to_archive,
-                        'archive_folder': s3_dest,
-                        's3_storage_class': self.cfg.storage_class,
-                        'profile': self.cfg.aws_profile,
-                        'archive_mode': archive_mode,
-                        'timestamp': timestamp,
-                        'timestamp_archive': timestamp,
-                        'user': getpass.getuser()
+                             'archive_folder': s3_dest,
+                             's3_storage_class': self.cfg.storage_class,
+                             'profile': self.cfg.aws_profile,
+                             'archive_mode': archive_mode,
+                             'timestamp': timestamp,
+                             'timestamp_archive': timestamp,
+                             'user': getpass.getuser()
                         }
                 
                 # Add NIH information to the metadata dictionary
