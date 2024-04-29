@@ -1467,7 +1467,7 @@ class Archiver:
         print(f'Check Job Output:')
         print(f' tail -f froster-archive-{label}-{jobid}.out')
 
-    def archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar):
+    def archive_locally(self, folder_to_archive, nih, is_tar, is_force):
         '''Archive the given folder'''
 
         # Set workflow execution flags
@@ -1484,13 +1484,23 @@ class Archiver:
                 folder_to_archive.lstrip(os.path.sep))
 
             # TODO: vmachado: review this code
-            if os.path.isfile(os.path.join(folder_to_archive, ".froster.md5sum")):
-                print(
-                    f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
-                print('You need to manually delete the file before you can proceed.\n')
-                print('\nWARNING: If you proceed, everything will be archived again.\n')
+            froster_md5sum_exists = os.path.isfile(os.path.join(folder_to_archive, ".froster.md5sum"))
+            folder_already_archived = self._archive_json_entry_exists(folder_to_archive.rstrip(os.path.sep))
 
-                sys.exit(1)
+            if folder_already_archived:
+                print(f'\nFolder {folder_to_archive} is already archived.')
+                print(
+                    f'Please refer to the froster documentation at https://github.com/dirkpetersen/froster/')
+                sys.exit(0)
+
+            if froster_md5sum_exists:
+                if is_force:
+                    self.reset_folder(folder_to_archive)
+                else:
+                    print(
+                        f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
+                    print(f'If you want to force the archiving process again on this folder, please us the -f or --force flag')
+                    sys.exit(1)
 
             # Check if the folder is empty
             with os.scandir(folder_to_archive) as entries:
@@ -1583,38 +1593,25 @@ class Archiver:
             else:
                 print('        ...FAILED\n')
                 return
+
+            # Generate the metadata dictionary
+            new_entry = {'local_folder': folder_to_archive,
+                            'archive_folder': s3_dest,
+                            's3_storage_class': self.cfg.storage_class,
+                            'profile': self.cfg.aws_profile,
+                            'timestamp': datetime.datetime.now().isoformat(),
+                            'user': getpass.getuser()
+                    }
             
-            # Add the metadata to the archive JSON file ONLY if this is not a subfolder
-            if not is_subfolder:
-                # Get current timestamp
-                timestamp = datetime.datetime.now().isoformat()
+            # Add NIH information to the metadata dictionary
+            if nih:
+                new_entry['nih_project'] = nih[0]
+                new_entry['nih_project_url'] = nih[6]
+                new_entry['nih_project_pi'] = nih[3]
 
-                # Get the archive mode
-                if is_recursive:
-                    archive_mode = "Recursive"
-                else:
-                    archive_mode = "Single"
-
-                # Generate the metadata dictionary
-                new_entry = {'local_folder': folder_to_archive,
-                             'archive_folder': s3_dest,
-                             's3_storage_class': self.cfg.storage_class,
-                             'profile': self.cfg.aws_profile,
-                             'archive_mode': archive_mode,
-                             'timestamp': timestamp,
-                             'timestamp_archive': timestamp,
-                             'user': getpass.getuser()
-                        }
-                
-                # Add NIH information to the metadata dictionary
-                if nih:
-                    new_entry['nih_project'] = nih[0]
-                    new_entry['nih_project_url'] = nih[6]
-                    new_entry['nih_project_pi'] = nih[3]
-
-                # Write the metadata to the archive JSON file
-                self._archive_json_add_entry(key = folder_to_archive.rstrip(os.path.sep),
-                                             value = new_entry)
+            # Write the metadata to the archive JSON file
+            self._archive_json_add_entry(key = folder_to_archive.rstrip(os.path.sep),
+                                            value = new_entry)
 
             # Print the final message
             print(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
@@ -1637,13 +1634,14 @@ class Archiver:
         is_nih = self.args.nih  # nih example: R01NR018762
         is_slurm = shutil.which('sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
         is_tar = not self.args.notar
+        is_force = self.args.force
 
         # Check if there is a conflict between folders and recursive flag,
         # i.e. recursive flag is set and a folder is a subdirectory of another one
         if is_recursive:
             if self._is_recursive_collision(folders):
                 print(
-                    f'\nError: You cannot archive folders recursively if there is a dependency between them.')
+                    f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
                 sys.exit(1)
 
         # Check if we can read & write all files and folders
@@ -1666,15 +1664,9 @@ class Archiver:
             for folder in folders:
                 if is_recursive:
                     for root, dirs, files in self._walker(folder):
-                        if folder == root:
-                            is_subfolder = False
-                        else:
-                            is_subfolder = True
-
-                        self.archive_locally(root, is_recursive, nih, is_subfolder, is_tar)
+                        self.archive_locally(root, nih, is_tar, is_force)
                 else:
-                    is_subfolder = False
-                    self.archive_locally(folder, is_recursive, nih, is_subfolder, is_tar)
+                    self.archive_locally(folder, nih, is_tar, is_force)
 
 
     def get_hotspot_folders(self, hotspot_file):
@@ -2590,12 +2582,12 @@ class Archiver:
         data = {}
 
         # Read the archive JSON file
-        if os.path.exists(self.archive_json):
+        if os.path.isfile(self.archive_json):
             with open(self.archive_json, 'r') as file:
                 try:
                     data = json.load(file)
                 except:
-                    print('Error in Archiver._archive_json_put_row():')
+                    print('Error in Archiver._archive_json_add_entry():')
                     print(f'Cannot read {self.archive_json}, file corrupt?')
                     return False
 
@@ -2605,6 +2597,29 @@ class Archiver:
         # Write the updated data dictionary to the archive JSON file
         with open(self.archive_json, 'w') as file:
             json.dump(data, file, indent = 4)
+
+    def _archive_json_entry_exists(self, key):
+        '''Check if an entry exists in the archive JSON file'''
+
+        # If the archive JSON file does not exist, the entry does not exist
+        if not os.path.isfile(self.archive_json):
+            return False
+
+        # Read the archive JSON file
+        with open(self.archive_json, 'r') as file:
+            try:
+                data = json.load(file)
+            except:
+                print('Error in Archiver._archive_json_entry_exists():')
+                print(f'Cannot read {self.archive_json}, file corrupt?')
+                return False
+
+        # Check if the entry exists in the data dictionary
+        if key in data:
+            return True
+        else:
+            return False
+
 
     def archive_get_bucket_info(self, folder):
         # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
@@ -2850,6 +2865,7 @@ class AWSBoto:
             if self.check_credentials(aws_profile=cfg.aws_profile):
                 self.set_session(profile_name=cfg.aws_profile,
                                  region=cfg.aws_region)
+
 
     def check_bucket_access(self, bucket_name, readwrite=False):
         '''Check if the user has access to the given bucket'''
@@ -6117,6 +6133,9 @@ def parse_arguments():
     parser_archive.add_argument('folders', action='store', default=[], nargs='*',
                                 help='folders you would like to archive (separated by space), ' +
                                 'the last folder in this list is the target   ')
+    
+    parser_archive.add_argument('-f', '--force', dest='force', action='store_true',
+                                help="Force archiving of a folder that contains the .froster.md5sum file")
 
     parser_archive.add_argument('-H', '--hotsposts', dest='hotspots', action='store_true',
                                 help="Select hotspots to archive from CSV file generated by 'froster index'")
