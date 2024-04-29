@@ -2091,14 +2091,7 @@ class Archiver:
                         tar.extractall(path=root)
                     print('done.')
 
-                files_to_delete = [self.allfiles_csv_filename,
-                            self.smallfiles_tar_filename,
-                            self.md5sum_filename,
-                            self.md5sum_restored_filename,
-                            self.where_did_the_files_go_filename
-                            ]
-                
-                for file in files_to_delete:
+                for file in self.dirmetafiles:
                     delfile = os.path.join(root, file)
                     print(f'    Removing {file}... ', end='')
                     if os.path.exists(delfile):
