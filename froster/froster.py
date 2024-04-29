@@ -42,6 +42,8 @@ import re
 import urllib.parse
 import traceback
 
+from pathlib import Path
+
 # stuff from pypi
 import inquirer
 import requests
@@ -1467,7 +1469,7 @@ class Archiver:
         print(f'Check Job Output:')
         print(f' tail -f froster-archive-{label}-{jobid}.out')
 
-    def archive_locally(self, folder_to_archive, nih, is_tar, is_force):
+    def archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar, is_force):
         '''Archive the given folder'''
 
         # Set workflow execution flags
@@ -1490,7 +1492,7 @@ class Archiver:
             if folder_already_archived:
                 print(f'\nFolder {folder_to_archive} is already archived.')
                 print(
-                    f'Please refer to the froster documentation at https://github.com/dirkpetersen/froster/')
+                    f'\nPlease refer to the froster documentation at https://github.com/dirkpetersen/froster/\n')
                 sys.exit(0)
 
             if froster_md5sum_exists:
@@ -1499,7 +1501,7 @@ class Archiver:
                 else:
                     print(
                         f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
-                    print(f'If you want to force the archiving process again on this folder, please us the -f or --force flag')
+                    print(f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
                     sys.exit(1)
 
             # Check if the folder is empty
@@ -1540,7 +1542,7 @@ class Archiver:
 
             # Create an Rclone object
             rclone = Rclone(self.args, self.cfg)
-            exit(0)
+
             # Archive the folder to S3
             print(f'\n    Uploading files...')
             ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
@@ -1595,24 +1597,39 @@ class Archiver:
                 print('        ...FAILED\n')
                 return
 
-            # Generate the metadata dictionary
-            new_entry = {'local_folder': folder_to_archive,
-                            'archive_folder': s3_dest,
-                            's3_storage_class': self.cfg.storage_class,
-                            'profile': self.cfg.aws_profile,
-                            'timestamp': datetime.datetime.now().isoformat(),
-                            'user': getpass.getuser()
-                    }
-            
-            # Add NIH information to the metadata dictionary
-            if nih:
-                new_entry['nih_project'] = nih[0]
-                new_entry['nih_project_url'] = nih[6]
-                new_entry['nih_project_pi'] = nih[3]
 
-            # Write the metadata to the archive JSON file
-            self._archive_json_add_entry(key = folder_to_archive.rstrip(os.path.sep),
-                                            value = new_entry)
+
+            # Add the metadata to the archive JSON file ONLY if this is not a subfolder
+            if not is_subfolder:
+                # Get current timestamp
+                timestamp = datetime.datetime.now().isoformat()
+
+                # Get the archive mode
+                if is_recursive:
+                    archive_mode = "Recursive"
+                else:
+                    archive_mode = "Single"
+
+                # Generate the metadata dictionary
+                new_entry = {'local_folder': folder_to_archive,
+                             'archive_folder': s3_dest,
+                             's3_storage_class': self.cfg.storage_class,
+                             'profile': self.cfg.aws_profile,
+                             'archive_mode': archive_mode,
+                             'timestamp': timestamp,
+                             'timestamp_archive': timestamp,
+                             'user': getpass.getuser()
+                        }
+
+                # Add NIH information to the metadata dictionary
+                if nih:
+                    new_entry['nih_project'] = nih[0]
+                    new_entry['nih_project_url'] = nih[6]
+                    new_entry['nih_project_pi'] = nih[3]
+
+                # Write the metadata to the archive JSON file
+                self._archive_json_add_entry(key = folder_to_archive.rstrip(os.path.sep),
+                                                value = new_entry)
 
             # Print the final message
             print(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
@@ -1630,9 +1647,8 @@ class Archiver:
         folders = clean_paths(folders)
         
         # Set flags
-        is_recursive = self.args.recursive,
-        is_nih = self.cfg.is_nih
-        is_nih = self.args.nih  # nih example: R01NR018762
+        is_recursive = self.args.recursive
+        is_nih = self.cfg.is_nih or self.args.nih
         is_slurm = shutil.which('sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
         is_tar = not self.args.notar
         is_force = self.args.force
@@ -1665,9 +1681,16 @@ class Archiver:
             for folder in folders:
                 if is_recursive:
                     for root, dirs, files in self._walker(folder):
-                        self.archive_locally(root, nih, is_tar, is_force)
+                        if folder == root:
+                            is_subfolder = False
+                        else:
+                            is_subfolder = True
+
+                        self.archive_locally(root, is_recursive, nih, is_subfolder, is_tar, is_force)
+
                 else:
-                    self.archive_locally(folder, nih, is_tar, is_force)
+                    is_subfolder = False
+                    self.archive_locally(folder, is_recursive, nih, is_subfolder, is_tar, is_force)
 
 
     def get_hotspot_folders(self, hotspot_file):
@@ -2134,131 +2157,134 @@ class Archiver:
             print(f"{filepath} not found.")
             return None, None, None
 
-    def delete(self, folder, recursive=False):
-        # Delete files that are archived and referenced in .froster.md5sum
-        rclone = Rclone(self.args, self.cfg)
-        lfolder = os.path.abspath(folder)
-        rowdict = self.archive_json_get_row(lfolder)
-        if rowdict == None:
-            print(f'Folder "{folder}" not in archive.')
-            return False
-        if 'archive_mode' in rowdict:
-            if rowdict['archive_mode'] == "Recursive":
-                recursive = True
+    def delete_locally(self, folder_to_delete):
+        '''Delete the given folder'''
 
-        tail = ''
-        if folder != rowdict['local_folder']:
-            # try to delete from subdir, we need to check if archived recursively
-            if not recursive:
-                print(textwrap.dedent(f'''\n
-                    You are trying to remove a sub folder but the parent archive 
-                    was not saved recursively. You can try remove this folder:
-                    {rowdict['local_folder']}
-                    '''))
-                return False
-            tail = folder.replace(rowdict['local_folder'], '')
+        print(f'\nDELETING {folder_to_delete}...')
+        
+        archived_folder_info = self.archive_json_get_row(folder_to_delete)
 
-        afolder = rowdict['archive_folder']+tail+'/'
+        if archived_folder_info is None:
+            print(f'\nFolder {folder_to_delete} is not archived')
+            print(f'No entry found in froster-archives.json\n')
+            return
 
-        for root, dirs, files in self._walker(lfolder):
-            if not recursive and root != lfolder:
-                break
-            print(f'  Checking folder "{root}" ... ')
-            if root != lfolder:
-                afolder = afolder + os.path.basename(root) + '/'
-            try:
-                hashfile = os.path.join(root, '.froster.md5sum')
+        try:
+
+            # Get the path to the hash file
+            hashfile = os.path.join(folder_to_delete, self.md5sum_filename)
+
+            # Check if the hashfile exists
+            if not os.path.exists(hashfile):
+
+                # Regular hashfile does not exist, check if the restored hashfile exists
+                hashfile = os.path.join(folder_to_delete, self.md5sum_restored_filename)
+
                 if not os.path.exists(hashfile):
-                    if os.path.exists(os.path.join(root, '.froster-restored.md5sum')):
-                        hashfile = os.path.join(
-                            root, '.froster-restored.md5sum')
-                        print(f'  Changed Hashfile to "{hashfile}"')
-                    else:
-                        print(textwrap.dedent(f'''\n
-                            Hashfile {hashfile} does not exist.
-                            Cannot delete files in {root}.
-                        '''))
+                    print(f'There is no hashfile therefore cannot delete files in {folder_to_delete}')
+                    return
+            
+            # Get the subfolder path
+            subfolder_path = folder_to_delete.replace(archived_folder_info['local_folder'], '')
+
+            # Get the path to the S3 destination
+            # Risky, but os.paht.join does not work with :s3: paths
+            s3_dest = archived_folder_info['archive_folder'] + subfolder_path
+
+            print(f'\n    Verifying checksums...')
+            rclone = Rclone(self.args, self.cfg)
+            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+            # Check if the checksums are correct
+            if ret:
+                print('        ...done')
+            else:
+                print('        ...FAILED\n')
+                print('\nError: Checksum double check failed. Nothing will be deleted. Please check if there is an inconsistency between local files and files in AWS S3 bucket')
+                return
+
+            deleted_files = []
+
+            # Delete the files
+            for root, dirs, files in self._walker(folder_to_delete):
+                if root != folder_to_delete:
+                    break
+                
+                print(f'\n    Deleting files...')
+                for file in files:
+                    if file == self.md5sum_filename or file == self.md5sum_restored_filename or file == self.allfiles_csv_filename or file == self.where_did_the_files_go_filename:
                         continue
-                ret = rclone.checksum(hashfile, afolder, '--max-depth', '1')
-                printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
-                if ret['stats']['errors'] > 0:
-                    print('Last Error:', ret['stats']['lastError'])
-                    print('Checksum test was not successful.')
-                    return False
+                    else:
+                        file_path = os.path.join(root, file)
+                        os.remove(file_path)
+                        deleted_files.append(file)
+                print(f'        ...done')
 
-                # delete files if confirmed that hashsums are identical
-                delete_files = []
-                with open(hashfile, 'r') as inp:
-                    for line in inp:
-                        fn = line.strip().split('  ', 1)[1]
-                        if fn != 'Froster.allfiles.csv':
-                            delete_files.append(fn)
-                deleted_files = []
-                for dfile in delete_files:
-                    dpath = os.path.join(root, dfile)
-                    if os.path.isfile(dpath) or os.path.islink(dpath):
-                        os.remove(dpath)
-                        deleted_files.append(dfile)
-                        printdbg(
-                            f"File '{dpath}' deleted successfully.")
+            # Write a readme file with the metadata
+            email = self.cfg.email
+            readme = os.path.join(folder_to_delete, self.where_did_the_files_go_filename)
 
-                # if there is a restore that needs to be deleted a second time
-                # make sure that all files extracted from the archive are deleted again
-                tarred_files = self._get_tar_content(root)
-                archived_files = []
-                if len(tarred_files) > 0:
-                    archived_files = list(set(delete_files + tarred_files))
-                deleted_tar = self._delete_tar_content(root, tarred_files)
-                if len(deleted_tar) > 0:
-                    # merge 2 lists and remove dups by converting them to set and back to list
-                    deleted_files = list(set(deleted_files + deleted_tar))
-                if 'Froster.smallfiles.tar' in archived_files:
-                    archived_files.remove('Froster.smallfiles.tar')
+            with open(readme, 'w') as rme:
+                rme.write(
+                    f'The files in this folder have been moved to an AWS S3 archive!\n')
+                rme.write(f'\nArchive location: {s3_dest}\n')
+                rme.write(
+                    f"Archive profile (~/.aws): {archived_folder_info['profile']}\n")
+                rme.write(f"Archiver user: {archived_folder_info['user']}\n")
+                rme.write(f'Archiver email: {self.cfg.email}\n')
+                rme.write(
+                    f'Archive tool: https://github.com/dirkpetersen/froster\n')
+                rme.write(
+                    f'Restore command: froster restore "{folder_to_delete}"\n')
+                rme.write(
+                    f'Deletion date: {datetime.datetime.now()}\n')
+                rme.write(f'\n\nFirst 10 files deleted this time:\n')
+                rme.write(', '.join(deleted_files[:10]))
+                rme.write(
+                    f'\n\nPlease see more metadata in Froster.allfiles.csv file\n')
 
-                if len(deleted_files) > 0:
-                    email = self.cfg.email
-                    readme = os.path.join(
-                        root, self.where_did_the_files_go_filename)
-                    with open(readme, 'w') as rme:
-                        rme.write(
-                            f'The files in this folder have been moved to an archive!\n')
-                        rme.write(f'\nArchive location: {afolder}\n')
-                        rme.write(
-                            f'Archive profile (~/.aws): {self.cfg.aws_profile}\n')
-                        rme.write(f'Archiver: {email}\n')
-                        rme.write(
-                            f'Archive tool: https://github.com/dirkpetersen/froster\n')
-                        rme.write(
-                            f'Restore command: froster restore "{root}"\n')
-                        rme.write(
-                            f'Deletion date: {datetime.datetime.now()}\n')
-                        rme.write(f'\nFirst 10 files archived:\n')
-                        rme.write(', '.join(archived_files[:10]))
-                        rme.write(f'\n\nFirst 10 files deleted this time:\n')
-                        rme.write(', '.join(deleted_files[:10]))
-                        rme.write(
-                            f'\n\nPlease see more metadata in Froster.allfiles.csv')
-                        rme.write(f'\n')
-                    print(
-                        f'  Deleted {len(deleted_files)} files and wrote manifest to "{readme}"\n')
-                else:
-                    print(f'  No files were deleted in "{root}".\n')
+            print(f'  Deleted {len(deleted_files)} files and wrote manifest to "{readme}"\n')
+                
+                            # Print the final message
+            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
+            print(f'\n    LOCAL DELETED FOLDER:   {folder_to_delete}')
+            print(f'    AWS S3 DESTINATION:     {s3_dest}\n')
+            print(f'\n    Total files deleted:    {len(deleted_files)}\n')
+            print(f'    Before deletion, all files were thoroughly verified to exist in AWS S3.\n')
 
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print(f'Permission denied to "{root}"')
-                    continue
-                else:
-                    print(f"An unexpected PermissionError occurred:\n{e}")
-                    continue
-            except OSError as e:
-                print(f"Error deleting the file: {e}")
-                continue
-            except Exception as e:
-                print(f"An unexpected error occurred:\n{e}")
-                continue
-        return True
+        except Exception as e:
+            print_error()
+            return
+
+
+    def delete(self, folders):
+        
+        # Clean the provided paths
+        folders = clean_paths(folders)
+        
+        # Set flags
+        is_recursive = self.args.recursive
+
+        if is_recursive:
+            if self._is_recursive_collision(folders):
+                print(
+                    f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
+                sys.exit(1)
+
+        # Check if we can read & write all files and folders
+        if not self._is_correct_files_folders_permissions(folders, is_recursive):
+            print('\nError: Cannot read or write to all files and folders.\n')
+            print(
+                f'You can check the permissions of the files and folders using the command:')
+            print(f'    froster archive --permissions "/your/folder/to/archive"\n')
+            sys.exit(1)
+
+        for folder in folders:
+            if is_recursive:
+                for root, dirs, files in self._walker(folder):
+                    self.delete_locally(root)
+            else:
+                self.delete_locally(folder)
+
 
     def _delete_tar_content(self, directory, files):
         deleted = []
@@ -2586,28 +2612,10 @@ class Archiver:
         with open(self.archive_json, 'w') as file:
             json.dump(data, file, indent = 4)
 
-    def _is_folder_archived(self, key):
+    def _is_folder_archived(self, folder):
         '''Check if an entry exists in the archive JSON file'''
 
-        # If the archive JSON file does not exist, the entry does not exist
-        if not os.path.isfile(self.archive_json):
-            return False
-
-        # Read the archive JSON file
-        with open(self.archive_json, 'r') as file:
-            try:
-                data = json.load(file)
-            except:
-                print('Error in Archiver._archive_json_entry_exists():')
-                print(f'Cannot read {self.archive_json}, file corrupt?')
-                return False
-
-        # Check if the entry exists in the data dictionary
-        if key in data:
-            return True
-        else:
-            return False
-
+        return (self.archive_json_get_row(folder) != None)
 
     def archive_get_bucket_info(self, folder):
         # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
@@ -2628,61 +2636,70 @@ class Archiver:
         prefix = f'{sps[1]}/'  # trailing slash ensured
         return bucket, prefix, recursive, glacier
 
-    def archive_json_get_row(self, path_name):
-        # get an archive record
-        if not os.path.exists(self.archive_json):
-            printdbg(
-                f'archive_json_get_row: {self.archive_json} does not exist')
+    def archive_json_get_row(self, folder):
+        '''Get an entry from the archive JSON file'''
+
+        # If the archive JSON file does not exist, the entry does not exist
+        if not os.path.isfile(self.archive_json):
             return None
+
+        # Read the archive JSON file
         with open(self.archive_json, 'r') as file:
             try:
                 data = json.load(file)
-            # except json.JSONDecodeError:
             except:
-                print('Error in Archiver._archive_json_get_row():')
+                print('Error in Archiver._archive_json_entry_exists():')
                 print(f'Cannot read {self.archive_json}, file corrupt?')
                 return None
-        path_name = path_name.rstrip(os.path.sep)  # remove trailing slash
-        if path_name in data:
-            data[path_name]['subdir'] = path_name
-            return data[path_name]
+
+        # Check if the entry exists in the data dictionary
+        if folder in data:
+            return data[folder]
         else:
-            # perhaps we find the searched path in a parent folder
-            trypath = path_name
-            while len(trypath) > 1:
-                trypath = os.path.dirname(trypath)
-                if trypath in data:
-                    data[trypath]['subdir'] = path_name
-                    return data[trypath]
-            printdbg(
-                f'archive_json_get_row: {path_name} not found in {self.archive_json}')
+            # Check if a parent folder exists in the data dictionary with recursive archiving
+            path = Path(folder)
+
+            for parent in path.parents:
+                parent = str(parent)
+                if parent in data and data[parent]['archive_mode'] == 'Recursive':
+                    return data[parent]
+
             return None
 
     def archive_json_get_csv(self, columns):
+
         if not os.path.exists(self.archive_json):
-            return None
+            return
+        
         with open(self.archive_json, 'r') as file:
             try:
                 data = json.load(file)
-            # except json.JSONDecodeError:
+
             except:
                 print('Error in Archiver._archive_json_get_csv():')
                 print(f'Cannot read {self.archive_json}, file corrupt?')
-                return None
+                return
+    
         # Sort data by timestamp in reverse order
         sorted_data = sorted(
-            data.items(), key=lambda x: x[1]['timestamp'], reverse=True)
+            data.items(), key=lambda x: x[1]['timestamp'], reverse = True)
+
         # Prepare CSV data
         csv_data = [columns]
+
         for path_name, row_data in sorted_data:
             csv_row = [row_data[col] for col in columns if col in row_data]
             csv_data.append(csv_row)
+        
         # Convert CSV data to a CSV string
         output = io.StringIO()
-        writer = csv.writer(output, dialect='excel')
+
+        writer = csv.writer(output, dialect = 'excel')
         writer.writerows(csv_data)
         csv_string = output.getvalue()
+
         output.close()
+
         return csv_string
 
     def _get_newest_file_atime(self, folder_path, folder_atime=None):
@@ -5814,54 +5831,33 @@ def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
         print(f' tail -f froster-restore-{label}-{jobid}.out')
 
 
-def subcmd_delete(args, cfg, arch, aws):
-    # TODO: function pendint to review
-    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
-    exit(1)
+def subcmd_delete(args: argparse.Namespace, arch: Archiver):
+    try:
+        if not args.folders:
 
-    printdbg("delete:", args.aws_profile, args.folders)
-    fld = '" "'.join(args.folders)
-    printdbg(f'default cmdline: froster delete "{fld}"')
+            # Get the list of folders from the archive
+            files = arch.archive_json_get_csv(
+                ['local_folder', 's3_storage_class', 'profile', 'deleted'])
 
-    if not args.folders:
-        files = arch.archive_json_get_csv(
-            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
-        if not files:
-            print("No archives available.")
-            sys.exit(0)
-        app = TableArchive(files)
-        retline = app.run()
-        if not retline:
-            return False
-        if len(retline) < 2:
-            print('Error: froster-archives table did not return result')
-            return False
-        printdbg("dialog returns:", retline)
-        args.folders.append(retline[0])
-        if retline[2]:
-            cfg.aws_profile = retline[2]
-            args.aws_profile = cfg.aws_profile
-            cfg.set_env_vars(cfg.aws_profile)
-    else:
-        pass
-        # we actually want to support symlinks
-        # args.folders = clean_paths(args.folders)
+            if not files:
+                print("No archives available.")
+                sys.exit(0)
 
-    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.aws_profile}" not found.')
-        return False
-    if not aws.check_bucket_access_folders(args.folders):
-        return False
+            app = TableArchive(files)
+            retline = app.run()
 
-    for fld in args.folders:
-        fld = fld.rstrip(os.path.sep)
-        # get archive storage location
-        print(
-            f'Deleting archived files in "{fld}", please wait ...', flush=True)
-        if not arch.delete(fld):
-            printdbg(
-                f'  Archiver.delete({fld}) returned False', flush=True)
+            if not retline:
+                return False
+            if len(retline) < 2:
+                print(f'\nNo archived folders found\n')
+                sys.exit(0)
+            
+            args.folders = [retline[0]]
 
+        arch.delete(args.folders)
+
+    except Exception:
+        print_error()
 
 def subcmd_mount(args, cfg, arch, aws):
     # TODO: function pendint to review
@@ -6181,6 +6177,9 @@ def parse_arguments():
     parser_delete.add_argument('folders', action='store', default=[],  nargs='*',
                                help='folders (separated by space) from which you would like to delete files, ' +
                                'you can only delete files that have been archived')
+    
+    parser_delete.add_argument('-r', '--recursive', dest='recursive', action='store_true',
+                                help="Delete the current archived folder and all archived sub-folders")
 
     # ***
 
@@ -6343,7 +6342,7 @@ def main():
         elif args.subcmd in ['restore', 'rst']:
             subcmd_restore(args, cfg, arch, aws)
         elif args.subcmd in ['delete', 'del']:
-            subcmd_delete(args, cfg, arch, aws)
+            subcmd_delete(args, arch)
         elif args.subcmd in ['mount', 'mnt']:
             subcmd_mount(args, cfg, arch, aws)
         elif args.subcmd in ['umount']:  # or args.unmount:
