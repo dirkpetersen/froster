@@ -2079,8 +2079,8 @@ class Archiver:
                 break
             try:
                 print(f'  Resetting folder {root} ... ', end='')
-                min_metafiles = ['Froster.allfiles.csv',
-                                 '.froster.md5sum', 'Where-did-the-files-go.txt']
+                min_metafiles = [self.allfiles_csv_filename,
+                                 self.md5sum_filename, self.where_did_the_files_go_filename]
                 if set(min_metafiles).issubset(set(files)):
                     if len(files) <= 5:
                         print(
@@ -2097,7 +2097,7 @@ class Archiver:
                     if os.path.getsize(csv_path) < 100:
                         os.remove(csv_path)
                 delfiles = [
-                    '.froster.md5sum', '.froster-restored.md5sum', 'Where-did-the-files-go.txt']
+                    self.md5sum_filename, self.md5sum_restored_filename, self.where_did_the_files_go_filename]
                 for d in delfiles:
                     delfile = os.path.join(root, d)
                     if os.path.exists(delfile):
@@ -2230,7 +2230,8 @@ class Archiver:
 
                 if len(deleted_files) > 0:
                     email = self.cfg.email
-                    readme = os.path.join(root, 'Where-did-the-files-go.txt')
+                    readme = os.path.join(
+                        root, self.where_did_the_files_go_filename)
                     with open(readme, 'w') as rme:
                         rme.write(
                             f'The files in this folder have been moved to an archive!\n')
