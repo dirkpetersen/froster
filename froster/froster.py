@@ -1485,7 +1485,7 @@ class Archiver:
 
             # TODO: vmachado: review this code
             froster_md5sum_exists = os.path.isfile(os.path.join(folder_to_archive, ".froster.md5sum"))
-            folder_already_archived = self._archive_json_entry_exists(folder_to_archive.rstrip(os.path.sep))
+            folder_already_archived = self._is_folder_archived(folder_to_archive.rstrip(os.path.sep))
 
             if folder_already_archived:
                 print(f'\nFolder {folder_to_archive} is already archived.')
@@ -1532,6 +1532,7 @@ class Archiver:
             else:
                 # Something failed, exit
                 print('        ...FAILED\n')
+                print('\nError: Checksum double check failed. Please check if there is an inconsistency between local files and files in AWS S3 bucket')
                 return
 
             # Get the path to the hashfile
@@ -1539,7 +1540,7 @@ class Archiver:
 
             # Create an Rclone object
             rclone = Rclone(self.args, self.cfg)
-
+            exit(0)
             # Archive the folder to S3
             print(f'\n    Uploading files...')
             ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
@@ -2068,56 +2069,49 @@ class Archiver:
                 return False
         return True
 
-    def reset_folder(self, directory, recursive=False):
+    def reset_folder(self, directory, recursive = False):
+        '''Remove all froster artifacts from a folder and untar small files'''
 
-        # TODO:vmachado: Function pendint to review
-        print(f'TODO: Function reset_folder pending to review in {__file__}')
-        sys.exit(0)
-        # Remove all froster artifacts from a folder and untar small files
         for root, dirs, files in self._walker(directory):
             if not recursive and root != directory:
                 break
             try:
-                print(f'  Resetting folder {root} ... ', end='')
-                min_metafiles = [self.allfiles_csv_filename,
-                                 self.md5sum_filename, self.where_did_the_files_go_filename]
-                if set(min_metafiles).issubset(set(files)):
-                    if len(files) <= 5:
-                        print(
-                            f'  There are only {len(files)} files in {root}, please reset it manually ...')
-                        continue
-                tar_path = os.path.join(root, 'Froster.smallfiles.tar')
+                print(f'\nResetting folder {root}...')
+
+                if self._is_folder_archived(root.rstrip(os.path.sep)):
+                    print(f'    ...folder {root} is archived, nothing to reset\n')
+                    continue
+
+                # Get the path to the tar file
+                tar_path = os.path.join(root, self.smallfiles_tar_filename)
+
                 if os.path.exists(tar_path):
-                    print(f'  Untarring Froster.smallfiles.tar ... ', end='')
+                    print('    Untarring Froster.smallfiles.tar... ', end='')
                     with tarfile.open(tar_path, "r") as tar:
                         tar.extractall(path=root)
-                    os.remove(tar_path)
-                csv_path = os.path.join(root, 'Froster.allfiles.csv')
-                if os.path.exists(csv_path):
-                    if os.path.getsize(csv_path) < 100:
-                        os.remove(csv_path)
-                delfiles = [
-                    self.md5sum_filename, self.md5sum_restored_filename, self.where_did_the_files_go_filename]
-                for d in delfiles:
-                    delfile = os.path.join(root, d)
+                    print('done.')
+
+                files_to_delete = [self.allfiles_csv_filename,
+                            self.smallfiles_tar_filename,
+                            self.md5sum_filename,
+                            self.md5sum_restored_filename,
+                            self.where_did_the_files_go_filename
+                            ]
+                
+                for file in files_to_delete:
+                    delfile = os.path.join(root, file)
+                    print(f'    Removing {file}... ', end='')
                     if os.path.exists(delfile):
                         os.remove(delfile)
-                print('Done.')
+                        print('done')
+                    else:
+                        print('nothing to remove')
 
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print("Error: Permission denied in reset_folder.")
-                    return
-                else:
-                    print(
-                        f"Error: PermissionError occurred in _reset_folder:\n{e}")
-                    return
-            except Exception as e:
-                print(
-                    f"Error: An unexpected error occurred in _reset_folder:\n{e}")
-                return
-        return
+                print(f'...folder {root} reset successfully\n')
+
+            except Exception:
+                print_error()
+
 
     def _is_small_file_in_dir(self, dir, small=1024):
         # Get all files in the specified directory
@@ -2599,7 +2593,7 @@ class Archiver:
         with open(self.archive_json, 'w') as file:
             json.dump(data, file, indent = 4)
 
-    def _archive_json_entry_exists(self, key):
+    def _is_folder_archived(self, key):
         '''Check if an entry exists in the archive JSON file'''
 
         # If the archive JSON file does not exist, the entry does not exist
