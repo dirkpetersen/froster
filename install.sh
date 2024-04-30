@@ -209,7 +209,7 @@ install_froster() {
 
     pipx ensurepath >/dev/null 2>&1
     # TODO: Update path once froster is in PyPi repository
-    pipx install git+https://github.com/dirkpetersen/froster.git@develop >/dev/null 2>&1 &
+    pipx install git+https://github.com/dirkpetersen/froster.git@main >/dev/null 2>&1 &
     spinner $!
 
     echo "  ...froster installed"
