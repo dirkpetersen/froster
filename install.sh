@@ -7,11 +7,6 @@ set -e
 ### VARIABLES ###
 #################
 
-# Variables of pwalk third-party tool froster is using
-pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
-pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
-pwalk_path=filesystem-reporting-tools-${pwalk_commit}
-    
 date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
 
 #####################
@@ -26,8 +21,12 @@ catch() {
         # error handling goes here
         echo "Error: $2: exit code $1"
 
+        echo
         echo "Rolling back installation..."
-        pipx uninstall froster >/dev/null 2>&1
+
+        if pipx list >/dev/null 2>&1 | grep -q 'froster'; then
+            pipx uninstall froster >/dev/null 2>&1
+        fi
 
         # Restore (if any) backed up froster config files
         if [[ -d ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
@@ -48,6 +47,19 @@ catch() {
     fi
 }
 
+spinner() {
+    pid=$1
+    spin='-\|/'
+
+    i=0
+    while kill -0 $pid 2>/dev/null
+    do
+        i=$(( (i+1) %4 ))
+        printf "\r${spin:$i:1}"
+        sleep .1
+    done
+    printf "\r "
+}
 #################
 ### FUNCTIONS ###
 #################
@@ -198,7 +210,8 @@ install_froster() {
 
     pipx ensurepath >/dev/null 2>&1
     # TODO: Update path once froster is in PyPi repository
-    pipx install git+https://github.com/HPCNow/froster.git@develop >/dev/null 2>&1
+    pipx install git+https://github.com/HPCNow/froster.git@develop >/dev/null 2>&1 &
+    spinner $!
 
     echo "  ...froster installed"
 }
@@ -209,14 +222,28 @@ install_pwalk() {
     echo
     echo "Installing third-party dependency: pwalk... "
 
+    # Variables of pwalk third-party tool froster is using
+    pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
+    pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
+    pwalk_path=filesystem-reporting-tools-${pwalk_commit}
+
     # Gather pwalk repository files
-    curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1
+    curl -s -L ${pwalk_repository} | tar xzf -  >/dev/null 2>&1  &
+    spinner $!
 
     # Compile pwalk tool and put exec file in froster's binaries folder
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
+    spinner $!
 
     # Move pwalk to froster's binaries folder
-    mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+    if [ -d "${HOME}/.local/share/pipx" ]; then
+        mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+    elif [ -d "${HOME}/.local/pipx" ]; then
+        mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+    else
+        echo "Error: pipx installation path not found."
+        exit 1
+    fi
 
     # Delete downloaded pwalk files
     rm -rf ${pwalk_path} >/dev/null 2>&1
@@ -246,13 +273,22 @@ install_rclone() {
     fi
 
     # Download the rclone zip file
-    curl -LO $rclone_url >/dev/null 2>&1
+    curl -LO $rclone_url >/dev/null 2>&1  &
+    spinner $!
 
     # Extract the zip file
-    unzip rclone-current-linux-*.zip >/dev/null 2>&1
+    unzip rclone-current-linux-*.zip >/dev/null 2>&1  &
+    spinner $!
 
     # Move rclone to froster's binaries folder
-    mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+    if [ -d "${HOME}/.local/share/pipx" ]; then
+        mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+    elif [ -d "${HOME}/.local/pipx" ]; then
+        mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+    else
+        echo "Error: pipx installation path not found."
+        exit 1
+    fi
 
     # Remove the downloaded zip file
     rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
