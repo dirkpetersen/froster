@@ -11,6 +11,7 @@ jobs:
       - run: which pipx
       - run: which gcc
       - run: which unzip
+      - run: pipx environment
       - run: ./install.sh
       - run: froster --version
 
