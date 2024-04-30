@@ -11,7 +11,7 @@ jobs:
       - run: which pipx
       - run: which gcc
       - run: which unzip
-      - run: ./froster/install.sh
+      - run: ./install.sh
       - run: froster --version
 
 
