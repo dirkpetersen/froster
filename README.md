@@ -1,11 +1,46 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
-Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster crawls your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. To install or update froster run:
+Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster crawls your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. 
+
+</br>
+
+## Installation pre-requisite: packages
+
+### On Debian/Ubuntu
 
 ```
-curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+sudo apt-get update
+sudo apt-get install -y curl pipx git gcc lib32gcc-s1 unzip
 ```
-or  `froster update`
+
+### On RHEL 
+
+```
+sudo yum update
+sudo yum install -y curl pipx git gcc lib32gcc-s1 unzip
+```
+
+### On HPC machine
+
+Please contact your administrator to install these packages:
+```
+curl pipx git gcc lib32gcc-s1 unzip
+```
+
+</br>
+
+
+## Installation
+
+After you installed the pre-requisites, close and open the terminal again to refresh the environment.
+To install Froster, execute the following command into your terminal:
+
+```
+curl -s https://raw.githubusercontent.com/HPCnow/froster/develop/install.sh | bash
+
+```
+
+</br>
 
 ## Table of Contents
 
@@ -71,20 +106,18 @@ There were three motivations behind the creation of `Froster`:
 
 ### Installing 
 
-Just pipe this curl command to bash to install: 
+To install Froster, execute the following command into your terminal:
 
 ```
-curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+curl -s https://raw.githubusercontent.com/HPCNow/froster/develop/froster | bash -s install && source ~/.bashrc
 ```
 
-and if you have recently installed it with all dependencies and just would like to update the core software, you can use 2 options
+### Updating 
+
+To update Froster there are 2 options: execute the installation command again or run the following command into your terminal:
 
 ```
 froster update 
-```
-or if you are updating from an older version from 2023
-```
-curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- update
 ```
 
 ### configuring 
@@ -286,13 +319,13 @@ echo 'alias fro="froster --no-slurm --cores=8 --profile=myceph"' >> ~/.bashrc
 
 #### advanced configuration 
 
-Some advanced configuration settings are not offered through a user inferface but you can change them under `~/.config/froster`. For example,  `~/.config/froster/general` has one file per setting which makes it very easy to use the settings in shell scripts, for example when writing addon tools: 
+Some advanced configuration settings are not offered through a user inferface but you can change them under `~/.froster/config`. For example,  `~/.froster/config/general` has one file per setting which makes it very easy to use the settings in shell scripts, for example when writing addon tools: 
 
 ```
-DEFAULT_STORAGE_CLASS=$(cat ~/.config/froster/general/s3_storage_class)
+DEFAULT_STORAGE_CLASS=$(cat ~/.froster/config/general/s3_storage_class)
 ```
 
-a few advanced settings at ~/.config/froster/general deserve more explanation:
+a few advanced settings at ~/.froster/config/general deserve more explanation:
 
 * min_index_folder_size_gib (Default: 10)
 
@@ -480,7 +513,7 @@ Now let's take it to the next level. Small datasets are not really worth archivi
 ```
 froster archive --older 1095 --larger 1024
 
-Processing hotspots file /home/users/dp/.config/froster/hotspots/@XxxxermanLab.csv!
+Processing hotspots file /home/users/dp/.froster/config/hotspots/@XxxxermanLab.csv!
 
 Run this command to archive all selected folders in batch mode:
 
@@ -502,6 +535,7 @@ Total space to archive: 54,142 GiB
 
 Note: you can also use `--newer xxx --larger yyy to identify files that have only been added recently`
 
+
 ### Special use cases
 
 #### Recursive operations
@@ -519,7 +553,7 @@ Froster.smallfiles.tar is created prior to uploading. When restoring data Froste
 To avoid tarring you can set max_small_file_size_kib to 0 using this command. The default is 1024 (KiB) or you can use the `archive --notar` option.
 
 ```
-echo 0 > ~/.config/froster/general/max_small_file_size_kib
+echo 0 > ~/.froster/config/general/max_small_file_size_kib
 ```
 
 #### NIH Life Sciences metadata
@@ -624,7 +658,7 @@ vd ~/my_department.csv
 
 ### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
 
-This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.config/froster/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
+This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.froster/config/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
 
 ### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
 
@@ -639,7 +673,7 @@ Each of the sub commands has a help option, for example `froster archive --help`
 
 ```
 dp@grammy:~$ froster
-usage: froster  [-h] [--debug] [--no-slurm] [--cores CORES] [--profile AWSPROFILE] [--version]
+usage: froster  [-h] [--debug] [--no-slurm] [--cores CORES] [--profile aws_profile] [--version]
                 {config,cnf,index,idx,archive,arc,delete,del,mount,umount,restore,rst,ssh,scp} ...
 
 A (mostly) automated tool for archiving large scale data after finding folders in the file system that
@@ -671,7 +705,7 @@ optional arguments:
   --no-slurm, -n        do not submit a Slurm job, execute in the foreground.
   --cores CORES, -c CORES
                         Number of cores to be allocated for the machine. (default=4)
-  --profile AWSPROFILE, -p AWSPROFILE
+  --profile aws_profile, -p aws_profile
                         which AWS profile in ~/.aws/ should be used. default="aws"
   --version, -v         print Froster and Python version info
 
@@ -690,7 +724,7 @@ dp@grammy:~$ froster config  --help
 usage: froster config [-h] [--index] [--monitor <email@address.org>] [cfgfolder]
 
 positional arguments:
-  cfgfolder             configuration root folder where .config/froster will be created (default=~ home directory)
+  cfgfolder             configuration root folder where .froster/config will be created (default=~ home directory)
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -839,4 +873,4 @@ Froster is a good on-ramp to Starfish. If many users in your organization end up
 
 All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While AWS Glacier and Rclone will still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone or [Cyberduck](#using-cyberduck-to-browse-glacier) (for smaller amounts of data) to retrieve your data, as it is kept in its original format.   
 
-Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database `foster-archives.json` (default location: `~/.config/froster/`). To restore a specific folder, simply use the command followed by the desired path, for example: `s3-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `s3-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs. Note: You may have to change the AWS profile in `s3-restore.sh` to a profile you find under `~/.aws`
+Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database `foster-archives.json` (default location: `~/.froster/config/`). To restore a specific folder, simply use the command followed by the desired path, for example: `s3-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `s3-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs. Note: You may have to change the AWS profile in `s3-restore.sh` to a profile you find under `~/.aws`

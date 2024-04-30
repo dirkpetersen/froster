@@ -1,114 +1,291 @@
 #! /bin/bash
 
-PMIN="8" # python3 minor version = 3.8)
+# Make sure script ends as soon as an error arises
+set -e
 
-froster_update() {
-  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster.py?token=$(date +%s) \
-        -o ~/.local/bin/froster.py
+#################
+### VARIABLES ###
+#################
 
-  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/froster?token=$(date +%s) \
-        -o ~/.local/bin/froster
+# Variables of pwalk third-party tool froster is using
+pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
+pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
+pwalk_path=filesystem-reporting-tools-${pwalk_commit}
+    
+date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
 
-  curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/s3-restore.sh?token=$(date +%s) \
-        -o ~/.local/bin/s3-restore.sh
+#####################
+### ERROR HANDLER ###
+#####################
 
-  chmod +x ~/.local/bin/froster
-  chmod +x ~/.local/bin/s3-restore.sh
+# Define error handler function
+trap 'catch $? $BASH_COMMAND' EXIT
 
-}
-echo ""
-umask 0002
-if [[ $1 == "update" ]]; then
-  echo -e "  Updating Froster, please wait ...\n"
-  froster_update
-  froster --version
-  echo -e "\n  Froster updated! Run 'froster --help'\n"  
-  exit
-fi 
-echo "Installing Froster, please wait ..."
-### checking for correct Python version 
-P3=$(which python3)
-if [[ -z ${P3} ]]; then
-  echo "python3 could not be found, please install Python >= 3.${PMIN} first"
-  exit
-fi
-python3 -m pip --disable-pip-version-check install --upgrade --user visidata
-if [[ $(${P3} -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-  echo "Python >= 3.${PMIN} required and your default ${P3} is too old."
-  printf "Trying to load Python through the modules system ... "
-  module load python > /dev/null 2>&1
-  module load Python > /dev/null 2>&1
-  echo "Done!"
-  printf "Starting Python from default module ... "
-  if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-    echo "Done!"
-    printf "The default Python module is older than 3.${PMIN}. Trying Python/3.${PMIN} ... "
-    module load python/3.${PMIN} > /dev/null 2>&1
-    module load Python/3.${PMIN} > /dev/null 2>&1
-    echo "Done!"
-    printf "Starting Python 3.${PMIN} from module ... "
-    if [[ $(python3 -c "import sys; print(sys.version_info >= (3,${PMIN}))") == "False" ]]; then
-      echo "Failed to load Python 3.${PMIN}. Please load a Python module >= 3.${PMIN} manually."
-      exit
+catch() {
+    if [ "$1" != "0" ]; then
+        # error handling goes here
+        echo "Error: $2: exit code $1"
+
+        echo "Rolling back installation..."
+        pipx uninstall froster >/dev/null 2>&1
+
+        # Restore (if any) backed up froster config files
+        if [[ -d ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
+            mv -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.config/froster >/dev/null 2>&1
+        fi
+
+        # Restore (if any) backed up froster data files
+        if [[ -d ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
+            mv -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.local/share/froster >/dev/null 2>&1
+        fi
+
+        rm -rf ${pwalk_path} >/dev/null 2>&1
+        rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+        echo "    ...done"
+
+        echo
+        echo "Installation failed!"
     fi
-    echo "Done!"
-  else 
-    echo "Done!"
-  fi
-fi
-python3 -m pip --disable-pip-version-check install --upgrade --user visidata
-### Fixing a potentially broken LD_LIBRARY_PATH
-P3=$(which python3)
-P3=$(readlink -f ${P3})
-unset LIBRARY_PATH PYTHONPATH
-export LD_LIBRARY_PATH=${P3%/bin/python3*}/lib:${LD_LIBRARY_PATH}
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:}
-### Installing froster in a Virtual Envionment. 
-if [[ -d ~/.local/share/froster ]]; then
-  rm -rf ~/.local/share/froster.bak
-  echo "Renaming existing froster install to ~/.local/share/froster.bak "
-  mv ~/.local/share/froster ~/.local/share/froster.bak
-fi
-printf "Installing virtual environment ~/.local/share/froster ... "
-mkdir -p ~/.local/share/froster
-mkdir -p ~/.local/bin
-export VIRTUAL_ENV_DISABLE_PROMPT=1
-# Check if 'ensurepip' is available, or use old virtualenv
-if python3 -c "import ensurepip" &> /dev/null; then
-  python3 -m venv ~/.local/share/froster
-else
-  python3 -m pip install --upgrade virtualenv
-  python3 -m virtualenv ~/.local/share/froster
-fi
-###
-source ~/.local/share/froster/bin/activate
-echo "Done!"
-echo "Installing packages required by Froster ... "
-curl -Ls https://raw.githubusercontent.com/dirkpetersen/froster/main/requirements.txt \
-        -o ~/.local/share/froster/requirements.txt \
-      && python3 -m pip --disable-pip-version-check \
-         install --upgrade -r ~/.local/share/froster/requirements.txt
-echo "Done!"
+}
 
-froster_update
+#################
+### FUNCTIONS ###
+#################
 
-~/.local/bin/froster --help
-echo -e "\n\n  Froster installed! Run 'froster --help' or this order of commands:\n"
-echo "  froster config"
-echo "  froster index /your/folder"
-echo "  froster archive"
-                        
-deactivate
+# Check all needed apt dependencies to install froster
+check_apt_dependencies() {
 
-# check if there is a folder in PATH inside my home directory, deactivated 
-#DIR_IN_PATH=$(IFS=:; for dir in $PATH; do if [[ $dir == $HOME* ]]; then echo $dir; break; fi; done)
+    # Check if curl is installed
+    if [[ -z $(command -v curl) ]]; then
+        echo "Error: curl is not installed."
+        echo
+        echo "In most linux distros you can install the latest version of curl by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y curl"
+        echo
+        exit 1
+    fi
 
-if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
-  echo ""
-  #echo "  ~/local/bin is in PATH, you can start 'froster'" 
-else
-  echo "export PATH=\$PATH:~/.local/bin" >> "${HOME}/.bashrc"
-  echo ""
-  echo "  ~/.local/bin added to PATH in .bashrc"
-  echo "  Please logout/login again or run: source ~/.bashrc"
-fi
+    # Check if pipx is installed
+    if [[ -z $(command -v pipx) ]]; then
+        echo "Error: pipx is not installed."
+        echo
+        echo "Please install pipx"
+        echo "In most linux distros you can install the latest version of pipx by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y pipx"
+        echo "  pipx ensurepath"
+        echo
+        exit 1
+    fi
+
+    # Check if gcc is installed
+    if [[ -z $(command -v gcc) ]]; then
+        echo "Error: gcc is not installed."
+        echo
+        echo "Please install gcc"
+        echo "In most linux distros you can install the latest version of gcc by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y gcc"
+        echo
+        exit 1
+    fi
+
+    # Check if lib32gcc-s1 is installed (pwalk compilation requirement)
+    if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
+        echo "Error: lib32gcc-s1 is not installed."
+        echo
+        echo "Please install lib32gcc-s1"
+        echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y lib32gcc-s1"
+        echo
+        exit 1
+    fi
+
+    # Check if git is installed (pipx installation requirement)
+    # TODO: Get rid of this requirement once froster is in PyPi repository
+    if [[ -z $(command -v git) ]]; then
+        echo "Error: git is not installed."
+        echo
+        echo "Please install git"
+        echo "In most linux distros you can install the latest version of git by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y git"
+        echo
+        exit 1
+    fi
+
+    # Check if unzip is installed (rclone requirement)
+    if [[ -z $(command -v unzip) ]]; then
+        echo "Error: unzip is not installed."
+        echo
+        echo "Please install unzip"
+        echo "In most linux distros you can install the latest version of unzip by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y unzip"
+        echo
+        exit 1
+    fi
+}
+
+# Backup older installations (if any) but keep the froster-archive.json file
+backup_old_installation() {
+
+    echo
+    echo "Backing up older froster installation (if any)..."
+
+    # Back up (if any) older froster data files
+    if [[ -d ${HOME}/.local/share/froster ]]; then
+
+        # Move the froster directory to froster_YYYYMMDD.bak
+        mv -f ${HOME}/.local/share/froster ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak
+
+        # Keep the froster-archives.json file (if any)
+        if [[ -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+            # Create the froster directory if it does not exist
+            mkdir -p ${HOME}/.local/share/froster
+
+            # Copy the froster-archives.json file to the data directory
+            cp -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+        fi
+        echo
+        echo "Data back up at ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak"
+    fi
+
+    # Back up (if any) older froster configurations
+    if [[ -d ${HOME}/.config/froster ]]; then
+
+        # Move the froster config directory to froster.bak
+        mv -f ${HOME}/.config/froster ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak
+
+        # Keep the config.ini file (if any)
+        if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
+            # Create the froster directory if it does not exist
+            mkdir -p ${HOME}/.config/froster
+
+            # Copy the config file to the data directory
+            cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ${HOME}/.config/froster/config.ini
+        fi
+
+        # Keep the froster-archives.json file (if any)
+        if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+            # Create the froster directory if it does not exist
+            mkdir -p ${HOME}/.local/share/froster
+
+            # Copy the froster-archives.json file to the data directory
+            cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+        fi
+
+        echo
+        echo "Config back up at ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak"
+        echo
+    fi
+
+    # Remove old files
+    rm -f ${HOME}/.local/bin/froster
+    rm -f ${HOME}/.local/bin/froster.py
+    rm -f ${HOME}/.local/bin/s3-restore.py
+
+    echo "  ...older froster installation backed up"
+}
+
+# Install froster
+install_froster() {
+
+    echo
+    echo "Installing latest version of froster..."
+
+    pipx ensurepath >/dev/null 2>&1
+    # TODO: Update path once froster is in PyPi repository
+    pipx install git+https://github.com/HPCNow/froster.git@develop >/dev/null 2>&1
+
+    echo "  ...froster installed"
+}
+
+# Install pwalk
+install_pwalk() {
+
+    echo
+    echo "Installing third-party dependency: pwalk... "
+
+    # Gather pwalk repository files
+    curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1
+
+    # Compile pwalk tool and put exec file in froster's binaries folder
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1
+
+    # Move pwalk to froster's binaries folder
+    mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+
+    # Delete downloaded pwalk files
+    rm -rf ${pwalk_path} >/dev/null 2>&1
+
+    echo "  ...pwalk installed"
+}
+
+# Install rclone
+install_rclone() {
+
+    echo
+    echo "Installing third-party dependency: rclone... "
+
+    # Check the architecture of the system
+    arch=$(uname -m)
+
+    # Get the rclone download URL based on the architecture
+    if [[ "$arch" == "x86_64" ]] || [[ "$arch" == "amd64" ]]; then
+        rclone_url='https://downloads.rclone.org/rclone-current-linux-amd64.zip'
+
+    elif [[ "$arch" == "arm" ]] || [[ "$arch" == "arm64" ]] || [[ "$arch" == "aarch64" ]]; then
+        rclone_url='https://downloads.rclone.org/rclone-current-linux-arm64.zip'
+
+    else
+        echo "Unsupported architecture: ${arch}"
+        exit 1
+    fi
+
+    # Download the rclone zip file
+    curl -LO $rclone_url >/dev/null 2>&1
+
+    # Extract the zip file
+    unzip rclone-current-linux-*.zip >/dev/null 2>&1
+
+    # Move rclone to froster's binaries folder
+    mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+
+    # Remove the downloaded zip file
+    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+
+    echo "  ...rclone installed"
+}
+
+############
+### CODE ###
+############
+
+# Check linux package dependencies
+check_apt_dependencies
+
+# Set rw permissions on anyone in file's group
+umask 0002
+
+# Backup old installation (if any)
+backup_old_installation
+
+# Install froster
+install_froster
+
+# Install pwalk
+install_pwalk
+
+# Install rclone
+install_rclone
+
+echo
+echo "Installation complete!"
+
+echo
+echo "You will need to open a new terminal or refresh your current terminal session by running command:"
+echo "  source ~/.bashrc"
+echo
