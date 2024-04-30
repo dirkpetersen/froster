@@ -8,8 +8,10 @@ jobs:
       - uses: actions/checkout@v4
       - run: curl --version
       - run: python3 --version
-      - run: pip --version
-      - run: ./froster install
-      - run: ./froster --version
+      - run: pipx --version
+      - run: gcc --version
+      - run: unzip --version
+      - run: ./froster/install.sh
+      - run: froster --version
 
 
