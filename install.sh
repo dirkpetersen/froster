@@ -240,6 +240,8 @@ install_pwalk() {
         mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
         mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+    elif [ -v PIPX_HOME ]; then
+        mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
         exit 1
@@ -285,6 +287,8 @@ install_rclone() {
         mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
         mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+    elif [ -v PIPX_HOME ]; then
+        mv rclone-v*/rclone ${PIPX_HOME}/venvs/froster/bin/rclone >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
         exit 1
