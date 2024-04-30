@@ -533,6 +533,9 @@ froster archive \
 Total space to archive: 54,142 GiB
 ```
 
+Note: you can also use `--newer xxx --larger yyy to identify files that have only been added recently`
+
+
 ### Special use cases
 
 #### Recursive operations

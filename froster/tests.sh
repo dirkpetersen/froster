@@ -76,6 +76,8 @@ generate_test_data() {
 # Execute the function and capture the returned folder path
 created_folder=$(generate_test_data)
 
+echo "Test data folder: $created_folder"
+
 
 script_dir=~/.local/bin
 

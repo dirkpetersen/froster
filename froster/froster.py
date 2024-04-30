@@ -262,7 +262,7 @@ class ConfigManager:
             try:
                 os.system('crontab -l > {}'.format(temp.name))
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"Error: {e}", file=sys.stderr)
 
             # Add the new cron job to the temporary file
             cron_time = "{} {} {} {} {}".format(
@@ -274,7 +274,7 @@ class ConfigManager:
             try:
                 os.system('crontab {}'.format(temp.name))
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"Error: {e}", file=sys.stderr)
 
             # Clean up by removing the temporary file
             os.unlink(temp.name)
@@ -343,7 +343,8 @@ class ConfigManager:
             os.system("systemctl --user start froster-monitor.timer")
             print("Systemd froster-monitor.timer cron job started!")
         except Exception as e:
-            print(f'Could not add systemd scheduler job, Error: {e}')
+            print(
+                f'Could not add systemd scheduler job, Error: {e}', file=sys.stderr)
 
     def assure_permissions_and_group(self, directory):
         '''Assure correct permissions and groupID of a directory'''
@@ -385,9 +386,9 @@ class ConfigManager:
                     os.chown(path, -1, dir_gid)
 
         except Exception as e:
-            print(f'\nError: {e}')
+            print(f'\nError: {e}', file=sys.stderr)
             print(
-                f'Could not fix permissions of shared folder "{directory}"\n')
+                f'Could not fix permissions of shared folder "{directory}"\n', file=sys.stderr)
 
     def __inquirer_check_bucket_name(self, answers, current):
 
@@ -1149,7 +1150,7 @@ class Archiver:
                     # Check if the pwalk command was successful
                     if ret.returncode != 0:
                         print(
-                            f"\nError: command {mycmd} failed with returncode {ret.returncode}\n")
+                            f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
                         sys.exit(1)
 
                     # If pwalkcopy location provided, then copy the pwalk output file to the specified location
@@ -1168,7 +1169,7 @@ class Archiver:
                         # Check if the copy command was successful
                         if result.returncode != 0:
                             print(
-                                f"\nError: command {mycmd} failed with returncode {result.returncode}\n")
+                                f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
                             sys.exit(1)
 
                     # Build the files removing command
@@ -1180,7 +1181,7 @@ class Archiver:
                     # Check if the files removing command was successful
                     if result.returncode != 0:
                         print(
-                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n")
+                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
                         sys.exit(1)
 
                     # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
@@ -1195,7 +1196,7 @@ class Archiver:
                     # Check if the file conversion command was successful
                     if result.returncode != 0:
                         print(
-                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n")
+                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
                         sys.exit(1)
 
                     # Build the SQL query on the CSV file
@@ -1420,7 +1421,7 @@ class Archiver:
                     if os.path.commonpath([folders[i], folders[j]]) == folders[i]:
                         is_collision = True
                         print(
-                            f'Error: Folder {folders[j]} is a subdirectory of folder {folders[i]}.\n')
+                            f'Error: Folder {folders[j]} is a subdirectory of folder {folders[i]}.\n', file=sys.stderr)
 
                     # Check if folders[i] is a subdirectory of folders[j]
                     elif os.path.commonpath([folders[i], folders[j]]) == folders[j]:
@@ -1428,7 +1429,7 @@ class Archiver:
                         print(
                             f'Error: Folder {folders[i]} is a subdirectory of folder {folders[j]}.\n')
         except Exception as e:
-            print(f'\nError: {e}\n')
+            print_error()
             is_collision = True
 
         return is_collision
@@ -1536,9 +1537,6 @@ class Archiver:
                 is_checksum_generated = True
                 print('        ...done')
             else:
-                # Something failed, exit
-                print('        ...FAILED\n')
-                print('\nError: Checksum double check failed. Please check if there is an inconsistency between local files and files in AWS S3 bucket')
                 return
 
             # Get the path to the hashfile
@@ -1667,10 +1665,12 @@ class Archiver:
 
         # Check if we can read & write all files and folders
         if not self._is_correct_files_folders_permissions(folders, is_recursive):
-            print('\nError: Cannot read or write to all files and folders.\n')
             print(
-                f'You can check the permissions of the files and folders using the command:')
-            print(f'    froster archive --permissions "/your/folder/to/archive"\n')
+                '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
+            print(
+                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+            print(
+                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
             sys.exit(1)
 
         nih = ''
@@ -1717,9 +1717,18 @@ class Archiver:
             f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{hotspot_file}')")
 
         # Run SQL queries on this virtual table
-        # Filter by given age and size. The default value for both is 0.
-        rows = duckdb_connection.execute(
-            f"SELECT * FROM hs WHERE {agefld} >= {self.args.older} and GiB >= {self.args.larger} ").fetchall()
+        # Filter by given age and size. The default value for all is 0
+        if self.args.older > 0:
+            rows = duckdb_connection.execute(
+                f"SELECT * FROM hs WHERE {agefld} >= {self.args.older} and GiB >= {self.args.larger} ").fetchall()
+
+        elif self.args.newer > 0:
+            rows = duckdb_connection.execute(
+                f"SELECT * FROM hs WHERE {agefld} <= {self.args.newer} and GiB >= {self.args.larger} ").fetchall()
+
+        else:
+            rows = duckdb_connection.execute(
+                f"SELECT * FROM hs WHERE GiB >= {self.args.larger} ").fetchall()
 
         # Close the DuckDB connection
         duckdb_connection.close()
@@ -1752,9 +1761,9 @@ class Archiver:
 
         # Print error messages if the user does not have read or write permissions
         if not can_read:
-            print(f"Cannot read: {path}")
+            print(f"Cannot read: {path}", file=sys.stderr)
         if not can_write:
-            print(f"Cannot write: {path}")
+            print(f"Cannot write: {path}", file=sys.stderr)
 
         # Return True if the user has read and write permissions, otherwise return False
         return can_read and can_write
@@ -1769,7 +1778,8 @@ class Archiver:
             for folder in folders:
 
                 if not os.path.isdir(folder):
-                    print(f"Error: {folder} is not a directory.")
+                    print(f"Error: {folder} is not a directory.",
+                          file=sys.stderr)
                     sys.exit(1)
 
                 if is_recursive:
@@ -1855,7 +1865,7 @@ class Archiver:
     def print_paths_rw_info(self, paths):
 
         if not paths:
-            print('\nError: No file paths provided.\n')
+            print('\nError: No file paths provided.\n', file=sys.stderr)
             return
 
         for path in paths:
@@ -1881,7 +1891,7 @@ class Archiver:
                         file_stat.st_gid for g in os.getgroups())
 
             except Exception as e:
-                print(f'\nError: {e}\n')
+                print_error()
                 return
 
             # Extracting permission bits
@@ -2090,10 +2100,10 @@ class Archiver:
                         "Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
                     return 13
                 else:
-                    print(f"An unexpected PermissionError occurred:\n{e}")
+                    print(f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
                     return False
             except Exception as e:
-                print(f"An unexpected error occurred:\n{e}")
+                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
                 return False
         return True
 
@@ -2280,10 +2290,11 @@ class Archiver:
 
         # Check if we can read & write all files and folders
         if not self._is_correct_files_folders_permissions(folders, is_recursive):
-            print('\nError: Cannot read or write to all files and folders.\n')
+            print('\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
             print(
-                f'You can check the permissions of the files and folders using the command:')
-            print(f'    froster archive --permissions "/your/folder/to/archive"\n')
+                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+            print(
+                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
             sys.exit(1)
 
         for folder in folders:
@@ -2385,8 +2396,8 @@ class Archiver:
         printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
         # print ('Message:', ret['msg'].replace('\n',';'))
         if ret['stats']['errors'] > 0:
-            print('Last Error:', ret['stats']['lastError'])
-            print('Copying was not successful.')
+            print('Last Error:', ret['stats']['lastError'], file=sys.stderr)
+            print('Copying was not successful.', file=sys.stderr)
             return False
             # lastError could contain: Object in GLACIER, restore first
 
@@ -2441,8 +2452,8 @@ class Archiver:
                 ret = rclone.checksum(hashfile, source, '--max-depth', '1')
                 printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
                 if ret['stats']['errors'] > 0:
-                    print('Last Error:', ret['stats']['lastError'])
-                    print('Checksum test was not successful.')
+                    print('Last Error:', ret['stats']['lastError'], file=sys.stderr)
+                    print('Checksum test was not successful.', file=sys.stderr)
                     return False
 
                 ret = self._untar_files(restpath)
@@ -2450,20 +2461,21 @@ class Archiver:
                 if ret == 13:  # cannot write to folder
                     return False
                 elif not ret:
-                    print('  Could not create hashfile .froster-restored.md5sum.')
-                    print('  Perhaps there are no files or the folder does not exist?')
+                    print('  Could not create hashfile .froster-restored.md5sum.', file=sys.stderr)
+                    print('  Perhaps there are no files or the folder does not exist?', file=sys.stderr)
                     return False
 
             except PermissionError as e:
                 # Check if error number is 13 (Permission denied)
                 if e.errno == 13:
-                    print(f'Permission denied to "{restpath}"')
+                    print(
+                        f'Permission denied to "{restpath}"', file=sys.stderr)
                     continue
                 else:
-                    print(f"An unexpected PermissionError occurred:\n{e}")
+                    print(f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
                     continue
             except Exception as e:
-                print(f"An unexpected error occurred:\n{e}")
+                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
                 continue
         return True
 
@@ -2482,10 +2494,10 @@ class Archiver:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f"Access denied for bucket '{bucket}'")
-                print('Check your permissions and/or credentials.')
+                print(f"Access denied for bucket '{bucket}'", file=sys.stderr)
+                print('Check your permissions and/or credentials.', file=sys.stderr)
             else:
-                print(f"An error occurred: {e}")
+                print_error()
             return [], [], []
         triggered_keys = []
         restoring_keys = []
@@ -3148,7 +3160,7 @@ class AWSBoto:
 
         # TODO: Expand exception handling
         except Exception as e:
-            print(f"Error: {e}")
+            print_error()
             sys.exit(1)
 
     def get_endpoint(self):
@@ -5666,11 +5678,15 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
 def subcmd_archive(args: argparse.Namespace, arch: Archiver):
     '''Check command for archiving folders for Froster.'''
 
+    if args.older > 0 and args.newer > 0:
+        print('\nError: Cannot use both --older and --newer flags together.\n', file=sys.stderr)
+        sys.exit(1)
+
     # Check if the user provided the permissions argument
     if args.permissions:
         if not args.folders:
             print(
-                '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n')
+                '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n', file=sys.stderr)
             sys.exit(1)
 
         # Print the permissions of the provided folders
@@ -5731,7 +5747,7 @@ def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver,
         if not retline:
             return False
         if len(retline) < 2:
-            print('Error: froster-archives table did not return result')
+            print('Error: froster-archives table did not return result', file=sys.stderr)
             return False
         printdbg("subcmd_restore dialog returns:", retline)
         args.folders.append(retline[0])
@@ -5896,7 +5912,8 @@ def subcmd_mount(args, cfg, arch, aws):
         if not retline:
             return False
         if len(retline) < 2:
-            print('Error: froster-archives table did not return result')
+            print('Error: froster-archives table did not return result',
+                  file=sys.stderr)
             return False
         printdbg("dialog returns:", retline)
         args.folders.append(retline[0])
@@ -6159,6 +6176,16 @@ def parse_arguments():
             allows you to archive all matching folders at once.
         '''))
 
+    parser_archive.add_argument('--newer', '-w', dest='newer', type=int, action='store', default=0,
+                                help=textwrap.dedent(f'''
+            Archive folders that have been accessed within the last 
+            <days>. (optionally set --mtime to select folders that
+            have not been modified more than <days>). This option
+            works in conjunction with --larger <GiB>. If both 
+            options are set froster will print a command that 
+            allows you to archive all matching folders at once.
+        '''))
+
     parser_archive.add_argument('-n', '--nih', dest='nih', action='store_true',
                                 help="Search and Link Metadata from NIH Reporter")
 
@@ -6294,7 +6321,7 @@ def clean_paths(paths):
             cleaned_paths.append(os.path.realpath(os.path.expanduser(path).rstrip(os.path.sep))
                                  )
         except Exception as e:
-            print(f"Error processing '{path}': {e}")
+            print(f"Error processing '{path}': {e}", file=sys.stderr)
 
     return cleaned_paths
 
@@ -6308,7 +6335,7 @@ def print_error():
     file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 
     print(
-        f'\nError: file {file_name}: function {function_name}: line {exc_tb.tb_lineno}: {exc_value}\n')
+        f'\nError: file {file_name}: function {function_name}: line {exc_tb.tb_lineno}: {exc_value}\n', file=sys.stderr)
 
 
 def main():
