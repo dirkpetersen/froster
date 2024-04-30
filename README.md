@@ -36,9 +36,11 @@ After you installed the pre-requisites, close and open the terminal again to ref
 To install Froster, execute the following command into your terminal:
 
 ```
-curl -s https://raw.githubusercontent.com/HPCnow/froster/develop/install.sh | bash
+curl -s https://raw.githubusercontent.com/dirkpetersen/froster/develop/install.sh | bash
 
 ```
+
+## Update (TODO)
 
 </br>
 
@@ -103,22 +105,6 @@ There were three motivations behind the creation of `Froster`:
 1. Optionally restore to a cloud machine (AWS EC2 instance) with the `restore --aws` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12).
 
 ## Preparing Froster 
-
-### Installing 
-
-To install Froster, execute the following command into your terminal:
-
-```
-curl -s https://raw.githubusercontent.com/HPCNow/froster/develop/froster | bash -s install && source ~/.bashrc
-```
-
-### Updating 
-
-To update Froster there are 2 options: execute the installation command again or run the following command into your terminal:
-
-```
-froster update 
-```
 
 ### configuring 
 
