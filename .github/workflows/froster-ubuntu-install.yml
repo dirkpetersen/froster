@@ -6,11 +6,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: curl --version
-      - run: python3 --version
-      - run: pipx --version
-      - run: gcc --version
-      - run: unzip --version
+      - run: which curl
+      - run: which python3
+      - run: which pipx
+      - run: which gcc
+      - run: which unzip
       - run: ./froster/install.sh
       - run: froster --version
 
