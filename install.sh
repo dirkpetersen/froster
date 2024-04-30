@@ -56,7 +56,7 @@ spinner() {
     do
         i=$(( (i+1) %4 ))
         printf "\r${spin:$i:1}"
-        sleep .1
+        sleep .5
     done
     printf "\r "
 }
