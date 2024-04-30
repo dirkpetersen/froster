@@ -52,11 +52,10 @@ spinner() {
     spin='-\|/'
 
     i=0
-    while kill -0 $pid 2>/dev/null
-    do
-        i=$(( (i+1) %4 ))
+    while kill -0 $pid 2>/dev/null; do
+        i=$(((i + 1) % 4))
         printf "\r${spin:$i:1}"
-        sleep .5
+        sleep .1
     done
     printf "\r "
 }
@@ -210,7 +209,7 @@ install_froster() {
 
     pipx ensurepath >/dev/null 2>&1
     # TODO: Update path once froster is in PyPi repository
-    pipx install git+https://github.com/HPCNow/froster.git@develop >/dev/null 2>&1 &
+    pipx install git+https://github.com/dirkpetersen/froster.git@develop >/dev/null 2>&1 &
     spinner $!
 
     echo "  ...froster installed"
@@ -228,7 +227,7 @@ install_pwalk() {
     pwalk_path=filesystem-reporting-tools-${pwalk_commit}
 
     # Gather pwalk repository files
-    curl -s -L ${pwalk_repository} | tar xzf -  >/dev/null 2>&1  &
+    curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1 &
     spinner $!
 
     # Compile pwalk tool and put exec file in froster's binaries folder
@@ -275,11 +274,11 @@ install_rclone() {
     fi
 
     # Download the rclone zip file
-    curl -LO $rclone_url >/dev/null 2>&1  &
+    curl -LO $rclone_url >/dev/null 2>&1 &
     spinner $!
 
     # Extract the zip file
-    unzip rclone-current-linux-*.zip >/dev/null 2>&1  &
+    unzip rclone-current-linux-*.zip >/dev/null 2>&1 &
     spinner $!
 
     # Move rclone to froster's binaries folder
