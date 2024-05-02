@@ -59,6 +59,7 @@ spinner() {
     done
     printf "\r "
 }
+
 #################
 ### FUNCTIONS ###
 #################
@@ -140,7 +141,7 @@ check_apt_dependencies() {
     fi
 }
 
-# Backup older installations (if any) but keep the froster-archive.json file
+# Backup older installations (if any) but keep the froster-archive.json and config.ini files
 backup_old_installation() {
 
     echo
@@ -201,7 +202,6 @@ backup_old_installation() {
     echo "  ...older froster installation backed up"
 }
 
-# Install froster
 install_froster() {
 
     echo
@@ -215,7 +215,7 @@ install_froster() {
     echo "  ...froster installed"
 }
 
-# Install pwalk
+
 install_pwalk() {
 
     echo
@@ -225,6 +225,9 @@ install_pwalk() {
     pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
     pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
     pwalk_path=filesystem-reporting-tools-${pwalk_commit}
+
+    # Delete previous downloaded pwalk files (if any)
+    rm -rf ${pwalk_path} >/dev/null 2>&1
 
     # Gather pwalk repository files
     curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1 &
@@ -272,6 +275,9 @@ install_rclone() {
         echo "Unsupported architecture: ${arch}"
         exit 1
     fi
+
+    # Remove previous downloaded zip file (if any)
+    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 
     # Download the rclone zip file
     curl -LO $rclone_url >/dev/null 2>&1 &
