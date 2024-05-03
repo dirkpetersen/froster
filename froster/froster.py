@@ -60,7 +60,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.9.0.70'
+__version__ = '0.10.1'
 
 
 class ConfigManager:
@@ -5535,7 +5535,7 @@ class NIHReporter:
 
 def print_version():
 
-    print(f'\nfroster v{__version__}\n')
+    print(f'froster v{__version__}\n')
     print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
     print('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],

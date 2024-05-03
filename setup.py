@@ -1,8 +1,11 @@
 from setuptools import setup, find_packages
 
+with open('README.md', 'r') as f:
+    long_description = f.read()
+
 setup(
     name='froster',
-    version='0.0.1',
+    version='0.10.1',
     license='MIT',
     packages=find_packages(),
     install_requires=[
@@ -12,11 +15,13 @@ setup(
         'boto3<1.40',
         'psutil<6.0',
         'visidata',
-        'inquirer',
+        'inquirer'
     ],
     entry_points={
         'console_scripts': [
             'froster = froster.froster:main'
         ]
-    }
+    },
+    long_description=long_description,
+    long_description_content_type='text/markdown',
 )
