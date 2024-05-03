@@ -1,6 +1,7 @@
 name: froster-ubuntu-install
 run-name: Froster installs correctly in Ubuntu-latest
-on: [push]
+on:
+  workflow_call:
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
