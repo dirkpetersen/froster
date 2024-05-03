@@ -8,6 +8,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: echo ${{ github.repository }}
       - run: echo ${{ github.ref }}
+      - run: echo "$ALLMYVARS"
+      - run: echo ${{ ALLMYVARS }}
       - run: ./install.sh
 
       - name: Check froster version
