@@ -4,15 +4,17 @@ on: [push, pull_request]
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
-    steps:
+    steps:      
       - uses: actions/checkout@v4
-      - run: which curl
-      - run: which python3
-      - run: which pipx
-      - run: which gcc
-      - run: which unzip
-      - run: pipx environment
-      - run: ./install.sh
-      - run: froster --version
+      - name: Run install.sh
+        run: |
+          echo ${{ github.repository }}
+          echo ${{ github.ref }}
+          ./install.sh
+        env:
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref }}
+      - name: Check froster version
+        run: froster --version
 
 
