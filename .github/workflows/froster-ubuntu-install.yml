@@ -9,7 +9,7 @@ jobs:
       - run: echo ${{ github.repository }}
       - run: echo ${{ github.ref }}
       - run: echo "$ALLMYVARS"
-      - run: echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
+      - run: echo "$GITHUB_REPOSITORY"
       - run: ./install.sh
 
       - name: Check froster version
