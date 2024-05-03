@@ -6,14 +6,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:      
       - uses: actions/checkout@v4
-      - name: Run install.sh
-        run: |
-          echo ${{ github.repository }}
-          echo ${{ github.ref }}
-          ./install.sh
-        env:
-          REPO: ${{ github.repository }}
-          BRANCH: ${{ github.ref }}
+      - run: echo ${{ github.repository }}
+      - run: echo ${{ github.ref }}
+      - run: ./install.sh
+
       - name: Check froster version
         run: froster --version
 
