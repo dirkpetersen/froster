@@ -39,8 +39,8 @@ def create_file(filename, size, path, age):
 def generate_test_data():
 
     base_dir = create_folder('froster.')
-    subdir1 = create_folder(random_string() + '_subdir', base_dir)
-    subdir2 = create_folder(random_string() + '_subdir', subdir1)
+    subdir1 = create_folder('_' + random_string() + '_subdir', base_dir)
+    subdir2 = create_folder('_' + random_string() + '_subdir', subdir1)
 
     print(f"Test data folder: {base_dir}")
 
