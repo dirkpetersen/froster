@@ -7,7 +7,6 @@ set -e
 ### VARIABLES ###
 #################
 
-# Get the current date in YYYYMMDDHHMMSS format
 date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
 
 #####################
@@ -31,16 +30,16 @@ catch() {
 
         # Restore (if any) backed up froster config files
         if [[ -d ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.config/froster
+            mv -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.config/froster >/dev/null 2>&1
         fi
 
         # Restore (if any) backed up froster data files
         if [[ -d ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.local/share/froster
+            mv -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.local/share/froster >/dev/null 2>&1
         fi
 
         rm -rf ${pwalk_path} >/dev/null 2>&1
-        rm -rf rclone-current-linux-*.zip rclone-v*/
+        rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
         echo "    ...done"
 
         echo
@@ -54,7 +53,6 @@ spinner() {
 
     i=0
     while kill -0 $pid 2>/dev/null; do
-
         i=$(((i + 1) % 4))
         printf "\r${spin:$i:1}"
         sleep .1
@@ -213,20 +211,16 @@ install_froster() {
     pipx ensurepath >/dev/null 2>&1
 
     # TODO: Update path once froster is in PyPi repository
-    # Get variables from environment if set, otherwise use default values
-    REPO=${GITHUB_REPOSITORY:-"https://github.com/dirkpetersen/froster.git"}
-    BRANCH=${GITHUB_REF:-"main"}
-
-    if [ "$GITHUB_ACTIONS" = "true" ]; then
-        echo "Running: pipx install git+$REPO@$BRANCH"
-    fi
+    REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
+    BRANCH=${BRANCH:-"main"}
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
-    spinner $!
 
+    spinner $!
 
     echo "  ...froster installed"
 }
+
 
 install_pwalk() {
 
@@ -239,10 +233,10 @@ install_pwalk() {
     pwalk_path=filesystem-reporting-tools-${pwalk_commit}
 
     # Delete previous downloaded pwalk files (if any)
-    rm -rf ${pwalk_path}
+    rm -rf ${pwalk_path} >/dev/null 2>&1
 
     # Gather pwalk repository files
-    curl -s -L ${pwalk_repository} | tar xzf - &
+    curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1 &
     spinner $!
 
     # Compile pwalk tool and put exec file in froster's binaries folder
@@ -251,32 +245,18 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
-        echo "${HOME}/.local/share/pipx exists"
-        mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk
+        mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
-        echo "${HOME}/.local/pipx exists"
-        mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk
+        mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
-        echo "${PIPX_HOME} exists"
-        echo "pwalk_path: ${pwalk_path}"
-        ls -la ${pwalk_path}
-        echo "PIPX_HOME: ${PIPX_HOME}"
-        ls -la ${PIPX_HOME}
-        echo "PIPX_HOME/venvs: ${PIPX_HOME}/venvs"
-        ls -la ${PIPX_HOME}/venvs
-        echo "PIPX_HOME/venvs/froster: ${PIPX_HOME}/venvs/froster"
-        ls -la ${PIPX_HOME}/venvs/froster
-        echo "PIPX_HOME/venvs/froster/bin: ${PIPX_HOME}/venvs/froster/bin"
-        ls -la ${PIPX_HOME}/venvs/froster/bin
-
-        mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk
+        mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
         exit 1
     fi
 
     # Delete downloaded pwalk files
-    rm -rf ${pwalk_path}
+    rm -rf ${pwalk_path} >/dev/null 2>&1
 
     echo "  ...pwalk installed"
 }
@@ -303,7 +283,7 @@ install_rclone() {
     fi
 
     # Remove previous downloaded zip file (if any)
-    rm -rf rclone-current-linux-*.zip rclone-v*/
+    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 
     # Download the rclone zip file
     curl -LO $rclone_url >/dev/null 2>&1 &
@@ -315,18 +295,18 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
-        mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone
+        mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
-        mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone
+        mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
-        mv rclone-v*/rclone ${PIPX_HOME}/venvs/froster/bin/rclone
+        mv rclone-v*/rclone ${PIPX_HOME}/venvs/froster/bin/rclone >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
         exit 1
     fi
 
     # Remove the downloaded zip file
-    rm -rf rclone-current-linux-*.zip rclone-v*/
+    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 
     echo "  ...rclone installed"
 }
