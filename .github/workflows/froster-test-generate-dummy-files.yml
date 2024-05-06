@@ -8,4 +8,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./install.sh
       - run: froster --version
+      - run: ls -la 
+      - run: ls -la froster
+      - run: ls -la froster/test
       - run: python3 froster/test/generate_dummy_files.py
