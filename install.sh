@@ -49,19 +49,17 @@ catch() {
 }
 
 spinner() {
-
-    # Do not run the spinner if we are inside a github actions flow
-    if [ "$GITHUB_ACTIONS" = "true" ]; then
-        return
-    fi
-
     pid=$1
     spin='-\|/'
 
     i=0
     while kill -0 $pid 2>/dev/null; do
+
         i=$(((i + 1) % 4))
-        printf "\r${spin:$i:1}"
+        # Print only if github actions is not running
+        if [ "$GITHUB_ACTIONS" != "true" ]; then
+            printf "\r${spin:$i:1}"
+        fi
         sleep .1
     done
     printf "\r "
@@ -222,10 +220,11 @@ install_froster() {
     REPO=${GITHUB_REPOSITORY:-"https://github.com/dirkpetersen/froster.git"}
     BRANCH=${GITHUB_REF:-"main"}
 
-    echo "Running: pipx install git+$REPO@$BRANCH"
+    if [ "$GITHUB_ACTIONS" = "true" ]; then
+        echo "Running: pipx install git+$REPO@$BRANCH"
+    fi
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
-
     spinner $!
 
     echo "  ...froster installed"
@@ -245,21 +244,12 @@ install_pwalk() {
     rm -rf ${pwalk_path}
 
     # Gather pwalk repository files
-    curl -s -L ${pwalk_repository} | tar xzf -
+    curl -s -L ${pwalk_repository} | tar xzf - &
+    spinner $!
 
     # Compile pwalk tool and put exec file in froster's binaries folder
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk
-
-    echo "here 1"
-    pwd
-
-    echo "here 2"
-    ls -la
-
-    echo "here 3"
-    ls -la ${pwalk_path}
-
-    return
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
+    spinner $!
 
     # Move pwalk to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
