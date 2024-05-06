@@ -247,12 +247,10 @@ install_pwalk() {
     rm -rf ${pwalk_path}
 
     # Gather pwalk repository files
-    curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1 &
-    spinner $!
+    curl -s -L ${pwalk_repository} | tar xzf - 
 
     # Compile pwalk tool and put exec file in froster's binaries folder
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk &
-    spinner $!
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk 
 
     ls -la
 
