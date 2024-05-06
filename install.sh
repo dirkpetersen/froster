@@ -31,16 +31,16 @@ catch() {
 
         # Restore (if any) backed up froster config files
         if [[ -d ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.config/froster >/dev/null 2>&1
+            mv -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.config/froster
         fi
 
         # Restore (if any) backed up froster data files
         if [[ -d ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.local/share/froster >/dev/null 2>&1
+            mv -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.local/share/froster
         fi
 
         rm -rf ${pwalk_path} >/dev/null 2>&1
-        rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+        rm -rf rclone-current-linux-*.zip rclone-v*/
         echo "    ...done"
 
         echo
@@ -244,30 +244,30 @@ install_pwalk() {
     pwalk_path=filesystem-reporting-tools-${pwalk_commit}
 
     # Delete previous downloaded pwalk files (if any)
-    rm -rf ${pwalk_path} >/dev/null 2>&1
+    rm -rf ${pwalk_path}
 
     # Gather pwalk repository files
     curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1 &
     spinner $!
 
     # Compile pwalk tool and put exec file in froster's binaries folder
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk &
     spinner $!
 
     # Move pwalk to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
-        mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+        mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk
     elif [ -d "${HOME}/.local/pipx" ]; then
-        mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+        mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk
     elif [ -v PIPX_HOME ]; then
-        mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
+        mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk
     else
         echo "Error: pipx installation path not found."
         exit 1
     fi
 
     # Delete downloaded pwalk files
-    rm -rf ${pwalk_path} >/dev/null 2>&1
+    rm -rf ${pwalk_path}
 
     echo "  ...pwalk installed"
 }
@@ -294,7 +294,7 @@ install_rclone() {
     fi
 
     # Remove previous downloaded zip file (if any)
-    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+    rm -rf rclone-current-linux-*.zip rclone-v*/
 
     # Download the rclone zip file
     curl -LO $rclone_url >/dev/null 2>&1 &
@@ -306,18 +306,18 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
-        mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+        mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone
     elif [ -d "${HOME}/.local/pipx" ]; then
-        mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+        mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone
     elif [ -v PIPX_HOME ]; then
-        mv rclone-v*/rclone ${PIPX_HOME}/venvs/froster/bin/rclone >/dev/null 2>&1
+        mv rclone-v*/rclone ${PIPX_HOME}/venvs/froster/bin/rclone
     else
         echo "Error: pipx installation path not found."
         exit 1
     fi
 
     # Remove the downloaded zip file
-    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+    rm -rf rclone-current-linux-*.zip rclone-v*/
 
     echo "  ...rclone installed"
 }
