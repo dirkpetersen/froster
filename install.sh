@@ -56,10 +56,7 @@ spinner() {
     while kill -0 $pid 2>/dev/null; do
 
         i=$(((i + 1) % 4))
-        # Print only if github actions is not running
-        if [ "$GITHUB_ACTIONS" != "true" ]; then
-            printf "\r${spin:$i:1}"
-        fi
+        printf "\r${spin:$i:1}"
         sleep .1
     done
     printf "\r "
@@ -227,8 +224,6 @@ install_froster() {
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
     spinner $!
 
-    echo "FROSTER INSTALLED IN:"
-    which froster
 
     echo "  ...froster installed"
 }

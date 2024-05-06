@@ -1,4 +1,4 @@
-name: froster-ubuntu-install
+name: froster-ubuntu-install-from-script
 run-name: Check that froster installs correctly in Ubuntu-latest
 on: [push, pull_request]
 jobs:
