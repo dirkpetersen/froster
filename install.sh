@@ -323,8 +323,6 @@ install_rclone() {
 ### CODE ###
 ############
 
-echo "current directory: $(pwd)"
-
 # Check linux package dependencies
 check_apt_dependencies
 
