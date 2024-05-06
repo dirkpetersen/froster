@@ -63,7 +63,10 @@ spinner() {
         sleep .1
     done
 
-    printf "\r "
+    # If we are in a github actions workflow, we don't want to print this return line
+    if [ "$GITHUB_ACTIONS" != "true" ]; then
+        printf "\r "
+    fi
 }
 
 #################
