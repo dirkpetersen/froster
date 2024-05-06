@@ -221,8 +221,8 @@ install_froster() {
 
     # TODO: Update path once froster is in PyPi repository
     # Get variables from environment if set, otherwise use default values
-    REPO=${$GITHUB_REPOSITORY:-"https://github.com/dirkpetersen/froster.git"}
-    BRANCH=${$GITHUB_REF:-"main"}
+    REPO=${GITHUB_REPOSITORY:-"https://github.com/dirkpetersen/froster.git"}
+    BRANCH=${GITHUB_REF:-"main"}
 
     echo "Running: pipx install git+$REPO@$BRANCH"
 
