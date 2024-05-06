@@ -5,14 +5,10 @@ jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
     steps:      
-      - uses: actions/checkout@v4
-      - run: echo ${{ github.repository }}
-      - run: echo ${{ github.ref }}
-      - run: echo "$ALLMYVARS"
-      - run: echo "$GITHUB_REPOSITORY"
-      - run: ./install.sh
+      - name: INSTALL FROSTER
+        run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
 
-      - name: Check froster version
+      - name: CHECK IF FROSTER IS INSTALLED
         run: froster --version
 
 

@@ -7,6 +7,7 @@ set -e
 ### VARIABLES ###
 #################
 
+# Get the current date in YYYYMMDDHHMMSS format
 date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
 
 #####################
@@ -48,6 +49,13 @@ catch() {
 }
 
 spinner() {
+
+    # Do not run the spinner if we are inside a github actions flow
+    if [ "$GITHUB_ACTIONS" = "true" ]; then
+        return
+    fi
+
+
     pid=$1
     spin='-\|/'
 
@@ -210,9 +218,13 @@ install_froster() {
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
 
+
     # TODO: Update path once froster is in PyPi repository
-    REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
-    BRANCH=${BRANCH:-"main"}
+    # Get variables from environment if set, otherwise use default values
+    REPO=${$GITHUB_REPOSITORY:-"https://github.com/dirkpetersen/froster.git"}
+    BRANCH=${$GITHUB_REF:-"main"}
+
+    echo "Running: pipx install git+$REPO@$BRANCH"
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
 
@@ -220,7 +232,6 @@ install_froster() {
 
     echo "  ...froster installed"
 }
-
 
 install_pwalk() {
 
