@@ -55,7 +55,6 @@ spinner() {
         return
     fi
 
-
     pid=$1
     spin='-\|/'
 
@@ -218,7 +217,6 @@ install_froster() {
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
 
-
     # TODO: Update path once froster is in PyPi repository
     # Get variables from environment if set, otherwise use default values
     REPO=${GITHUB_REPOSITORY:-"https://github.com/dirkpetersen/froster.git"}
@@ -247,16 +245,21 @@ install_pwalk() {
     rm -rf ${pwalk_path}
 
     # Gather pwalk repository files
-    curl -s -L ${pwalk_repository} | tar xzf - 
+    curl -s -L ${pwalk_repository} | tar xzf -
 
     # Compile pwalk tool and put exec file in froster's binaries folder
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk 
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk
 
+    echo "here 1"
+    pwd
+
+    echo "here 2"
     ls -la
 
+    echo "here 3"
     ls -la ${pwalk_path}
 
-    pwd
+    return
 
     # Move pwalk to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
