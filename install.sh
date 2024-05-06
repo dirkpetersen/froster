@@ -262,7 +262,7 @@ install_pwalk() {
         ls -la ${PIPX_HOME}
         pwd
         ls -la
-        ls -la${pwalk_path}
+        ls -la ${pwalk_path}
         mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk
     else
         echo "Error: pipx installation path not found."
