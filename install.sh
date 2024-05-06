@@ -254,6 +254,12 @@ install_pwalk() {
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk &
     spinner $!
 
+    ls -la
+
+    ls -la ${pwalk_path}
+
+    pwd
+
     # Move pwalk to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
         mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk
