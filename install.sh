@@ -227,6 +227,16 @@ install_froster() {
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
     spinner $!
 
+    echo "FROSTER INSTALLED IN:"
+    echo ${HOME}/.local/pipx
+    ls -la ${HOME}/.local/pipx
+
+    if [ -d "${HOME}/.local/pipx" ]; then
+        echo "Exists" 
+    else
+        echo "Does not exist"
+    fi 
+
     echo "  ...froster installed"
 }
 
