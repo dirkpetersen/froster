@@ -228,14 +228,7 @@ install_froster() {
     spinner $!
 
     echo "FROSTER INSTALLED IN:"
-    echo ${HOME}/.local/pipx
-    ls -la ${HOME}/.local/pipx
-
-    if [ -d "${HOME}/.local/pipx" ]; then
-        echo "Exists" 
-    else
-        echo "Does not exist"
-    fi 
+    which froster
 
     echo "  ...froster installed"
 }
@@ -263,10 +256,13 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
+        echo "${HOME}/.local/share/pipx exists"
         mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk
     elif [ -d "${HOME}/.local/pipx" ]; then
+        echo "${HOME}/.local/pipx exists"
         mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk
     elif [ -v PIPX_HOME ]; then
+        echo "${PIPX_HOME} exists"
         echo "pwalk_path: ${pwalk_path}"
         ls -la ${pwalk_path}
         echo "PIPX_HOME: ${PIPX_HOME}"

@@ -1,0 +1,16 @@
+name: froster-ubuntu-install
+run-name: Check that froster installs correctly in Ubuntu-latest
+on: [push, pull_request]
+jobs:
+  check-froster-installation:
+    runs-on: ubuntu-latest
+    steps:      
+      - uses: actions/checkout@v4
+
+      - name: INSTALL FROSTER
+        run: ./install.sh
+
+      - name: CHECK IF FROSTER IS INSTALLED
+        run: froster --version
+
+
