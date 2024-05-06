@@ -1,5 +1,5 @@
 name: froster-ubuntu-install
-run-name: Check that froster installs correctly in Ubuntu-latest
+run-name: Check that froster installs correctly in Ubuntu-latest from script  
 on: [push, pull_request]
 jobs:
   check-froster-installation:

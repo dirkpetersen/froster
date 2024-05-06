@@ -50,13 +50,19 @@ catch() {
 spinner() {
     pid=$1
     spin='-\|/'
-
     i=0
+
     while kill -0 $pid 2>/dev/null; do
         i=$(((i + 1) % 4))
-        printf "\r${spin:$i:1}"
+
+        # If we are in a github actions workflow, we don't want to print the spinner
+        if [ "$GITHUB_ACTIONS" != "true" ]; then
+            printf "\r${spin:$i:1}"
+        fi
+
         sleep .1
     done
+
     printf "\r "
 }
 
@@ -221,7 +227,6 @@ install_froster() {
     echo "  ...froster installed"
 }
 
-
 install_pwalk() {
 
     echo
@@ -245,10 +250,13 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     if [ -d "${HOME}/.local/share/pipx" ]; then
+        echo "Moving pwalk to ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk"
         mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
+        echo "Moving pwalk to ${HOME}/.local/pipx/venvs/froster/bin/pwalk"
         mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
+        echo "Moving pwalk to ${PIPX_HOME}/venvs/froster/bin/pwalk"
         mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
@@ -314,6 +322,8 @@ install_rclone() {
 ############
 ### CODE ###
 ############
+
+echo "current directory: $(pwd)"
 
 # Check linux package dependencies
 check_apt_dependencies
