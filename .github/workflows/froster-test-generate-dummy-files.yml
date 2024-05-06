@@ -1,5 +1,5 @@
 name: froster-test-generate-dummy-files
-run-name: Check that froster installs correctly in Ubuntu-latest from script  
+run-name: Generate dummy files for testing
 on: [push, pull_request]
 jobs:
   check-froster-installation:
@@ -8,4 +8,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./install.sh
       - run: froster --version
-      - run: python3 test/generate_dummy_files.py
+      - run: python3 froster/test/generate_dummy_files.py
