@@ -10,4 +10,8 @@ jobs:
           ref: ${{ github.ref }}
       - run: ./install.sh
       - run: froster --version
+      - run: echo ${{ github.repository }}
+      - run: echo ${{ github.ref }}
+      - run: ls -la
+      - run: ls -la test
       - run: python3 test/generate_dummy_files.py
