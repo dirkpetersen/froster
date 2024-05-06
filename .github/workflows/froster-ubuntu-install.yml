@@ -5,10 +5,10 @@ jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
     steps:      
-      - name: INSTALL FROSTER
+      - name: Install Froster
         run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
 
-      - name: CHECK IF FROSTER IS INSTALLED
+      - name: Check Froster is installed
         run: froster --version
 
 
