@@ -1489,14 +1489,6 @@ class Archiver:
             # TODO: vmachado: review this code
             froster_md5sum_exists = os.path.isfile(
                 os.path.join(folder_to_archive, ".froster.md5sum"))
-            folder_already_archived = self._is_folder_archived(
-                folder_to_archive.rstrip(os.path.sep))
-
-            if folder_already_archived:
-                print(f'\nFolder {folder_to_archive} is already archived.')
-                print(
-                    f'\nPlease refer to the froster documentation at https://github.com/dirkpetersen/froster/\n')
-                sys.exit(0)
 
             if froster_md5sum_exists:
                 if is_force:
@@ -1634,9 +1626,9 @@ class Archiver:
 
             # Print the final message
             print(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
-            print(f'\n    LOCAL SOURCE:       "{folder_to_archive}"')
+            print(f'    LOCAL SOURCE:       "{folder_to_archive}"')
             print(f'    AWS S3 DESTINATION: "{s3_dest}"\n')
-            print(f'    All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
+            print(f'All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
 
         except Exception:
             print_error()
@@ -1645,7 +1637,7 @@ class Archiver:
         '''Archive the given folders'''
 
         # Clean the provided paths
-        folders = clean_paths(folders)
+        folders = clean_path_list(folders)
 
         # Set flags
         is_recursive = self.args.recursive
@@ -1697,6 +1689,76 @@ class Archiver:
                     is_subfolder = False
                     self.archive_locally(
                         folder, is_recursive, nih, is_subfolder, is_tar, is_force)
+
+
+    def _get_folder_mountpoint(self, folder):
+        '''If mounted, return the given folder mountpoint. If not mounted, return None'''
+
+        with open("/proc/mounts", "r") as f:
+            mounts = [line.split()[1] for line in f]
+
+        if folder in mounts:
+            return mounts[mounts.index(folder)]
+        else:
+            return None
+
+    def _is_folder_mounted(self, folder):
+        '''Check if the given folder is already mounted'''
+
+        if self._get_folder_mountpoint(folder):
+            return True
+        else:
+            return False
+    
+    def mount(self, folders, mountpoint):
+        '''Mount the given folder'''
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+        mountpoint = clean_path(mountpoint)
+
+        for folder in folders:
+
+            archive_folder_info = self.archive_json_get_row(folder)
+
+            if archive_folder_info is None:
+                print(f'\nWARNING: folder "{folder}" not in archive.\n')
+                continue
+
+            s3_folder = archive_folder_info['archive_folder']
+            local_folder = archive_folder_info['local_folder']
+            
+            if folder == local_folder:
+                if mountpoint:
+                    print(f'\nMOUNTING "{local_folder}" at "{mountpoint}"...')
+                else:
+                    print(f'\nMOUNTING "{local_folder}"...')
+            else:
+                if mountpoint:
+                    print(f'\nMOUNTING parent folder "{local_folder}" at "{mountpoint}"...')
+                else:
+                    print(f'\nMOUNTING parent folder "{local_folder}"...')
+
+
+            if not mountpoint:
+                mountpoint = local_folder
+
+            # Check if the folder is already mounted
+            if self._is_folder_mounted(mountpoint):
+                print(f'    ..."{mountpoint} already mounted"\n')
+                sys.exit(1)
+
+            # Mount the folder
+            rclone = Rclone(self.args, self.cfg)
+            ret = rclone.mount(s3_folder, mountpoint)
+
+            # Check if the folder was mounted successfully
+            if ret:
+                print('    ...MOUNTED\n')
+                is_folder_archived = True
+            else:
+                print('    ...FAILED\n')
+                return
 
     def get_hotspot_folders(self, hotspot_file):
 
@@ -2177,6 +2239,12 @@ class Archiver:
 
         print(f'\nDELETING {folder_to_delete}...')
 
+        # Check if the folder is already archived
+        where_did_files_go = os.path.join(folder_to_delete, self.where_did_the_files_go_filename)
+        if os.path.isfile(where_did_files_go):
+            print(f'    ...already deleted\n')
+            return
+
         archived_folder_info = self.archive_json_get_row(folder_to_delete)
 
         if archived_folder_info is None:
@@ -2214,7 +2282,7 @@ class Archiver:
             ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
             # Check if the checksums are correct
             if ret:
-                print('    ...done')
+                print('        ...done')
             else:
                 return
 
@@ -2260,15 +2328,14 @@ class Archiver:
                     f'\n\nPlease see more metadata in Froster.allfiles.csv file\n')
 
             print(
-                f'  Deleted {len(deleted_files)} files and wrote manifest to "{readme}"\n')
+                f'\n  Deleted {len(deleted_files)} files and wrote manifest to "{readme}"\n')
 
             # Print the final message
-            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
-            print(f'\n    LOCAL DELETED FOLDER:   {folder_to_delete}')
+            print(f'    LOCAL DELETED FOLDER:   {folder_to_delete}')
             print(f'    AWS S3 DESTINATION:     {s3_dest}\n')
-            print(f'\n    Total files deleted:    {len(deleted_files)}\n')
-            print(
-                f'    Before deletion, all files were thoroughly verified to exist in AWS S3.\n')
+            print(f'    Total files deleted:    {len(deleted_files)}\n')
+            print(f'    Manifest:               {readme}\n')
+            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
 
         except Exception as e:
             print_error()
@@ -2277,7 +2344,7 @@ class Archiver:
     def delete(self, folders):
 
         # Clean the provided paths
-        folders = clean_paths(folders)
+        folders = clean_path_list(folders)
 
         # Set flags
         is_recursive = self.args.recursive
@@ -4922,7 +4989,7 @@ class Rclone:
     # rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
     # rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
 
-    def _run_rclone_command(self, command):
+    def _run_rclone_command(self, command, background=False):
         '''Run Rclone command'''
 
         try:
@@ -4932,68 +4999,60 @@ class Rclone:
             command = self._add_opt(command, '--progress')
 
             # Run the command
-            ret = subprocess.run(command, capture_output=True,
-                                 text=True, env=self.envrn)
+            if background:
 
-            # Check if the command was successful
-            if ret.returncode == 0:
-                # Execution successfull
-                return True
+                # This is the solution i found to prevent the popen subprocess to throw errors due
+                # our particular usage of rclone.
+                with open(os.devnull, 'w') as devnull:
+                    ret = subprocess.Popen(command, stdout=devnull, stderr=devnull, text=True, env=self.envrn)
+                
+                # If we have a pid we assume the command was successful
+                if ret.pid:
+                    return True
+                else:
+                    return False
 
-            # Execution failed
-            exit_codes = {
-                0: "Success",
-                1: "Syntax or usage error",
-                2: "Error not otherwise categorised",
-                3: "Directory not found",
-                4: "File not found",
-                5: "Temporary error (one that more retries might fix) (Retry errors)",
-                6: "Less serious errors (like 461 errors from dropbox) (NoRetry errors)",
-                7: "Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)",
-                8: "Transfer exceeded - limit set by --max-transfer reached",
-                9: "Operation successful, but no files transferred",
-            }
 
-            print(
-                f'\n        Error: Rclone {command[1]} command failed', file=sys.stderr)
-            print(f'        Command: {" ".join(command)}', file=sys.stderr)
-            print(f'        Return code: {ret.returncode}', file=sys.stderr)
-            print(
-                f'        Return code meaning: {exit_codes[ret.returncode]}\n', file=sys.stderr)
+            else:
+                ret = subprocess.run(command, capture_output=True, text=True, env=self.envrn)
 
-            out, err = ret.stdout.strip(), ret.stderr.strip()
-            stats, ops = self._parse_log(err)
-            ret = stats[-1]  # return the stats
-            print(
-                f"        Error message: {ret['stats']['lastError']}\n", file=sys.stderr)
+                # Check if the command was successful
+                if ret.returncode == 0:
+                    # Execution successfull
+                    return True
+                else:
+                    # Execution failed
+                    exit_codes = {
+                        0: "Success",
+                        1: "Syntax or usage error",
+                        2: "Error not otherwise categorised",
+                        3: "Directory not found",
+                        4: "File not found",
+                        5: "Temporary error (one that more retries might fix) (Retry errors)",
+                        6: "Less serious errors (like 461 errors from dropbox) (NoRetry errors)",
+                        7: "Fatal error (one that more retries won't fix, like account suspended) (Fatal errors)",
+                        8: "Transfer exceeded - limit set by --max-transfer reached",
+                        9: "Operation successful, but no files transferred",
+                    }
 
-            return False
+                    print(
+                        f'\n        Error: Rclone {command[1]} command failed', file=sys.stderr)
+                    print(f'        Command: {" ".join(command)}', file=sys.stderr)
+                    print(f'        Return code: {ret.returncode}', file=sys.stderr)
+                    print(
+                        f'        Return code meaning: {exit_codes[ret.returncode]}\n', file=sys.stderr)
 
-        except subprocess.CalledProcessError:
-            if self.args.debug:
-                print_error()
-            return False
+                    out, err = ret.stdout.strip(), ret.stderr.strip()
+                    stats, ops = self._parse_log(err)
+                    ret = stats[-1]  # return the stats
+                    print(
+                        f"        Error message: {ret['stats']['lastError']}\n", file=sys.stderr)
+
+                    return False
+
         except Exception:
-            if self.args.debug:
-                print_error()
+            print_error()
             return False
-
-    def _run_bk(self, command):
-        # command = self._add_opt(command, '--verbose')
-        # command = self._add_opt(command, '--use-json-log')
-        cmdline = " ".join(command)
-        printdbg('Rclone command:', cmdline)
-        try:
-            ret = subprocess.Popen(command, preexec_fn=os.setsid, stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE, text=True, env=self.cfg.envrn)
-            # _, stderr = ret.communicate(timeout=3)  # This does not work with rclone
-            if ret.stderr:
-                sys.stderr.write(
-                    f'*** Error in command "{cmdline}":\n {ret.stderr} ')
-            return ret.pid
-        except Exception as e:
-            print(f'Rclone Error: {str(e)}')
-            return None
 
     def copy(self, src, dst, *args):
         '''Copy files from source to destination using Rclone'''
@@ -5016,29 +5075,25 @@ class Rclone:
 
         return self._run_rclone_command(command)
 
-    def mount(self, url, mountpoint, *args):
+    def mount(self, src, dst, *args):
+        '''Mount files from url to on-premises using Rclone'''
+
         if not shutil.which('fusermount3'):
             print('Could not find "fusermount3". Please install the "fuse3" OS package')
-            return False
-        if not url.endswith('/'):
-            url+'/'
-        mountpoint = mountpoint.rstrip(os.path.sep)
+            sys.exit(1)
+        
+        # Build the copy command
         command = [self.rc, 'mount'] + list(args)
-        try:
-            current_permissions = os.lstat(mountpoint).st_mode
-            new_permissions = (current_permissions & ~0o07) | 0o05
-            os.chmod(mountpoint, new_permissions)
-        except:
-            pass
         command.append('--allow-non-empty')
         command.append('--default-permissions')
         command.append('--read-only')
         command.append('--no-checksum')
-        command.append('--quiet')
-        command.append(url)
-        command.append(mountpoint)
-        pid = self._run_bk(command)
-        return pid
+        command.append(src)
+        command.append(dst)
+
+        # Run the copy command and return if it was successful
+        return self._run_rclone_command(command, background=True)
+        
 
     def unmount(self, mountpoint, wait=False):
         mountpoint = mountpoint.rstrip(os.path.sep)
@@ -5669,7 +5724,7 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
             sys.exit(1)
 
     # Clean the provided paths
-    folders = clean_paths(args.folders)
+    folders = clean_path_list(args.folders)
 
     # Index the given folders
     arch.index(folders)
@@ -5703,7 +5758,7 @@ def subcmd_archive(args: argparse.Namespace, arch: Archiver):
     if args.hotspots:
         if args.folders:
             print('\nError: Incorrect "froster archive" usage. Choose between:')
-            print('    Using --hotspots flag to select hotsposts')
+            print('    Using --hotspots flag to select hotspots')
             print('    Provide folder(s) to archive\n')
             sys.exit(1)
 
@@ -5867,7 +5922,7 @@ def subcmd_delete(args: argparse.Namespace, arch: Archiver):
 
             # Get the list of folders from the archive
             files = arch.archive_json_get_csv(
-                ['local_folder', 's3_storage_class', 'profile', 'deleted'])
+                ['local_folder', 's3_storage_class', 'profile'])
 
             if not files:
                 print("No archives available.")
@@ -5890,84 +5945,49 @@ def subcmd_delete(args: argparse.Namespace, arch: Archiver):
         print_error()
 
 
-def subcmd_mount(args, cfg, arch, aws):
-    # TODO: function pendint to review
-    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
-    exit(1)
+def subcmd_mount(args: argparse.Namespace, arch: Archiver):
 
-    printdbg("mount:", args.aws_profile, args.mountpoint, args.folders)
-    fld = '" "'.join(args.folders)
-    printdbg(f'default cmdline: froster mount "{fld}"')
-
-    interactive = False
-    if not args.folders:
-        interactive = True
-        files = arch.archive_json_get_csv(
-            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
-        if not files:
-            print("No archives available.")
-            return False
-        app = TableArchive(files)
-        retline = app.run()
-        if not retline:
-            return False
-        if len(retline) < 2:
-            print('Error: froster-archives table did not return result',
-                  file=sys.stderr)
-            return False
-        printdbg("dialog returns:", retline)
-        args.folders.append(retline[0])
-        if retline[2]:
-            cfg.aws_profile = retline[2]
-            args.aws_profile = cfg.aws_profile
-            cfg.set_env_vars(cfg.aws_profile)
-    else:
-        pass
-        # we actually want to support symlinks
-        # args.folders = clean_paths(args.folders)
-
-    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.aws_profile}" not found.')
-        return False
-    if not aws.check_bucket_access_folders(args.folders):
-        return False
-
-    if args.aws:
-        cfg.create_ec2_instance()
-        return True
-
-    hostname = platform.node()
-    rclone = Rclone(args, cfg)
-    for fld in args.folders:
-        fld = fld.rstrip(os.path.sep)
-        if fld == os.path.realpath(os.getcwd()):
-            print(f' Cannot mount current working directory {fld}')
-            continue
-        # get archive storage location
-        rowdict = arch.archive_json_get_row(fld)
-        if rowdict == None:
-            print(f'Folder "{fld}" not in archive.')
-            continue
-        archive_folder = rowdict['archive_folder']
-
-        if args.mountpoint and os.path.isdir(args.mountpoint):
-            fld = args.mountpoint
-
-        print(f'Mounting archive folder at {fld} ... ', flush=True, end="")
-        pid = rclone.mount(archive_folder, fld)
-        print('Done!', flush=True)
-        if interactive:
-            print(textwrap.dedent(f'''
-                Note that this mount point will only work on the current machine,
-                if you would like to have this work in a batch job you need to enter
-                these commands in the beginning and the end of a batch script:
-                froster mount {fld}
-                froster umount {fld}
-                '''))
+    try:
+        
         if args.mountpoint:
-            # we can only mount a single folder if mountpoint is set
-            break
+            if not os.path.isdir(args.mountpoint):
+                print(f'\nError: Folder "{args.mountpoint}" does not exist.\n')
+                sys.exit(1)
 
+            if len(args.folders) > 1:
+                print('\nError: Cannot mount multiple folders to a single mountpoint.')
+                print('Check the mount command usage with "froster mount --help"\n')
+                sys.exit(1) 
+
+        if not args.folders:
+            # Get the list of folders from the archive
+            files = arch.archive_json_get_csv(
+                ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
+
+            if not files:
+                print("No archives available.")
+                sys.exit(0)
+
+            app = TableArchive(files)
+            retline = app.run()
+
+            if not retline:
+                return False
+            if len(retline) < 2:
+                print(f'\nNo archived folders found\n')
+                sys.exit(0)
+
+            args.folders = [retline[0]]
+
+        # TODO: Mount in AWS EC2 instance
+        # if args.aws:
+        #     cfg.create_ec2_instance()
+        #     return True
+
+        arch.mount(folders=args.folders, mountpoint=args.mountpoint)
+
+    except Exception:
+        print_error()
 
 def subcmd_umount(args, cfg):
 
@@ -5976,7 +5996,7 @@ def subcmd_umount(args, cfg):
     if len(mounts) == 0:
         print("No Rclone mounts on this computer.")
         return False
-    folders = clean_paths(args.folders)
+    folders = clean_path_list(args.folders)
     if len(folders) == 0:
         files = "\n".join(mounts)
         files = "Mountpoint\n"+files
@@ -6153,7 +6173,7 @@ def parse_arguments():
     parser_archive.add_argument('-f', '--force', dest='force', action='store_true',
                                 help="Force archiving of a folder that contains the .froster.md5sum file")
 
-    parser_archive.add_argument('-H', '--hotsposts', dest='hotspots', action='store_true',
+    parser_archive.add_argument('-H', '--hotspots', dest='hotspots', action='store_true',
                                 help="Select hotspots to archive from CSV file generated by 'froster index'")
 
     parser_archive.add_argument('-p', '--permissions', dest='permissions', action='store_true',
@@ -6306,8 +6326,18 @@ def printdbg(*args, **kwargs):
 
 # TODO: OHSU-103: Move this function to utils module
 
+def clean_path(path):
+    try:
+        if path:
+            return os.path.realpath(os.path.expanduser(path).rstrip(os.path.sep))
+        else:
+            return path
 
-def clean_paths(paths):
+    except Exception:
+        print_error()
+        sys.exit(1)
+
+def clean_path_list(paths):
     '''Clean paths by expanding user and symlinks, and removing trailing slashes.'''
 
     if not paths:
@@ -6317,14 +6347,16 @@ def clean_paths(paths):
 
     for path in paths:
         try:
-            # Split the path into its components
-            cleaned_paths.append(os.path.realpath(os.path.expanduser(path).rstrip(os.path.sep))
-                                 )
-        except Exception as e:
-            print(f"Error processing '{path}': {e}", file=sys.stderr)
+            # Expand user and symlinks, and remove trailing slashes only if path is not empty
+            if path:
+                # Split the path into its components
+                cleaned_paths.append(clean_path(path))
+
+        except Exception:
+            print_error()
+            sys.exit(1)
 
     return cleaned_paths
-
 
 def print_error():
     exc_type, exc_value, exc_tb = sys.exc_info()
@@ -6388,7 +6420,7 @@ def main():
         elif args.subcmd in ['delete', 'del']:
             subcmd_delete(args, arch)
         elif args.subcmd in ['mount', 'mnt']:
-            subcmd_mount(args, cfg, arch, aws)
+            subcmd_mount(args, arch)
         elif args.subcmd in ['umount']:  # or args.unmount:
             subcmd_umount(args, cfg)
         elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
