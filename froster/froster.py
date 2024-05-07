@@ -1690,22 +1690,20 @@ class Archiver:
                     self.archive_locally(
                         folder, is_recursive, nih, is_subfolder, is_tar, is_force)
 
-
-    def _get_folder_mountpoint(self, folder):
-        '''If mounted, return the given folder mountpoint. If not mounted, return None'''
-
-        with open("/proc/mounts", "r") as f:
-            mounts = [line.split()[1] for line in f]
-
-        if folder in mounts:
-            return mounts[mounts.index(folder)]
-        else:
-            return None
+    def get_mounts(self):
+        try:
+            rclone = Rclone(self.args, self.cfg)
+            return rclone.get_mounts()
+        except Exception:
+            print_error()
+            sys.exit(1)
 
     def _is_folder_mounted(self, folder):
         '''Check if the given folder is already mounted'''
 
-        if self._get_folder_mountpoint(folder):
+        mounts = self.get_mounts()
+
+        if folder in mounts:
             return True
         else:
             return False
@@ -1745,7 +1743,7 @@ class Archiver:
 
             # Check if the folder is already mounted
             if self._is_folder_mounted(mountpoint):
-                print(f'    ..."{mountpoint} already mounted"\n')
+                print(f'    ..."{mountpoint}" already mounted\n')
                 sys.exit(1)
 
             # Mount the folder
@@ -1759,6 +1757,17 @@ class Archiver:
             else:
                 print('    ...FAILED\n')
                 return
+
+    def unmount(self, folders):
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+        
+        # rclone instance
+        rclone = Rclone(self.args, self.cfg)
+        
+        for folder in folders:
+            rclone.unmount(folder)
 
     def get_hotspot_folders(self, hotspot_file):
 
@@ -5096,32 +5105,36 @@ class Rclone:
         
 
     def unmount(self, mountpoint, wait=False):
-        mountpoint = mountpoint.rstrip(os.path.sep)
-        if self._is_mounted(mountpoint):
-            if shutil.which('fusermount3'):
+
+        try:
+            if not shutil.which('fusermount3'):
+                print('Could not find "fusermount3". Please install the "fuse3" OS package')
+                sys.exit(1)
+
+            # Clean the path
+            mountpoint = clean_path(mountpoint)
+
+            print(f'\nUNMOUNTING {mountpoint}...')
+
+            if self._is_mounted(mountpoint):
+
+                # Build command
                 cmd = ['fusermount3', '-u', mountpoint]
                 ret = subprocess.run(
-                    cmd, capture_output=False, text=True, env=self.cfg.envrn)
+                    cmd, capture_output=False, text=True, env=self.envrn)
+                
+                # Check if the command was successful
+                if ret.returncode == 0:
+                    print(f'    ...UNMOUNTED\n')
+                else:
+                    print(f'    ...FAILED')
             else:
-                rclone_pids = self._get_pids('rclone')
-                fld_pids = self._get_pids(mountpoint, True)
-                common_pids = [
-                    value for value in rclone_pids if value in fld_pids]
-                for pid in common_pids:
-                    try:
-                        os.kill(pid, signal.SIGTERM)
-                        if wait:
-                            _, _ = os.waitpid(int(pid), 0)
-                        return True
-                    except PermissionError:
-                        print(
-                            f'Permission denied when trying to send signal SIGTERM to rclone process with PID {pid}.')
-                    except Exception as e:
-                        print(
-                            f'An unexpected error occurred when trying to send signal SIGTERM to rclone process with PID {pid}: {e}')
-        else:
-            print(
-                f'\nError: Folder {mountpoint} is currently not used as a mountpoint by rclone.')
+                print(f'    ...not mounted\n')
+                
+        except Exception:
+            print_error()
+            sys.exit(1)
+    
 
     def version(self):
         command = [self.rc, 'version']
@@ -5959,6 +5972,22 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
                 print('Check the mount command usage with "froster mount --help"\n')
                 sys.exit(1) 
 
+        if args.list:
+            mounts = arch.get_mounts()
+            if len(mounts) == 0:
+                print(f'\nNo mounts found on this computer\n')
+                sys.exit(0)
+            
+            print(f'\nMOUNTS FOUND ON THIS COMPUTER:\n')
+            
+            for mount in mounts:
+                print(mount)
+            
+            # Decorator print
+            print()
+
+            sys.exit(0)
+
         if not args.folders:
             # Get the list of folders from the archive
             files = arch.archive_json_get_csv(
@@ -5989,24 +6018,25 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
     except Exception:
         print_error()
 
-def subcmd_umount(args, cfg):
+def subcmd_umount(args: argparse.Namespace, arch: Archiver):
 
-    rclone = Rclone(args, cfg)
-    mounts = rclone.get_mounts()
+    mounts = arch.get_mounts()
+
     if len(mounts) == 0:
-        print("No Rclone mounts on this computer.")
-        return False
-    folders = clean_path_list(args.folders)
-    if len(folders) == 0:
+        print("\nNOTE: No rclone mounts on this computer.\n")
+        sys.exit(0)
+
+    if not args.folders:
+        # No folders provided, manually select folder to unmount
         files = "\n".join(mounts)
-        files = "Mountpoint\n"+files
+        files = "Mountpoint\n" + files
+        
         app = TableArchive(files)
         retline = app.run()
-        folders.append(retline[0])
-    for fld in folders:
-        print(f'Unmounting folder {fld} ... ', flush=True, end="")
-        rclone.unmount(fld)
-        print('Done!', flush=True)
+        
+        args.folders = [retline[0]]
+    
+    arch.unmount(args.folders)
 
 
 def subcmd_ssh(args, cfg: ConfigManager, aws: AWSBoto):
@@ -6250,15 +6280,20 @@ def parse_arguments():
             Mount or unmount the remote S3 or Glacier storage in your local file system
             at the location of the original folder.
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    parser_mount.add_argument('--mount-point', '-m', dest='mountpoint', action='store', default='',
-                              help='pick a custom mount point, this only works if you select a single folder.')
-    parser_mount.add_argument('--aws', '-a', dest='aws', action='store_true', default=False,
-                              help="Mount folder on new EC2 instance instead of local machine")
-    parser_mount.add_argument('--unmount', '-u', dest='unmount', action='store_true', default=False,
-                              help="unmount instead of mount, you can also use the umount sub command instead.")
+    
     parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
-                              help='archived folders (separated by space) which you would like to mount.' +
-                              '')
+                            help='archived folders (separated by space) which you would like to mount.' +
+                            '')
+    parser_mount.add_argument('-a', '--aws', dest='aws', action='store_true',
+                            help="Mount folder on new EC2 instance instead of local machine") 
+    
+    parser_mount.add_argument('-l', '--list', dest='list', action='store_true',
+                              help="List all mounted folders")
+
+    parser_mount.add_argument('-m', '--mount-point', dest='mountpoint', action='store', default='',
+                              help='pick a custom mount point, this only works if you select a single folder.')
+
+
 
     # ***
 
@@ -6422,7 +6457,7 @@ def main():
         elif args.subcmd in ['mount', 'mnt']:
             subcmd_mount(args, arch)
         elif args.subcmd in ['umount']:  # or args.unmount:
-            subcmd_umount(args, cfg)
+            subcmd_umount(args, arch)
         elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
             subcmd_ssh(args, cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
