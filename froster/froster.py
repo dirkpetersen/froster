@@ -1698,7 +1698,7 @@ class Archiver:
             print_error()
             sys.exit(1)
 
-    def _is_folder_mounted(self, folder):
+    def _is_mounted(self, folder):
         '''Check if the given folder is already mounted'''
 
         mounts = self.get_mounts()
@@ -1708,6 +1708,21 @@ class Archiver:
         else:
             return False
     
+    def print_current_mounts(self):
+        '''Print the current mounted folders'''
+
+        mounts = self.get_mounts()
+
+        if mounts:
+            print('\nCURRENT MOUNTED FOLDERS:\n')
+            for mount in mounts:
+                print(f'    {mount}')
+
+            # Decorator print
+            print()
+        else:
+            print('\nNO FOLDERS MOUNTED\n')
+
     def mount(self, folders, mountpoint):
         '''Mount the given folder'''
 
@@ -1742,7 +1757,7 @@ class Archiver:
                 mountpoint = local_folder
 
             # Check if the folder is already mounted
-            if self._is_folder_mounted(mountpoint):
+            if self._is_mounted(mountpoint):
                 print(f'    ..."{mountpoint}" already mounted\n')
                 sys.exit(1)
 
@@ -1753,10 +1768,11 @@ class Archiver:
             # Check if the folder was mounted successfully
             if ret:
                 print('    ...MOUNTED\n')
-                is_folder_archived = True
             else:
                 print('    ...FAILED\n')
                 return
+            
+            
 
     def unmount(self, folders):
 
@@ -1767,7 +1783,19 @@ class Archiver:
         rclone = Rclone(self.args, self.cfg)
         
         for folder in folders:
-            rclone.unmount(folder)
+            print(f'\nUNMOUNTING {folder}...')
+            
+            if self._is_mounted(folder):
+                ret = rclone.unmount(folder)
+
+                # Check if the folder was unmounted successfully
+                if ret:
+                    print('    ...UNMOUNTED\n')
+                else:
+                    print('    ...FAILED\n')
+            else:
+                print(f'    ...IS NOT MOUNTED\n')
+
 
     def get_hotspot_folders(self, hotspot_file):
 
@@ -5014,7 +5042,7 @@ class Rclone:
                 # our particular usage of rclone.
                 with open(os.devnull, 'w') as devnull:
                     ret = subprocess.Popen(command, stdout=devnull, stderr=devnull, text=True, env=self.envrn)
-                
+
                 # If we have a pid we assume the command was successful
                 if ret.pid:
                     return True
@@ -5111,26 +5139,10 @@ class Rclone:
                 print('Could not find "fusermount3". Please install the "fuse3" OS package')
                 sys.exit(1)
 
-            # Clean the path
-            mountpoint = clean_path(mountpoint)
-
-            print(f'\nUNMOUNTING {mountpoint}...')
-
-            if self._is_mounted(mountpoint):
-
-                # Build command
-                cmd = ['fusermount3', '-u', mountpoint]
-                ret = subprocess.run(
-                    cmd, capture_output=False, text=True, env=self.envrn)
-                
-                # Check if the command was successful
-                if ret.returncode == 0:
-                    print(f'    ...UNMOUNTED\n')
-                else:
-                    print(f'    ...FAILED')
-            else:
-                print(f'    ...not mounted\n')
-                
+            # Build command
+            cmd = ['fusermount3', '-u', mountpoint]
+            return subprocess.run(cmd, capture_output=False, text=True, env=self.envrn)
+                 
         except Exception:
             print_error()
             sys.exit(1)
@@ -5164,16 +5176,6 @@ class Rclone:
         except subprocess.CalledProcessError:
             # No rclone processes found
             return []
-
-    def _is_mounted(self, folder_path):
-        # Resolve any symbolic links
-        folder_path = os.path.realpath(folder_path)
-        with open('/proc/mounts', 'r') as f:
-            for line in f:
-                parts = line.split()
-                mount_point, fs_type = parts[1], parts[2]
-                if mount_point == folder_path and fs_type.startswith('fuse.rclone'):
-                    return True
 
     def _add_opt(self, cmd, option, value=None):
         '''Add an option to the command if it is not already present'''
@@ -5962,6 +5964,10 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
 
     try:
         
+        if args.list:
+            arch.print_current_mounts()
+            sys.exit(0)
+    
         if args.mountpoint:
             if not os.path.isdir(args.mountpoint):
                 print(f'\nError: Folder "{args.mountpoint}" does not exist.\n')
@@ -5973,19 +5979,7 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
                 sys.exit(1) 
 
         if args.list:
-            mounts = arch.get_mounts()
-            if len(mounts) == 0:
-                print(f'\nNo mounts found on this computer\n')
-                sys.exit(0)
-            
-            print(f'\nMOUNTS FOUND ON THIS COMPUTER:\n')
-            
-            for mount in mounts:
-                print(mount)
-            
-            # Decorator print
-            print()
-
+            arch.print_current_mounts()
             sys.exit(0)
 
         if not args.folders:
@@ -6020,8 +6014,12 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
 
 def subcmd_umount(args: argparse.Namespace, arch: Archiver):
 
-    mounts = arch.get_mounts()
+    if args.list:
+        arch.print_current_mounts()
+        sys.exit(0)
 
+    # Get current mounts
+    mounts = arch.get_mounts()
     if len(mounts) == 0:
         print("\nNOTE: No rclone mounts on this computer.\n")
         sys.exit(0)
