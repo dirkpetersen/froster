@@ -1072,1919 +1072,11 @@ class ConfigManager:
             print(f'\n*** SLURM NOT FOUND: Nothing to configure ***\n')
 
 
-class Archiver:
-
-    def __init__(self, args: argparse.Namespace, cfg: ConfigManager):
-        self.args = args
-
-        self.cfg = cfg
-
-        self.archive_json = cfg.archive_json
-
-        x = cfg.max_small_file_size_kib
-        self.thresholdKB = int(x) if x else 1024
-
-        x = cfg.min_index_folder_size_gib
-        self.thresholdGB = int(x) if x else 10
-
-        x = cfg.min_index_folder_size_avg_mib
-        self.thresholdMB = int(x) if x else 10
-
-        x = cfg.max_hotspots_display_entries
-        global MAXHOTSPOTS
-        MAXHOTSPOTS = int(x) if x else 5000
-
-        self.smallfiles_tar_filename = 'Froster.smallfiles.tar'
-        self.allfiles_csv_filename = 'Froster.allfiles.csv'
-        self.md5sum_filename = '.froster.md5sum'
-        self.md5sum_restored_filename = '.froster-restored.md5sum'
-        self.where_did_the_files_go_filename = 'Where-did-the-files-go.txt'
-
-        self.dirmetafiles = [self.allfiles_csv_filename,
-                             self.smallfiles_tar_filename,
-                             self.md5sum_filename,
-                             self.md5sum_restored_filename,
-                             self.where_did_the_files_go_filename]
-
-        self.grants = []
-
-    def _index_locally(self, folder):
-        '''Index the given folder for archiving'''
-
-        # move down to class
-        daysaged = [5475, 3650, 1825, 1095, 730, 365, 90, 30]
-        TiB = 1099511627776
-        # GiB=1073741824
-        # MiB=1048576
-
-        # If pwalkcopy location provided, run pwalk and copy the output to the specified location every time
-        if self.args.pwalkcopy:
-            print(
-                f'\nIndexing folder "{folder}" and copying output to {self.args.pwalkcopy}...', flush=True)
-        else:
-            print(f'\nIndexing folder "{folder}"...', flush=True)
-
-            # Get the path to the hotspots CSV file
-            folder_hotspot = self.get_hotspots_path(folder)
-
-            # If the folder is already indexed don't run pwalk again
-            if os.path.isfile(folder_hotspot):
-                print(
-                    f'    ...folder already indexed at {folder_hotspot}\n')
-                return
-
-        # Run pwalk on given folder
-        with tempfile.NamedTemporaryFile() as pwalk_output:
-            with tempfile.NamedTemporaryFile() as pwalk_output_folders:
-                with tempfile.NamedTemporaryFile() as pwalk_output_folders_converted:
-
-                    # Build the pwalk command
-                    pwalk_bin = os.path.join(sys.prefix, 'bin', 'pwalk')
-                    pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
-                    mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
-
-                    # Run the pwalk command
-                    ret = subprocess.run(mycmd, shell=True,
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-                    # Check if the pwalk command was successful
-                    if ret.returncode != 0:
-                        print(
-                            f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
-                        sys.exit(1)
-
-                    # If pwalkcopy location provided, then copy the pwalk output file to the specified location
-                    if self.args.pwalkcopy:
-
-                        copy_filename = folder.replace('/', '+') + '.csv'
-                        copy_file_path = os.path.join(
-                            self.args.pwalkcopy, copy_filename)
-
-                        # Build the copy command
-                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
-
-                        # Run the copy command
-                        result = subprocess.run(mycmd, shell=True)
-
-                        # Check if the copy command was successful
-                        if result.returncode != 0:
-                            print(
-                                f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                            sys.exit(1)
-
-                    # Build the files removing command
-                    mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
-
-                    # Run the files removing command
-                    result = subprocess.run(mycmd, shell=True)
-
-                    # Check if the files removing command was successful
-                    if result.returncode != 0:
-                        print(
-                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                        sys.exit(1)
-
-                    # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
-                    # pwalk does already output UTF-8, weird, probably duckdb error
-
-                    # Build the file conversion command
-                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} -o {pwalk_output_folders_converted.name}'
-
-                    # Run the file conversion command
-                    result = subprocess.run(mycmd, shell=True)
-
-                    # Check if the file conversion command was successful
-                    if result.returncode != 0:
-                        print(
-                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                        sys.exit(1)
-
-                    # Build the SQL query on the CSV file
-                    sql_query = f"""SELECT UID as User,
-                                    st_atime as AccD, st_mtime as ModD,
-                                    pw_dirsum/1073741824 as GiB,
-                                    pw_dirsum/1048576/pw_fcount as MiBAvg,
-                                    filename as Folder, GID as Group,
-                                    pw_dirsum/1099511627776 as TiB,
-                                    pw_fcount as FileCount, pw_dirsum as DirSize
-                                FROM read_csv_auto('{pwalk_output_folders_converted.name}',
-                                        ignore_errors=1)
-                                WHERE pw_fcount > -1 AND pw_dirsum > 0
-                                ORDER BY pw_dirsum Desc
-                            """  # pw_dirsum > 1073741824
-
-                    # Connect to an in-memory DuckDB instance
-                    duckdb_connection = duckdb.connect(':memory:')
-
-                    # Set the number of threads to use
-                    duckdb_connection.execute(
-                        f'PRAGMA threads={self.args.cores};')
-
-                    # Execute the SQL query
-                    rows = duckdb_connection.execute(sql_query).fetchall()
-
-                    # Get the column names
-                    header = duckdb_connection.execute(sql_query).description
-
-                    # Close the DuckDB connection
-                    duckdb_connection.close()
-
-        # Set up variables for the hotspots
-        totalbytes = 0
-        numhotspots = 0
-        agedbytes = [0] * len(daysaged)
-
-        # Get the path to the hotspots CSV file
-        mycsv = self.get_hotspots_path(folder)
-
-        # Write the hotspots to the CSV file
-        with open(mycsv, 'w') as f:
-            writer = csv.writer(f, dialect='excel')
-            writer.writerow([col[0] for col in header])
-            # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
-            for r in rows:
-                row = list(r)
-                if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
-                    atime = self._get_newest_file_atime(row[5], row[1])
-                    mtime = self._get_newest_file_mtime(row[5], row[2])
-                    row[0] = self.uid2user(row[0])
-                    row[1] = self.daysago(atime)
-                    row[2] = self.daysago(mtime)
-                    row[3] = int(row[3])
-                    row[4] = int(row[4])
-                    row[6] = self.gid2group(row[6])
-                    row[7] = int(row[7])
-                    writer.writerow(row)
-                    numhotspots += 1
-                    totalbytes += row[9]
-                    for i in range(0, len(daysaged)):
-                        if row[1] > daysaged[i]:
-                            if i == 0:
-                                # Is this really 15 years ?
-                                printdbg(
-                                    f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
-                            agedbytes[i] += row[9]
-
-        print(f'    ...indexing done.')
-
-        print(textwrap.dedent(f'''
-            Hotspots file: {mycsv}
-                with {numhotspots} hotspots >= {self.thresholdGB} GiB
-                with a total disk use of {round(totalbytes/TiB,3)} TiB
-            '''))
-
-        print(f'Total folders processed: {len(rows)}')
-
-        lastagedbytes = 0
-        for i in range(0, len(daysaged)):
-            if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
-                # dedented multi-line removing \n
-                print(textwrap.dedent(f'''
-                {round(agedbytes[i]/TiB,3)} TiB have not been accessed
-                for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
-                ''').replace('\n', ''))
-            lastagedbytes = agedbytes[i]
-
-        # Output decoration print
-        print()
-
-    def _index_slurm(self, folders):
-        # TODO: Review slurm implementation regarding new changes
-        se = SlurmEssentials(self.args, self.cfg)
-        label = self._get_hotspots_file(folders[0]).replace('.csv', '')
-        label = label.replace(' ', '_')
-        shortlabel = os.path.basename(folders[0])
-
-        se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
-        se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
-        se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={self.cfg.email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
-        # se.add_line(f'ml python')
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        cmdline = cmdline.replace('/froster.py ', '/froster ')
-        if self.args.debug:
-            print(f'Command line passed to Slurm:\n{cmdline}')
-        se.add_line(cmdline)
-        jobid = se.sbatch()
-        print(f'Submitted froster indexing job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-index-{label}-{jobid}.out')
-
-    def index(self, folders):
-        '''Index the given folders for archiving'''
-
-        # Clean the provided paths
-        folders = clean_path_list(folders)
-
-        # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
-        if not shutil.which('sbatch') or self.args.noslurm or os.getenv('SLURM_JOB_ID'):
-            for folder in folders:
-                self._index_locally(folder)
-        else:
-            self._index_slurm(folders)
-
-    def archive_select_hotspots(self):
-
-        # Get the hotspots directory
-        hotspots_dir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
-
-        # Check if the Hotspots directory exists
-        if not hotspots_dir or not os.path.exists(hotspots_dir):
-            print(
-                '\nNo folders to archive in arguments and no Hotspots CSV files found.')
-
-            print('\nFor archive a specific folder run:')
-            print('    froster archive "/your/folder/to/archive"')
-
-            print('\n For index a folder a find hotspots run:')
-            print('    froster index "/your/folder/to/index"\n')
-            sys.exit(0)
-
-        # Get all the hotspot CSV files in the hotspots directory
-        hotspots_files = [f for f in os.listdir(
-            hotspots_dir) if fnmatch.fnmatch(f, '*.csv')]
-
-        # Check if there are CSV files, if don't there are no folders to archive
-        if not hotspots_files:
-            print('\nNo hotposts found. \n')
-
-            print(f'You can search for hotspot by indexing folders using command:')
-            print('    froster index "/your/folder/to/index"\n')
-
-            print('For archive a specific folder run:')
-            print('    froster archive "/your/folder/to/archive"\n')
-            sys.exit(0)
-
-        # Sort the CSV files by their modification time in descending order (newest first)
-        hotspots_files.sort(key=lambda x: os.path.getmtime(
-            os.path.join(hotspots_dir, x)), reverse=True)
-
-        # Ask the user to select a Hotspot file
-        ret = TextualStringListSelector(
-            title="Select a Hotspot file", items=hotspots_files).run()
-
-        # No file selected
-        if not ret:
-            sys.exit(0)
-
-        # Get the selected CSV file
-        hotspot_selected = os.path.join(hotspots_dir, ret[0])
-
-        # Get the folders to archive from the selected Hotspot file
-        folders_to_archive = self.get_hotspot_folders(hotspot_selected)
-
-        # Archiving options
-        archiving_options = ['Archive all hotspots',
-                             'Archive one hotspot', 'Cancel']
-
-        # Ask the user how to proceed with the archiving process
-        archive_procedure = inquirer.list_input(
-            message=f"How should we proceed with the archiving process?",
-            choices=archiving_options,
-            default='Cancel')
-
-        if archive_procedure == 'Archive all hotspots':
-            # Do nothing, we already have the folders list to archive
-            pass
-
-        elif archive_procedure == 'Archive one hotspot':
-            ret = TextualStringListSelector(
-                title="Select hotspot to archive ", items=folders_to_archive).run()
-            if not ret:
-                # No file selected
-                sys.exit(0)
-            else:
-                folders_to_archive = [ret[0]]
-
-        elif archive_procedure == 'Cancel':
-            sys.exit(0)
-
-        else:
-            # We should never end up here
-            raise ValueError("Invalid option selected.")
-
-        # Archive the selected folders
-        self.archive(folders_to_archive)
-
-    def _is_recursive_collision(self, folders):
-        '''Check if there is a collision between folders and recursive flag'''
-        is_collision = False
-
-        try:
-            for i in range(len(folders)):
-                for j in range(i + 1, len(folders)):
-                    # Check if folders[j] is a subdirectory of folders[i]
-                    if os.path.commonpath([folders[i], folders[j]]) == folders[i]:
-                        is_collision = True
-                        print(
-                            f'Error: Folder {folders[j]} is a subdirectory of folder {folders[i]}.\n', file=sys.stderr)
-
-                    # Check if folders[i] is a subdirectory of folders[j]
-                    elif os.path.commonpath([folders[i], folders[j]]) == folders[j]:
-                        is_collision = True
-                        print(
-                            f'Error: Folder {folders[i]} is a subdirectory of folder {folders[j]}.\n')
-        except Exception as e:
-            print_error()
-            is_collision = True
-
-        return is_collision
-
-    def _archive_slurm(self, folders, is_recursive, nih):
-        se = SlurmEssentials(self.args, self.cfg)
-        label = folders[0].replace('/', '+')
-        label = label.replace(' ', '_')
-        shortlabel = os.path.basename(folders[0])
-        myjobname = f'froster:archive:{shortlabel}'
-        email = self.cfg.email
-        se.add_line(f'#SBATCH --job-name={myjobname}')
-        se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
-        se.add_line(f'#SBATCH --requeue')
-        se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        if not "--profile" in cmdline and self.args.aws_profile:
-            cmdline = cmdline.replace(
-                '/froster.py ', f'/froster --profile {self.args.aws_profile} ')
-        else:
-            cmdline = cmdline.replace('/froster.py ', '/froster ')
-        if not folders[0] in cmdline:
-            folders = '" "'.join(folders)
-            cmdline = f'{cmdline} "{folders}"'
-        if self.args.debug:
-            print(f'Command line passed to Slurm:\n{cmdline}')
-        se.add_line(cmdline)
-        jobid = se.sbatch()
-        print(f'Submitted froster archiving job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-archive-{label}-{jobid}.out')
-
-    def archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar, is_force):
-        '''Archive the given folder'''
-
-        # Set workflow execution flags
-        is_folder_tarred = False
-        is_folder_archived = False
-        is_froster_allfiles_generated = False
-        is_checksum_generated = False
-        is_checksum_correct = False
-
-        try:
-            s3_dest = os.path.join(
-                f':s3:{self.cfg.bucket_name}',
-                self.cfg.archive_dir,
-                folder_to_archive.lstrip(os.path.sep))
-
-            # TODO: vmachado: review this code
-            froster_md5sum_exists = os.path.isfile(
-                os.path.join(folder_to_archive, ".froster.md5sum"))
-
-            if froster_md5sum_exists:
-                if is_force:
-                    self.reset_folder(folder_to_archive)
-                else:
-                    print(
-                        f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
-                    print(
-                        f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
-                    sys.exit(1)
-
-            # Check if the folder is empty
-            with os.scandir(folder_to_archive) as entries:
-                if not any(True for _ in entries):
-                    print(
-                        f'\nFolder {folder_to_archive} is empty, skipping.\n')
-                    return
-
-            print(f'\nARCHIVING {folder_to_archive}')
-
-            if is_tar:
-                print(f'\n    Generating Froster.allfiles.csv and tar small files...')
-            else:
-                print(f'\n    Generating Froster.allfiles.csv...')
-
-            # Generate Froster.allfiles.csv and if is_tar tar small files
-            if self._gen_allfiles_and_tar(folder_to_archive, self.thresholdKB, is_tar):
-                is_froster_allfiles_generated = True
-                print(f'        ...done')
-            else:
-                # Something failed, exit
-                print(f'        ...FAILED\n')
-                return
-
-            # Generate md5 checksums for all files in the folder
-            print(f'\n    Generating checksums...')
-            if self._gen_md5sums(folder_to_archive, self.md5sum_filename):
-                is_checksum_generated = True
-                print('        ...done')
-            else:
-                return
-
-            # Get the path to the hashfile
-            hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
-
-            # Create an Rclone object
-            rclone = Rclone(self.args, self.cfg)
-
-            # Archive the folder to S3
-            print(f'\n    Uploading files...')
-            ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
-                              '--exclude', self.md5sum_filename,
-                              '--exclude', self.md5sum_restored_filename,
-                              '--exclude', self.allfiles_csv_filename,
-                              '--exclude', self.where_did_the_files_go_filename
-                              )
-
-            # Check if the folder was archived successfully
-            if ret:
-                print('        ...done')
-                is_folder_archived = True
-            else:
-                print('        ...FAILED\n')
-                return
-
-            # Get the path to the allfiles CSV file
-            allfiles_source = os.path.join(
-                folder_to_archive, self.allfiles_csv_filename)
-
-            print(f'\n    Uploading Froster.allfiles.csv file...')
-
-            # Change the storage class to INTELLIGENT_TIERING
-            rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = 'INTELLIGENT_TIERING'
-
-            # Archive the allfiles CSV file to S3 INTELLIGENT_TIERING
-            ret = rclone.copy(allfiles_source, s3_dest, '--max-depth', '1', '--links',
-                              '--exclude', self.md5sum_filename,
-                              '--exclude', self.md5sum_restored_filename,
-                              '--exclude', self.allfiles_csv_filename,
-                              '--exclude', self.where_did_the_files_go_filename
-                              )
-
-            # Change the storage class back to the user preference
-            rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
-
-            if ret:
-                print('        ...done')
-                is_folder_archived = True
-            else:
-                print('        ...FAILED\n')
-                return
-
-            print(f'\n    Verifying checksums...')
-            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
-
-            # Check if the checksums are correct
-            if ret:
-                print('    ...done')
-                is_checksum_correct = True
-            else:
-                print('    ...FAILED\n')
-                return
-
-            # Add the metadata to the archive JSON file ONLY if this is not a subfolder
-            if not is_subfolder:
-                # Get current timestamp
-                timestamp = datetime.datetime.now().isoformat()
-
-                # Get the archive mode
-                if is_recursive:
-                    archive_mode = "Recursive"
-                else:
-                    archive_mode = "Single"
-
-                # Generate the metadata dictionary
-                new_entry = {'local_folder': folder_to_archive,
-                             'archive_folder': s3_dest,
-                             's3_storage_class': self.cfg.storage_class,
-                             'profile': self.cfg.aws_profile,
-                             'archive_mode': archive_mode,
-                             'timestamp': timestamp,
-                             'timestamp_archive': timestamp,
-                             'user': getpass.getuser()
-                             }
-
-                # Add NIH information to the metadata dictionary
-                if nih:
-                    new_entry['nih_project'] = nih[0]
-                    new_entry['nih_project_url'] = nih[6]
-                    new_entry['nih_project_pi'] = nih[3]
-
-                # Write the metadata to the archive JSON file
-                self._archive_json_add_entry(key=folder_to_archive.rstrip(os.path.sep),
-                                             value=new_entry)
-
-            # Print the final message
-            print(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
-            print(f'    LOCAL SOURCE:       "{folder_to_archive}"')
-            print(f'    AWS S3 DESTINATION: "{s3_dest}"\n')
-            print(f'All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
-
-        except Exception:
-            print_error()
-
-    def archive(self, folders):
-        '''Archive the given folders'''
-
-        # Clean the provided paths
-        folders = clean_path_list(folders)
-
-        # Set flags
-        is_recursive = self.args.recursive
-        is_nih = self.cfg.is_nih or self.args.nih
-        is_slurm = shutil.which(
-            'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
-        is_tar = not self.args.notar
-        is_force = self.args.force
-
-        # Check if there is a conflict between folders and recursive flag,
-        # i.e. recursive flag is set and a folder is a subdirectory of another one
-        if is_recursive:
-            if self._is_recursive_collision(folders):
-                print(
-                    f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
-                sys.exit(1)
-
-        # Check if we can read & write all files and folders
-        if not self._is_correct_files_folders_permissions(folders, is_recursive):
-            print(
-                '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-            print(
-                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-            print(
-                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-            sys.exit(1)
-
-        nih = ''
-
-        if is_nih:
-            app = TableNIHGrants()
-            nih = app.run()
-
-        if is_slurm:
-            self._archive_slurm(folders, is_recursive, nih)
-        else:
-            for folder in folders:
-                if is_recursive:
-                    for root, dirs, files in self._walker(folder):
-                        if folder == root:
-                            is_subfolder = False
-                        else:
-                            is_subfolder = True
-
-                        self.archive_locally(
-                            root, is_recursive, nih, is_subfolder, is_tar, is_force)
-
-                else:
-                    is_subfolder = False
-                    self.archive_locally(
-                        folder, is_recursive, nih, is_subfolder, is_tar, is_force)
-
-    def get_mounts(self):
-        try:
-            rclone = Rclone(self.args, self.cfg)
-            return rclone.get_mounts()
-        except Exception:
-            print_error()
-            sys.exit(1)
-
-    def _is_mounted(self, folder):
-        '''Check if the given folder is already mounted'''
-
-        mounts = self.get_mounts()
-
-        if folder in mounts:
-            return True
-        else:
-            return False
-    
-    def print_current_mounts(self):
-        '''Print the current mounted folders'''
-
-        mounts = self.get_mounts()
-
-        if mounts:
-            print('\nCURRENT MOUNTED FOLDERS:\n')
-            for mount in mounts:
-                print(f'    {mount}')
-
-            # Decorator print
-            print()
-        else:
-            print('\nNO FOLDERS MOUNTED\n')
-
-    def mount(self, folders, mountpoint):
-        '''Mount the given folder'''
-
-        # Clean the provided paths
-        folders = clean_path_list(folders)
-        mountpoint = clean_path(mountpoint)
-
-        for folder in folders:
-
-            archive_folder_info = self.archive_json_get_row(folder)
-
-            if archive_folder_info is None:
-                print(f'\nWARNING: folder "{folder}" not in archive.\n')
-                continue
-
-            s3_folder = archive_folder_info['archive_folder']
-            local_folder = archive_folder_info['local_folder']
-            
-            if folder == local_folder:
-                if mountpoint:
-                    print(f'\nMOUNTING "{local_folder}" at "{mountpoint}"...')
-                else:
-                    print(f'\nMOUNTING "{local_folder}"...')
-            else:
-                if mountpoint:
-                    print(f'\nMOUNTING parent folder "{local_folder}" at "{mountpoint}"...')
-                else:
-                    print(f'\nMOUNTING parent folder "{local_folder}"...')
-
-
-            if not mountpoint:
-                mountpoint = local_folder
-
-            # Check if the folder is already mounted
-            if self._is_mounted(mountpoint):
-                print(f'    ..."{mountpoint}" already mounted\n')
-                sys.exit(1)
-
-            # Mount the folder
-            rclone = Rclone(self.args, self.cfg)
-            ret = rclone.mount(s3_folder, mountpoint)
-
-            # Check if the folder was mounted successfully
-            if ret:
-                print('    ...MOUNTED\n')
-            else:
-                print('    ...FAILED\n')
-                return
-
-    def unmount(self, folders):
-
-        # Clean the provided paths
-        folders = clean_path_list(folders)
-        
-        # rclone instance
-        rclone = Rclone(self.args, self.cfg)
-        
-        for folder in folders:
-            print(f'\nUNMOUNTING {folder}...')
-            
-            if self._is_mounted(folder):
-                ret = rclone.unmount(folder)
-
-                # Check if the folder was unmounted successfully
-                if ret:
-                    print('    ...UNMOUNTED\n')
-                else:
-                    print('    ...FAILED\n')
-            else:
-                print(f'    ...IS NOT MOUNTED\n')
-
-
-    def get_hotspot_folders(self, hotspot_file):
-
-        agefld = 'AccD'
-
-        if self.args.agemtime:
-            agefld = 'ModD'
-
-        # Initialize a connection to an in-memory database
-        duckdb_connection = duckdb.connect(
-            database=':memory:', read_only=False)
-
-        # Set the number of threads to use
-        duckdb_connection.execute(f'PRAGMA threads={self.args.cores};')
-
-        # Register CSV file as a virtual table
-        duckdb_connection.execute(
-            f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{hotspot_file}')")
-
-        # Run SQL queries on this virtual table
-        # Filter by given age and size. The default value for all is 0
-        if self.args.older > 0:
-            rows = duckdb_connection.execute(
-                f"SELECT * FROM hs WHERE {agefld} >= {self.args.older} and GiB >= {self.args.larger} ").fetchall()
-
-        elif self.args.newer > 0:
-            rows = duckdb_connection.execute(
-                f"SELECT * FROM hs WHERE {agefld} <= {self.args.newer} and GiB >= {self.args.larger} ").fetchall()
-
-        else:
-            rows = duckdb_connection.execute(
-                f"SELECT * FROM hs WHERE GiB >= {self.args.larger} ").fetchall()
-
-        # Close the DuckDB connection
-        duckdb_connection.close()
-
-        folders_to_archive = [(item[5], item[3])
-                              for item in rows]  # Include size in the tuple
-
-        print(f'Hotspots file: {hotspot_file}')
-        print(f'\nFolders to archive:\n')
-        for folder, size in folders_to_archive:
-            print(f'  {folder} - Size: {size} GiB')
-
-        totalspace = sum(item[3] for item in rows)
-        print(
-            f'\nTotal space to archive: {format(round(totalspace, 3),",")} GiB\n')
-
-        # Return only the folders
-        return [folder for folder, size in folders_to_archive]
-
-    def _check_path_permissions(self, path):
-        '''Check if the user has read and write permissions to the given path'''
-
-        # If path is empty, return True
-        if not path:
-            return True
-
-        # Get path permissions
-        can_read = os.access(path, os.R_OK)
-        can_write = os.access(path, os.W_OK)
-
-        # Print error messages if the user does not have read or write permissions
-        if not can_read:
-            print(f"Cannot read: {path}", file=sys.stderr)
-        if not can_write:
-            print(f"Cannot write: {path}", file=sys.stderr)
-
-        # Return True if the user has read and write permissions, otherwise return False
-        return can_read and can_write
-
-    def _is_correct_files_folders_permissions(self, folders, is_recursive=False):
-        '''Check if the user has read and write permissions to the given folders'''
-
-        correct_permissions = True
-
-        try:
-
-            for folder in folders:
-
-                if not os.path.isdir(folder):
-                    print(f"Error: {folder} is not a directory.",
-                          file=sys.stderr)
-                    sys.exit(1)
-
-                if is_recursive:
-
-                    # Recursive flag set, using os.walk to get all files and folders
-
-                    for root, dirs, files in os.walk(folder, topdown=True):
-
-                        # Check if the user has read and write permissions to the root folder
-                        if not self._check_path_permissions(root):
-                            correct_permissions = False
-
-                        # Check if the user has read and write permissions to all subfolders
-                        for d in dirs:
-                            d_path = os.path.join(root, d)
-                            if not self._check_path_permissions(d_path):
-                                correct_permissions = False
-
-                        # Check if the user has read and write permissions to all files
-                        for f in files:
-                            f_path = os.path.join(root, f)
-                            if not self._check_path_permissions(f_path):
-                                correct_permissions = False
-                else:
-
-                    # Recursive flag not set, using os.listdir to get and check all files
-                    for f in os.listdir(folder):
-                        file_path = os.path.join(folder, f)
-                        if os.path.isfile(file_path):
-                            if not self._check_path_permissions(file_path):
-                                correct_permissions = False
-
-            return correct_permissions
-
-        except Exception:
-            return False
-
-    def get_user_hotspot(self, hotspot_csv):
-        '''Reduce a hotspots file to the folders that the user has write access to'''
-        try:
-            hsdir, hsfile = os.path.split(hotspot_csv)
-            hsdiruser = os.path.join(hsdir, self.cfg.whoami)
-            os.makedirs(hsdiruser, exist_ok=True, mode=0o775)
-            user_csv = os.path.join(hsdiruser, hsfile)
-            if os.path.exists(user_csv):
-                if os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
-                    # print(f"File {user_csv} already exists and is newer than {hotspot_csv}.")
-                    return user_csv
-            print('Filtering hotspots for folders with write permissions ...')
-            writable_folders = []
-            with open(hotspot_csv, mode='r', newline='') as file:
-                reader = csv.DictReader(file)
-                mylen = sum(1 for row in reader)
-                file.seek(0)
-                reader = csv.DictReader(file)
-                progress = self._create_progress_bar(mylen+1)
-                for row in reader:
-                    ret = self.test_write(row['Folder'])
-                    if ret != 13 and ret != 2:
-                        writable_folders.append(row)
-                    progress(reader.line_num)
-            with open(user_csv, mode='w', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
-                writer.writeheader()
-                writer.writerows(writable_folders)
-            return user_csv
-        except Exception as e:
-            print(f"\nError in get_user_hotspot: {e}\n")
-            sys.exit(1)
-
-    def _create_progress_bar(self, max_value):
-        def show_progress_bar(iteration):
-            percent = ("{0:.1f}").format(100 * (iteration / float(max_value)))
-            length = 50  # adjust as needed for the bar length
-            filled_length = int(length * iteration // max_value)
-            bar = "█" * filled_length + '-' * (length - filled_length)
-            if sys.stdin.isatty():
-                print(f'\r|{bar}| {percent}%', end='\r')
-            if iteration == max_value:
-                print()
-        return show_progress_bar
-
-    def print_paths_rw_info(self, paths):
-
-        if not paths:
-            print('\nError: No file paths provided.\n', file=sys.stderr)
-            return
-
-        for path in paths:
-
-            # Check if file exists
-            if not os.path.exists(path):
-                continue
-
-            try:
-                # Getting the status of the file
-                file_stat = os.lstat(path)
-
-                # Getting the current user and group IDs
-                current_uid = os.getuid()
-                current_gid = os.getgid()
-
-                # Checking if the user is the owner
-                is_owner = file_stat.st_uid == current_uid
-
-                # Checking if the user is in the file's group
-                is_group_member = file_stat.st_gid == current_gid or \
-                    any(grp.getgrgid(g).gr_gid ==
-                        file_stat.st_gid for g in os.getgroups())
-
-            except Exception as e:
-                print_error()
-                return
-
-            # Extracting permission bits
-            permissions = file_stat.st_mode
-
-            # Checking for owner read permission
-            has_owner_read_permission = bool(permissions & stat.S_IRUSR)
-
-            # Checking for group read permission
-            has_group_read_permission = bool(permissions & stat.S_IRGRP)
-
-            # Checking for '444' (read permission for everyone)
-            is_444 = permissions & 0o444 == 0o444
-
-            # Determining if the user can read the file
-            can_read = (is_owner and has_owner_read_permission) or \
-                (is_group_member and has_group_read_permission) or \
-                is_444
-
-            # Checking for owner write permission
-            has_owner_write_permission = bool(permissions & stat.S_IWUSR)
-
-            # Checking for group write permission
-            has_group_write_permission = bool(permissions & stat.S_IWGRP)
-
-            # Checking for '666' or '777' permissions
-            is_666_or_777 = permissions & 0o666 == 0o666 or permissions & 0o777 == 0o777
-
-            # Determining if the user can delete the file
-            can_write = (is_owner and has_owner_write_permission) or \
-                        (is_group_member and has_group_write_permission) or \
-                is_666_or_777
-
-            # Printing the file's permissions
-            print(f'\nFile: {path}')
-            print(f'\nis_owner: {is_owner}')
-            print(f'has_owner_read_permission: {has_owner_read_permission}')
-            print(f'has_owner_write_permission: {has_owner_write_permission}')
-            print(f'\nis_group_member: {is_group_member}')
-            print(f'has_group_read_permission: {has_group_read_permission}')
-            print(f'has_group_write_permission: {has_group_write_permission}')
-            print(f'\nis_444: {is_444}')
-            print(f'is_666_or_777: {is_666_or_777}')
-            print(f'\ncan_read: {can_read}')
-            print(f'can_write: {can_write}\n')
-
-    def _gen_md5sums(self, directory, hash_file):
-        '''Generate md5sums for all files in the directory and write them to a hash file'''
-
-        try:
-            for root, dirs, files in self._walker(directory):
-
-                # We only want to generate the hash file in the root directory. Avoid recursion
-                if root != directory:
-                    break
-
-                # Build the path to the hash file
-                hashpath = os.path.join(root, hash_file)
-
-                # Set the number of workers
-                max_workers = max(4, int(self.args.cores))
-
-                with open(hashpath, "w") as out_f:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-
-                        tasks = {}
-
-                        for file in files:
-
-                            # Get the file path
-                            file_path = os.path.join(root, file)
-
-                            # Skip froster files
-                            if os.path.isfile(file_path) and \
-                                    file != hash_file and \
-                                    file != self.where_did_the_files_go_filename and \
-                                    file != self.md5sum_filename and \
-                                    file != self.md5sum_restored_filename:
-
-                                task = executor.submit(self.md5sum, file_path)
-
-                                tasks[task] = file_path
-
-                        for future in concurrent.futures.as_completed(tasks):
-                            file = os.path.basename(tasks[future])
-                            md5 = future.result()
-                            out_f.write(f"{md5}  {file}\n")
-
-                # Check we generated the hash file
-                if os.path.getsize(hashpath) == 0:
-                    os.remove(hashpath)
-                    return False
-                else:
-                    return True
-
-        except Exception:
-            print_error()
-            return False
-
-    def _gen_allfiles_and_tar(self, directory, smallsize=1024, is_tar=True):
-        '''Tar small files in a directory'''
-
-        try:
-            tar_path = os.path.join(directory, self.smallfiles_tar_filename)
-            csv_path = os.path.join(directory, self.allfiles_csv_filename)
-
-            if os.path.exists(tar_path):
-                return True
-
-            for root, dirs, files in self._walker(directory):
-
-                # We only want to tar the files in the root directory. Avoid recursion.
-                if root != directory:
-                    break
-
-                # Flag to check if any files were tarred
-                didtar = False
-
-                # Create tar file and csv file
-                with tarfile.open(tar_path, "w") as tar_file, open(csv_path, 'w', newline='') as csv_file:
-
-                    # Create csv writer
-                    writer = csv.writer(csv_file)
-
-                    # Write the header
-                    writer.writerow(["File", "Size(bytes)", "Date-Modified",
-                                    "Date-Accessed", "Owner", "Group", "Permissions", "Tarred"])
-
-                    for file in files:
-                        # Get the file path
-                        file_path = os.path.join(root, file)
-
-                        # Skip the csv file
-                        if file_path == csv_path:
-                            continue
-
-                        # Check if file is larger than X MB
-                        size, mtime, atime = self._get_file_stats(file_path)
-
-                        # Get last modified date
-                        mdate = datetime.datetime.fromtimestamp(
-                            mtime).strftime('%Y-%m-%d %H:%M:%S')
-
-                        # Get last accessed date
-                        adate = datetime.datetime.fromtimestamp(
-                            atime).strftime('%Y-%m-%d %H:%M:%S')
-
-                        # Get ownership
-                        owner = self.uid2user(os.lstat(file_path).st_uid)
-                        group = self.gid2group(os.lstat(file_path).st_gid)
-
-                        # Get permissions
-                        permissions = oct(os.lstat(file_path).st_mode)
-
-                        # Set tarred to No
-                        tarred = "No"
-
-                        # Tar the file if it's smaller than the specified size
-                        if is_tar and size < smallsize*1024:
-                            # add to tar file
-                            tar_file.add(file_path, arcname=file)
-
-                            # Set didtar to True, so we know we tarred a file
-                            didtar = True
-
-                            # remove original file
-                            os.remove(file_path)
-
-                            # Set tarred to Yes
-                            tarred = "Yes"
-
-                        # Write file info to the csv file
-                        writer.writerow(
-                            [file, size, mdate, adate, owner, group, permissions, tarred])
-
-                # Check if we tarred any files
-                if not didtar:
-                    # Remove the tar file if it's empty
-                    os.remove(tar_path)
-
-            return True
-
-        except Exception as e:
-            if self.args.debug:
-                print_error()
-            return False
-
-    def _untar_files(self, directory, recursive=False):
-        for root, dirs, files in self._walker(directory):
-            if not recursive and root != directory:
-                break
-            tar_path = os.path.join(root, 'Froster.smallfiles.tar')
-            if not os.path.exists(tar_path):
-                # print('{tar_path} does not exist, skipping folder {root}')
-                continue
-            try:
-                print(f'  Untarring Froster.smallfiles.tar ... ', end='')
-                with tarfile.open(tar_path, "r") as tar:
-                    tar.extractall(path=root)
-                os.remove(tar_path)
-                print('Done.')
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print(
-                        "Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
-                    return 13
-                else:
-                    print(f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
-                    return False
-            except Exception as e:
-                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
-                return False
-        return True
-
-    def reset_folder(self, directory, recursive=False):
-        '''Remove all froster artifacts from a folder and untar small files'''
-
-        for root, dirs, files in self._walker(directory):
-            if not recursive and root != directory:
-                break
-            try:
-                print(f'\nResetting folder {root}...')
-
-                if self._is_folder_archived(root.rstrip(os.path.sep)):
-                    print(
-                        f'    ...folder {root} is archived, nothing to reset\n')
-                    continue
-
-                # Get the path to the tar file
-                tar_path = os.path.join(root, self.smallfiles_tar_filename)
-
-                if os.path.exists(tar_path):
-                    print('    Untarring Froster.smallfiles.tar... ', end='')
-                    with tarfile.open(tar_path, "r") as tar:
-                        tar.extractall(path=root)
-                    print('done.')
-
-                for file in self.dirmetafiles:
-                    delfile = os.path.join(root, file)
-                    print(f'    Removing {file}... ', end='')
-                    if os.path.exists(delfile):
-                        os.remove(delfile)
-                        print('done')
-                    else:
-                        print('nothing to remove')
-
-                print(f'...folder {root} reset successfully\n')
-
-            except Exception:
-                print_error()
-
-    def _is_small_file_in_dir(self, dir, small=1024):
-        # Get all files in the specified directory
-        files = [os.path.join(dir, f) for f in os.listdir(
-            dir) if os.path.isfile(os.path.join(dir, f))]
-        # print("** files:",files)
-        # Check if there's any file less than small
-        is_there_small_file = False
-        for f in files:
-            try:
-                s, *_ = self._get_file_stats(f)
-                if s < small*1024:
-                    is_there_small_file = True
-                    break
-            except FileNotFoundError:
-                # Handle the error (e.g., print a message or continue to the next file)
-                print(f"File not found: {f}")
-                continue
-        return is_there_small_file
-
-    def _get_file_stats(self, filepath):
-        try:
-            # Use lstat to get stats of symlink itself, not the file it points to
-            stats = os.lstat(filepath)
-            return stats.st_size, stats.st_mtime, stats.st_atime
-        except FileNotFoundError:
-            print(f"{filepath} not found.")
-            return None, None, None
-
-    def delete_locally(self, folder_to_delete):
-        '''Delete the given folder'''
-
-        print(f'\nDELETING {folder_to_delete}...')
-
-        # Check if the folder is already archived
-        where_did_files_go = os.path.join(folder_to_delete, self.where_did_the_files_go_filename)
-        if os.path.isfile(where_did_files_go):
-            print(f'    ...already deleted\n')
-            return
-
-        archived_folder_info = self.archive_json_get_row(folder_to_delete)
-
-        if archived_folder_info is None:
-            print(f'\nFolder {folder_to_delete} is not archived')
-            print(f'No entry found in froster-archives.json\n')
-            return
-
-        try:
-
-            # Get the path to the hash file
-            hashfile = os.path.join(folder_to_delete, self.md5sum_filename)
-
-            # Check if the hashfile exists
-            if not os.path.exists(hashfile):
-
-                # Regular hashfile does not exist, check if the restored hashfile exists
-                hashfile = os.path.join(
-                    folder_to_delete, self.md5sum_restored_filename)
-
-                if not os.path.exists(hashfile):
-                    print(
-                        f'There is no hashfile therefore cannot delete files in {folder_to_delete}')
-                    return
-
-            # Get the subfolder path
-            subfolder_path = folder_to_delete.replace(
-                archived_folder_info['local_folder'], '')
-
-            # Get the path to the S3 destination
-            # Risky, but os.paht.join does not work with :s3: paths
-            s3_dest = archived_folder_info['archive_folder'] + subfolder_path
-
-            print(f'\n    Verifying checksums...')
-            rclone = Rclone(self.args, self.cfg)
-            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
-            # Check if the checksums are correct
-            if ret:
-                print('        ...done')
-            else:
-                return
-
-            deleted_files = []
-
-            # Delete the files
-            for root, dirs, files in self._walker(folder_to_delete):
-                if root != folder_to_delete:
-                    break
-
-                print(f'\n    Deleting files...')
-                for file in files:
-                    if file == self.md5sum_filename or file == self.md5sum_restored_filename or file == self.allfiles_csv_filename or file == self.where_did_the_files_go_filename:
-                        continue
-                    else:
-                        file_path = os.path.join(root, file)
-                        os.remove(file_path)
-                        deleted_files.append(file)
-                print(f'        ...done')
-
-            # Write a readme file with the metadata
-            email = self.cfg.email
-            readme = os.path.join(
-                folder_to_delete, self.where_did_the_files_go_filename)
-
-            with open(readme, 'w') as rme:
-                rme.write(
-                    f'The files in this folder have been moved to an AWS S3 archive!\n')
-                rme.write(f'\nArchive location: {s3_dest}\n')
-                rme.write(
-                    f"Archive profile (~/.aws): {archived_folder_info['profile']}\n")
-                rme.write(f"Archiver user: {archived_folder_info['user']}\n")
-                rme.write(f'Archiver email: {self.cfg.email}\n')
-                rme.write(
-                    f'Archive tool: https://github.com/dirkpetersen/froster\n')
-                rme.write(
-                    f'Restore command: froster restore "{folder_to_delete}"\n')
-                rme.write(
-                    f'Deletion date: {datetime.datetime.now()}\n')
-                rme.write(f'\n\nFirst 10 files deleted this time:\n')
-                rme.write(', '.join(deleted_files[:10]))
-                rme.write(
-                    f'\n\nPlease see more metadata in Froster.allfiles.csv file\n')
-
-            print(
-                f'\n  Deleted {len(deleted_files)} files and wrote manifest to "{readme}"\n')
-
-            # Print the final message
-            print(f'    LOCAL DELETED FOLDER:   {folder_to_delete}')
-            print(f'    AWS S3 DESTINATION:     {s3_dest}\n')
-            print(f'    Total files deleted:    {len(deleted_files)}\n')
-            print(f'    Manifest:               {readme}\n')
-            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
-
-        except Exception as e:
-            print_error()
-            return
-
-    def delete(self, folders):
-
-        # Clean the provided paths
-        folders = clean_path_list(folders)
-
-        # Set flags
-        is_recursive = self.args.recursive
-
-        if is_recursive:
-            if self._is_recursive_collision(folders):
-                print(
-                    f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
-                sys.exit(1)
-
-        # Check if we can read & write all files and folders
-        if not self._is_correct_files_folders_permissions(folders, is_recursive):
-            print('\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-            print(
-                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-            print(
-                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-            sys.exit(1)
-
-        for folder in folders:
-            if is_recursive:
-                for root, dirs, files in self._walker(folder):
-                    self.delete_locally(root)
-            else:
-                self.delete_locally(folder)
-
-    def _delete_tar_content(self, directory, files):
-        deleted = []
-        for f in files:
-            fp = os.path.join(directory, f)
-
-            if os.path.isfile(fp) or os.path.islink(fp):
-                os.remove(fp)
-                deleted.append(f)
-        printdbg(
-            f'Files deleted in _delete_tar_content: {", ".join(deleted)}')
-
-        return deleted
-
-    def _get_tar_content(self, directory):
-        files = []
-        tar_path = os.path.join(directory, 'Froster.smallfiles.tar')
-        if os.path.exists(tar_path):
-            with tarfile.open(tar_path, 'r') as tar:
-                for member in tar.getmembers():
-                    files.append(member.name)
-        csv_path = os.path.join(directory, 'Froster.allfiles.csv')
-        if os.path.exists(csv_path):
-            file_list = []
-            with open(csv_path, 'r') as csvfile:
-                # Use csv reader
-                reader = csv.DictReader(csvfile)
-                # Iterate over each row in the csv
-                for row in reader:
-                    # If "Tarred" is "Yes", append the "File" to the list
-                    if row['Tarred'] == 'Yes':
-                        if not row['File'] in files:
-                            files.append(row['File'])
-        printdbg(
-            f'Files founds in _get_tar_content: {", ".join(files)}')
-        return files
-
-    def restore(self, folder, recursive=False):
-
-        # copied from archive
-        rowdict = self.archive_json_get_row(folder)
-        if rowdict == None:
-            return False
-        tail = ''
-        if 'archive_mode' in rowdict:
-            if rowdict['archive_mode'] == "Recursive":
-                recursive = True
-        if folder != rowdict['local_folder']:
-            printdbg(
-                f"rowdict[local_folder]: {rowdict['local_folder']}")
-            # try to restore from subdir, we need to check if archived recursively
-            if not recursive:
-                print(textwrap.dedent(f'''\n
-                    You are trying to restore a sub folder but the parent archive
-                    was not saved recursively. You can try restoring this folder:
-                    {rowdict['local_folder']}
-                    '''))
-                return False
-            tail = folder.replace(rowdict['local_folder'], '')
-
-        source = rowdict['archive_folder']+tail+'/'
-        target = folder
-
-        buc, pre, recur, isglacier = self.archive_get_bucket_info(target)
-        if isglacier:
-            # sps = source.split('/', 1)
-            # bk = sps[0].replace(':s3:','')
-            # pr = f'{sps[1]}/' # trailing slash ensured
-            trig, rest, done, notg = self._glacier_restore(buc, pre,
-                                                           self.args.days, self.args.retrieveopt, recur)
-            print('Triggered Glacier retrievals:', len(trig))
-            print('Currently retrieving from Glacier:', len(rest))
-            print('Retrieved from Glacier:', len(done))
-            print('Not in Glacier:', len(notg))
-            if len(trig) > 0 or len(rest) > 0:
-                # glacier is still ongoing, return # of pending ops
-                return len(trig)+len(rest)
-
-        if self.args.nodownload:
-            return -1
-
-        rclone = Rclone(self.args, self.cfg)
-
-        if recursive:
-            print(f'Recursively copying files from archive to "{target}" ...')
-            ret = rclone.copy(source, target)
-        else:
-            print(f'Copying files from archive to "{target}" ...')
-            ret = rclone.copy(source, target, '--max-depth', '1')
-
-        printdbg('*** RCLONE copy ret ***:\n', ret, '\n')
-        # print ('Message:', ret['msg'].replace('\n',';'))
-        if ret['stats']['errors'] > 0:
-            print('Last Error:', ret['stats']['lastError'], file=sys.stderr)
-            print('Copying was not successful.', file=sys.stderr)
-            return False
-            # lastError could contain: Object in GLACIER, restore first
-
-        ttransfers = ret['stats']['totalTransfers']
-        tbytes = ret['stats']['totalBytes']
-        total = self.convert_size(tbytes)
-        if self.args.debug:
-            print('\n')
-            print('Speed:', ret['stats']['speed'])
-            print('Transfers:', ret['stats']['transfers'])
-            print('Tot Transfers:', ret['stats']['totalTransfers'])
-            print('Tot Bytes:', ret['stats']['totalBytes'])
-            print('Tot Checks:', ret['stats']['totalChecks'])
-
-        #   {'bytes': 0, 'checks': 0, 'deletedDirs': 0, 'deletes': 0, 'elapsedTime': 2.783003019,
-        #    'errors': 1, 'eta': None, 'fatalError': False, 'lastError': 'directory not found',
-        #    'renames': 0, 'retryError': True, 'speed': 0, 'totalBytes': 0, 'totalChecks': 0,
-        #    'totalTransfers': 0, 'transferTime': 0, 'transfers': 0}
-        # checksum
-
-        if self._restore_verify(source, target, recursive):
-            print(
-                f'Target and archive are identical. {ttransfers} files with {total} transferred.')
-        else:
-            print(f'Problem: target and archive are NOT identical.')
-            return False
-
-        return -1
-
-    def _restore_verify(self, source, target, recursive=False):
-        # post download tasks like checksum verification and untarring
-        rclone = Rclone(self.args, self.cfg)
-        for root, dirs, files in self._walker(target):
-            if not recursive and root != target:
-                break
-            restpath = root
-            print(f'\n  Checking folder "{restpath}" ... ')
-            if root != target:
-                source = source + os.path.basename(root) + '/'
-            try:
-
-                # This needs to happen recursively
-                tarred_files = self._get_tar_content(root)
-                if len(tarred_files) > 0:
-                    self._delete_tar_content(restpath, tarred_files)
-
-                ret = self._gen_md5sums(
-                    restpath, self.md5sum_restored_filename)
-                if ret == 13:  # cannot write to folder
-                    return False
-                hashfile = os.path.join(restpath, '.froster-restored.md5sum')
-                ret = rclone.checksum(hashfile, source, '--max-depth', '1')
-                printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
-                if ret['stats']['errors'] > 0:
-                    print('Last Error:', ret['stats']['lastError'], file=sys.stderr)
-                    print('Checksum test was not successful.', file=sys.stderr)
-                    return False
-
-                ret = self._untar_files(restpath)
-
-                if ret == 13:  # cannot write to folder
-                    return False
-                elif not ret:
-                    print('  Could not create hashfile .froster-restored.md5sum.', file=sys.stderr)
-                    print('  Perhaps there are no files or the folder does not exist?', file=sys.stderr)
-                    return False
-
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print(
-                        f'Permission denied to "{restpath}"', file=sys.stderr)
-                    continue
-                else:
-                    print(f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
-                    continue
-            except Exception as e:
-                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
-                continue
-        return True
-
-    def _glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk", recursive=False):
-        # this is dropping back to default creds, need to fix
-        # print("AWS_ACCESS_KEY_ID:", os.environ['AWS_ACCESS_KEY_ID'])
-        # print("AWS_PROFILE:", os.environ['AWS_PROFILE'])
-        glacier_classes = {'GLACIER', 'DEEP_ARCHIVE'}
-        try:
-            # not needed here as profile comes from env
-            # session = boto3.Session(profile_name=profile)
-            # s3 = session.client('s3')
-            s3 = boto3.client('s3')
-            paginator = s3.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'AccessDenied':
-                print(f"Access denied for bucket '{bucket}'", file=sys.stderr)
-                print('Check your permissions and/or credentials.', file=sys.stderr)
-            else:
-                print_error()
-            return [], [], []
-        triggered_keys = []
-        restoring_keys = []
-        restored_keys = []
-        not_glacier_keys = []
-        for page in pages:
-            if not 'Contents' in page:
-                continue
-            for obj in page['Contents']:
-                object_key = obj['Key']
-                # Check if there are additional slashes after the prefix,
-                # indicating that the object is in a subfolder.
-                remaining_path = object_key[len(prefix):]
-                if '/' in remaining_path and not recursive:
-                    continue
-                header = s3.head_object(Bucket=bucket, Key=object_key)
-                if 'StorageClass' in header:
-                    if not header['StorageClass'] in glacier_classes:
-                        not_glacier_keys.append(object_key)
-                        continue
-                else:
-                    continue
-                if 'Restore' in header:
-                    if 'ongoing-request="true"' in header['Restore']:
-                        restoring_keys.append(object_key)
-                        continue
-                if 'Restore' in header:
-                    if 'ongoing-request="false"' in header['Restore']:
-                        restored_keys.append(object_key)
-                        continue
-                try:
-                    s3.restore_object(
-                        Bucket=bucket,
-                        Key=object_key,
-                        RestoreRequest={
-                            'Days': keep_days,
-                            'GlacierJobParameters': {
-                                'Tier': ret_opt
-                            }
-                        }
-                    )
-                    triggered_keys.append(object_key)
-                    printdbg(
-                        f'Restore request initiated for {object_key} using {ret_opt} retrieval.')
-                except botocore.exceptions.ClientError as e:
-                    if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
-                        print(
-                            f'Restore is already in progress for {object_key}. Skipping...')
-                        restoring_keys.append(object_key)
-                    else:
-                        print(f'Error occurred for {object_key}: {e}')
-                except:
-                    print(f'Restore request for {object_key} failed.')
-        return triggered_keys, restoring_keys, restored_keys, not_glacier_keys
-
-    def md5sumex(self, file_path):
-        try:
-            cmd = f'md5sum {file_path}'
-            ret = subprocess.run(cmd, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, Shell=True)
-            if ret.returncode != 0:
-                print(f'md5sum return code > 0: {cmd} Error:\n{ret.stderr}')
-            return ret.stdout.strip()  # , ret.stderr.strip()
-
-        except Exception as e:
-            print(f'md5sum Error: {str(e)}')
-            return None, str(e)
-
-    def md5sum(self, file_path):
-        '''Calculate md5sum of a file'''
-
-        md5_hash = hashlib.md5()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                md5_hash.update(chunk)
-        return md5_hash.hexdigest()
-
-    def uid2user(self, uid):
-        # try to convert uid to user name
-        try:
-            return pwd.getpwuid(uid)[0]
-        except:
-            printdbg(f'uid2user: Error converting uid {uid}')
-            return uid
-
-    def gid2group(self, gid):
-        # try to convert gid to group name
-        try:
-            return grp.getgrgid(gid)[0]
-        except:
-            printdbg(f'gid2group: Error converting gid {gid}')
-            return gid
-
-    def daysago(self, unixtime):
-        # how many days ago is this epoch time ?
-        if not unixtime:
-            printdbg(
-                'daysago: an integer is required (got type NoneType)')
-            return 0
-        diff = datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
-        return diff.days
-
-    def convert_size(self, size_bytes):
-        if size_bytes == 0:
-            return "0B"
-        size_name = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
-        i = int(math.floor(math.log(size_bytes, 1024)))
-        p = math.pow(1024, i)
-        s = round(size_bytes/p, 3)
-        return f"{s} {size_name[i]}"
-
-    def _archive_json_add_entry(self, key, value):
-        '''Add a new entry to the archive JSON file'''
-
-        # Initialize the data dictionary in case archive_json does not exist
-        data = {}
-
-        # Read the archive JSON file
-        if os.path.isfile(self.archive_json):
-            with open(self.archive_json, 'r') as file:
-                try:
-                    data = json.load(file)
-                except:
-                    print('Error in Archiver._archive_json_add_entry():')
-                    print(f'Cannot read {self.archive_json}, file corrupt?')
-                    return False
-
-        # Add the new entry to the data dictionary
-        data[key] = value
-
-        # Write the updated data dictionary to the archive JSON file
-        with open(self.archive_json, 'w') as file:
-            json.dump(data, file, indent=4)
-
-    def _is_folder_archived(self, folder):
-        '''Check if an entry exists in the archive JSON file'''
-
-        return (self.archive_json_get_row(folder) != None)
-
-    def archive_get_bucket_info(self, folder):
-        # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
-        recursive = False
-        glacier = False
-        rowdict = self.archive_json_get_row(folder)
-        printdbg(f'path: {folder} rowdict: {rowdict}')
-        if rowdict == None:
-            return None, None, recursive, glacier
-        if 'archive_mode' in rowdict:
-            if rowdict['archive_mode'] == "Recursive":
-                recursive = True
-        s3_storage_class = rowdict['s3_storage_class']
-        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
-            glacier = True
-        sps = rowdict['archive_folder'].split('/', 1)
-        bucket = sps[0].replace(':s3:', '')
-        prefix = f'{sps[1]}/'  # trailing slash ensured
-        return bucket, prefix, recursive, glacier
-
-    def archive_json_get_row(self, folder):
-        '''Get an entry from the archive JSON file'''
-
-        # If the archive JSON file does not exist, the entry does not exist
-        if not os.path.isfile(self.archive_json):
-            return None
-
-        # Read the archive JSON file
-        with open(self.archive_json, 'r') as file:
-            try:
-                data = json.load(file)
-            except:
-                print('Error in Archiver._archive_json_entry_exists():')
-                print(f'Cannot read {self.archive_json}, file corrupt?')
-                return None
-
-        # Check if the entry exists in the data dictionary
-        if folder in data:
-            return data[folder]
-        else:
-            # Check if a parent folder exists in the data dictionary with recursive archiving
-            path = Path(folder)
-
-            for parent in path.parents:
-                parent = str(parent)
-                if parent in data and data[parent]['archive_mode'] == 'Recursive':
-                    return data[parent]
-
-            return None
-
-    def archive_json_get_csv(self, columns):
-
-        if not os.path.exists(self.archive_json):
-            return
-
-        with open(self.archive_json, 'r') as file:
-            try:
-                data = json.load(file)
-
-            except:
-                print('Error in Archiver._archive_json_get_csv():')
-                print(f'Cannot read {self.archive_json}, file corrupt?')
-                return
-
-        # Sort data by timestamp in reverse order
-        sorted_data = sorted(
-            data.items(), key=lambda x: x[1]['timestamp'], reverse=True)
-
-        # Prepare CSV data
-        csv_data = [columns]
-
-        for path_name, row_data in sorted_data:
-            csv_row = [row_data[col] for col in columns if col in row_data]
-            csv_data.append(csv_row)
-
-        # Convert CSV data to a CSV string
-        output = io.StringIO()
-
-        writer = csv.writer(output, dialect='excel')
-        writer.writerows(csv_data)
-        csv_string = output.getvalue()
-
-        output.close()
-
-        return csv_string
-
-    def _get_newest_file_atime(self, folder_path, folder_atime=None):
-        # Because the folder atime is reset when crawling we need
-        # to lookup the atime of the last accessed file in this folder
-        if not folder_path or not os.path.exists(folder_path):
-            print(f" Invalid folder path: {folder_path}")
-            return folder_atime
-        last_accessed_time = None
-        try:
-            subobjects = os.listdir(folder_path)
-        except Exception as e:
-            print(f'Error accessing folder {folder_path}:\n{e}')
-            return folder_atime
-        for file_name in subobjects:
-            if file_name in self.dirmetafiles:
-                continue
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):
-                accessed_time = os.path.getatime(file_path)
-                if last_accessed_time is None or accessed_time > last_accessed_time:
-                    last_accessed_time = accessed_time
-        if last_accessed_time == None:
-            last_accessed_time = folder_atime
-        return last_accessed_time
-
-    def _get_newest_file_mtime(self, folder_path, folder_mtime=None):
-        # Because the folder atime is reset when crawling we need
-        # to lookup the atime of the last modified file in this folder
-        if not folder_path or not os.path.exists(folder_path):
-            print(f" Invalid folder path: {folder_path}")
-            return folder_mtime
-
-        last_modified_time = None
-        try:
-            subobjects = os.listdir(folder_path)
-        except Exception as e:
-            print(f'Error accessing folder {folder_path}:\n{e}')
-            return folder_mtime
-        for file_name in subobjects:
-            if file_name in self.dirmetafiles:
-                continue
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):
-                modified_time = os.path.getmtime(file_path)
-                if last_modified_time is None or modified_time > last_modified_time:
-                    last_modified_time = modified_time
-        if last_modified_time == None:
-            last_modified_time = folder_mtime
-        return last_modified_time
-
-    def get_hotspots_path(self, folder):
-        ''' Get a full path name of a new hotspots file'''
-
-        # Take the correct hotspots directory
-        hotspotdir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
-
-        # create hotspots directory if it does not exist
-        os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
-
-        # Get the full path name of the new hotspots file
-        return os.path.join(hotspotdir, self._get_hotspots_file(folder))
-
-    def _get_hotspots_file(self, folder):
-        # get a full path name of a new hotspots file
-        # based on a folder name that has been crawled
-        mountlist = self._get_mount_info()
-        traildir = ''
-        hsfile = folder.replace('/', '+') + '.csv'
-        for mnt in mountlist:
-            if folder.startswith(mnt['mount_point']):
-                traildir = self._get_last_directory(mnt['mount_point'])
-                hsfile = folder.replace(mnt['mount_point'], '')
-                hsfile = f'@{traildir}+{hsfile}'
-                if len(hsfile) > 255:
-                    hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
-        return hsfile
-
-    def _walker(self, top, skipdirs=['.snapshot',]):
-        """ returns subset of os.walk  """
-        for root, dirs, files in os.walk(top, topdown=True, onerror=self._walkerr):
-            for skipdir in skipdirs:
-                if skipdir in dirs:
-                    dirs.remove(skipdir)  # don't visit this directory
-            yield root, dirs, files
-
-    def _walkerr(self, oserr):
-        sys.stderr.write(str(oserr))
-        sys.stderr.write('\n')
-
-    def _get_last_directory(self, path):
-
-        # Remove any trailing slashes
-        path = path.rstrip(os.path.sep)
-
-        # Split the path by the separator
-        path_parts = path.split(os.path.sep)
-
-        # Return the last directory
-        return path_parts[-1]
-
-    def _get_mount_info(self):
-        file_path = '/proc/self/mountinfo'
-
-        fs_types = {'nfs', 'nfs4', 'cifs', 'smb', 'afs', 'ncp',
-                    'ncpfs', 'glusterfs', 'ceph', 'beegfs',
-                    'lustre', 'orangefs', 'wekafs', 'gpfs'}
-
-        mountinfo_list = []
-
-        with open(file_path, 'r') as f:
-            for line in f:
-                fields = line.strip().split(' ')
-                _, _, _, _, mount_point, _ = fields[:6]
-                for field in fields[6:]:
-                    if field == '-':
-                        break
-                fs_type, mount_source, _ = fields[-3:]
-                mount_source_folder = mount_source.split(
-                    ':')[-1] if ':' in mount_source else ''
-                if fs_type in fs_types:
-                    mountinfo_list.append({
-                        'mount_source_folder': mount_source_folder,
-                        'mount_point': mount_point,
-                        'fs_type': fs_type,
-                        'mount_source': mount_source,
-                    })
-        return mountinfo_list
-
-    def download_restored_file(self, bucket_name, object_key, local_path):
-        s3 = boto3.resource('s3')
-        s3.Bucket(bucket_name).download_file(object_key, local_path)
-        print(f'Downloaded {object_key} to {local_path}.')
-
-    def _upload_file_to_s3(self, filename, bucket, object_name=None, profile=None):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        s3 = session.client('s3')
-
-        # If S3 object_name was not specified, use the filename
-        if object_name is None:
-            object_name = os.path.basename(filename)
-        try:
-
-            # Upload the file with Intelligent-Tiering storage class
-            s3.upload_file(filename, bucket, object_name, ExtraArgs={
-                           'StorageClass': 'INTELLIGENT_TIERING'})
-            printdbg(
-                f"File {object_name} uploaded to Intelligent-Tiering storage class!")
-            # print(f"File {filename} uploaded successfully to Intelligent-Tiering storage class!")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            return False
-        return True
-
-
 class AWSBoto:
     '''AWS handler class. This class is used to interact with AWS services.'''
+    # TODO: arch must be defined as an class Archive instance
 
-    def __init__(self, args, cfg: ConfigManager, arch: Archiver):
+    def __init__(self, args, cfg: ConfigManager, arch):
         self.args = args
         self.cfg = cfg
         self.arch = arch
@@ -3403,6 +1495,91 @@ class AWSBoto:
                 print(f' You have no {myaccess} access to bucket "{bucket}" !')
                 sufficient = False
         return sufficient
+
+    def glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk"):
+
+        try:
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'AccessDenied':
+                print(f"Access denied for bucket '{bucket}'", file=sys.stderr)
+                print('Check your permissions and/or credentials.', file=sys.stderr)
+            else:
+                print_error()
+            return [], [], [], []
+
+        # Initialize lists to store the keys
+        triggered_keys = []
+        restoring_keys = []
+        restored_keys = []
+        not_glacier_keys = []
+
+        for page in pages:
+            if not 'Contents' in page:
+                continue
+
+            for object in page['Contents']:
+                object_key = object['Key']
+
+                # Check if there are additional slashes after the prefix,
+                # indicating that the object is in a subfolder.
+                remaining_path = object_key[len(prefix):]
+                if '/' in remaining_path:
+                    continue
+
+                header = self.s3_client.head_object(
+                    Bucket=bucket, Key=object_key)
+
+                if 'StorageClass' in header:
+                    if not header['StorageClass'] in {'GLACIER', 'DEEP_ARCHIVE'}:
+                        not_glacier_keys.append(object_key)
+                        continue
+                else:
+                    continue
+
+                if 'Restore' in header:
+                    if 'ongoing-request="true"' in header['Restore']:
+                        restoring_keys.append(object_key)
+                        continue
+
+                if 'Restore' in header:
+                    if 'ongoing-request="false"' in header['Restore']:
+                        restored_keys.append(object_key)
+                        continue
+
+                try:
+                    self.s3_client.restore_object(
+                        Bucket=bucket,
+                        Key=object_key,
+                        RestoreRequest={
+                            'Days': keep_days,
+                            'GlacierJobParameters': {
+                                'Tier': ret_opt
+                            }
+                        }
+                    )
+                    triggered_keys.append(object_key)
+
+                # except botocore.exceptions.ClientError as e:
+                #     if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
+                #         print(
+                #             f'Restore is already in progress for {object_key}. Skipping...')
+
+                #         if object_key not in restoring_keys:
+                #             restoring_keys.append(object_key)
+                #     else:
+                #         print(f'Error occurred for {object_key}: {e}')
+                #         return [], [], [], []
+
+                except:
+                    print_error()
+                    print(f'Restore request for {object_key} failed.')
+                    return [], [], [], []
+
+        return triggered_keys, restoring_keys, restored_keys, not_glacier_keys
 
     def _get_s3_data_size(self, folders):
         """
@@ -4480,6 +2657,10 @@ class AWSBoto:
     # TODO: OHSU-97: Implement cost monitoring and email sending
     def monitor_ec2(self):
 
+        # TODO: function pendint to review
+        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+        exit(1)
+
         # if system is idle self-destroy
 
         instance_id = self._get_ec2_metadata('instance-id')
@@ -4767,6 +2948,1907 @@ class AWSBoto:
             user_monthly_unit, user_daily_cost, user_daily_unit, user_name
 
 
+class Archiver:
+
+    def __init__(self, args: argparse.Namespace, cfg: ConfigManager):
+        self.args = args
+
+        self.cfg = cfg
+
+        self.archive_json = cfg.archive_json
+
+        x = cfg.max_small_file_size_kib
+        self.thresholdKB = int(x) if x else 1024
+
+        x = cfg.min_index_folder_size_gib
+        self.thresholdGB = int(x) if x else 10
+
+        x = cfg.min_index_folder_size_avg_mib
+        self.thresholdMB = int(x) if x else 10
+
+        x = cfg.max_hotspots_display_entries
+        global MAXHOTSPOTS
+        MAXHOTSPOTS = int(x) if x else 5000
+
+        self.smallfiles_tar_filename = 'Froster.smallfiles.tar'
+        self.allfiles_csv_filename = 'Froster.allfiles.csv'
+        self.md5sum_filename = '.froster.md5sum'
+        self.md5sum_restored_filename = '.froster-restored.md5sum'
+        self.where_did_the_files_go_filename = 'Where-did-the-files-go.txt'
+
+        self.dirmetafiles = [self.allfiles_csv_filename,
+                             self.smallfiles_tar_filename,
+                             self.md5sum_filename,
+                             self.md5sum_restored_filename,
+                             self.where_did_the_files_go_filename]
+
+        self.grants = []
+
+    def _index_locally(self, folder):
+        '''Index the given folder for archiving'''
+
+        # move down to class
+        daysaged = [5475, 3650, 1825, 1095, 730, 365, 90, 30]
+        TiB = 1099511627776
+        # GiB=1073741824
+        # MiB=1048576
+
+        # If pwalkcopy location provided, run pwalk and copy the output to the specified location every time
+        if self.args.pwalkcopy:
+            print(
+                f'\nIndexing folder "{folder}" and copying output to {self.args.pwalkcopy}...', flush=True)
+        else:
+            print(f'\nIndexing folder "{folder}"...', flush=True)
+
+            # Get the path to the hotspots CSV file
+            folder_hotspot = self.get_hotspots_path(folder)
+
+            # If the folder is already indexed don't run pwalk again
+            if os.path.isfile(folder_hotspot):
+                print(
+                    f'    ...folder already indexed at {folder_hotspot}\n')
+                return
+
+        # Run pwalk on given folder
+        with tempfile.NamedTemporaryFile() as pwalk_output:
+            with tempfile.NamedTemporaryFile() as pwalk_output_folders:
+                with tempfile.NamedTemporaryFile() as pwalk_output_folders_converted:
+
+                    # Build the pwalk command
+                    pwalk_bin = os.path.join(sys.prefix, 'bin', 'pwalk')
+                    pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
+                    mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
+
+                    # Run the pwalk command
+                    ret = subprocess.run(mycmd, shell=True,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                    # Check if the pwalk command was successful
+                    if ret.returncode != 0:
+                        print(
+                            f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
+                        sys.exit(1)
+
+                    # If pwalkcopy location provided, then copy the pwalk output file to the specified location
+                    if self.args.pwalkcopy:
+
+                        copy_filename = folder.replace('/', '+') + '.csv'
+                        copy_file_path = os.path.join(
+                            self.args.pwalkcopy, copy_filename)
+
+                        # Build the copy command
+                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
+
+                        # Run the copy command
+                        result = subprocess.run(mycmd, shell=True)
+
+                        # Check if the copy command was successful
+                        if result.returncode != 0:
+                            print(
+                                f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
+                            sys.exit(1)
+
+                    # Build the files removing command
+                    mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
+
+                    # Run the files removing command
+                    result = subprocess.run(mycmd, shell=True)
+
+                    # Check if the files removing command was successful
+                    if result.returncode != 0:
+                        print(
+                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
+                        sys.exit(1)
+
+                    # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
+                    # pwalk does already output UTF-8, weird, probably duckdb error
+
+                    # Build the file conversion command
+                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} -o {pwalk_output_folders_converted.name}'
+
+                    # Run the file conversion command
+                    result = subprocess.run(mycmd, shell=True)
+
+                    # Check if the file conversion command was successful
+                    if result.returncode != 0:
+                        print(
+                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
+                        sys.exit(1)
+
+                    # Build the SQL query on the CSV file
+                    sql_query = f"""SELECT UID as User,
+                                    st_atime as AccD, st_mtime as ModD,
+                                    pw_dirsum/1073741824 as GiB,
+                                    pw_dirsum/1048576/pw_fcount as MiBAvg,
+                                    filename as Folder, GID as Group,
+                                    pw_dirsum/1099511627776 as TiB,
+                                    pw_fcount as FileCount, pw_dirsum as DirSize
+                                FROM read_csv_auto('{pwalk_output_folders_converted.name}',
+                                        ignore_errors=1)
+                                WHERE pw_fcount > -1 AND pw_dirsum > 0
+                                ORDER BY pw_dirsum Desc
+                            """  # pw_dirsum > 1073741824
+
+                    # Connect to an in-memory DuckDB instance
+                    duckdb_connection = duckdb.connect(':memory:')
+
+                    # Set the number of threads to use
+                    duckdb_connection.execute(
+                        f'PRAGMA threads={self.args.cores};')
+
+                    # Execute the SQL query
+                    rows = duckdb_connection.execute(sql_query).fetchall()
+
+                    # Get the column names
+                    header = duckdb_connection.execute(sql_query).description
+
+                    # Close the DuckDB connection
+                    duckdb_connection.close()
+
+        # Set up variables for the hotspots
+        totalbytes = 0
+        numhotspots = 0
+        agedbytes = [0] * len(daysaged)
+
+        # Get the path to the hotspots CSV file
+        mycsv = self.get_hotspots_path(folder)
+
+        # Write the hotspots to the CSV file
+        with open(mycsv, 'w') as f:
+            writer = csv.writer(f, dialect='excel')
+            writer.writerow([col[0] for col in header])
+            # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
+            for r in rows:
+                row = list(r)
+                if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
+                    atime = self._get_newest_file_atime(row[5], row[1])
+                    mtime = self._get_newest_file_mtime(row[5], row[2])
+                    row[0] = self.uid2user(row[0])
+                    row[1] = self.daysago(atime)
+                    row[2] = self.daysago(mtime)
+                    row[3] = int(row[3])
+                    row[4] = int(row[4])
+                    row[6] = self.gid2group(row[6])
+                    row[7] = int(row[7])
+                    writer.writerow(row)
+                    numhotspots += 1
+                    totalbytes += row[9]
+                    for i in range(0, len(daysaged)):
+                        if row[1] > daysaged[i]:
+                            if i == 0:
+                                # Is this really 15 years ?
+                                printdbg(
+                                    f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
+                            agedbytes[i] += row[9]
+
+        print(f'    ...indexing done.')
+
+        print(textwrap.dedent(f'''
+            Hotspots file: {mycsv}
+                with {numhotspots} hotspots >= {self.thresholdGB} GiB
+                with a total disk use of {round(totalbytes/TiB,3)} TiB
+            '''))
+
+        print(f'Total folders processed: {len(rows)}')
+
+        lastagedbytes = 0
+        for i in range(0, len(daysaged)):
+            if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
+                # dedented multi-line removing \n
+                print(textwrap.dedent(f'''
+                {round(agedbytes[i]/TiB,3)} TiB have not been accessed
+                for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
+                ''').replace('\n', ''))
+            lastagedbytes = agedbytes[i]
+
+        # Output decoration print
+        print()
+
+    def _index_slurm(self, folders):
+        # TODO: Review slurm implementation regarding new changes
+        se = SlurmEssentials(self.args, self.cfg)
+        label = self._get_hotspots_file(folders[0]).replace('.csv', '')
+        label = label.replace(' ', '_')
+        shortlabel = os.path.basename(folders[0])
+
+        se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
+        se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+        se.add_line(f'#SBATCH --mail-user={self.cfg.email}')
+        se.add_line(f'#SBATCH --time={se.walltime}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')
+        # se.add_line(f'ml python')
+        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+        cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if self.args.debug:
+            print(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster indexing job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-index-{label}-{jobid}.out')
+
+    def index(self, folders):
+        '''Index the given folders for archiving'''
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+
+        # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
+        if not shutil.which('sbatch') or self.args.noslurm or os.getenv('SLURM_JOB_ID'):
+            for folder in folders:
+                self._index_locally(folder)
+        else:
+            self._index_slurm(folders)
+
+    def archive_select_hotspots(self):
+
+        # Get the hotspots directory
+        hotspots_dir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
+
+        # Check if the Hotspots directory exists
+        if not hotspots_dir or not os.path.exists(hotspots_dir):
+            print(
+                '\nNo folders to archive in arguments and no Hotspots CSV files found.')
+
+            print('\nFor archive a specific folder run:')
+            print('    froster archive "/your/folder/to/archive"')
+
+            print('\n For index a folder a find hotspots run:')
+            print('    froster index "/your/folder/to/index"\n')
+            sys.exit(0)
+
+        # Get all the hotspot CSV files in the hotspots directory
+        hotspots_files = [f for f in os.listdir(
+            hotspots_dir) if fnmatch.fnmatch(f, '*.csv')]
+
+        # Check if there are CSV files, if don't there are no folders to archive
+        if not hotspots_files:
+            print('\nNo hotposts found. \n')
+
+            print(f'You can search for hotspot by indexing folders using command:')
+            print('    froster index "/your/folder/to/index"\n')
+
+            print('For archive a specific folder run:')
+            print('    froster archive "/your/folder/to/archive"\n')
+            sys.exit(0)
+
+        # Sort the CSV files by their modification time in descending order (newest first)
+        hotspots_files.sort(key=lambda x: os.path.getmtime(
+            os.path.join(hotspots_dir, x)), reverse=True)
+
+        # Ask the user to select a Hotspot file
+        ret = TextualStringListSelector(
+            title="Select a Hotspot file", items=hotspots_files).run()
+
+        # No file selected
+        if not ret:
+            sys.exit(0)
+
+        # Get the selected CSV file
+        hotspot_selected = os.path.join(hotspots_dir, ret[0])
+
+        # Get the folders to archive from the selected Hotspot file
+        folders_to_archive = self.get_hotspot_folders(hotspot_selected)
+
+        # Archiving options
+        archiving_options = ['Archive all hotspots',
+                             'Archive one hotspot', 'Cancel']
+
+        # Ask the user how to proceed with the archiving process
+        archive_procedure = inquirer.list_input(
+            message=f"How should we proceed with the archiving process?",
+            choices=archiving_options,
+            default='Cancel')
+
+        if archive_procedure == 'Archive all hotspots':
+            # Do nothing, we already have the folders list to archive
+            pass
+
+        elif archive_procedure == 'Archive one hotspot':
+            ret = TextualStringListSelector(
+                title="Select hotspot to archive ", items=folders_to_archive).run()
+            if not ret:
+                # No file selected
+                sys.exit(0)
+            else:
+                folders_to_archive = [ret[0]]
+
+        elif archive_procedure == 'Cancel':
+            sys.exit(0)
+
+        else:
+            # We should never end up here
+            raise ValueError("Invalid option selected.")
+
+        # Archive the selected folders
+        self.archive(folders_to_archive)
+
+    def _is_recursive_collision(self, folders):
+        '''Check if there is a collision between folders and recursive flag'''
+        is_collision = False
+
+        try:
+            for i in range(len(folders)):
+                for j in range(i + 1, len(folders)):
+                    # Check if folders[j] is a subdirectory of folders[i]
+                    if os.path.commonpath([folders[i], folders[j]]) == folders[i]:
+                        is_collision = True
+                        print(
+                            f'Folder {folders[j]} is a subdirectory of folder {folders[i]}.\n', file=sys.stderr)
+
+                    # Check if folders[i] is a subdirectory of folders[j]
+                    elif os.path.commonpath([folders[i], folders[j]]) == folders[j]:
+                        is_collision = True
+                        print(
+                            f'Folder {folders[i]} is a subdirectory of folder {folders[j]}.\n')
+        except Exception as e:
+            print_error()
+            is_collision = True
+
+        return is_collision
+
+    def _archive_slurm(self, folders, is_recursive, nih):
+        se = SlurmEssentials(self.args, self.cfg)
+        label = folders[0].replace('/', '+')
+        label = label.replace(' ', '_')
+        shortlabel = os.path.basename(folders[0])
+        myjobname = f'froster:archive:{shortlabel}'
+        email = self.cfg.email
+        se.add_line(f'#SBATCH --job-name={myjobname}')
+        se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
+        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --requeue')
+        se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
+        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+        se.add_line(f'#SBATCH --mail-user={email}')
+        se.add_line(f'#SBATCH --time={se.walltime}')
+        if se.partition:
+            se.add_line(f'#SBATCH --partition={se.partition}')
+        if se.qos:
+            se.add_line(f'#SBATCH --qos={se.qos}')
+        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+        if not "--profile" in cmdline and self.args.aws_profile:
+            cmdline = cmdline.replace(
+                '/froster.py ', f'/froster --profile {self.args.aws_profile} ')
+        else:
+            cmdline = cmdline.replace('/froster.py ', '/froster ')
+        if not folders[0] in cmdline:
+            folders = '" "'.join(folders)
+            cmdline = f'{cmdline} "{folders}"'
+        if self.args.debug:
+            print(f'Command line passed to Slurm:\n{cmdline}')
+        se.add_line(cmdline)
+        jobid = se.sbatch()
+        print(f'Submitted froster archiving job: {jobid}')
+        print(f'Check Job Output:')
+        print(f' tail -f froster-archive-{label}-{jobid}.out')
+
+    def _archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar, is_force):
+        '''Archive the given folder'''
+
+        # Set workflow execution flags
+        is_folder_tarred = False
+        is_folder_archived = False
+        is_froster_allfiles_generated = False
+        is_checksum_generated = False
+        is_checksum_correct = False
+
+        try:
+            s3_dest = os.path.join(
+                f':s3:{self.cfg.bucket_name}',
+                self.cfg.archive_dir,
+                folder_to_archive.lstrip(os.path.sep))
+
+            # TODO: vmachado: review this code
+            froster_md5sum_exists = os.path.isfile(
+                os.path.join(folder_to_archive, ".froster.md5sum"))
+
+            if froster_md5sum_exists:
+                if is_force:
+                    self.reset_folder(folder_to_archive)
+                else:
+                    print(
+                        f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
+                    print(
+                        f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
+                    sys.exit(1)
+
+            # Check if the folder is empty
+            with os.scandir(folder_to_archive) as entries:
+                if not any(True for _ in entries):
+                    print(
+                        f'\nFolder {folder_to_archive} is empty, skipping.\n')
+                    return
+
+            print(f'\nARCHIVING {folder_to_archive}')
+
+            if is_tar:
+                print(f'\n    Generating Froster.allfiles.csv and tar small files...')
+            else:
+                print(f'\n    Generating Froster.allfiles.csv...')
+
+            # Generate Froster.allfiles.csv and if is_tar tar small files
+            if self._gen_allfiles_and_tar(folder_to_archive, self.thresholdKB, is_tar):
+                is_froster_allfiles_generated = True
+                print(f'        ...done')
+            else:
+                # Something failed, exit
+                print(f'        ...FAILED\n')
+                return
+
+            # Generate md5 checksums for all files in the folder
+            print(f'\n    Generating checksums...')
+            if self._gen_md5sums(folder_to_archive, self.md5sum_filename):
+                is_checksum_generated = True
+                print('        ...done')
+            else:
+                return
+
+            # Get the path to the hashfile
+            hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
+
+            # Create an Rclone object
+            rclone = Rclone(self.args, self.cfg)
+
+            # Archive the folder to S3
+            print(f'\n    Uploading files...')
+            ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
+                              '--exclude', self.md5sum_filename,
+                              '--exclude', self.md5sum_restored_filename,
+                              '--exclude', self.allfiles_csv_filename,
+                              '--exclude', self.where_did_the_files_go_filename
+                              )
+
+            # Check if the folder was archived successfully
+            if ret:
+                print('        ...done')
+                is_folder_archived = True
+            else:
+                print('        ...FAILED\n')
+                return
+
+            # Get the path to the allfiles CSV file
+            allfiles_source = os.path.join(
+                folder_to_archive, self.allfiles_csv_filename)
+
+            print(f'\n    Uploading Froster.allfiles.csv file...')
+
+            # Change the storage class to INTELLIGENT_TIERING
+            rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = 'INTELLIGENT_TIERING'
+
+            # Archive the allfiles CSV file to S3 INTELLIGENT_TIERING
+            ret = rclone.copy(allfiles_source, s3_dest, '--max-depth', '1', '--links',
+                              '--exclude', self.md5sum_filename,
+                              '--exclude', self.md5sum_restored_filename,
+                              '--exclude', self.allfiles_csv_filename,
+                              '--exclude', self.where_did_the_files_go_filename
+                              )
+
+            # Change the storage class back to the user preference
+            rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
+
+            if ret:
+                print('        ...done')
+                is_folder_archived = True
+            else:
+                print('        ...FAILED\n')
+                return
+
+            print(f'\n    Verifying checksums...')
+            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+
+            # Check if the checksums are correct
+            if ret:
+                print('    ...done')
+                is_checksum_correct = True
+            else:
+                print('    ...FAILED\n')
+                return
+
+            # Add the metadata to the archive JSON file ONLY if this is not a subfolder
+            if not is_subfolder:
+                # Get current timestamp
+                timestamp = datetime.datetime.now().isoformat()
+
+                # Get the archive mode
+                if is_recursive:
+                    archive_mode = "Recursive"
+                else:
+                    archive_mode = "Single"
+
+                # Generate the metadata dictionary
+                new_entry = {'local_folder': folder_to_archive,
+                             'archive_folder': s3_dest,
+                             's3_storage_class': self.cfg.storage_class,
+                             'profile': self.cfg.aws_profile,
+                             'archive_mode': archive_mode,
+                             'timestamp': timestamp,
+                             'timestamp_archive': timestamp,
+                             'user': getpass.getuser()
+                             }
+
+                # Add NIH information to the metadata dictionary
+                if nih:
+                    new_entry['nih_project'] = nih[0]
+                    new_entry['nih_project_url'] = nih[6]
+                    new_entry['nih_project_pi'] = nih[3]
+
+                # Write the metadata to the archive JSON file
+                self._archive_json_add_entry(key=folder_to_archive.rstrip(os.path.sep),
+                                             value=new_entry)
+
+            # Print the final message
+            print(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
+            print(f'    LOCAL SOURCE:       "{folder_to_archive}"')
+            print(f'    AWS S3 DESTINATION: "{s3_dest}"\n')
+            print(
+                f'All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
+
+        except Exception:
+            print_error()
+
+    def archive(self, folders):
+        '''Archive the given folders'''
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+
+        # Set flags
+        is_recursive = self.args.recursive
+        is_nih = self.cfg.is_nih or self.args.nih
+        is_slurm = shutil.which(
+            'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
+        is_tar = not self.args.notar
+        is_force = self.args.force
+
+        # Check if there is a conflict between folders and recursive flag,
+        # i.e. recursive flag is set and a folder is a subdirectory of another one
+        if is_recursive:
+            if self._is_recursive_collision(folders):
+                print(
+                    f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
+                sys.exit(1)
+
+        # Check if we can read & write all files and folders
+        if not self._is_correct_files_folders_permissions(folders, is_recursive):
+            print(
+                '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
+            print(
+                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+            print(
+                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
+            sys.exit(1)
+
+        nih = ''
+
+        if is_nih:
+            app = TableNIHGrants()
+            nih = app.run()
+
+        if is_slurm:
+            self._archive_slurm(folders, is_recursive, nih)
+        else:
+            for folder in folders:
+                if is_recursive:
+                    for root, dirs, files in self._walker(folder):
+                        if folder == root:
+                            is_subfolder = False
+                        else:
+                            is_subfolder = True
+
+                        self._archive_locally(
+                            root, is_recursive, nih, is_subfolder, is_tar, is_force)
+
+                else:
+                    is_subfolder = False
+                    self._archive_locally(
+                        folder, is_recursive, nih, is_subfolder, is_tar, is_force)
+
+    def get_mounts(self):
+        try:
+            rclone = Rclone(self.args, self.cfg)
+            return rclone.get_mounts()
+        except Exception:
+            print_error()
+            sys.exit(1)
+
+    def _is_mounted(self, folder):
+        '''Check if the given folder is already mounted'''
+
+        mounts = self.get_mounts()
+
+        if folder in mounts:
+            return True
+        else:
+            return False
+
+    def print_current_mounts(self):
+        '''Print the current mounted folders'''
+
+        mounts = self.get_mounts()
+
+        if mounts:
+            print('\nCURRENT MOUNTED FOLDERS:\n')
+            for mount in mounts:
+                print(f'    {mount}')
+
+            # Decorator print
+            print()
+        else:
+            print('\nNO FOLDERS MOUNTED\n')
+
+    def mount(self, folders, mountpoint):
+        '''Mount the given folder'''
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+        mountpoint = clean_path(mountpoint)
+
+        for folder in folders:
+
+            archive_folder_info = self.froster_archives_get_entry(folder)
+
+            if archive_folder_info is None:
+                print(f'\nWARNING: folder "{folder}" not in archive.\n')
+                continue
+
+            s3_folder = archive_folder_info['archive_folder']
+            local_folder = archive_folder_info['local_folder']
+
+            if folder == local_folder:
+                if mountpoint:
+                    print(f'\nMOUNTING "{local_folder}" at "{mountpoint}"...')
+                else:
+                    print(f'\nMOUNTING "{local_folder}"...')
+            else:
+                if mountpoint:
+                    print(
+                        f'\nMOUNTING parent folder "{local_folder}" at "{mountpoint}"...')
+                else:
+                    print(f'\nMOUNTING parent folder "{local_folder}"...')
+
+            if not mountpoint:
+                mountpoint = local_folder
+
+            # Check if the folder is already mounted
+            if self._is_mounted(mountpoint):
+                print(f'    ..."{mountpoint}" already mounted\n')
+                sys.exit(1)
+
+            # Mount the folder
+            rclone = Rclone(self.args, self.cfg)
+            ret = rclone.mount(s3_folder, mountpoint)
+
+            # Check if the folder was mounted successfully
+            if ret:
+                print('    ...MOUNTED\n')
+            else:
+                print('    ...FAILED\n')
+                return
+
+    def unmount(self, folders):
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+
+        # rclone instance
+        rclone = Rclone(self.args, self.cfg)
+
+        for folder in folders:
+            print(f'\nUNMOUNTING {folder}...')
+
+            if self._is_mounted(folder):
+                ret = rclone.unmount(folder)
+
+                # Check if the folder was unmounted successfully
+                if ret:
+                    print('    ...UNMOUNTED SUCCESS\n')
+                else:
+                    print('    ...UNMOUNTING FAILED\n')
+            else:
+                print(f'    ...IS NOT MOUNTED\n')
+
+    def get_hotspot_folders(self, hotspot_file):
+
+        agefld = 'AccD'
+
+        if self.args.agemtime:
+            agefld = 'ModD'
+
+        # Initialize a connection to an in-memory database
+        duckdb_connection = duckdb.connect(
+            database=':memory:', read_only=False)
+
+        # Set the number of threads to use
+        duckdb_connection.execute(f'PRAGMA threads={self.args.cores};')
+
+        # Register CSV file as a virtual table
+        duckdb_connection.execute(
+            f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{hotspot_file}')")
+
+        # Run SQL queries on this virtual table
+        # Filter by given age and size. The default value for all is 0
+        if self.args.older > 0:
+            rows = duckdb_connection.execute(
+                f"SELECT * FROM hs WHERE {agefld} >= {self.args.older} and GiB >= {self.args.larger} ").fetchall()
+
+        elif self.args.newer > 0:
+            rows = duckdb_connection.execute(
+                f"SELECT * FROM hs WHERE {agefld} <= {self.args.newer} and GiB >= {self.args.larger} ").fetchall()
+
+        else:
+            rows = duckdb_connection.execute(
+                f"SELECT * FROM hs WHERE GiB >= {self.args.larger} ").fetchall()
+
+        # Close the DuckDB connection
+        duckdb_connection.close()
+
+        folders_to_archive = [(item[5], item[3])
+                              for item in rows]  # Include size in the tuple
+
+        print(f'Hotspots file: {hotspot_file}')
+        print(f'\nFolders to archive:\n')
+        for folder, size in folders_to_archive:
+            print(f'  {folder} - Size: {size} GiB')
+
+        totalspace = sum(item[3] for item in rows)
+        print(
+            f'\nTotal space to archive: {format(round(totalspace, 3),",")} GiB\n')
+
+        # Return only the folders
+        return [folder for folder, size in folders_to_archive]
+
+    def _check_path_permissions(self, path):
+        '''Check if the user has read and write permissions to the given path'''
+
+        # If path is empty, return True
+        if not path:
+            return True
+
+        # Get path permissions
+        can_read = os.access(path, os.R_OK)
+        can_write = os.access(path, os.W_OK)
+
+        # Print error messages if the user does not have read or write permissions
+        if not can_read:
+            print(f"Cannot read: {path}", file=sys.stderr)
+        if not can_write:
+            print(f"Cannot write: {path}", file=sys.stderr)
+
+        # Return True if the user has read and write permissions, otherwise return False
+        return can_read and can_write
+
+    def _is_correct_files_folders_permissions(self, folders, is_recursive=False):
+        '''Check if the user has read and write permissions to the given folders'''
+
+        correct_permissions = True
+
+        try:
+
+            for folder in folders:
+
+                if not os.path.isdir(folder):
+                    print(f"Error: {folder} is not a directory.",
+                          file=sys.stderr)
+                    sys.exit(1)
+
+                if is_recursive:
+
+                    # Recursive flag set, using os.walk to get all files and folders
+
+                    for root, dirs, files in os.walk(folder, topdown=True):
+
+                        # Check if the user has read and write permissions to the root folder
+                        if not self._check_path_permissions(root):
+                            correct_permissions = False
+
+                        # Check if the user has read and write permissions to all subfolders
+                        for d in dirs:
+                            d_path = os.path.join(root, d)
+                            if not self._check_path_permissions(d_path):
+                                correct_permissions = False
+
+                        # Check if the user has read and write permissions to all files
+                        for f in files:
+                            f_path = os.path.join(root, f)
+                            if not self._check_path_permissions(f_path):
+                                correct_permissions = False
+                else:
+
+                    # Recursive flag not set, using os.listdir to get and check all files
+                    for f in os.listdir(folder):
+                        file_path = os.path.join(folder, f)
+                        if os.path.isfile(file_path):
+                            if not self._check_path_permissions(file_path):
+                                correct_permissions = False
+
+            return correct_permissions
+
+        except Exception:
+            return False
+
+    def get_user_hotspot(self, hotspot_csv):
+        '''Reduce a hotspots file to the folders that the user has write access to'''
+        try:
+            hsdir, hsfile = os.path.split(hotspot_csv)
+            hsdiruser = os.path.join(hsdir, self.cfg.whoami)
+            os.makedirs(hsdiruser, exist_ok=True, mode=0o775)
+            user_csv = os.path.join(hsdiruser, hsfile)
+            if os.path.exists(user_csv):
+                if os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
+                    # print(f"File {user_csv} already exists and is newer than {hotspot_csv}.")
+                    return user_csv
+            print('Filtering hotspots for folders with write permissions ...')
+            writable_folders = []
+            with open(hotspot_csv, mode='r', newline='') as file:
+                reader = csv.DictReader(file)
+                mylen = sum(1 for row in reader)
+                file.seek(0)
+                reader = csv.DictReader(file)
+                progress = self._create_progress_bar(mylen+1)
+                for row in reader:
+                    ret = self.test_write(row['Folder'])
+                    if ret != 13 and ret != 2:
+                        writable_folders.append(row)
+                    progress(reader.line_num)
+            with open(user_csv, mode='w', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
+                writer.writeheader()
+                writer.writerows(writable_folders)
+            return user_csv
+        except Exception as e:
+            print(f"\nError in get_user_hotspot: {e}\n")
+            sys.exit(1)
+
+    def _create_progress_bar(self, max_value):
+        def show_progress_bar(iteration):
+            percent = ("{0:.1f}").format(100 * (iteration / float(max_value)))
+            length = 50  # adjust as needed for the bar length
+            filled_length = int(length * iteration // max_value)
+            bar = "█" * filled_length + '-' * (length - filled_length)
+            if sys.stdin.isatty():
+                print(f'\r|{bar}| {percent}%', end='\r')
+            if iteration == max_value:
+                print()
+        return show_progress_bar
+
+    def print_paths_rw_info(self, paths):
+
+        if not paths:
+            print('\nError: No file paths provided.\n', file=sys.stderr)
+            return
+
+        for path in paths:
+
+            # Check if file exists
+            if not os.path.exists(path):
+                continue
+
+            try:
+                # Getting the status of the file
+                file_stat = os.lstat(path)
+
+                # Getting the current user and group IDs
+                current_uid = os.getuid()
+                current_gid = os.getgid()
+
+                # Checking if the user is the owner
+                is_owner = file_stat.st_uid == current_uid
+
+                # Checking if the user is in the file's group
+                is_group_member = file_stat.st_gid == current_gid or \
+                    any(grp.getgrgid(g).gr_gid ==
+                        file_stat.st_gid for g in os.getgroups())
+
+            except Exception as e:
+                print_error()
+                return
+
+            # Extracting permission bits
+            permissions = file_stat.st_mode
+
+            # Checking for owner read permission
+            has_owner_read_permission = bool(permissions & stat.S_IRUSR)
+
+            # Checking for group read permission
+            has_group_read_permission = bool(permissions & stat.S_IRGRP)
+
+            # Checking for '444' (read permission for everyone)
+            is_444 = permissions & 0o444 == 0o444
+
+            # Determining if the user can read the file
+            can_read = (is_owner and has_owner_read_permission) or \
+                (is_group_member and has_group_read_permission) or \
+                is_444
+
+            # Checking for owner write permission
+            has_owner_write_permission = bool(permissions & stat.S_IWUSR)
+
+            # Checking for group write permission
+            has_group_write_permission = bool(permissions & stat.S_IWGRP)
+
+            # Checking for '666' or '777' permissions
+            is_666_or_777 = permissions & 0o666 == 0o666 or permissions & 0o777 == 0o777
+
+            # Determining if the user can delete the file
+            can_write = (is_owner and has_owner_write_permission) or \
+                        (is_group_member and has_group_write_permission) or \
+                is_666_or_777
+
+            # Printing the file's permissions
+            print(f'\nFile: {path}')
+            print(f'\nis_owner: {is_owner}')
+            print(f'has_owner_read_permission: {has_owner_read_permission}')
+            print(f'has_owner_write_permission: {has_owner_write_permission}')
+            print(f'\nis_group_member: {is_group_member}')
+            print(f'has_group_read_permission: {has_group_read_permission}')
+            print(f'has_group_write_permission: {has_group_write_permission}')
+            print(f'\nis_444: {is_444}')
+            print(f'is_666_or_777: {is_666_or_777}')
+            print(f'\ncan_read: {can_read}')
+            print(f'can_write: {can_write}\n')
+
+    def _gen_md5sums(self, directory, hash_file):
+        '''Generate md5sums for all files in the directory and write them to a hash file'''
+
+        try:
+            for root, dirs, files in self._walker(directory):
+
+                # We only want to generate the hash file in the root directory. Avoid recursion
+                if root != directory:
+                    break
+
+                # Build the path to the hash file
+                hashpath = os.path.join(root, hash_file)
+
+                # Set the number of workers
+                max_workers = max(4, int(self.args.cores))
+
+                with open(hashpath, "w") as out_f:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+
+                        tasks = {}
+
+                        for file in files:
+
+                            # Get the file path
+                            file_path = os.path.join(root, file)
+
+                            # Skip froster files
+                            if os.path.isfile(file_path) and \
+                                    file != hash_file and \
+                                    file != self.where_did_the_files_go_filename and \
+                                    file != self.md5sum_filename and \
+                                    file != self.md5sum_restored_filename:
+
+                                task = executor.submit(self.md5sum, file_path)
+
+                                tasks[task] = file_path
+
+                        for future in concurrent.futures.as_completed(tasks):
+                            file = os.path.basename(tasks[future])
+                            md5 = future.result()
+                            out_f.write(f"{md5}  {file}\n")
+
+                # Check we generated the hash file
+                if os.path.getsize(hashpath) == 0:
+                    os.remove(hashpath)
+                    return False
+                else:
+                    return True
+
+        except Exception:
+            print_error()
+            return False
+
+    def _gen_allfiles_and_tar(self, directory, smallsize=1024, is_tar=True):
+        '''Tar small files in a directory'''
+
+        try:
+            tar_path = os.path.join(directory, self.smallfiles_tar_filename)
+            csv_path = os.path.join(directory, self.allfiles_csv_filename)
+
+            if os.path.exists(tar_path):
+                return True
+
+            for root, dirs, files in self._walker(directory):
+
+                # We only want to tar the files in the root directory. Avoid recursion.
+                if root != directory:
+                    break
+
+                # Flag to check if any files were tarred
+                didtar = False
+
+                # Create tar file and csv file
+                with tarfile.open(tar_path, "w") as tar_file, open(csv_path, 'w', newline='') as csv_file:
+
+                    # Create csv writer
+                    writer = csv.writer(csv_file)
+
+                    # Write the header
+                    writer.writerow(["File", "Size(bytes)", "Date-Modified",
+                                    "Date-Accessed", "Owner", "Group", "Permissions", "Tarred"])
+
+                    for file in files:
+                        # Get the file path
+                        file_path = os.path.join(root, file)
+
+                        # Skip the csv file
+                        if file_path == csv_path:
+                            continue
+
+                        # Check if file is larger than X MB
+                        size, mtime, atime = self._get_file_stats(file_path)
+
+                        # Get last modified date
+                        mdate = datetime.datetime.fromtimestamp(
+                            mtime).strftime('%Y-%m-%d %H:%M:%S')
+
+                        # Get last accessed date
+                        adate = datetime.datetime.fromtimestamp(
+                            atime).strftime('%Y-%m-%d %H:%M:%S')
+
+                        # Get ownership
+                        owner = self.uid2user(os.lstat(file_path).st_uid)
+                        group = self.gid2group(os.lstat(file_path).st_gid)
+
+                        # Get permissions
+                        permissions = oct(os.lstat(file_path).st_mode)
+
+                        # Set tarred to No
+                        tarred = "No"
+
+                        # Tar the file if it's smaller than the specified size
+                        if is_tar and size < smallsize*1024:
+                            # add to tar file
+                            tar_file.add(file_path, arcname=file)
+
+                            # Set didtar to True, so we know we tarred a file
+                            didtar = True
+
+                            # remove original file
+                            os.remove(file_path)
+
+                            # Set tarred to Yes
+                            tarred = "Yes"
+
+                        # Write file info to the csv file
+                        writer.writerow(
+                            [file, size, mdate, adate, owner, group, permissions, tarred])
+
+                # Check if we tarred any files
+                if not didtar:
+                    # Remove the tar file if it's empty
+                    os.remove(tar_path)
+
+            return True
+
+        except Exception as e:
+            if self.args.debug:
+                print_error()
+            return False
+
+    def _untar_files(self, directory, recursive=False):
+        for root, dirs, files in self._walker(directory):
+            if not recursive and root != directory:
+                break
+            tar_path = os.path.join(root, 'Froster.smallfiles.tar')
+            if not os.path.exists(tar_path):
+                # print('{tar_path} does not exist, skipping folder {root}')
+                continue
+            try:
+                print(f'  Untarring Froster.smallfiles.tar ... ', end='')
+                with tarfile.open(tar_path, "r") as tar:
+                    tar.extractall(path=root)
+                os.remove(tar_path)
+                print('Done.')
+            except PermissionError as e:
+                # Check if error number is 13 (Permission denied)
+                if e.errno == 13:
+                    print(
+                        "Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
+                    return 13
+                else:
+                    print(
+                        f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
+                    return False
+            except Exception as e:
+                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
+                return False
+        return True
+
+    def reset_folder(self, directory, recursive=False):
+        '''Remove all froster artifacts from a folder and untar small files'''
+
+        for root, dirs, files in self._walker(directory):
+            if not recursive and root != directory:
+                break
+            try:
+                print(f'\nResetting folder {root}...')
+
+                if self._is_folder_archived(root.rstrip(os.path.sep)):
+                    print(
+                        f'    ...folder {root} is archived, nothing to reset\n')
+                    continue
+
+                # Get the path to the tar file
+                tar_path = os.path.join(root, self.smallfiles_tar_filename)
+
+                if os.path.exists(tar_path):
+                    print('    Untarring Froster.smallfiles.tar... ', end='')
+                    with tarfile.open(tar_path, "r") as tar:
+                        tar.extractall(path=root)
+                    print('done.')
+
+                for file in self.dirmetafiles:
+                    delfile = os.path.join(root, file)
+                    print(f'    Removing {file}... ', end='')
+                    if os.path.exists(delfile):
+                        os.remove(delfile)
+                        print('done')
+                    else:
+                        print('nothing to remove')
+
+                print(f'...folder {root} reset successfully\n')
+
+            except Exception:
+                print_error()
+
+    def _is_small_file_in_dir(self, dir, small=1024):
+        # Get all files in the specified directory
+        files = [os.path.join(dir, f) for f in os.listdir(
+            dir) if os.path.isfile(os.path.join(dir, f))]
+        # print("** files:",files)
+        # Check if there's any file less than small
+        is_there_small_file = False
+        for f in files:
+            try:
+                s, *_ = self._get_file_stats(f)
+                if s < small*1024:
+                    is_there_small_file = True
+                    break
+            except FileNotFoundError:
+                # Handle the error (e.g., print a message or continue to the next file)
+                print(f"File not found: {f}")
+                continue
+        return is_there_small_file
+
+    def _get_file_stats(self, filepath):
+        try:
+            # Use lstat to get stats of symlink itself, not the file it points to
+            stats = os.lstat(filepath)
+            return stats.st_size, stats.st_mtime, stats.st_atime
+        except FileNotFoundError:
+            print(f"{filepath} not found.")
+            return None, None, None
+
+    def delete_locally(self, folder_to_delete):
+        '''Delete the given folder'''
+
+        print(f'\nDELETING {folder_to_delete}...')
+
+        # Check if the folder is already archived
+        where_did_files_go = os.path.join(
+            folder_to_delete, self.where_did_the_files_go_filename)
+        if os.path.isfile(where_did_files_go):
+            print(f'    ...already deleted\n')
+            return
+
+        archived_folder_info = self.froster_archives_get_entry(
+            folder_to_delete)
+
+        if archived_folder_info is None:
+            print(f'\nFolder {folder_to_delete} is not archived')
+            print(f'No entry found in froster-archives.json\n')
+            return
+
+        try:
+
+            # Get the path to the hash file
+            hashfile = os.path.join(folder_to_delete, self.md5sum_filename)
+
+            # Check if the hashfile exists
+            if not os.path.exists(hashfile):
+
+                # Regular hashfile does not exist, check if the restored hashfile exists
+                hashfile = os.path.join(
+                    folder_to_delete, self.md5sum_restored_filename)
+
+                if not os.path.exists(hashfile):
+                    print(
+                        f'There is no hashfile therefore cannot delete files in {folder_to_delete}')
+                    return
+
+            # Get the subfolder path
+            subfolder_path = folder_to_delete.replace(
+                archived_folder_info['local_folder'], '')
+
+            # Get the path to the S3 destination
+            # Risky, but os.paht.join does not work with :s3: paths
+            s3_dest = archived_folder_info['archive_folder'] + subfolder_path
+
+            print(f'\n    Verifying checksums...')
+            rclone = Rclone(self.args, self.cfg)
+            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+            # Check if the checksums are correct
+            if ret:
+                print('        ...done')
+            else:
+                return
+
+            deleted_files = []
+
+            # Delete the files
+            for root, dirs, files in self._walker(folder_to_delete):
+                if root != folder_to_delete:
+                    break
+
+                print(f'\n    Deleting files...')
+                for file in files:
+                    if file == self.md5sum_filename or file == self.md5sum_restored_filename or file == self.allfiles_csv_filename or file == self.where_did_the_files_go_filename:
+                        continue
+                    else:
+                        file_path = os.path.join(root, file)
+                        os.remove(file_path)
+                        deleted_files.append(file)
+                print(f'        ...done')
+
+            # Write a readme file with the metadata
+            email = self.cfg.email
+            readme = os.path.join(
+                folder_to_delete, self.where_did_the_files_go_filename)
+
+            with open(readme, 'w') as rme:
+                rme.write(
+                    f'The files in this folder have been moved to an AWS S3 archive!\n')
+                rme.write(f'\nArchive location: {s3_dest}\n')
+                rme.write(
+                    f"Archive profile (~/.aws): {archived_folder_info['profile']}\n")
+                rme.write(f"Archiver user: {archived_folder_info['user']}\n")
+                rme.write(f'Archiver email: {self.cfg.email}\n')
+                rme.write(
+                    f'Archive tool: https://github.com/dirkpetersen/froster\n')
+                rme.write(
+                    f'Restore command: froster restore "{folder_to_delete}"\n')
+                rme.write(
+                    f'Deletion date: {datetime.datetime.now()}\n')
+                rme.write(f'\n\nFirst 10 files deleted this time:\n')
+                rme.write(', '.join(deleted_files[:10]))
+                rme.write(
+                    f'\n\nPlease see more metadata in Froster.allfiles.csv file\n')
+
+            print(
+                f'\n  Deleted {len(deleted_files)} files and wrote manifest to "{readme}"\n')
+
+            # Print the final message
+            print(f'    LOCAL DELETED FOLDER:   {folder_to_delete}')
+            print(f'    AWS S3 DESTINATION:     {s3_dest}\n')
+            print(f'    Total files deleted:    {len(deleted_files)}\n')
+            print(f'    Manifest:               {readme}\n')
+            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
+
+        except Exception as e:
+            print_error()
+            return
+
+    def delete(self, folders):
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+
+        # Set flags
+        is_recursive = self.args.recursive
+
+        if is_recursive:
+            if self._is_recursive_collision(folders):
+                print(
+                    f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
+                sys.exit(1)
+
+        # Check if we can read & write all files and folders
+        if not self._is_correct_files_folders_permissions(folders, is_recursive):
+            print(
+                '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
+            print(
+                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+            print(
+                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
+            sys.exit(1)
+
+        for folder in folders:
+            if is_recursive:
+                for root, dirs, files in self._walker(folder):
+                    self.delete_locally(root)
+            else:
+                self.delete_locally(folder)
+
+    def _delete_tar_content(self, directory, files):
+        deleted = []
+        for f in files:
+            fp = os.path.join(directory, f)
+
+            if os.path.isfile(fp) or os.path.islink(fp):
+                os.remove(fp)
+                deleted.append(f)
+        printdbg(
+            f'Files deleted in _delete_tar_content: {", ".join(deleted)}')
+
+        return deleted
+
+    def _get_tar_content(self, directory):
+        files = []
+        tar_path = os.path.join(directory, 'Froster.smallfiles.tar')
+        if os.path.exists(tar_path):
+            with tarfile.open(tar_path, 'r') as tar:
+                for member in tar.getmembers():
+                    files.append(member.name)
+        csv_path = os.path.join(directory, 'Froster.allfiles.csv')
+        if os.path.exists(csv_path):
+            file_list = []
+            with open(csv_path, 'r') as csvfile:
+                # Use csv reader
+                reader = csv.DictReader(csvfile)
+                # Iterate over each row in the csv
+                for row in reader:
+                    # If "Tarred" is "Yes", append the "File" to the list
+                    if row['Tarred'] == 'Yes':
+                        if not row['File'] in files:
+                            files.append(row['File'])
+        printdbg(
+            f'Files founds in _get_tar_content: {", ".join(files)}')
+        return files
+
+    def _restore_locally(self, folder, aws: AWSBoto):
+        try:
+            # Get the folder archiving info from froster-archives.json file
+            archive_folder_info = self.froster_archives_get_entry(folder)
+
+            # Check the folder is archived
+            if not archive_folder_info:
+                print(f'\nFolder {folder} is not registered as archived')
+                return
+
+            # # source = archive_folder_info['archive_folder']+tail+'/'
+            # # target = folder
+
+            # Get the archive folder
+            local_folder = archive_folder_info['local_folder']
+            archive_folder = archive_folder_info['archive_folder']
+            s3_storage_class = archive_folder_info['s3_storage_class']
+
+            profile = archive_folder_info['profile']
+            user = archive_folder_info['user']
+            archive_mode = archive_folder_info['archive_mode']
+
+            # Get the bucket and prefix
+            bucket, prefix = archive_folder.split('/', 1)
+
+            # Clean bucket
+            bucket = bucket.replace(':s3:', '')
+
+            # Clean prefix so it works even if folder is a subfolder of an stored parent
+            prefix = prefix.replace(local_folder, '')
+            prefix = prefix + folder + '/'
+
+            # archive_folder = rowdict['archive_folder'].split('/', 1)
+
+            # # Get the bucket info from froster-archives.json
+            # bucket, prefix, recursive, is_glacier = self.archive_get_bucket_info(folder)
+
+            # print(f'archive_folder_info: {archive_folder_info}')
+            # print(f'buck: {bucket}, pref: {prefix}, rec: {recursive}, gla: {is_glacier}')
+
+            if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
+
+                trig, rest, done, notg = aws.glacier_restore(
+                    bucket, prefix, self.args.days, self.args.retrieveopt)
+
+                print(f'    Triggered Glacier retrievals: {len(trig)}')
+                print(f'    Currently retrieving from Glacier: {len(rest)}')
+                print(f'    Retrieved from Glacier: {len(done)}')
+                print(f'    Not in Glacier: {len(notg)}\n')
+                if len(trig) > 0 or len(rest) > 0:
+                    # glacier is still ongoing, return # of pending ops
+                    return len(trig)+len(rest)
+
+            # If nodownload flag is set we are done
+            if self.args.nodownload:
+                return
+
+            # All retrievals are done, now we can download the files
+            source = ':s3:' + bucket + '/' + prefix
+            target = folder
+
+            print(f'    Downloading files...')
+            rclone = Rclone(self.args, self.cfg)
+            ret = rclone.copy(source, target, '--max-depth', '1')
+
+            if ret:
+                print('        ...done')
+                is_folder_archived = True
+            else:
+                print('        ...FAILED\n')
+
+            exit("patata")
+
+            # checksum
+            if self._restore_verify(source, target, recursive):
+                print(
+                    f'Target and archive are identical. {ttransfers} files with {total} transferred.')
+            else:
+                print(f'Problem: target and archive are NOT identical.')
+                return False
+
+        except Exception:
+            print_error()
+
+    def restore(self, folders, aws: AWSBoto):
+        '''Restore the given folder'''
+        try:
+            # Clean the provided paths
+            folders = clean_path_list(folders)
+
+            # Set flags
+            is_recursive = self.args.recursive
+            is_slurm = shutil.which(
+                'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
+
+            # Check if there is a conflict between folders and recursive flag,
+            # i.e. recursive flag is set and a folder is a subdirectory of another one
+            if is_recursive:
+                if self._is_recursive_collision(folders):
+                    print(
+                        f'\nError: You cannot restore folders recursively if there is a dependency between them.\n')
+                    sys.exit(1)
+
+            if is_slurm:
+                self._restore_slurm(folders)
+
+            else:
+                # Archive locally all folders. If recursive flag set, archive all subfolders too.
+                for folder in folders:
+                    for root, dirs, files in self._walker(folder):
+
+                        # Break in case of non-recursive restore
+                        if not is_recursive and root != folder:
+                            break
+
+                        print(f'\nRESTORING FOLDER: {folder}\n')
+                        ret = self._restore_locally(root, aws)
+                        if ret == 0:
+                            print(f'    ...RESTORED')
+                        elif ret > 1:
+                            print(
+                                f'    Glacier retrievals pending, run this command again in 5-12h\n')
+                        else:
+                            print(f'    ...FAILED\n')
+        except Exception:
+            print_error()
+
+    def _restore_verify(self, source, target, recursive=False):
+        # post download tasks like checksum verification and untarring
+        rclone = Rclone(self.args, self.cfg)
+        for root, dirs, files in self._walker(target):
+            if not recursive and root != target:
+                break
+            restpath = root
+            print(f'\n  Checking folder "{restpath}" ... ')
+            if root != target:
+                source = source + os.path.basename(root) + '/'
+            try:
+
+                # This needs to happen recursively
+                tarred_files = self._get_tar_content(root)
+                if len(tarred_files) > 0:
+                    self._delete_tar_content(restpath, tarred_files)
+
+                ret = self._gen_md5sums(
+                    restpath, self.md5sum_restored_filename)
+                if ret == 13:  # cannot write to folder
+                    return False
+                hashfile = os.path.join(restpath, '.froster-restored.md5sum')
+                ret = rclone.checksum(hashfile, source, '--max-depth', '1')
+                printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
+                if ret['stats']['errors'] > 0:
+                    print('Last Error:', ret['stats']
+                          ['lastError'], file=sys.stderr)
+                    print('Checksum test was not successful.', file=sys.stderr)
+                    return False
+
+                ret = self._untar_files(restpath)
+
+                if ret == 13:  # cannot write to folder
+                    return False
+                elif not ret:
+                    print(
+                        '  Could not create hashfile .froster-restored.md5sum.', file=sys.stderr)
+                    print(
+                        '  Perhaps there are no files or the folder does not exist?', file=sys.stderr)
+                    return False
+
+            except PermissionError as e:
+                # Check if error number is 13 (Permission denied)
+                if e.errno == 13:
+                    print(
+                        f'Permission denied to "{restpath}"', file=sys.stderr)
+                    continue
+                else:
+                    print(
+                        f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
+                    continue
+            except Exception as e:
+                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
+                continue
+        return True
+
+    def md5sumex(self, file_path):
+        try:
+            cmd = f'md5sum {file_path}'
+            ret = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, Shell=True)
+            if ret.returncode != 0:
+                print(f'md5sum return code > 0: {cmd} Error:\n{ret.stderr}')
+            return ret.stdout.strip()  # , ret.stderr.strip()
+
+        except Exception as e:
+            print(f'md5sum Error: {str(e)}')
+            return None, str(e)
+
+    def md5sum(self, file_path):
+        '''Calculate md5sum of a file'''
+
+        md5_hash = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+        return md5_hash.hexdigest()
+
+    def uid2user(self, uid):
+        # try to convert uid to user name
+        try:
+            return pwd.getpwuid(uid)[0]
+        except:
+            printdbg(f'uid2user: Error converting uid {uid}')
+            return uid
+
+    def gid2group(self, gid):
+        # try to convert gid to group name
+        try:
+            return grp.getgrgid(gid)[0]
+        except:
+            printdbg(f'gid2group: Error converting gid {gid}')
+            return gid
+
+    def daysago(self, unixtime):
+        # how many days ago is this epoch time ?
+        if not unixtime:
+            printdbg(
+                'daysago: an integer is required (got type NoneType)')
+            return 0
+        diff = datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
+        return diff.days
+
+    def convert_size(self, size_bytes):
+        if size_bytes == 0:
+            return "0B"
+        size_name = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes/p, 3)
+        return f"{s} {size_name[i]}"
+
+    def _archive_json_add_entry(self, key, value):
+        '''Add a new entry to the archive JSON file'''
+
+        # Initialize the data dictionary in case archive_json does not exist
+        data = {}
+
+        # Read the archive JSON file
+        if os.path.isfile(self.archive_json):
+            with open(self.archive_json, 'r') as file:
+                try:
+                    data = json.load(file)
+                except:
+                    print('Error in Archiver._archive_json_add_entry():')
+                    print(f'Cannot read {self.archive_json}, file corrupt?')
+                    return False
+
+        # Add the new entry to the data dictionary
+        data[key] = value
+
+        # Write the updated data dictionary to the archive JSON file
+        with open(self.archive_json, 'w') as file:
+            json.dump(data, file, indent=4)
+
+    def _is_folder_archived(self, folder):
+        '''Check if an entry exists in the archive JSON file'''
+
+        return (self.froster_archives_get_entry(folder) != None)
+
+    def archive_get_bucket_info(self, folder):
+        # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
+
+        glacier = False
+        rowdict = self.froster_archives_get_entry(folder)
+
+        if not rowdict:
+            return None, None, None, None
+
+        # Get recursive mode
+        recursive = False
+        if 'archive_mode' in rowdict:
+            if rowdict['archive_mode'] == "Recursive":
+                recursive = True
+
+        # Get the S3 storage class
+        if 's3_storage_class' in rowdict:
+            if rowdict['s3_storage_class'] in ['DEEP_ARCHIVE', 'GLACIER']:
+                glacier = True
+            else:
+                glacier = False
+        else:
+            print(
+                f'Error: s3_storage_class not found in archive info for {folder}')
+            sys.exit(1)
+
+        # Get the archive folder
+        archive_folder = rowdict['archive_folder'].split('/', 1)
+
+        # Get the bucket
+        bucket = archive_folder[0].replace(':s3:', '')
+
+        # Get the prefix
+        prefix = f'{archive_folder[1]}/'  # trailing slash ensured
+
+        return bucket, prefix, recursive, glacier
+
+    def froster_archives_get_entry(self, folder):
+        '''Get an entry from the archive JSON file'''
+
+        # If the archive JSON file does not exist, the entry does not exist
+        if not os.path.isfile(self.archive_json):
+            return None
+
+        # Read the archive JSON file
+        with open(self.archive_json, 'r') as file:
+            try:
+                data = json.load(file)
+            except:
+                print('Error in Archiver._archive_json_entry_exists():')
+                print(f'Cannot read {self.archive_json}, file corrupt?')
+                return None
+
+        # Check if the entry exists in the data dictionary
+        if folder in data:
+            return data[folder]
+        else:
+            # Check if a parent folder exists in the data dictionary with recursive archiving
+            path = Path(folder)
+
+            for parent in path.parents:
+                parent = str(parent)
+                if parent in data and data[parent]['archive_mode'] == 'Recursive':
+                    return data[parent]
+
+            return None
+
+    def archive_json_get_csv(self, columns):
+
+        if not os.path.exists(self.archive_json):
+            return
+
+        with open(self.archive_json, 'r') as file:
+            try:
+                data = json.load(file)
+
+            except:
+                print('Error in Archiver._archive_json_get_csv():')
+                print(f'Cannot read {self.archive_json}, file corrupt?')
+                return
+
+        # Sort data by timestamp in reverse order
+        sorted_data = sorted(
+            data.items(), key=lambda x: x[1]['timestamp'], reverse=True)
+
+        # Prepare CSV data
+        csv_data = [columns]
+
+        for path_name, row_data in sorted_data:
+            csv_row = [row_data[col] for col in columns if col in row_data]
+            csv_data.append(csv_row)
+
+        # Convert CSV data to a CSV string
+        output = io.StringIO()
+
+        writer = csv.writer(output, dialect='excel')
+        writer.writerows(csv_data)
+        csv_string = output.getvalue()
+
+        output.close()
+
+        return csv_string
+
+    def _get_newest_file_atime(self, folder_path, folder_atime=None):
+        # Because the folder atime is reset when crawling we need
+        # to lookup the atime of the last accessed file in this folder
+        if not folder_path or not os.path.exists(folder_path):
+            print(f" Invalid folder path: {folder_path}")
+            return folder_atime
+        last_accessed_time = None
+        try:
+            subobjects = os.listdir(folder_path)
+        except Exception as e:
+            print(f'Error accessing folder {folder_path}:\n{e}')
+            return folder_atime
+        for file_name in subobjects:
+            if file_name in self.dirmetafiles:
+                continue
+            file_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(file_path):
+                accessed_time = os.path.getatime(file_path)
+                if last_accessed_time is None or accessed_time > last_accessed_time:
+                    last_accessed_time = accessed_time
+        if last_accessed_time == None:
+            last_accessed_time = folder_atime
+        return last_accessed_time
+
+    def _get_newest_file_mtime(self, folder_path, folder_mtime=None):
+        # Because the folder atime is reset when crawling we need
+        # to lookup the atime of the last modified file in this folder
+        if not folder_path or not os.path.exists(folder_path):
+            print(f" Invalid folder path: {folder_path}")
+            return folder_mtime
+
+        last_modified_time = None
+        try:
+            subobjects = os.listdir(folder_path)
+        except Exception as e:
+            print(f'Error accessing folder {folder_path}:\n{e}')
+            return folder_mtime
+        for file_name in subobjects:
+            if file_name in self.dirmetafiles:
+                continue
+            file_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(file_path):
+                modified_time = os.path.getmtime(file_path)
+                if last_modified_time is None or modified_time > last_modified_time:
+                    last_modified_time = modified_time
+        if last_modified_time == None:
+            last_modified_time = folder_mtime
+        return last_modified_time
+
+    def get_hotspots_path(self, folder):
+        ''' Get a full path name of a new hotspots file'''
+
+        # Take the correct hotspots directory
+        hotspotdir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
+
+        # create hotspots directory if it does not exist
+        os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
+
+        # Get the full path name of the new hotspots file
+        return os.path.join(hotspotdir, self._get_hotspots_file(folder))
+
+    def _get_hotspots_file(self, folder):
+        # get a full path name of a new hotspots file
+        # based on a folder name that has been crawled
+        mountlist = self._get_mount_info()
+        traildir = ''
+        hsfile = folder.replace('/', '+') + '.csv'
+        for mnt in mountlist:
+            if folder.startswith(mnt['mount_point']):
+                traildir = self._get_last_directory(mnt['mount_point'])
+                hsfile = folder.replace(mnt['mount_point'], '')
+                hsfile = f'@{traildir}+{hsfile}'
+                if len(hsfile) > 255:
+                    hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
+        return hsfile
+
+    def _walker(self, top, skipdirs=['.snapshot',]):
+        """ returns subset of os.walk  """
+        for root, dirs, files in os.walk(top, topdown=True, onerror=self._walkerr):
+            for skipdir in skipdirs:
+                if skipdir in dirs:
+                    dirs.remove(skipdir)  # don't visit this directory
+            yield root, dirs, files
+
+    def _walkerr(self, oserr):
+        sys.stderr.write(str(oserr))
+        sys.stderr.write('\n')
+
+    def _get_last_directory(self, path):
+
+        # Remove any trailing slashes
+        path = path.rstrip(os.path.sep)
+
+        # Split the path by the separator
+        path_parts = path.split(os.path.sep)
+
+        # Return the last directory
+        return path_parts[-1]
+
+    def _get_mount_info(self):
+        file_path = '/proc/self/mountinfo'
+
+        fs_types = {'nfs', 'nfs4', 'cifs', 'smb', 'afs', 'ncp',
+                    'ncpfs', 'glusterfs', 'ceph', 'beegfs',
+                    'lustre', 'orangefs', 'wekafs', 'gpfs'}
+
+        mountinfo_list = []
+
+        with open(file_path, 'r') as f:
+            for line in f:
+                fields = line.strip().split(' ')
+                _, _, _, _, mount_point, _ = fields[:6]
+                for field in fields[6:]:
+                    if field == '-':
+                        break
+                fs_type, mount_source, _ = fields[-3:]
+                mount_source_folder = mount_source.split(
+                    ':')[-1] if ':' in mount_source else ''
+                if fs_type in fs_types:
+                    mountinfo_list.append({
+                        'mount_source_folder': mount_source_folder,
+                        'mount_point': mount_point,
+                        'fs_type': fs_type,
+                        'mount_source': mount_source,
+                    })
+        return mountinfo_list
+
+    def download_restored_file(self, bucket_name, object_key, local_path):
+        s3 = boto3.resource('s3')
+        s3.Bucket(bucket_name).download_file(object_key, local_path)
+        print(f'Downloaded {object_key} to {local_path}.')
+
+    def _upload_file_to_s3(self, filename, bucket, object_name=None, profile=None):
+        session = boto3.Session(
+            profile_name=profile) if profile else boto3.Session()
+        s3 = session.client('s3')
+
+        # If S3 object_name was not specified, use the filename
+        if object_name is None:
+            object_name = os.path.basename(filename)
+        try:
+
+            # Upload the file with Intelligent-Tiering storage class
+            s3.upload_file(filename, bucket, object_name, ExtraArgs={
+                           'StorageClass': 'INTELLIGENT_TIERING'})
+            printdbg(
+                f"File {object_name} uploaded to Intelligent-Tiering storage class!")
+            # print(f"File {filename} uploaded successfully to Intelligent-Tiering storage class!")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return False
+        return True
+
+
 class ScreenConfirm(ModalScreen[bool]):
     DEFAULT_CSS = """
     ScreenConfirm {
@@ -5041,8 +5123,18 @@ class Rclone:
 
                 # This is the solution i found to prevent the popen subprocess to throw errors due
                 # our particular usage of rclone.
-                with open(os.devnull, 'w') as devnull:
-                    ret = subprocess.Popen(command, stdout=devnull, stderr=devnull, text=True, env=self.envrn)
+                output = True
+
+                if output:
+                    # Print output in stdout
+                    ret = subprocess.Popen(
+                        command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=self.envrn)
+
+                else:
+                    # DO not print output
+                    with open(os.devnull, 'w') as devnull:
+                        ret = subprocess.Popen(
+                            command, stdout=devnull, stderr=devnull, text=True, env=self.envrn)
 
                 # If we have a pid we assume the command was successful
                 if ret.pid:
@@ -5050,9 +5142,9 @@ class Rclone:
                 else:
                     return False
 
-
             else:
-                ret = subprocess.run(command, capture_output=True, text=True, env=self.envrn)
+                ret = subprocess.run(
+                    command, capture_output=True, text=True, env=self.envrn)
 
                 # Check if the command was successful
                 if ret.returncode == 0:
@@ -5075,8 +5167,10 @@ class Rclone:
 
                     print(
                         f'\n        Error: Rclone {command[1]} command failed', file=sys.stderr)
-                    print(f'        Command: {" ".join(command)}', file=sys.stderr)
-                    print(f'        Return code: {ret.returncode}', file=sys.stderr)
+                    print(
+                        f'        Command: {" ".join(command)}', file=sys.stderr)
+                    print(
+                        f'        Return code: {ret.returncode}', file=sys.stderr)
                     print(
                         f'        Return code meaning: {exit_codes[ret.returncode]}\n', file=sys.stderr)
 
@@ -5119,7 +5213,7 @@ class Rclone:
         if not shutil.which('fusermount3'):
             print('Could not find "fusermount3". Please install the "fuse3" OS package')
             sys.exit(1)
-        
+
         # Build the copy command
         command = [self.rc, 'mount'] + list(args)
         command.append('--allow-non-empty')
@@ -5131,23 +5225,28 @@ class Rclone:
 
         # Run the copy command and return if it was successful
         return self._run_rclone_command(command, background=True)
-        
 
     def unmount(self, mountpoint, wait=False):
 
         try:
             if not shutil.which('fusermount3'):
-                print('Could not find "fusermount3". Please install the "fuse3" OS package')
+                print(
+                    'Could not find "fusermount3". Please install the "fuse3" OS package')
                 sys.exit(1)
 
             # Build command
             cmd = ['fusermount3', '-u', mountpoint]
-            return subprocess.run(cmd, capture_output=False, text=True, env=self.envrn)
-                 
+            ret = subprocess.run(cmd, capture_output=False,
+                                 text=True, env=self.envrn)
+
+            if ret.returncode == 0:
+                return True
+            else:
+                return False
+
         except Exception:
             print_error()
             sys.exit(1)
-    
 
     def version(self):
         command = [self.rc, 'version']
@@ -5788,142 +5887,41 @@ def subcmd_archive(args: argparse.Namespace, arch: Archiver):
             arch.archive(args.folders)
 
 
-def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver, aws: AWSBoto):
-    
-    printdbg("restore:", args.cores, args.aws_profile, args.noslurm,
-             args.days, args.retrieveopt, args.nodownload, args.folders)
-    fld = '" "'.join(args.folders)
-    printdbg(f'default cmdline: froster restore "{fld}"')
+def subcmd_restore(args: argparse.Namespace, arch: Archiver, aws: AWSBoto):
+    '''Check command for restoring folders for Froster.'''
 
-    # *********
-    if args.monitor:
-        # aws inactivity and cost monitoring
-        aws.monitor_ec2()
-        return True
+    try:
+        if args.monitor:
+            # aws inactivity and cost monitoring
+            aws.monitor_ec2()
+            return
 
-    if not args.folders:
-        files = arch.archive_json_get_csv(
-            ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
-        if files == None:
-            print("No archives available.")
-            sys.exit(0)
-        app = TableArchive(files)
-        retline = app.run()
-        if not retline:
-            return False
-        if len(retline) < 2:
-            print('Error: froster-archives table did not return result', file=sys.stderr)
-            return False
-        printdbg("subcmd_restore dialog returns:", retline)
-        args.folders.append(retline[0])
-        if retline[2]:
-            cfg.aws_profile = retline[2]
-            args.aws_profile = cfg.aws_profile
-            cfg.set_env_vars(cfg.aws_profile)
-            printdbg("AWS profile:", cfg.aws_profile)
-    else:
-        pass
-        # we actually want to support symlinks
-        # args.folders = clean_paths(args.folders)
+        if not args.folders:
 
-    if args.aws_profile and args.aws_profile not in cfg.get_aws_profiles():
-        print(f'Profile "{args.aws_profile}" not found.')
-        return False
-    if not aws.check_bucket_access_folders(args.folders):
-        return False
+            # Get the list of folders from the archive
+            files = arch.archive_json_get_csv(
+                ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
 
-    if args.aws:
-        # run ec2_deploy(self, bucket='', prefix='', recursive=False, profile=None):
-        ret = aws.ec2_deploy(args.folders)
-        return True
+            if not files:
+                print("No archives available.")
+                sys.exit(0)
 
-    if not shutil.which('sbatch') or args.noslurm or os.getenv('SLURM_JOB_ID'):
-        # either no slurm or already running inside a slurm job
-        for fld in args.folders:
-            fld = fld.rstrip(os.path.sep)
-            print(f'Restoring folder {fld}, please wait ...', flush=True)
-            # check if triggered a restore from glacier and other conditions
-            if arch.restore(fld) > 0:
-                if shutil.which('sbatch') and \
-                        args.noslurm == False and \
-                        args.nodownload == False:
-                    # start a future Slurm job just for the download
-                    se = SlurmEssentials(args, cfg)
-                    # get a job start time 12 hours from now
-                    fut_time = se.get_future_start_time(12)
-                    label = fld.replace('/', '+')
-                    label = label.replace(' ', '_')
-                    shortlabel = os.path.basename(fld)
-                    myjobname = f'froster:restore:{shortlabel}'
-                    email = cfg.email
-                    se.add_line(f'#SBATCH --job-name={myjobname}')
-                    se.add_line(f'#SBATCH --begin={fut_time}')
-                    se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-                    se.add_line(f'#SBATCH --mem=64G')
-                    se.add_line(f'#SBATCH --requeue')
-                    se.add_line(
-                        f'#SBATCH --output=froster-download-{label}-%J.out')
-                    se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-                    se.add_line(f'#SBATCH --mail-user={email}')
-                    se.add_line(f'#SBATCH --time={se.walltime}')
-                    if se.partition:
-                        se.add_line(f'#SBATCH --partition={se.partition}')
-                    if se.qos:
-                        se.add_line(f'#SBATCH --qos={se.qos}')
-                    # original cmdline
-                    cmdline = " ".join(map(shlex.quote, sys.argv))
-                    if not "--profile" in cmdline and args.aws_profile:
-                        cmdline = cmdline.replace(
-                            '/froster.py ', f'/froster --profile {args.aws_profile} ')
-                    else:
-                        cmdline = cmdline.replace('/froster.py ', '/froster ')
-                    if not fld in cmdline:
-                        cmdline = f'{cmdline} "{fld}"'
-                    printdbg(f'Command line passed to Slurm:\n{cmdline}')
-                    se.add_line(cmdline)
-                    jobid = se.sbatch()
-                    print(
-                        f'Submitted froster download job to run in 12 hours: {jobid}')
-                    print(f'Check Job Output:')
-                    print(f' tail -f froster-download-{label}-{jobid}.out')
-                else:
-                    print(
-                        f'\nGlacier retrievals pending, run this again in 5-12 hours\n')
+            app = TableArchive(files)
+            retline = app.run()
 
-    else:
-        se = SlurmEssentials(args, cfg)
-        label = args.folders[0].replace('/', '+')
-        label = label.replace(' ', '_')
-        shortlabel = os.path.basename(args.folders[0])
-        myjobname = f'froster:restore:{shortlabel}'
-        email = cfg.email
-        se.add_line(f'#SBATCH --job-name={myjobname}')
-        se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
-        se.add_line(f'#SBATCH --requeue')
-        se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        if not "--profile" in cmdline and args.aws_profile:
-            cmdline = cmdline.replace(
-                '/froster.py ', f'/froster --profile {args.aws_profile} ')
-        else:
-            cmdline = cmdline.replace('/froster.py ', '/froster ')
-        if not args.folders[0] in cmdline:
-            folders = '" "'.join(args.folders)
-            cmdline = f'{cmdline} "{folders}"'
-        printdbg(f'Command line passed to Slurm:\n{cmdline}')
-        se.add_line(cmdline)
-        jobid = se.sbatch()
-        print(f'Submitted froster restore job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-restore-{label}-{jobid}.out')
+            if not retline:
+                return
+
+            if len(retline) < 2:
+                print(f'\nNo archived folders found\n')
+                return
+
+            args.folders = [retline[0]]
+
+        arch.restore(args.folders, aws)
+
+    except Exception:
+        print_error()
 
 
 def subcmd_delete(args: argparse.Namespace, arch: Archiver):
@@ -5936,16 +5934,17 @@ def subcmd_delete(args: argparse.Namespace, arch: Archiver):
 
             if not files:
                 print("No archives available.")
-                sys.exit(0)
+                return
 
             app = TableArchive(files)
             retline = app.run()
 
             if not retline:
-                return False
+                return
+
             if len(retline) < 2:
                 print(f'\nNo archived folders found\n')
-                sys.exit(0)
+                return
 
             args.folders = [retline[0]]
 
@@ -5958,11 +5957,11 @@ def subcmd_delete(args: argparse.Namespace, arch: Archiver):
 def subcmd_mount(args: argparse.Namespace, arch: Archiver):
 
     try:
-        
+
         if args.list:
             arch.print_current_mounts()
             sys.exit(0)
-    
+
         if args.mountpoint:
             if not os.path.isdir(args.mountpoint):
                 print(f'\nError: Folder "{args.mountpoint}" does not exist.\n')
@@ -5971,7 +5970,7 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
             if len(args.folders) > 1:
                 print('\nError: Cannot mount multiple folders to a single mountpoint.')
                 print('Check the mount command usage with "froster mount --help"\n')
-                sys.exit(1) 
+                sys.exit(1)
 
         if args.list:
             arch.print_current_mounts()
@@ -6007,6 +6006,7 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
     except Exception:
         print_error()
 
+
 def subcmd_umount(args: argparse.Namespace, arch: Archiver):
 
     try:
@@ -6024,16 +6024,17 @@ def subcmd_umount(args: argparse.Namespace, arch: Archiver):
             # No folders provided, manually select folder to unmount
             files = "\n".join(mounts)
             files = "Mountpoint\n" + files
-            
+
             app = TableArchive(files)
             retline = app.run()
-            
+
             args.folders = [retline[0]]
-        
+
         arch.unmount(args.folders)
 
     except Exception:
         print_error()
+
 
 def subcmd_ssh(args, cfg: ConfigManager, aws: AWSBoto):
 
@@ -6276,20 +6277,18 @@ def parse_arguments():
             Mount or unmount the remote S3 or Glacier storage in your local file system
             at the location of the original folder.
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    
+
     parser_mount.add_argument('folders', action='store', default=[],  nargs='*',
-                            help='archived folders (separated by space) which you would like to mount.' +
-                            '')
+                              help='archived folders (separated by space) which you would like to mount.' +
+                              '')
     parser_mount.add_argument('-a', '--aws', dest='aws', action='store_true',
-                            help="Mount folder on new EC2 instance instead of local machine") 
-    
+                              help="Mount folder on new EC2 instance instead of local machine")
+
     parser_mount.add_argument('-l', '--list', dest='list', action='store_true',
                               help="List all mounted folders")
 
     parser_mount.add_argument('-m', '--mount-point', dest='mountpoint', action='store', default='',
                               help='pick a custom mount point, this only works if you select a single folder.')
-
-
 
     # ***
 
@@ -6299,9 +6298,18 @@ def parse_arguments():
             to download all data to local storage after the restore is complete.
             Just use the mount sub command.
         '''), formatter_class=argparse.RawTextHelpFormatter)
-    parser_restore.add_argument('--days', '-d', dest='days', action='store', default=30,
+
+    parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
+                                help='folders you would like to to restore (separated by space), ' +
+                                '')
+
+    parser_restore.add_argument('-r', '--recursive', dest='recursive', action='store_true',
+                                help="Restore the current archived folder and all archived sub-folders")
+
+    parser_restore.add_argument('-d', '--days', dest='days', action='store', default=30,
                                 help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
-    parser_restore.add_argument('--retrieve-opt', '-r', dest='retrieveopt', action='store', default='Bulk',
+
+    parser_restore.add_argument('-o', '--retrieve-opt', dest='retrieveopt', action='store', default='Bulk',
                                 help=textwrap.dedent(f'''
             Bulk (default):
                 - 5-12 hours retrieval
@@ -6317,17 +6325,18 @@ def parse_arguments():
             $10/TiB/month for the duration you keep the data in S3.
             (Costs in Summer 2023)
             '''))
-    parser_restore.add_argument('--aws', '-a', dest='aws', action='store_true', default=False,
+
+    parser_restore.add_argument('-a', '--aws', dest='aws', action='store_true',
                                 help="Restore folder on new AWS EC2 instance instead of local machine")
-    parser_restore.add_argument('--instance-type', '-i', dest='instancetype', action='store', default="",
+
+    parser_restore.add_argument('-i', '--instance-type', dest='instancetype', action='store', default="",
                                 help='The EC2 instance type is auto-selected, but you can pick any other type here')
-    parser_restore.add_argument('--monitor', '-m', dest='monitor', action='store_true', default=False,
+
+    parser_restore.add_argument('-m', '--monitor', dest='monitor', action='store_true',
                                 help="Monitor EC2 server for cost and idle time.")
-    parser_restore.add_argument('--no-download', '-l', dest='nodownload', action='store_true', default=False,
+
+    parser_restore.add_argument('-l', '--no-download', dest='nodownload', action='store_true',
                                 help="skip download to local storage after retrieval from Glacier")
-    parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
-                                help='folders you would like to to restore (separated by space), ' +
-                                '')
 
     # ***
 
@@ -6357,6 +6366,7 @@ def printdbg(*args, **kwargs):
 
 # TODO: OHSU-103: Move this function to utils module
 
+
 def clean_path(path):
     try:
         if path:
@@ -6367,6 +6377,7 @@ def clean_path(path):
     except Exception:
         print_error()
         sys.exit(1)
+
 
 def clean_path_list(paths):
     '''Clean paths by expanding user and symlinks, and removing trailing slashes.'''
@@ -6388,6 +6399,7 @@ def clean_path_list(paths):
             sys.exit(1)
 
     return cleaned_paths
+
 
 def print_error():
     exc_type, exc_value, exc_tb = sys.exc_info()
@@ -6447,7 +6459,7 @@ def main():
         elif args.subcmd in ['archive', 'arc']:
             subcmd_archive(args, arch)
         elif args.subcmd in ['restore', 'rst']:
-            subcmd_restore(args, cfg, arch, aws)
+            subcmd_restore(args, arch, aws)
         elif args.subcmd in ['delete', 'del']:
             subcmd_delete(args, arch)
         elif args.subcmd in ['mount', 'mnt']:
