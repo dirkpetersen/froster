@@ -1320,6 +1320,9 @@ class Archiver:
     def index(self, folders):
         '''Index the given folders for archiving'''
 
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+
         # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
         if not shutil.which('sbatch') or self.args.noslurm or os.getenv('SLURM_JOB_ID'):
             for folder in folders:
@@ -1771,8 +1774,6 @@ class Archiver:
             else:
                 print('    ...FAILED\n')
                 return
-            
-            
 
     def unmount(self, folders):
 
@@ -5738,11 +5739,8 @@ def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
             print(f'\nError: The folder {folder} does not exist.\n')
             sys.exit(1)
 
-    # Clean the provided paths
-    folders = clean_path_list(args.folders)
-
     # Index the given folders
-    arch.index(folders)
+    arch.index(args.folders)
 
 
 def subcmd_archive(args: argparse.Namespace, arch: Archiver):
@@ -5791,10 +5789,7 @@ def subcmd_archive(args: argparse.Namespace, arch: Archiver):
 
 
 def subcmd_restore(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver, aws: AWSBoto):
-    # TODO: function pendint to review
-    print(f'TODO: function {inspect.stack()[0][3]} pending to review')
-    exit(1)
-
+    
     printdbg("restore:", args.cores, args.aws_profile, args.noslurm,
              args.days, args.retrieveopt, args.nodownload, args.folders)
     fld = '" "'.join(args.folders)
@@ -6014,28 +6009,31 @@ def subcmd_mount(args: argparse.Namespace, arch: Archiver):
 
 def subcmd_umount(args: argparse.Namespace, arch: Archiver):
 
-    if args.list:
-        arch.print_current_mounts()
-        sys.exit(0)
+    try:
+        if args.list:
+            arch.print_current_mounts()
+            sys.exit(0)
 
-    # Get current mounts
-    mounts = arch.get_mounts()
-    if len(mounts) == 0:
-        print("\nNOTE: No rclone mounts on this computer.\n")
-        sys.exit(0)
+        # Get current mounts
+        mounts = arch.get_mounts()
+        if len(mounts) == 0:
+            print("\nNOTE: No rclone mounts on this computer.\n")
+            sys.exit(0)
 
-    if not args.folders:
-        # No folders provided, manually select folder to unmount
-        files = "\n".join(mounts)
-        files = "Mountpoint\n" + files
+        if not args.folders:
+            # No folders provided, manually select folder to unmount
+            files = "\n".join(mounts)
+            files = "Mountpoint\n" + files
+            
+            app = TableArchive(files)
+            retline = app.run()
+            
+            args.folders = [retline[0]]
         
-        app = TableArchive(files)
-        retline = app.run()
-        
-        args.folders = [retline[0]]
-    
-    arch.unmount(args.folders)
+        arch.unmount(args.folders)
 
+    except Exception:
+        print_error()
 
 def subcmd_ssh(args, cfg: ConfigManager, aws: AWSBoto):
 
