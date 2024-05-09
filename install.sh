@@ -159,60 +159,57 @@ backup_old_installation() {
     # Back up (if any) older froster data files
     if [[ -d ${HOME}/.local/share/froster ]]; then
 
-        # Move the froster directory to froster_YYYYMMDD.bak
-        mv -f ${HOME}/.local/share/froster ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak
+        # Copy the froster directory to froster_YYYYMMDD.bak
+        cp -rf ${HOME}/.local/share/froster ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak
 
-        # Keep the froster-archives.json file (if any)
-        if [[ -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
-            # Create the froster directory if it does not exist
-            mkdir -p ${HOME}/.local/share/froster
-
-            # Copy the froster-archives.json file to the data directory
-            cp -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
-        fi
-        echo
-        echo "Data back up at ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak"
+        echo "    Data back up at ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak"
     fi
 
     # Back up (if any) older froster configurations
     if [[ -d ${HOME}/.config/froster ]]; then
 
         # Move the froster config directory to froster.bak
-        mv -f ${HOME}/.config/froster ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak
+        cp -rf ${HOME}/.config/froster ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak
 
-        # Keep the config.ini file (if any)
-        if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
-            # Create the froster directory if it does not exist
-            mkdir -p ${HOME}/.config/froster
+        echo "    Config back up at ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak"
+    fi
 
-            # Copy the config file to the data directory
-            cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ${HOME}/.config/froster/config.ini
-        fi
+    echo "  ...older froster installation backed up"
 
-        # Keep the froster-archives.json file (if any)
-        if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
-            # Create the froster directory if it does not exist
-            mkdir -p ${HOME}/.local/share/froster
-
-            # Copy the froster-archives.json file to the data directory
-            cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
-        fi
-
+    # Check if froster is already installed, if so uninstall it
+    if which froster >/dev/null; then
         echo
-        echo "Config back up at ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak"
-        echo
+        echo "Uninstalling existing froster installation..."
+        if pip list | grep -q froster >/dev/null 2>&1; then
+            pip uninstall froster >/dev/null 2>&1 &
+            spinner $!
+        fi
+        if pipx list | grep -q froster >/dev/null 2>&1; then
+            pipx uninstall froster >/dev/null 2>&1 &
+            spinner $!
+        fi
+        echo "  ...froster uninstalled"
+    fi
+
+
+    # Keep the froster-archives.json file (if any)
+    if [[ -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+        # Create the froster directory if it does not exist
+        mkdir -p ${HOME}/.local/share/froster
+
+        # Copy the froster-archives.json file to the data directory
+        cp -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
     fi
 
     # Remove old files
+    rm -rf ${HOME}/.local/share/froster
+    rm -rf ${HOME}/.config/froster
     rm -f ${HOME}/.local/bin/froster
     rm -f ${HOME}/.local/bin/froster.py
     rm -f ${HOME}/.local/bin/s3-restore.py
-
-    echo "  ...older froster installation backed up"
 }
 
 install_froster() {
-
 
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
@@ -221,22 +218,30 @@ install_froster() {
     REPO=${REPO:-"https://github.com/hpcnow/froster.git"}
     BRANCH=${BRANCH:-"develop"}
     
-    # Check if froster is already installed, if so uninstall it
-    if which froster >/dev/null; then
-        echo
-        echo "Uninstalling existing froster installation..."
-        pipx uninstall froster >/dev/null 2>&1 &
-        spinner $!
-        echo "  ...froster uninstalled"
-    fi
-
-
     echo
     echo "Installing latest version of froster from $REPO@$BRANCH..."
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
 
     spinner $!
+
+    # Keep the config.ini file (if any)
+    if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
+        # Create the froster directory if it does not exist
+        mkdir -p ${HOME}/.config/froster
+
+        # Copy the config file to the data directory
+        cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ${HOME}/.config/froster/config.ini
+    fi
+
+    # Keep the froster-archives.json file (if any)
+    if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+        # Create the froster directory if it does not exist
+        mkdir -p ${HOME}/.local/share/froster
+
+        # Copy the froster-archives.json file to the data directory
+        cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+    fi
 
     echo "  ...froster installed"
 }

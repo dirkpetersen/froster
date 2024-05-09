@@ -60,7 +60,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.10.1'
+__version__ = '0.10.2'
 
 
 class ConfigManager:
@@ -828,7 +828,8 @@ class ConfigManager:
         # Add an option to create a new bucket
         s3_buckets.append('+ Create new bucket')
 
-        default_bucket = self.bucket_name if hasattr(self, 'bucket_name') else None
+        default_bucket = self.bucket_name if hasattr(
+            self, 'bucket_name') else None
 
         # Ask user to choose an existing aws s3 bucket or create a new one
         s3_bucket = inquirer.list_input("Choose your aws s3 bucket",
@@ -1107,9 +1108,9 @@ class AWSBoto:
                 return False
 
             if self.check_credentials(aws_profile=self.cfg.aws_profile):
-                    self.set_session(profile_name=self.cfg.aws_profile,
-                                    region=self.cfg.aws_region)
-                    return True
+                self.set_session(profile_name=self.cfg.aws_profile,
+                                 region=self.cfg.aws_region)
+                return True
             else:
                 return False
         except:
@@ -1121,14 +1122,14 @@ class AWSBoto:
 
         if not bucket_name:
             raise ValueError('No bucket name provided')
-        
+
         try:
             # Check if the session is valid
             if not self._check_session():
-                print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+                print(
+                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
                 sys.exit(1)
-
 
             # Get the bucket Access Control List (ACL)
             bucket_info = self.s3_client.get_bucket_acl(Bucket=bucket_name)
@@ -1271,7 +1272,7 @@ class AWSBoto:
 
         if not bucket_name:
             raise ValueError("Bucket name not provided")
-        
+
         try:
 
             # Check if the session is valid
@@ -1280,7 +1281,7 @@ class AWSBoto:
                     f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
                 sys.exit(1)
-        
+
             print(f'\nCreating bucket {bucket_name}...')
 
             self.s3_client.create_bucket(Bucket=bucket_name,
@@ -1378,12 +1379,13 @@ class AWSBoto:
 
     def get_buckets(self):
         ''' Get a list of all the froster buckets in the current session'''
-        
+
         try:
-            
+
             # Check if the session is valid
             if not self._check_session():
-                print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+                print(
+                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
                 sys.exit(1)
 
@@ -1411,7 +1413,8 @@ class AWSBoto:
         try:
             # Check if the session is valid
             if not self._check_session():
-                print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+                print(
+                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
                 sys.exit(1)
 
@@ -1429,7 +1432,8 @@ class AWSBoto:
 
             # Check if the session is valid
             if not self._check_session():
-                print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+                print(
+                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
                 sys.exit(1)
 
@@ -1495,11 +1499,12 @@ class AWSBoto:
     def list_objects_in_bucket(self, bucket_name):
         if not bucket_name:
             raise ValueError('No bucket name provided')
-        
+
         try:
             # Check if the session is valid
             if not self._check_session():
-                print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+                print(
+                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
                 sys.exit(1)
 
@@ -1579,7 +1584,8 @@ class AWSBoto:
 
         # Check if the session is valid
         if not self._check_session():
-            print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print(
+                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
             print("run 'froster config --aws' to fix this.\n")
             sys.exit(1)
 
@@ -5862,7 +5868,8 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
         if args.monitor:
             froster_binary = os.path.join(cfg.bin_dir, 'froster')
-            cfg.add_systemd_cron_job(f'{froster_binary} restore --monitor', '30')
+            cfg.add_systemd_cron_job(
+                f'{froster_binary} restore --monitor', '30')
             return
 
         print(f'\n*****************************')
@@ -5915,6 +5922,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
 
     except:
         print_error()
+
 
 def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
     '''Index folders for Froster.'''
