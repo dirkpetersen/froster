@@ -60,7 +60,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.10.2'
+__version__ = '0.10.4'
 
 
 class ConfigManager:
