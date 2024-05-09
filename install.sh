@@ -221,6 +221,16 @@ install_froster() {
     REPO=${REPO:-"https://github.com/hpcnow/froster.git"}
     BRANCH=${BRANCH:-"develop"}
     
+    # Check if froster is already installed, if so uninstall it
+    if which froster >/dev/null; then
+        echo
+        echo "Uninstalling existing froster installation..."
+        pipx uninstall froster >/dev/null 2>&1 &
+        spinner $!
+        echo "  ...froster uninstalled"
+    fi
+
+
     echo
     echo "Installing latest version of froster from $REPO@$BRANCH..."
 
