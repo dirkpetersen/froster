@@ -597,8 +597,6 @@ class ConfigManager:
                 print('    froster config --aws\n')
                 sys.exit(0)
 
-            print('    ...AWS credentials are valid\n')
-
             # Check the seletected profile region
             aws_profile_region = self.__set_aws_get_config_region(
                 aws_profile=aws_profile)
@@ -764,7 +762,7 @@ class ConfigManager:
             config.add_section(section)
 
         # Set the value
-        config[section][key] = value
+        config[section][key] = str(value)
 
         # Write the config object to the config file
         with open(file, 'w') as f:
@@ -799,7 +797,7 @@ class ConfigManager:
         is_nih = inquirer.confirm(
             message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
 
-        self.__set_configuration_entry('NIH', 'is_nih', str(is_nih))
+        self.__set_configuration_entry('NIH', 'is_nih', is_nih)
 
         print(f'*** NIH S3 CONFIGURATION DONE***\n')
 
@@ -933,7 +931,7 @@ class ConfigManager:
                             f"\nNOTE: Local list of archived files and directories was moved to {shared_config_dir}\n")
 
         # Set the shared flag in the config file
-        self.__set_configuration_entry('SHARED', 'is_shared', str(is_shared))
+        self.__set_configuration_entry('SHARED', 'is_shared', is_shared)
 
         # Set the shared directory in the config file and move the config file shared sections to the shared config file
         if is_shared:
@@ -5828,85 +5826,90 @@ def print_version():
 
 def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
     '''Configure Froster settings.'''
-
-    if args.user:
-        cfg.set_user()
-        return
-
-    if args.aws:
-        cfg.set_aws(aws)
-        return
-
-    if args.shared:
-        cfg.set_shared()
-        return
-
-    if args.nih:
-        cfg.set_nih()
-        return
-
-    if args.s3:
-        cfg.set_s3(aws)
-        return
-
-    if args.slurm:
-        cfg.set_slurm(args)
-        return
-
-    if args.print:
-        cfg.print_config()
-        return
-
-    if args.monitor:
-        froster_binary = os.path.join(cfg.bin_dir, 'froster')
-        cfg.add_systemd_cron_job(f'{froster_binary} restore --monitor', '30')
-        return
-
-    print(f'\n*****************************')
-    print(f'*** FROSTER CONFIGURATION ***')
-    print(f'*****************************\n')
-
-    # Check if the configuration file exists and ask for overwrite
-    if os.path.exists(cfg.config_file):
-        is_overwrite = inquirer.confirm(
-            message=f"WARNING: You are about to overwrite {cfg.config_file}. Do you want to continue?", default=False)
-
-        if is_overwrite:
-            os.remove(cfg.config_file)
-        else:
+    try:
+        if args.user:
+            cfg.set_user()
             return
 
-    cfg.set_user()
-    cfg.set_aws(aws)
-    cfg.set_shared()
+        if args.aws:
+            cfg.set_aws(aws)
+            return
 
-    # If shared configuration and shared_config.ini file exists, then use it
-    if cfg.is_shared and os.path.exists(cfg.shared_config_file):
+        if args.shared:
+            cfg.set_shared()
+            return
+
+        if args.nih:
+            cfg.set_nih()
+            return
+
+        if args.s3:
+            cfg.set_s3(aws)
+            return
+
+        if args.slurm:
+            cfg.set_slurm(args)
+            return
+
+        if args.print:
+            cfg.print_config()
+            return
+
+        if args.monitor:
+            froster_binary = os.path.join(cfg.bin_dir, 'froster')
+            cfg.add_systemd_cron_job(f'{froster_binary} restore --monitor', '30')
+            return
+
+        print(f'\n*****************************')
+        print(f'*** FROSTER CONFIGURATION ***')
+        print(f'*****************************\n')
+
+        # Check if the configuration file exists and ask for overwrite
+        if os.path.exists(cfg.config_file):
+            print(f'WARNING: You are about to overwrite {cfg.config_file}\n')
+            is_overwrite = inquirer.confirm(
+                message=f"Do you want to continue?", default=False)
+
+            if is_overwrite:
+                os.remove(cfg.config_file)
+            else:
+                return
+
+        cfg.set_user()
+        cfg.set_aws(aws)
+        cfg.set_shared()
+
+        # If shared configuration and shared_config.ini file exists, then use it
+        if cfg.is_shared:
+            if hasattr(cfg, 'shared_config_file') and os.path.exists(cfg.shared_config_file):
+
+                print(f'\n**********************************')
+                print(f'*** FROSTER CONFIGURATION DONE ***')
+                print(f'**********************************\n')
+
+                print(textwrap.dedent(f'''
+                    Local configuration: {cfg.config_file}
+                    Shared configuration: {cfg.shared_config_file}
+
+                    You can overwrite specific configuration sections. Check options using the command:
+                        froster config --help\n
+                    '''))
+                sys.exit(0)
+        else:
+
+            cfg.set_nih()
+            cfg.set_s3(aws)
+            cfg.set_slurm(args)
+
         print(f'\n**********************************')
         print(f'*** FROSTER CONFIGURATION DONE ***')
         print(f'**********************************\n')
 
-        print(textwrap.dedent(f'''
-            Local configuration: {cfg.config_file}
-            Shared configuration: {cfg.shared_config_file}
+        print(f'\nYou can print the current configuration using the command:')
+        print(f'    froster config --print\n')
 
-            You can overwrite specific configuration sections. Check options using the command:
-                froster config --help\n
-            '''))
-        sys.exit(0)
-    else:
-
-        cfg.set_nih()
-        cfg.set_s3(aws)
-        cfg.set_slurm(args)
-
-    print(f'\n**********************************')
-    print(f'*** FROSTER CONFIGURATION DONE ***')
-    print(f'**********************************\n')
-
-    print(f'\nYou can print the current configuration using the command:')
-    print(f'    froster config --print\n')
-
+    except:
+        print_error()
 
 def subcmd_index(args: argparse.Namespace, cfg: ConfigManager, arch: Archiver):
     '''Index folders for Froster.'''
