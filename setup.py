@@ -5,7 +5,7 @@ with open('README.md', 'r') as f:
 
 setup(
     name='froster',
-    version='0.10.2',
+    version='0.10.4',
     license='MIT',
     packages=find_packages(),
     install_requires=[

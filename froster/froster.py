@@ -60,7 +60,7 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.10.2'
+__version__ = '0.10.4'
 
 
 class ConfigManager:
@@ -88,7 +88,9 @@ class ConfigManager:
         # Initialize the variables that check if specific configuration sections have been initialized
         self.user_init = False
         self.aws_init = False
+        self.nih_init = False
         self.s3_init = False
+        self.configuration_done = False
 
         # Whoami
         self.whoami = getpass.getuser()
@@ -193,6 +195,9 @@ class ConfigManager:
             # NIH configuration
             self.is_nih = config.getboolean('NIH', 'is_nih', fallback=None)
 
+            # Set nih init flag
+            self.nih_init = True if self.is_nih is not None else False
+
             # Current S3 Bucket name
             self.bucket_name = config.get(
                 'S3', 'bucket_name', fallback=None)
@@ -240,6 +245,10 @@ class ConfigManager:
 
             self.ec2_last_instance = config.get(
                 'CLOUD', 'ec2_last_instance', fallback=None)
+
+        if  self.user_init and self.aws_init and self.s3_init and self.nih_init:
+            self.configuration_done = True
+            
 
     def __repr__(self):
         ''' Return a string representation of the object'''
@@ -4664,26 +4673,33 @@ class Archiver:
 
     def _archive_json_add_entry(self, key, value):
         '''Add a new entry to the archive JSON file'''
+        try:
 
-        # Initialize the data dictionary in case archive_json does not exist
-        data = {}
+            # Initialize the data dictionary in case archive_json does not exist
+            data = {}
 
-        # Read the archive JSON file
-        if os.path.isfile(self.archive_json):
-            with open(self.archive_json, 'r') as file:
-                try:
-                    data = json.load(file)
-                except:
-                    print('Error in Archiver._archive_json_add_entry():')
-                    print(f'Cannot read {self.archive_json}, file corrupt?')
-                    return False
+            # Read the archive JSON file
+            if os.path.isfile(self.archive_json):
+                with open(self.archive_json, 'r') as file:
+                    try:
+                        data = json.load(file)
+                    except:
+                        print('Error in Archiver._archive_json_add_entry():')
+                        print(
+                            f'Cannot read {self.archive_json}, file corrupt?')
+                        return
 
-        # Add the new entry to the data dictionary
-        data[key] = value
+            # Add the new entry to the data dictionary
+            data[key] = value
 
-        # Write the updated data dictionary to the archive JSON file
-        with open(self.archive_json, 'w') as file:
-            json.dump(data, file, indent=4)
+            # Create the directory for the archive JSON file if it does not exist
+            os.makedirs(os.path.dirname(self.archive_json), exist_ok=True)
+
+            # Write the updated data dictionary to the archive JSON file
+            with open(self.archive_json, 'w') as file:
+                json.dump(data, file, indent=4)
+        except:
+            print_error()
 
     def _is_folder_archived(self, folder):
         '''Check if an entry exists in the archive JSON file'''
@@ -5221,7 +5237,7 @@ class Rclone:
 
                 # This is the solution i found to prevent the popen subprocess to throw errors due
                 # our particular usage of rclone.
-                output = True
+                output = False
 
                 if output:
                     # Print output in stdout
@@ -6557,6 +6573,13 @@ def main():
 
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
+
+        # Do not allow other commands rather than config if the configuration is not set
+        if not cfg.configuration_done and args.subcmd not in ['config', 'cnf']:
+            print('\nFroster is not full configured yet.\n')
+            print('Run "froster config" for a full new configuration.')
+            print('Run "froster config --help" for more information.\n')
+            sys.exit(1)
 
         # call a function for each sub command in our CLI
         if args.subcmd in ['config', 'cnf']:
