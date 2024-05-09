@@ -828,9 +828,11 @@ class ConfigManager:
         # Add an option to create a new bucket
         s3_buckets.append('+ Create new bucket')
 
+        default_bucket = self.bucket_name if hasattr(self, 'bucket_name') else None
+
         # Ask user to choose an existing aws s3 bucket or create a new one
         s3_bucket = inquirer.list_input("Choose your aws s3 bucket",
-                                        default=self.bucket_name,
+                                        default=default_bucket,
                                         choices=s3_buckets)
 
         # Check if user wants to create a new aws s3 bucket
