@@ -4516,8 +4516,138 @@ class Archiver:
         except Exception:
             print_error()
 
+
+    def _restore_slurm(self, folders):
+        '''Restore the given folder using Slurm'''
+        '''
+        GIVEN BY COPILOT
+        # Create a temporary script file
+        script_file = os.path.join(
+            self.cfg.tmpdir, 'froster-restore-slurm.sh')
+
+        try:
+            # Open the script file
+            with open(script_file, 'w') as script:
+
+                # Write the shebang
+                script.write('#!/bin/bash\n\n')
+
+                # Write the commands to the script file
+                script.write(f'#!/bin/bash\n\n')
+                script.write(f'#SBATCH --job-name=froster-restore\n')
+                script.write(f'#SBATCH --output=froster-restore-%j.out\n')
+                script.write(f'#SBATCH --error=froster-restore-%j.err\n')
+                script.write(f'#SBATCH --time=24:00:00\n')
+                script.write(f'#SBATCH --mem=8G\n')
+                script.write(f'#SBATCH --cpus-per-task=1\n')
+                script.write(f'#SBATCH --partition=short\n\n')
+
+                # Write the commands to the script file
+                script.write(f'echo "Restoring folders..." \n\n')
+
+                # Write the commands to the script file
+                script.write(f'froster restore {" ".join(folders)}\n\n')
+
+            # Set the permissions of the script file
+            os.chmod(script_file, 0o755)
+
+            # Run the script file
+            ret = subprocess.run(['sbatch', script_file])
+
+            # Check if the script was submitted successfully
+            if ret.returncode == 0:
+                print(
+                    f'\nSlurm job submitted successfully. You can check the status of the job using the command:\n')
+                print(f'    squeue -u {self.cfg.whoami}\n')
+
+            else:
+                print(
+                    f'\nError: Slurm job submission failed. Please check the error message above.\n')
+
+        except Exception:
+            print_error()
+        '''
+
+        if shutil.which('sbatch') and args.noslurm == False and args.nodownload == False:
+            # start a future Slurm job just for the download
+            se = SlurmEssentials(args, cfg)
+            # get a job start time 12 hours from now
+            fut_time = se.get_future_start_time(12)
+            label = fld.replace('/', '+')
+            label = label.replace(' ', '_')
+            shortlabel = os.path.basename(fld)
+            myjobname = f'froster:restore:{shortlabel}'
+            email = cfg.email
+            se.add_line(f'#SBATCH --job-name={myjobname}')
+            se.add_line(f'#SBATCH --begin={fut_time}')
+            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+            se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --requeue')
+            se.add_line(
+                f'#SBATCH --output=froster-download-{label}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+            se.add_line(f'#SBATCH --mail-user={email}')
+            se.add_line(f'#SBATCH --time={se.walltime}')
+            if se.partition:
+                se.add_line(f'#SBATCH --partition={se.partition}')
+            if se.qos:
+                se.add_line(f'#SBATCH --qos={se.qos}')
+            # original cmdline
+            cmdline = " ".join(map(shlex.quote, sys.argv))
+            if not "--profile" in cmdline and args.aws_profile:
+                cmdline = cmdline.replace(
+                    '/froster.py ', f'/froster --profile {args.aws_profile} ')
+            else:
+                cmdline = cmdline.replace('/froster.py ', '/froster ')
+            if not fld in cmdline:
+                cmdline = f'{cmdline} "{fld}"'
+            printdbg(f'Command line passed to Slurm:\n{cmdline}')
+            se.add_line(cmdline)
+            jobid = se.sbatch()
+            print(
+                f'Submitted froster download job to run in 12 hours: {jobid}')
+            print(f'Check Job Output:')
+            print(f' tail -f froster-download-{label}-{jobid}.out')
+
+        else:
+            se = SlurmEssentials(args, cfg)
+            label = args.folders[0].replace('/', '+')
+            label = label.replace(' ', '_')
+            shortlabel = os.path.basename(args.folders[0])
+            myjobname = f'froster:restore:{shortlabel}'
+            email = cfg.email
+            se.add_line(f'#SBATCH --job-name={myjobname}')
+            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+            se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --requeue')
+            se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+            se.add_line(f'#SBATCH --mail-user={email}')
+            se.add_line(f'#SBATCH --time={se.walltime}')
+            if se.partition:
+                se.add_line(f'#SBATCH --partition={se.partition}')
+            if se.qos:
+                se.add_line(f'#SBATCH --qos={se.qos}')
+            cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+            if not "--profile" in cmdline and args.aws_profile:
+                cmdline = cmdline.replace(
+                    '/froster.py ', f'/froster --profile {args.aws_profile} ')
+            else:
+                cmdline = cmdline.replace('/froster.py ', '/froster ')
+            if not args.folders[0] in cmdline:
+                folders = '" "'.join(args.folders)
+                cmdline = f'{cmdline} "{folders}"'
+            printdbg(f'Command line passed to Slurm:\n{cmdline}')
+            se.add_line(cmdline)
+            jobid = se.sbatch()
+            print(f'Submitted froster restore job: {jobid}')
+            print(f'Check Job Output:')
+            print(f' tail -f froster-restore-{label}-{jobid}.out')
+
+
     def restore(self, folders, aws: AWSBoto):
         '''Restore the given folder'''
+
         try:
             # Clean the provided paths
             folders = clean_path_list(folders)
