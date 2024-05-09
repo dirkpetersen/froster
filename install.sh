@@ -219,7 +219,7 @@ install_froster() {
     BRANCH=${BRANCH:-"develop"}
     
     echo
-    echo "Installing latest version of froster from $REPO@$BRANCH..."
+    echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
 
