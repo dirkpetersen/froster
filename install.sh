@@ -213,8 +213,6 @@ backup_old_installation() {
 
 install_froster() {
 
-    echo
-    echo "Installing latest version of froster..."
 
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
@@ -222,6 +220,9 @@ install_froster() {
     # TODO: Update path once froster is in PyPi repository
     REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
     BRANCH=${BRANCH:-"main"}
+    
+    echo
+    echo "Installing latest version of froster from $REPO@$BRANCH..."
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
 
