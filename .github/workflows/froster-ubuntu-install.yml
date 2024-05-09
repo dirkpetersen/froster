@@ -1,18 +1,14 @@
 name: froster-ubuntu-install
-run-name: Froster installs correctly in Ubuntu-latest
-on: [push]
+run-name: Check that froster installs correctly in Ubuntu-latest
+on: [push, pull_request]
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: which curl
-      - run: which python3
-      - run: which pipx
-      - run: which gcc
-      - run: which unzip
-      - run: pipx environment
-      - run: ./install.sh
-      - run: froster --version
+    steps:      
+      - name: Install Froster
+        run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
+
+      - name: Check Froster is installed
+        run: froster --version
 
 
