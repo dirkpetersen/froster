@@ -631,6 +631,9 @@ class ConfigManager:
         # Set the AWS profile in the boto3 session
         aws.set_session(profile_name, region)
 
+        # Set aws init flag
+        self.aws_init = True
+
         print(f'*** AWS CONFIGURATION DONE ***\n')
 
     def __set_aws_config(self, aws_profile_name, region):
@@ -804,6 +807,13 @@ class ConfigManager:
 
         print(f'\n*** S3 CONFIGURATION ***\n')
 
+        # Check if aws configuration is complete
+        if not self.aws_init:
+            print(f'AWS configuration is missing')
+            print('You can configure aws settings using the command:')
+            print('    froster config --aws')
+            sys.exit(0)
+
         print(f'Checking AWS credentials for profile "{self.aws_profile}"...')
         if aws.check_credentials():
             print('    ...AWS credentials are valid\n')
@@ -866,6 +876,9 @@ class ConfigManager:
 
         # Store aws s3 storage class in the config object
         self.__set_configuration_entry('S3', 'storage_class', storage_class)
+
+        # Set the s3 init flag
+        self.s3_init = True
 
         print(f'\n*** S3 CONFIGURATION DONE ***\n')
 
@@ -1007,6 +1020,9 @@ class ConfigManager:
         # Set the user's email in the config file
         self.__set_configuration_entry('USER', 'email', email)
 
+        # Set the user init flag
+        self.user_init = True
+
         print(f'*** USER CONFIGURATION DONE ***\n')
 
     def set_slurm(self, args):
@@ -1081,18 +1097,27 @@ class AWSBoto:
         self.cfg = cfg
         self.arch = arch
 
-        self.valid_session = False
+    def _check_session(self):
+        '''Check if the current session is valid'''
 
-        if hasattr(cfg, 'aws_profile'):
-            if self.check_credentials(aws_profile=cfg.aws_profile):
-                self.set_session(profile_name=cfg.aws_profile,
-                                 region=cfg.aws_region)
+        if self.check_credentials(aws_profile=self.cfg.aws_profile):
+                self.set_session(profile_name=self.cfg.aws_profile,
+                                region=self.cfg.aws_region)
+                return True
+        else:
+            return False
 
     def check_bucket_access(self, bucket_name, readwrite=False):
         '''Check if the user has access to the given bucket'''
 
         if not bucket_name:
             raise ValueError('No bucket name provided')
+
+        # Check if the session is valid
+        if not self._check_session():
+            print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
 
         try:
             # Get the bucket Access Control List (ACL)
@@ -1237,9 +1262,13 @@ class AWSBoto:
         if not bucket_name:
             raise ValueError("Bucket name not provided")
 
-        if not hasattr(self, 's3_client'):
-            raise ValueError("No S3 client found. Set AWS credentials first.")
-
+        # Check if the session is valid
+        if not self._check_session():
+            print(
+                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
+        
         try:
 
             print(f'\nCreating bucket {bucket_name}...')
@@ -1339,6 +1368,12 @@ class AWSBoto:
 
     def get_buckets(self):
         ''' Get a list of all the froster buckets in the current session'''
+        
+        # Check if the session is valid
+        if not self._check_session():
+            print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
 
         try:
             # Get all the buckets
@@ -1363,6 +1398,12 @@ class AWSBoto:
     def get_endpoint(self):
         ''' Get the endpoint URL of the current session'''
 
+        # Check if the session is valid
+        if not self._check_session():
+            print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
+
         if hasattr(self, 's3_client'):
             return self.s3_client.meta.endpoint_url
         else:
@@ -1370,6 +1411,12 @@ class AWSBoto:
 
     def get_hostname(self):
         ''' Get the hostname of the current session'''
+
+        # Check if the session is valid
+        if not self._check_session():
+            print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
 
         if (hasattr(self, 's3_client')):
             ep = self.s3_client.meta.endpoint_url
@@ -1384,6 +1431,9 @@ class AWSBoto:
 
     def get_regions(self):
         '''Get the regions for the current session or get default regions.'''
+
+        # Check if the session is valid
+        self._check_session()
 
         try:
             regions = self.ec2_client.describe_regions()
@@ -1423,6 +1473,12 @@ class AWSBoto:
     def list_objects_in_bucket(self, bucket_name):
         if not bucket_name:
             raise ValueError('No bucket name provided')
+        
+        # Check if the session is valid
+        if not self._check_session():
+            print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
 
         response = self.s3_client.list_objects_v2(Bucket=bucket_name)
 
@@ -1447,9 +1503,6 @@ class AWSBoto:
 
             # TODO: This is for _ec2_create_instance function. Review if we really needed
             self.session = session
-
-            # Store that the session is valid
-            self.valid_session = True
 
         except Exception as e:
             pass
@@ -1497,6 +1550,12 @@ class AWSBoto:
         return sufficient
 
     def glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk"):
+
+        # Check if the session is valid
+        if not self._check_session():
+            print(f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
 
         try:
             paginator = self.s3_client.get_paginator('list_objects_v2')
@@ -3616,6 +3675,13 @@ class Archiver:
 
             if archive_folder_info is None:
                 print(f'\nWARNING: folder "{folder}" not in archive.\n')
+                print(f'Nothing will be restored.\n')
+                continue
+
+            if not os.path.exists(folder) and not mountpoint:
+                print(
+                    f'\nWARNING: folder "{folder}" does not exist and no mountpoint provided.\n')
+                print(f'Nothing will be restored.\n')
                 continue
 
             s3_folder = archive_folder_info['archive_folder']
@@ -6089,9 +6155,11 @@ def subcmd_ssh(args, cfg: ConfigManager, aws: AWSBoto):
 
 
 def subcmd_credentials(args, aws: AWSBoto):
+    '''Check AWS credentials'''
+
     print("\nChecking AWS credentials...")
 
-    if aws.valid_session:
+    if aws.check_credentials():
         print('    ...AWS credentials are valid\n')
     else:
         print('    ...AWS credentials are NOT valid\n')
