@@ -218,11 +218,8 @@ install_froster() {
     pipx ensurepath >/dev/null 2>&1
 
     # TODO: Update path once froster is in PyPi repository
-    echo $REPO
-    echo $BRANCH
-    
-    REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
-    BRANCH=${BRANCH:-"main"}
+    REPO=${REPO:-"https://github.com/hpcnow/froster.git"}
+    BRANCH=${BRANCH:-"develop"}
     
     echo
     echo "Installing latest version of froster from $REPO@$BRANCH..."
