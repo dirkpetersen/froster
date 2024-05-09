@@ -148,6 +148,19 @@ check_apt_dependencies() {
         echo
         exit 1
     fi
+
+    # Check if fuse3 is installed
+    if [[ -z $(command -v fusermount3) ]]; then
+        echo "Error: fusermount3 is not installed."
+        echo
+        echo "Please install fuse3"
+        echo "In most linux distros you can install the latest version of fuse3 by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y fuse3"
+        echo
+        exit 1
+    fi
+
 }
 
 # Backup older installations (if any) but keep the froster-archive.json and config.ini files
@@ -260,14 +273,17 @@ install_pwalk() {
     rm -rf ${pwalk_path} >/dev/null 2>&1
 
     # Gather pwalk repository files
+    echo "    Downloading pwalk files"
     curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1 &
     spinner $!
 
     # Compile pwalk tool and put exec file in froster's binaries folder
+    echo "    Compiling pwalk"
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
     spinner $!
 
     # Move pwalk to froster's binaries folder
+    echo "    Moving pwalk to froster's binaries folder"
     if [ -d "${HOME}/.local/share/pipx" ]; then
         mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
@@ -280,6 +296,7 @@ install_pwalk() {
     fi
 
     # Delete downloaded pwalk files
+    echo "    Cleaning up pwalk installation files"
     rm -rf ${pwalk_path} >/dev/null 2>&1
 
     echo "  ...pwalk installed"
@@ -310,14 +327,17 @@ install_rclone() {
     rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 
     # Download the rclone zip file
+    echo "    Downloading rclone files"
     curl -LO $rclone_url >/dev/null 2>&1 &
     spinner $!
 
     # Extract the zip file
+    echo "    Extracting rclone files"
     unzip rclone-current-linux-*.zip >/dev/null 2>&1 &
     spinner $!
 
     # Move rclone to froster's binaries folder
+    echo "    Moving rclone to froster's binaries folder"
     if [ -d "${HOME}/.local/share/pipx" ]; then
         mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
@@ -330,6 +350,7 @@ install_rclone() {
     fi
 
     # Remove the downloaded zip file
+    echo "    Cleaning up rclone installation files"
     rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 
     echo "  ...rclone installed"
