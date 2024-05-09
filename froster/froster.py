@@ -869,9 +869,12 @@ class ConfigManager:
         # Store aws s3 archive dir in the config object
         self.__set_configuration_entry('S3', 'archive_dir', archive_dir)
 
+        default_storage_class = self.storage_class if hasattr(
+            self, 'storage_class') else None
+
         # Get the storage class for the selected bucket
         storage_class = inquirer.list_input("Choose the AWS S3 storage class",
-                                            default=self.storage_class,
+                                            default=default_storage_class,
                                             choices={'DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING'})
 
         # Store aws s3 storage class in the config object
