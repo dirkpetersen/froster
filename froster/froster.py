@@ -1577,6 +1577,7 @@ class AWSBoto:
         buckets = []
         for folder in folders:
             bucket, *_ = self.arch.archive_get_bucket_info(folder)
+
             if bucket:
                 buckets.append(bucket)
             else:
@@ -1663,17 +1664,6 @@ class AWSBoto:
                     )
                     triggered_keys.append(object_key)
 
-                # except botocore.exceptions.ClientError as e:
-                #     if e.response['Error']['Code'] == 'RestoreAlreadyInProgress':
-                #         print(
-                #             f'Restore is already in progress for {object_key}. Skipping...')
-
-                #         if object_key not in restoring_keys:
-                #             restoring_keys.append(object_key)
-                #     else:
-                #         print(f'Error occurred for {object_key}: {e}')
-                #         return [], [], [], []
-
                 except:
                     print_error()
                     print(f'Restore request for {object_key} failed.')
@@ -1695,6 +1685,9 @@ class AWSBoto:
         # bucket_name, prefix, recursive=False
         for fld in folders:
             buc, pre, recur, _ = self.arch.archive_get_bucket_info(fld)
+            if not buc:
+                print(f'Error: No archive config found for folder {fld}')
+                continue
             # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
             # Use paginator to handle buckets with large number of objects
             paginator = self.s3_client.get_paginator('list_objects_v2')
@@ -4162,35 +4155,6 @@ class Archiver:
                 print_error()
             return False
 
-    def _untar_files(self, directory, recursive=False):
-        for root, dirs, files in self._walker(directory):
-            if not recursive and root != directory:
-                break
-            tar_path = os.path.join(root, 'Froster.smallfiles.tar')
-            if not os.path.exists(tar_path):
-                # print('{tar_path} does not exist, skipping folder {root}')
-                continue
-            try:
-                print(f'  Untarring Froster.smallfiles.tar ... ', end='')
-                with tarfile.open(tar_path, "r") as tar:
-                    tar.extractall(path=root)
-                os.remove(tar_path)
-                print('Done.')
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print(
-                        "Permission denied. Please ensure you have the necessary permissions to access the file or directory.")
-                    return 13
-                else:
-                    print(
-                        f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
-                    return False
-            except Exception as e:
-                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
-                return False
-        return True
-
     def reset_folder(self, directory, recursive=False):
         '''Remove all froster artifacts from a folder and untar small files'''
 
@@ -4432,48 +4396,40 @@ class Archiver:
             f'Files founds in _get_tar_content: {", ".join(files)}')
         return files
 
+    def _download_locally(self, folder):
+        
+        # Get the bucket and prefix
+        bucket, prefix, *_= self.archive_get_bucket_info(folder)
+
+        if not bucket:
+            print(f'\nFolder {folder} is not registered as archived')
+            return
+        
+        # All retrievals are done, now we can download the files
+        source = ':s3:' + bucket + '/' + prefix
+        target = folder
+
+        # Download the restored files
+        print(f'Downloading files...')
+        rclone = Rclone(self.args, self.cfg)
+        if rclone.copy(source, target, '--max-depth', '1'):
+            print('    ...done\n')
+        else:
+            print('    ...FAILED\n')
+
+        # checksum verification
+        self._restore_verify(source, target)
+    
     def _restore_locally(self, folder, aws: AWSBoto):
         try:
-            # Get the folder archiving info from froster-archives.json file
-            archive_folder_info = self.froster_archives_get_entry(folder)
 
-            # Check the folder is archived
-            if not archive_folder_info:
-                print(f'\nFolder {folder} is not registered as archived')
-                return
+            print(f'\nRestoring folder "{folder}..."\n')
 
-            # # source = archive_folder_info['archive_folder']+tail+'/'
-            # # target = folder
-
-            # Get the archive folder
-            local_folder = archive_folder_info['local_folder']
-            archive_folder = archive_folder_info['archive_folder']
-            s3_storage_class = archive_folder_info['s3_storage_class']
-
-            profile = archive_folder_info['profile']
-            user = archive_folder_info['user']
-            archive_mode = archive_folder_info['archive_mode']
-
-            # Get the bucket and prefix
-            bucket, prefix = archive_folder.split('/', 1)
-
-            # Clean bucket
-            bucket = bucket.replace(':s3:', '')
-
-            # Clean prefix so it works even if folder is a subfolder of an stored parent
-            prefix = prefix.replace(local_folder, '')
-            prefix = prefix + folder + '/'
-
-            # archive_folder = rowdict['archive_folder'].split('/', 1)
-
-            # # Get the bucket info from froster-archives.json
-            # bucket, prefix, recursive, is_glacier = self.archive_get_bucket_info(folder)
-
-            # print(f'archive_folder_info: {archive_folder_info}')
-            # print(f'buck: {bucket}, pref: {prefix}, rec: {recursive}, gla: {is_glacier}')
-
-            if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
-
+            # Get folder info
+            bucket, prefix, is_recursive, is_glacier, profile, user = self.archive_get_bucket_info(
+                folder)
+            
+            if is_glacier:
                 trig, rest, done, notg = aws.glacier_restore(
                     bucket, prefix, self.args.days, self.args.retrieveopt)
 
@@ -4481,43 +4437,173 @@ class Archiver:
                 print(f'    Currently retrieving from Glacier: {len(rest)}')
                 print(f'    Retrieved from Glacier: {len(done)}')
                 print(f'    Not in Glacier: {len(notg)}\n')
+
                 if len(trig) > 0 or len(rest) > 0:
-                    # glacier is still ongoing, return # of pending ops
-                    return len(trig)+len(rest)
-
-            # If nodownload flag is set we are done
-            if self.args.nodownload:
-                return
-
-            # All retrievals are done, now we can download the files
-            source = ':s3:' + bucket + '/' + prefix
-            target = folder
-
-            print(f'    Downloading files...')
-            rclone = Rclone(self.args, self.cfg)
-            ret = rclone.copy(source, target, '--max-depth', '1')
-
-            if ret:
-                print('        ...done')
-                is_folder_archived = True
+                    # glacier is still ongoing
+                    print(f'\n    Glacier retrievals pending. Depending on the storage class and restore mode run this command again in:')
+                    print(f'        Expedited mode: ~ 5 minuts\n')
+                    print(f'        Standard mode: ~ 12 hours\n')
+                    print(f'        Bulk mode: ~ 48 hours\n')
+                    return False
             else:
-                print('        ...FAILED\n')
+                print(f'...no glacier restore needed\n')
 
-            exit("patata")
+            print(f'...folder restored\n')
 
-            # checksum
-            if self._restore_verify(source, target, recursive):
-                print(
-                    f'Target and archive are identical. {ttransfers} files with {total} transferred.')
-            else:
-                print(f'Problem: target and archive are NOT identical.')
-                return False
+            return True
 
         except Exception:
             print_error()
+            sys.exit(1)
+
+
+    def _restore_slurm(self, folders):
+        '''Restore the given folder using Slurm'''
+        '''
+        GIVEN BY COPILOT
+        # Create a temporary script file
+        script_file = os.path.join(
+            self.cfg.tmpdir, 'froster-restore-slurm.sh')
+
+        try:
+            # Open the script file
+            with open(script_file, 'w') as script:
+
+                # Write the shebang
+                script.write('#!/bin/bash\n\n')
+
+                # Write the commands to the script file
+                script.write(f'#!/bin/bash\n\n')
+                script.write(f'#SBATCH --job-name=froster-restore\n')
+                script.write(f'#SBATCH --output=froster-restore-%j.out\n')
+                script.write(f'#SBATCH --error=froster-restore-%j.err\n')
+                script.write(f'#SBATCH --time=24:00:00\n')
+                script.write(f'#SBATCH --mem=8G\n')
+                script.write(f'#SBATCH --cpus-per-task=1\n')
+                script.write(f'#SBATCH --partition=short\n\n')
+
+                # Write the commands to the script file
+                script.write(f'echo "Restoring folders..." \n\n')
+
+                # Write the commands to the script file
+                script.write(f'froster restore {" ".join(folders)}\n\n')
+
+            # Set the permissions of the script file
+            os.chmod(script_file, 0o755)
+
+            # Run the script file
+            ret = subprocess.run(['sbatch', script_file])
+
+            # Check if the script was submitted successfully
+            if ret.returncode == 0:
+                print(
+                    f'\nSlurm job submitted successfully. You can check the status of the job using the command:\n')
+                print(f'    squeue -u {self.cfg.whoami}\n')
+
+            else:
+                print(
+                    f'\nError: Slurm job submission failed. Please check the error message above.\n')
+
+        except Exception:
+            print_error()
+        '''
+
+        if shutil.which('sbatch') and args.noslurm == False and args.nodownload == False:
+            # start a future Slurm job just for the download
+            se = SlurmEssentials(args, cfg)
+            # get a job start time 12 hours from now
+            fut_time = se.get_future_start_time(12)
+            label = fld.replace('/', '+')
+            label = label.replace(' ', '_')
+            shortlabel = os.path.basename(fld)
+            myjobname = f'froster:restore:{shortlabel}'
+            email = cfg.email
+            se.add_line(f'#SBATCH --job-name={myjobname}')
+            se.add_line(f'#SBATCH --begin={fut_time}')
+            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+            se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --requeue')
+            se.add_line(
+                f'#SBATCH --output=froster-download-{label}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+            se.add_line(f'#SBATCH --mail-user={email}')
+            se.add_line(f'#SBATCH --time={se.walltime}')
+            if se.partition:
+                se.add_line(f'#SBATCH --partition={se.partition}')
+            if se.qos:
+                se.add_line(f'#SBATCH --qos={se.qos}')
+            # original cmdline
+            cmdline = " ".join(map(shlex.quote, sys.argv))
+            if not "--profile" in cmdline and args.aws_profile:
+                cmdline = cmdline.replace(
+                    '/froster.py ', f'/froster --profile {args.aws_profile} ')
+            else:
+                cmdline = cmdline.replace('/froster.py ', '/froster ')
+            if not fld in cmdline:
+                cmdline = f'{cmdline} "{fld}"'
+            printdbg(f'Command line passed to Slurm:\n{cmdline}')
+            se.add_line(cmdline)
+            jobid = se.sbatch()
+            print(
+                f'Submitted froster download job to run in 12 hours: {jobid}')
+            print(f'Check Job Output:')
+            print(f' tail -f froster-download-{label}-{jobid}.out')
+
+        else:
+            se = SlurmEssentials(args, cfg)
+            label = args.folders[0].replace('/', '+')
+            label = label.replace(' ', '_')
+            shortlabel = os.path.basename(args.folders[0])
+            myjobname = f'froster:restore:{shortlabel}'
+            email = cfg.email
+            se.add_line(f'#SBATCH --job-name={myjobname}')
+            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
+            se.add_line(f'#SBATCH --mem=64G')
+            se.add_line(f'#SBATCH --requeue')
+            se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+            se.add_line(f'#SBATCH --mail-user={email}')
+            se.add_line(f'#SBATCH --time={se.walltime}')
+            if se.partition:
+                se.add_line(f'#SBATCH --partition={se.partition}')
+            if se.qos:
+                se.add_line(f'#SBATCH --qos={se.qos}')
+            cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+            if not "--profile" in cmdline and args.aws_profile:
+                cmdline = cmdline.replace(
+                    '/froster.py ', f'/froster --profile {args.aws_profile} ')
+            else:
+                cmdline = cmdline.replace('/froster.py ', '/froster ')
+            if not args.folders[0] in cmdline:
+                folders = '" "'.join(args.folders)
+                cmdline = f'{cmdline} "{folders}"'
+            printdbg(f'Command line passed to Slurm:\n{cmdline}')
+            se.add_line(cmdline)
+            jobid = se.sbatch()
+            print(f'Submitted froster restore job: {jobid}')
+            print(f'Check Job Output:')
+            print(f' tail -f froster-restore-{label}-{jobid}.out')
+
+
+    def _is_folder_empty(self, folder):
+        try:
+            # Check if the folder has any non-froster file
+
+            for root, dirs, files in self._walker(folder):
+                if root != folder:
+                    break
+                for file in files:
+                    if file not in self.dirmetafiles:
+                        return False
+            return True
+
+        except:
+            print_error()
+            return False
 
     def restore(self, folders, aws: AWSBoto):
         '''Restore the given folder'''
+
         try:
             # Clean the provided paths
             folders = clean_path_list(folders)
@@ -4526,6 +4612,7 @@ class Archiver:
             is_recursive = self.args.recursive
             is_slurm = shutil.which(
                 'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
+
 
             # Check if there is a conflict between folders and recursive flag,
             # i.e. recursive flag is set and a folder is a subdirectory of another one
@@ -4547,73 +4634,70 @@ class Archiver:
                         if not is_recursive and root != folder:
                             break
 
-                        print(f'\nRESTORING FOLDER: {folder}\n')
-                        ret = self._restore_locally(root, aws)
-                        if ret == 0:
-                            print(f'    ...RESTORED')
-                        elif ret > 1:
-                            print(
-                                f'    Glacier retrievals pending, run this command again in 5-12h\n')
-                        else:
-                            print(f'    ...FAILED\n')
+                        if not self._is_folder_empty(root):
+                            print(f'\nWARNING: Folder {root} contains non-froster files. Please empty the folder before restoring.\n')
+                            continue
+
+                        if self._restore_locally(root, aws):
+
+                            # If nodownload flag is set we are done
+                            if self.args.nodownload:
+                                print(f'\nFolder restored but not downloaded (--no-download flag set)\n')
+                                return
+                            else:
+                                self._download_locally(root)
+
         except Exception:
             print_error()
 
-    def _restore_verify(self, source, target, recursive=False):
-        # post download tasks like checksum verification and untarring
-        rclone = Rclone(self.args, self.cfg)
-        for root, dirs, files in self._walker(target):
-            if not recursive and root != target:
-                break
-            restpath = root
-            print(f'\n  Checking folder "{restpath}" ... ')
-            if root != target:
-                source = source + os.path.basename(root) + '/'
-            try:
+    def _restore_verify(self, source, target):
+        '''Verify the restored files'''
+        try:
+            for root, dirs, files in self._walker(target):
+                if root != target:
+                    break
 
-                # This needs to happen recursively
-                tarred_files = self._get_tar_content(root)
-                if len(tarred_files) > 0:
-                    self._delete_tar_content(restpath, tarred_files)
+                restpath = root
+                if root != target:
+                    source = source + os.path.basename(root) + '/'
 
-                ret = self._gen_md5sums(
-                    restpath, self.md5sum_restored_filename)
-                if ret == 13:  # cannot write to folder
-                    return False
-                hashfile = os.path.join(restpath, '.froster-restored.md5sum')
-                ret = rclone.checksum(hashfile, source, '--max-depth', '1')
-                printdbg('*** RCLONE checksum ret ***:\n', ret, '\n')
-                if ret['stats']['errors'] > 0:
-                    print('Last Error:', ret['stats']
-                          ['lastError'], file=sys.stderr)
-                    print('Checksum test was not successful.', file=sys.stderr)
-                    return False
-
-                ret = self._untar_files(restpath)
-
-                if ret == 13:  # cannot write to folder
-                    return False
-                elif not ret:
-                    print(
-                        '  Could not create hashfile .froster-restored.md5sum.', file=sys.stderr)
-                    print(
-                        '  Perhaps there are no files or the folder does not exist?', file=sys.stderr)
-                    return False
-
-            except PermissionError as e:
-                # Check if error number is 13 (Permission denied)
-                if e.errno == 13:
-                    print(
-                        f'Permission denied to "{restpath}"', file=sys.stderr)
-                    continue
+                # Generate md5 checksums for all files in the folder
+                print(f'Generating checksums...')
+                if self._gen_md5sums(restpath, self.md5sum_restored_filename):
+                    print('    ...done')
                 else:
-                    print(
-                        f"An unexpected PermissionError occurred:\n{e}", file=sys.stderr)
-                    continue
-            except Exception as e:
-                print(f"An unexpected error occurred:\n{e}", file=sys.stderr)
-                continue
-        return True
+                    print('    ...FAILED\n')
+                    return
+
+                # Get the path to the hashfile
+                hashfile = os.path.join(restpath, '.froster-restored.md5sum')
+                
+                # Create the Rclone object
+                rclone = Rclone(self.args, self.cfg)
+                
+                print(f'\nVerifying checksums...')
+                if rclone.checksum(hashfile, source, '--max-depth', '1'):
+                    print('    ...done')
+                else:
+                    print('    ...FAILED\n')
+                    return
+                
+                # Check if Froster.smallfiles.tar exists
+                tar_path = os.path.join(target, 'Froster.smallfiles.tar')
+                if os.path.exists(tar_path):
+                    print(f'\nUntarring Froster.smallfiles.tar... ')
+                    with tarfile.open(tar_path, "r") as tar:
+                        tar.extractall(path=target)
+                    os.remove(tar_path)
+                    print('    ...done\n')
+
+
+                os.remove(self.where_did_the_files_go_filename)
+                
+                print(f'Restoration of {root} completed successfully\n')
+
+        except Exception:
+            print_error()
 
     def md5sumex(self, file_path):
         try:
@@ -4707,41 +4791,46 @@ class Archiver:
         return (self.froster_archives_get_entry(folder) != None)
 
     def archive_get_bucket_info(self, folder):
-        # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
+        '''Get the bucket and prefix of an archived folder'''
 
-        glacier = False
-        rowdict = self.froster_archives_get_entry(folder)
+        is_glacier = False
+        is_recursive = False
 
-        if not rowdict:
-            return None, None, None, None
+        # Get the folder archiving info from froster-archives.json file
+        archive_folder_info = self.froster_archives_get_entry(folder)
 
-        # Get recursive mode
-        recursive = False
-        if 'archive_mode' in rowdict:
-            if rowdict['archive_mode'] == "Recursive":
-                recursive = True
-
-        # Get the S3 storage class
-        if 's3_storage_class' in rowdict:
-            if rowdict['s3_storage_class'] in ['DEEP_ARCHIVE', 'GLACIER']:
-                glacier = True
-            else:
-                glacier = False
-        else:
-            print(
-                f'Error: s3_storage_class not found in archive info for {folder}')
-            sys.exit(1)
+        # Check the folder is archived
+        if not archive_folder_info:
+            print(f'\nFolder {folder} is not registered as archived')
+            return None, None, None, None, None, None
 
         # Get the archive folder
-        archive_folder = rowdict['archive_folder'].split('/', 1)
+        local_folder = archive_folder_info['local_folder']
+        archive_folder = archive_folder_info['archive_folder']
+        s3_storage_class = archive_folder_info['s3_storage_class']
+        profile = archive_folder_info['profile']
+        archive_mode = archive_folder_info['archive_mode']
+        user = archive_folder_info['user']
 
-        # Get the bucket
-        bucket = archive_folder[0].replace(':s3:', '')
+        # Get the bucket and prefix
+        bucket, prefix = archive_folder.split('/', 1)
 
-        # Get the prefix
-        prefix = f'{archive_folder[1]}/'  # trailing slash ensured
+        # Clean bucket
+        bucket = bucket.replace(':s3:', '')
 
-        return bucket, prefix, recursive, glacier
+        # Clean prefix so it works even if folder is a subfolder of an stored parent
+        prefix = prefix.replace(local_folder, '')
+        prefix = prefix + folder + '/'
+
+        # Get the archived mode
+        if archive_mode == "Recursive":
+            is_recursive = True
+
+        # Get the S3 storage class
+        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
+            is_glacier = True
+
+        return bucket, prefix, is_recursive, is_glacier, profile, user
 
     def froster_archives_get_entry(self, folder):
         '''Get an entry from the archive JSON file'''
