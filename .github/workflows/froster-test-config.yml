@@ -1,0 +1,18 @@
+name: froster-test-generate-dummy-files
+run-name: Generate dummy files for testing
+on: [push, pull_request]
+jobs:
+  check-froster-installation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Install froster
+        run: ./install.sh
+      - name: Check froster version
+        run: froster --version
+      - name: Generate dummy files
+        run: python3 tests/generate_dummy_files.py
+      - name: Run "froster config" tests
+        run: python3 -m unittest tests/test_config.py

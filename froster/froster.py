@@ -522,12 +522,6 @@ class ConfigManager:
 
     def set_aws(self, aws: 'AWSBoto'):
 
-        if not self.user_init:
-            print(f'\nUser configuration is missing')
-            print('You can configure user settings using the command:')
-            print('    froster config --user\n')
-            sys.exit(0)
-
         print(f'\n*** AWS CONFIGURATION ***\n')
 
         # Get list of current AWS profiles under ~/.aws/credentials
@@ -6011,7 +6005,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
                     You can overwrite specific configuration sections. Check options using the command:
                         froster config --help\n
                     '''))
-                sys.exit(0)
+                return
         else:
 
             cfg.set_nih()
@@ -6571,7 +6565,7 @@ def parse_arguments():
 
 
 def printdbg(*args, **kwargs):
-    if is_debug:
+    if 'is_debug' in globals() and is_debug:
         current_frame = inspect.currentframe()
         calling_function = current_frame.f_back.f_code.co_name
         print(f' DBG {calling_function}():', args, kwargs)
@@ -6665,10 +6659,13 @@ def main():
 
         # Do not allow other commands rather than config if the configuration is not set
         if not cfg.configuration_done and args.subcmd not in ['config', 'cnf']:
-            print('\nFroster is not full configured yet.\n')
-            print('Run "froster config" for a full new configuration.')
-            print('Run "froster config --help" for more information.\n')
-            sys.exit(1)
+            print('\nWARNING: Froster is not full configured yet:')
+            print(f'    user: {"done" if cfg.user_init else "pending"}')
+            print(f'    aws: {"done" if cfg.aws_init else "pending"}')
+            print(f'    s3: {"done" if cfg.s3_init else "pending"}')
+            print(f'    nih: {"done" if cfg.nih_init else "pending"}')
+            print(f'\nRun "froster config --help" for more information.\n')
+            sys.exit(2)
 
         # call a function for each sub command in our CLI
         if args.subcmd in ['config', 'cnf']:
