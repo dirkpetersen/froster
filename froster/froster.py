@@ -1612,17 +1612,17 @@ class AWSBoto:
 
     def close_session(self):
         if hasattr(self, 'ce_client'):
-            del self.ce_client
+            self.ce_client.close()
         if hasattr(self, 'ec2_client'):
-            del self.ec2_client
+            self.ec2_client.close()
         if hasattr(self, 'iam_client'):
-            del self.iam_client
+            self.iam_client.close()
         if hasattr(self, 's3_client'):
-            del self.s3_client
+            self.s3_client.close()
         if hasattr(self, 'ses_client'):
-            del self.ses_client
+            self.ses_client.close()
         if hasattr(self, 'sts_client'):
-            del self.sts_client
+            self.sts_client.close()
 
     def get_time_zone(self):
         '''Get the current time zone string from the system'''
