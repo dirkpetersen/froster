@@ -4,12 +4,15 @@ on: [push, pull_request]
 
 env:
   REPO: ${{ github.repository }}
-  BRANCH: ${{ github.ref }}
 
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
-    steps:      
+    steps:   
+      - name: Extract branch name
+        shell: bash
+        run: echo "BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+         
       - name: Install Froster
         run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
 
