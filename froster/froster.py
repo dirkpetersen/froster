@@ -5984,7 +5984,7 @@ class NIHReporter:
 
 def print_version():
 
-    print(f'froster v{pkg_resources.get_distribution('froster').version}\n')
+    print(f'froster v{pkg_resources.get_distribution("froster").version}\n')
     print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
     print('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
