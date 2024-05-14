@@ -204,7 +204,6 @@ backup_old_installation() {
         echo "...froster uninstalled"
     fi
 
-
     # Keep the froster-archives.json file (if any)
     if [[ -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
         # Create the froster directory if it does not exist
@@ -228,18 +227,19 @@ install_froster() {
     pipx ensurepath >/dev/null 2>&1
 
     # TODO: Update path once froster is in PyPi repository
-    
+
     # Get the repository and branch from the github environment variables (if any)
     # or set the default repository and branch
     REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
     BRANCH=${BRANCH:-"main"}
-    
+
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
-    pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
+    # pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
+    # spinner $!
 
-    spinner $!
+    pipx install git+$REPO@$BRANCH
 
     # Keep the config.ini file (if any)
     if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
