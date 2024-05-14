@@ -1,8 +1,11 @@
-from unittest.mock import patch
-import unittest
-import os
-import configparser
 from froster.froster import *
+import configparser
+import os
+import unittest
+from unittest.mock import patch
+import warnings
+
+warnings.filterwarnings("ignore", category=ResourceWarning)
 
 
 @patch('builtins.print')
