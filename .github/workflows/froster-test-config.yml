@@ -1,19 +1,18 @@
 name: froster-config
 run-name: Test "froster config" command
 on: [push, pull_request]
-env:
-  REPO: ${{ github.repository }}
 
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract branch name
-        shell: bash
-        run: echo "BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+      - run: echo $REPO
+      - run: echo $BRANCH
+      - run: echo $REPONAME
       - name: Install froster
         run: ./install.sh
       - name: Check froster version
