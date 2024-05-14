@@ -59,9 +59,6 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
-import warnings
-warnings.filterwarnings("ignore", category=ResourceWarning)
-
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
 __version__ = '0.10.4'
 
@@ -1614,6 +1611,20 @@ class AWSBoto:
 
         except Exception as e:
             pass
+
+    def close_session(self):
+        if hasattr(self, 'ce_client'):
+            del self.ce_client
+        if hasattr(self, 'ec2_client'):
+            del self.ec2_client
+        if hasattr(self, 'iam_client'):
+            del self.iam_client
+        if hasattr(self, 's3_client'):
+            del self.s3_client
+        if hasattr(self, 'ses_client'):
+            del self.ses_client
+        if hasattr(self, 'sts_client'):
+            del self.sts_client
 
     def get_time_zone(self):
         '''Get the current time zone string from the system'''
@@ -6739,7 +6750,7 @@ def main():
         # Print current version of froster
         if args.version:
             print_version()
-            sys.exit(0)
+            return
 
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
@@ -6752,7 +6763,7 @@ def main():
             print(f'    s3: {"done" if cfg.s3_init else "pending"}')
             print(f'    nih: {"done" if cfg.nih_init else "pending"}')
             print(f'\nRun "froster config --help" for more information.\n')
-            sys.exit(2)
+            return
 
         # call a function for each sub command in our CLI
         if args.subcmd in ['config', 'cnf']:
@@ -6775,6 +6786,8 @@ def main():
             subcmd_credentials(args, aws)
         else:
             parser.print_help()
+
+        aws.close_session()
 
     except KeyboardInterrupt:
         print('Keyboard interrupt\n')
