@@ -3,13 +3,8 @@ import configparser
 import os
 import unittest
 from unittest.mock import patch
-
-from froster.froster import *
-
 import warnings
-# warnings.filterwarnings("ignore", category=ResourceWarning)
-
-import tracemalloc
+from froster.froster import *
 
 
 @patch('builtins.print')
@@ -185,13 +180,6 @@ class TestConfig(unittest.TestCase):
 
 if __name__ == '__main__':
     print()
-
-    tracemalloc.start()
-
+    warnings.filterwarnings("ignore", category=ResourceWarning)
     unittest.main(verbosity=2)
-
-    snapshot = tracemalloc.take_snapshot()
-    for line in snapshot.traceback_limit(10).format():
-        print(line)
-
     print()
