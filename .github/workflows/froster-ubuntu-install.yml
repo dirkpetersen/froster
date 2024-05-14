@@ -9,9 +9,6 @@ jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
     steps:   
-      - run: echo $REPO
-      - run: echo $BRANCH
-
       - name: Install Froster
         run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
 
