@@ -59,6 +59,9 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
+import warnings
+warnings.filterwarnings("ignore", category=ResourceWarning)
+
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
 __version__ = '0.10.4'
 

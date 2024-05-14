@@ -1,11 +1,7 @@
-import warnings
-warnings.filterwarnings("ignore", category=ResourceWarning)
-
 from unittest.mock import patch
 import unittest
 import os
 import configparser
-
 from froster.froster import *
 
 
