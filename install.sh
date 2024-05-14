@@ -230,14 +230,7 @@ install_froster() {
     # TODO: Update path once froster is in PyPi repository
     
     # Get the repository and branch from the github environment variables (if any)
-
-    # If we are in a github actions workflow, set the branch and repository environment variables
-    if [ "$GITHUB_ACTIONS" = "true" ]; then
-        REPO=${{ github.repository }}
-        BRANCH=${GITHUB_REF##*/}
-    fi
-
-    # Set default values if not provided
+    # or set the default repository and branch
     REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
     BRANCH=${BRANCH:-"main"}
     
