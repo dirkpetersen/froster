@@ -15,6 +15,12 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
+      - name: Install froster
+        run: ./install.sh
+
+      - name: Check froster version
+        run: froster --version
+
       - name: Install requirements
         run: pip3 install -r requirements.txt
 
