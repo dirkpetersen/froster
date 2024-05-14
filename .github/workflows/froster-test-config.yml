@@ -16,5 +16,5 @@ jobs:
         run: pip3 install -r requirements.txt
       - name: Generate dummy files
         run: python3 tests/generate_dummy_files.py
-      - name: Run "froster config" tests
-        run: python3 -m unittest tests/test_config.py
+      - name: Run unittests
+        run: python3 -m unittest -v
