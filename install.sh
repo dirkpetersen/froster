@@ -236,10 +236,8 @@ install_froster() {
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
-    # pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
-    # spinner $!
-
-    pipx install git+$REPO@$BRANCH
+    pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
+    spinner $!
 
     # Keep the config.ini file (if any)
     if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
@@ -292,11 +290,6 @@ install_pwalk() {
     elif [ -d "${HOME}/.local/pipx" ]; then
         mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
-        echo "PIPX_HOME: ${PIPX_HOME}"
-        echo "ls PIPX_HOME: $(ls $PIPX_HOME)"
-        echo "ls PIPX_HOME/venvs: $(ls $PIPX_HOME/venvs)"
-        # echo "$(ls $PIPX_HOME/venvs/froster)"
-        # echo "$(ls $PIPX_HOME/venvs/froster/bin)"
         mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
