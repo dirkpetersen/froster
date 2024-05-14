@@ -288,18 +288,15 @@ install_pwalk() {
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
     if [ -d "${HOME}/.local/share/pipx" ]; then
-        echo "here 1"
         mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
-        echo "here 2"
         mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
-        echo "here 3"
         echo "PIPX_HOME: ${PIPX_HOME}"
-        echo "$(ls $PIPX_HOME)"
-        echo "$(ls $PIPX_HOME/venvs)"
-        echo "$(ls $PIPX_HOME/venvs/froster)"
-        echo "$(ls $PIPX_HOME/venvs/froster/bin)"
+        echo "ls PIPX_HOME: $(ls $PIPX_HOME)"
+        echo "ls PIPX_HOME/venvs: $(ls $PIPX_HOME/venvs)"
+        # echo "$(ls $PIPX_HOME/venvs/froster)"
+        # echo "$(ls $PIPX_HOME/venvs/froster/bin)"
         mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
