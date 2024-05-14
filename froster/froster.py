@@ -41,6 +41,7 @@ import stat
 import re
 import urllib.parse
 import traceback
+import pkg_resources
 
 from pathlib import Path
 
@@ -60,7 +61,8 @@ from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
 __app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = '0.10.4'
+__version__ = pkg_resources.get_distribution('froster').version
+
 
 
 class ConfigManager:
@@ -6791,7 +6793,6 @@ def main():
 
     except KeyboardInterrupt:
         print('Keyboard interrupt\n')
-        sys.exit(0)
 
     except Exception as exc:
         print_error()
