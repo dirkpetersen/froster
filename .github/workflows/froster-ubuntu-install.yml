@@ -2,18 +2,16 @@ name: froster-ubuntu-install
 run-name: Check that froster installs correctly in Ubuntu-latest
 on: [push, pull_request]
 env:
-  PATATA: ${{ github.repository }}
-  PATATA_2: ${{ github.ref }}
+  REPO: ${{ github.repository }}
+
 
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
     steps:   
-      - run: echo $PATATA
-      - run: echo $PATATA_2
       - run: echo $REPO
       - run: echo $BRANCH
-      
+
       - name: Install Froster
         run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
 
