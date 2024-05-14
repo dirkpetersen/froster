@@ -285,8 +285,14 @@ install_pwalk() {
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
     spinner $!
 
-    which froster
-    
+    echo "Checking if froster is already installed..."
+    if which froster >/dev/null; then
+        echo "Froster is already installed"
+    else
+        echo "Froster is not installed"
+    fi
+    echo "Output of 'which froster': $(which froster)"
+
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
     if [ -d "${HOME}/.local/share/pipx" ]; then
