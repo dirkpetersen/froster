@@ -60,10 +60,6 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, Input, LoadingIndicator
 from textual.widgets import DataTable, Footer, Button
 
-__app__ = 'Froster, a user friendly S3/Glacier archiving tool'
-__version__ = pkg_resources.get_distribution('froster').version
-
-
 
 class ConfigManager:
     ''' Froster configuration manager
@@ -5988,7 +5984,7 @@ class NIHReporter:
 
 def print_version():
 
-    print(f'froster v{__version__}\n')
+    print(f'froster v{pkg_resources.get_distribution('froster').version}\n')
     print(f'Tools version:')
     print(f'    python v{platform.python_version()}')
     print('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
