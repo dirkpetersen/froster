@@ -1,5 +1,5 @@
-name: froster-test-generate-dummy-files
-run-name: Generate dummy files for testing
+name: froster-config
+run-name: Test "froster config" command
 on: [push, pull_request]
 jobs:
   check-froster-installation:
@@ -12,6 +12,8 @@ jobs:
         run: ./install.sh
       - name: Check froster version
         run: froster --version
+      - name: Install requirements
+        run: pip3 install -r requirements.txt
       - name: Generate dummy files
         run: python3 tests/generate_dummy_files.py
       - name: Run "froster config" tests
