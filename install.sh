@@ -230,8 +230,14 @@ install_froster() {
 
     # Get the repository and branch from the github environment variables (if any)
     # or set the default repository and branch
-    REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
+    if [[ -v REPO ]]; then
+        REPO="https://github.com/$REPO"
+    else
+        REPO="https://github.com/dirkpetersen/froster.git"
+    fi
+
     BRANCH=${BRANCH:-"main"}
+
 
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
