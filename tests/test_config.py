@@ -1,10 +1,12 @@
-import tracemalloc
-import configparser
-import os
-import unittest
-from unittest.mock import patch
-import warnings
 from froster.froster import *
+
+from unittest.mock import patch
+import unittest
+import os
+import configparser
+
+import warnings
+warnings.filterwarnings("ignore", category=ResourceWarning)
 
 
 @patch('builtins.print')
@@ -180,6 +182,5 @@ class TestConfig(unittest.TestCase):
 
 if __name__ == '__main__':
     print()
-    warnings.filterwarnings("ignore", category=ResourceWarning)
     unittest.main(verbosity=2)
     print()
