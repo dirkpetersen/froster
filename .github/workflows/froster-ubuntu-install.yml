@@ -2,16 +2,10 @@ name: froster-ubuntu-install
 run-name: Check that froster installs correctly in Ubuntu-latest
 on: [push, pull_request]
 
-env:
-  REPO: ${{ github.repository }}
-
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
     steps:   
-      - name: Extract branch name
-        shell: bash
-        run: echo "BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
          
       - name: Install Froster
         run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
