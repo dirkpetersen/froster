@@ -285,13 +285,18 @@ install_pwalk() {
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
     spinner $!
 
+    which froster
+    
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
     if [ -d "${HOME}/.local/share/pipx" ]; then
+        echo "here 1"
         mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
+        echo "here 2"
         mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
+        echo "here 3"
         mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
     else
         echo "Error: pipx installation path not found."
