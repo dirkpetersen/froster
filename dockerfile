@@ -5,7 +5,9 @@ FROM ubuntu:latest
 RUN apt-get update -y
 
 # Install dependencies
-RUN apt-get install -y vim curl pip pipx git gcc lib32gcc-s1 unzip
+RUN apt-get  install -y vim curl pip git gcc lib32gcc-s1 unzip fuse3
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y pipx
 
 RUN cd /home
 RUN python3 -m venv /home/.venv

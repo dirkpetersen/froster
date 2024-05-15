@@ -40,7 +40,7 @@ catch() {
 
         rm -rf ${pwalk_path} >/dev/null 2>&1
         rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
-        echo "    ...done"
+        echo "...done"
 
         echo
         echo "Installation failed!"
@@ -65,7 +65,7 @@ spinner() {
 
     # If we are in a github actions workflow, we don't want to print this return line
     if [ "$GITHUB_ACTIONS" != "true" ]; then
-        printf "\r "
+        printf "\r"
     fi
 }
 
@@ -187,7 +187,7 @@ backup_old_installation() {
         echo "    Config back up at ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak"
     fi
 
-    echo "  ...older froster installation backed up"
+    echo "...older froster installation backed up"
 
     # Check if froster is already installed, if so uninstall it
     if which froster >/dev/null; then
@@ -201,9 +201,8 @@ backup_old_installation() {
             pipx uninstall froster >/dev/null 2>&1 &
             spinner $!
         fi
-        echo "  ...froster uninstalled"
+        echo "...froster uninstalled"
     fi
-
 
     # Keep the froster-archives.json file (if any)
     if [[ -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
@@ -228,14 +227,22 @@ install_froster() {
     pipx ensurepath >/dev/null 2>&1
 
     # TODO: Update path once froster is in PyPi repository
-    REPO=${REPO:-"https://github.com/dirkpetersen/froster.git"}
+
+    # Get the repository and branch from the github environment variables (if any)
+    # or set the default repository and branch
+    if [[ -v REPO ]]; then
+        REPO="https://github.com/$REPO"
+    else
+        REPO="https://github.com/dirkpetersen/froster.git"
+    fi
+
     BRANCH=${BRANCH:-"main"}
-    
+
+
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
-
     spinner $!
 
     # Keep the config.ini file (if any)
@@ -256,7 +263,7 @@ install_froster() {
         cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
     fi
 
-    echo "  ...froster installed"
+    echo "...froster installed"
 }
 
 install_pwalk() {
@@ -299,7 +306,7 @@ install_pwalk() {
     echo "    Cleaning up pwalk installation files"
     rm -rf ${pwalk_path} >/dev/null 2>&1
 
-    echo "  ...pwalk installed"
+    echo "...pwalk installed"
 }
 
 # Install rclone
@@ -353,7 +360,7 @@ install_rclone() {
     echo "    Cleaning up rclone installation files"
     rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 
-    echo "  ...rclone installed"
+    echo "...rclone installed"
 }
 
 ############
