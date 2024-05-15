@@ -45,6 +45,10 @@ import pkg_resources
 
 from pathlib import Path
 
+import warnings
+warnings.filterwarnings("always", category=ResourceWarning)
+warnings.filterwarnings("ignore", category=ResourceWarning)
+
 # stuff from pypi
 import inquirer
 import requests
