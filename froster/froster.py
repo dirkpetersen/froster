@@ -1284,6 +1284,9 @@ class AWSBoto:
             # Check that we can get the caller identity
             sts.get_caller_identity()
 
+            # Close the session
+            sts.close()
+
             # Credentials are valid
             return True
 
