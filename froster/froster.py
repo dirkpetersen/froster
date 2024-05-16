@@ -1014,7 +1014,7 @@ class ConfigManager:
         # If shared configuration file exists, nothing to move
         if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
             print(
-                f"\nNOTE: Using shared configuration file found in {self.shared_config_file}\n")
+                f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
             return
 
         # Clean up both configuration files
@@ -6103,7 +6103,7 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
                     Shared configuration: {cfg.shared_config_file}
 
                     You can overwrite specific configuration sections. Check options using the command:
-                        froster config --help\n
+                        froster config --help
                     '''))
                 return
 

@@ -57,6 +57,9 @@ def remove_froster_files(cfg):
     if hasattr(cfg, 'aws_config_file') and os.path.exists(cfg.aws_config_file):
         os.remove(cfg.aws_config_file)
 
+    if os.path.exists(cfg.data_dir):
+        shutil.rmtree(cfg.data_dir)
+
     if os.path.exists(SHARED_DIR):
         shutil.rmtree(SHARED_DIR)
 
@@ -108,7 +111,7 @@ class TestConfigAWS(unittest.TestCase):
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
     def test_set_aws_new_profile(self, mock_print, mock_input_list, mock_input_text):
 
-        # Call set_user method
+        # Call set_aws method
         self.cfg.set_aws(self.aws)
 
         # Check that the configuration files were updated correctly
@@ -226,7 +229,14 @@ class TestConfigShared(unittest.TestCase):
     # Method executed only once before all tests
     @classmethod
     def setUpClass(cls):
+        # Init froster
         init_froster(cls)
+
+        # Create the data directory
+        os.makedirs(cls.cfg.data_dir, exist_ok=True, mode=0o775)
+
+        # Create the shared directory
+        os.makedirs(SHARED_DIR, exist_ok=True, mode=0o775)
 
     # Method executed after every test
     def tearDown(self):
@@ -264,9 +274,6 @@ class TestConfigShared(unittest.TestCase):
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
     def test_set_shared_do_not_move_froster_archives(self, mock_print, mock_input_confirm, mock_input_prompt):
 
-        # Create the data directory
-        os.makedirs(self.cfg.data_dir, exist_ok=True, mode=0o775)
-
         # Create a dummy froster_archives.json file
         archive_json_file = os.path.join(
             self.cfg.data_dir, self.cfg.archive_json_file_name)
@@ -290,16 +297,13 @@ class TestConfigShared(unittest.TestCase):
         # Check that the froster_archives.json is still in the data directory
         self.assertTrue(os.path.exists(archive_json_file))
 
-        # Check that the froster_archives.json file was not moved or copied to the shared directory
+        # Check that the froster_archives.json file was not copied to the shared directory
         self.assertFalse(os.path.exists(os.path.join(
             SHARED_DIR, self.cfg.archive_json_file_name)))
 
     @patch('inquirer.confirm', side_effect=[True, True])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
     def test_set_shared_move_froster_archives(self, mock_print, mock_input_confirm, mock_input_prompt):
-
-        # Create the data directory
-        os.makedirs(self.cfg.data_dir, exist_ok=True, mode=0o775)
 
         # Create a dummy froster_archives.json file
         archive_json_file = os.path.join(
@@ -322,14 +326,54 @@ class TestConfigShared(unittest.TestCase):
                            SHARED_DIR, self.cfg.shared_config_file_name))
 
         # Check that the froster_archives.json is still in the data directory (as we only copy the file)
-        self.assertTrue(os.path.exists(archive_json_file))
+        self.assertTrue(os.path.exists(os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name)))
 
-        # Check that the froster_archives.json file was not moved or copied to the shared directory
+        # Check that the froster_archives.json file was copied to the shared directory
         self.assertTrue(os.path.exists(os.path.join(
             SHARED_DIR, self.cfg.archive_json_file_name)))
 
+    @patch('inquirer.confirm', side_effect=[True])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_shared_froster_archives_already_exist(self, mock_print, mock_input_confirm, mock_input_prompt):
 
+        # Create a dummy froster_archives.json file in the shared directory
+        archive_json_file_shared = os.path.join(
+            SHARED_DIR, self.cfg.archive_json_file_name)
+        with open(archive_json_file_shared, 'w') as f:
+            f.write('Hello, world!')
+
+        # Call set_shared method
+        self.cfg.set_shared()
+
+        # Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
+
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
+
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', os.path.join(
+                           SHARED_DIR, self.cfg.shared_config_file_name))
+
+        # Check that the froster_archives.json is not in the data directory
+        self.assertFalse(os.path.exists(os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name)))
+
+        # Check that the froster_archives.json file is still in the shared directory
+        self.assertTrue(os.path.exists(os.path.join(
+            SHARED_DIR, self.cfg.archive_json_file_name)))
+
+    
 if __name__ == '__main__':
     print()
-    unittest.main(verbosity=2)
+    if False:
+        unittest.main(verbosity=2)
+    else:
+        suite = unittest.TestSuite()
+        suite.addTest(TestConfigShared(
+            'test_set_shared_froster_archives_already_exist'))
+        runner = unittest.TextTestRunner(verbosity=2)
+        runner.run(suite)
     print()
