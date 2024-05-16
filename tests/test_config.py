@@ -365,15 +365,38 @@ class TestConfigShared(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(
             SHARED_DIR, self.cfg.archive_json_file_name)))
 
-    
+
+@patch('builtins.print')
+class TestConfigNIH(unittest.TestCase):
+
+    # Method executed only once before all tests
+    @classmethod
+    def setUpClass(cls):
+        init_froster(cls)
+
+    # Method executed after every test
+    def tearDown(self):
+        remove_froster_files(self.cfg)
+
+    @patch('inquirer.confirm', side_effect=[True, False])
+    def test_set_nih(self, mock_print, mock_input_confirm):
+
+        # Call set_user method
+        self.cfg.set_nih()
+
+        # Check that the configuration file was updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       NIH_SECTION, 'is_nih', 'True')
+        
+        # Call set_user method
+        self.cfg.set_nih()
+
+        # Check that the configuration file was updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       NIH_SECTION, 'is_nih', 'False')
+
+
 if __name__ == '__main__':
     print()
-    if False:
-        unittest.main(verbosity=2)
-    else:
-        suite = unittest.TestSuite()
-        suite.addTest(TestConfigShared(
-            'test_set_shared_froster_archives_already_exist'))
-        runner = unittest.TextTestRunner(verbosity=2)
-        runner.run(suite)
+    unittest.main(verbosity=2)
     print()
