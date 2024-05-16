@@ -40,6 +40,9 @@ def init_froster(self):
     # Create the data directory
     os.makedirs(self.cfg.data_dir, exist_ok=True, mode=0o775)
 
+    # Create the data directory
+    os.makedirs(self.cfg.config_dir, exist_ok=True, mode=0o775)
+
     # Create the shared directory
     os.makedirs(SHARED_DIR, exist_ok=True, mode=0o775)
 
@@ -276,14 +279,14 @@ class TestConfigShared(unittest.TestCase):
         # Check that the configuration files were updated correctly
         check_ini_file(self, self.cfg.config_file,
                        SHARED_SECTION, 'is_shared', 'False')
-        
+
         # Call set_shared method
         self.assertTrue(self.cfg.set_shared())
 
         # Check that the configuration files were updated correctly
         check_ini_file(self, self.cfg.config_file,
                        SHARED_SECTION, 'is_shared', 'True')
-        
+
         check_ini_file(self, self.cfg.config_file,
                        SHARED_SECTION, 'shared_dir', SHARED_DIR)
 
@@ -418,7 +421,6 @@ class TestConfigShared(unittest.TestCase):
         self.assertTrue(os.path.exists(archive_json_file_shared))
 
 
-
 @patch('builtins.print')
 class TestConfigNIH(unittest.TestCase):
 
@@ -449,62 +451,43 @@ class TestConfigNIH(unittest.TestCase):
                        NIH_SECTION, 'is_nih', 'False')
 
 
-# @patch('builtins.print')
-# class TestConfigS3(unittest.TestCase):
+@patch('builtins.print')
+class TestConfigS3(unittest.TestCase):
 
-#     # Method executed only once before all tests
-#     @classmethod
-#     def setUpClass(cls):
-#         init_froster(cls)
+    # Method executed before every test
+    def setUp(self):
+        init_froster(self)
 
-#     # Method executed after every test
-#     def tearDown(self):
-#         deinit_froster(self.cfg)
+    # Method executed after every test
+    def tearDown(self):
+        deinit_froster(self)
 
-#     def test_set_s3_aws_not_init(self, mock_print):
-#         """
-#         Checks set_s3 method returns False if AWS credentials are not set.
-#         """
-#         self.assertFalse(self.cfg.set_s3(self.aws))
+    def test_set_s3_aws_not_init(self, mock_print):
+        ''' set_s3 method returns False if AWS credentials are not set.'''
 
-#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
-#     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-#     def test_set_s3_invalid_aws_credentials(self, mock_print, mock_input_list, mock_input_text):
-#         """
-#         Checks set_s3 method returns False if AWS credentials are invalid.
-#         """
+        self.assertFalse(self.cfg.set_s3(self.aws))
 
-#         # Set valid credentials
-#         self.cfg.set_aws(self.aws)
+    def test_set_s3_invalid_aws_credentials(self, mock_print):
+        '''set_s3 method returns False if AWS credentials are invalid.'''
 
-#         # Check valid credentials
-#         self.assertTrue(self.aws.check_credentials())
+        # Set variables as if AWS credentials were set
+        self.cfg.aws_init = True
+        self.cfg.aws_profile = AWS_PROFILE
 
-#         # Set invalid credentials by manually modifying the ~/.aws/credentials file
-#         config = configparser.ConfigParser()
-#         config.read(self.cfg.aws_credentials_file)
-#         config.set(AWS_PROFILE, 'aws_access_key_id', '1234')
-#         with open(self.cfg.aws_credentials_file, 'w') as configfile:
-#             config.write(configfile)
-
-#         # Check invalid credentials
-#         self.assertTrue(self.aws.check_credentials())
-
-#         # Call set_s3 method
-#         self.assertFalse(self.cfg.set_s3(self.aws))
+        print("Check set_s3", flush=True)
+        # Call set_s3 method
+        self.assertFalse(self.cfg.set_s3(self.aws))
 
     # @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', 'DEEP_ARCHIVE'])
     # @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, 'froster-githubactions-test', 'froster'])
-    # def test_set_s3(self, mock_print, mock_input_list, mock_input_text):
-    #     """
-    #     Create new AWS S3 bucket
-    #     """
+    # def test_set_s3(self, mock_input_list, mock_input_text):
+    #     '''Set a new S3 bucket.'''
 
     #     # Set valid credentials
     #     self.cfg.set_aws(self.aws)
 
     #     # Call set_s3 method
-    #     self.assertFalse(self.cfg.set_s3(self.aws))
+    #     self.assertTrue(self.cfg.set_s3(self.aws))
 
 
 if __name__ == '__main__':
@@ -515,10 +498,10 @@ if __name__ == '__main__':
         suite = unittest.TestSuite()
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigUser))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigAWS))
-        suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestConfigShared))
+        # suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestConfigShared))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigNIH))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigS3))
+        suite.addTest(TestConfigS3('test_set_s3'))
         runner = unittest.TextTestRunner(verbosity=2)
         runner.run(suite)
 
-        # suite.addTest(TestConfigAWS('test_set_aws_invalid_credentials'))
