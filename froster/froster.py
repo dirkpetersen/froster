@@ -6,6 +6,18 @@ archiving many Terabytes of data on large (HPC) systems.
 """
 
 # internal modules
+from textual.widgets import DataTable, Footer, Button
+from textual.widgets import Label, Input, LoadingIndicator
+from textual.screen import ModalScreen
+from textual.containers import Horizontal, Vertical
+from textual.app import App, ComposeResult
+from textual import on, work
+import psutil
+import botocore
+import boto3
+import duckdb
+import requests
+import inquirer
 import sys
 import os
 import argparse
@@ -50,19 +62,6 @@ warnings.filterwarnings("always", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # stuff from pypi
-import inquirer
-import requests
-import duckdb
-import boto3
-import botocore
-import psutil
-
-from textual import on, work
-from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
-from textual.widgets import Label, Input, LoadingIndicator
-from textual.widgets import DataTable, Footer, Button
 
 
 class ConfigManager:
@@ -586,7 +585,8 @@ class ConfigManager:
                     print('    ...region is valid\n')
                 else:
                     print('    ...region is NOT valid\n')
-                    print('\nYou can configure aws credentials and region using the command:')
+                    print(
+                        '\nYou can configure aws credentials and region using the command:')
                     print('    froster config --aws\n')
                     return False
 
@@ -634,7 +634,7 @@ class ConfigManager:
                     print(
                         '\nYou can configure aws credentials and region using the command:')
                     print('    froster config --aws\n')
-       
+
                     return False
 
                 if region != aws_profile_region:
@@ -857,7 +857,7 @@ class ConfigManager:
 
             print(
                 f'Checking AWS credentials for profile "{self.aws_profile}"...')
-            if aws.check_credentials():
+            if aws.check_credentials(aws_profile=self.aws_profile):
                 print('    ...AWS credentials are valid\n')
             else:
                 print('    ...AWS credentials are NOT valid\n')
@@ -893,7 +893,8 @@ class ConfigManager:
                     return False
 
                 # Create new bucket
-                aws.create_bucket(bucket_name=new_bucket_name)
+                aws.create_bucket(bucket_name=new_bucket_name,
+                                  region=self.aws_region)
 
                 # Store new aws s3 bucket in the config object
                 self.__set_configuration_entry(
@@ -904,7 +905,7 @@ class ConfigManager:
 
             # Get the archive directory in the selected bucket
             archive_dir = inquirer.text(
-                message='Enter the archive directory name inside your S3 bucket',
+                message='Enter the directory name inside S3 bucket (default= "froster")',
                 default='froster',
                 validate=self.__inquirer_check_required)
 
@@ -1160,7 +1161,7 @@ class ConfigManager:
                 print(f'\n*** SLURM NOT FOUND: Nothing to configure ***\n')
 
             return True
-        
+
         except:
             print_error()
             return False
@@ -1275,7 +1276,8 @@ class AWSBoto:
 
             elif aws_profile:
                 # Build a new STS client with the provided profile
-                sts = boto3.Session(profile_name=aws_profile, region_name=aws_region_name).client('sts')
+                sts = boto3.Session(profile_name=aws_profile,
+                                    region_name=aws_region_name).client('sts')
 
             elif hasattr(self, 's3_client'):
                 # Get the current sts_client
@@ -6106,7 +6108,6 @@ def subcmd_config(args, cfg: ConfigManager, aws: AWSBoto):
                         froster config --help
                     '''))
                 return
-
 
         if not cfg.set_nih():
             return
