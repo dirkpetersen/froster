@@ -1004,6 +1004,10 @@ class ConfigManager:
                     shared_config_dir, self.shared_config_file_name))
                 self.__set_shared_move_config()
 
+                self.is_shared = True
+            else:
+                self.is_shared = False
+
             print(f'*** SHARED CONFIGURATION DONE ***\n')
 
             return True
@@ -5612,7 +5616,9 @@ class SlurmEssentials:
         self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
         self.jobs = []
         self.job_info = {}
+
         self.partition = cfg.slurm_partition
+
         self.qos = cfg.slurm_qos
         self.walltime = f'{cfg.slurm_walltime_days}-{cfg.slurm_walltime_hours}'
         self._add_lines_from_cfg()
@@ -5778,7 +5784,7 @@ class SlurmEssentials:
             ",") for item in self._parse_tabular_data(mystr) if 'Account' in item}
         return asso
 
-    def get_allowed_partitions_and_qos(self, account=None):
+    def get_allowed_partitions_and_qos(self):
         """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
         bacc = os.environ.get('SBATCH_ACCOUNT', '')
         account = bacc if bacc else account
