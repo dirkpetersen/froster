@@ -503,7 +503,7 @@ class TestConfigShared(unittest.TestCase):
         self.assertTrue(os.path.exists(archive_json_file_shared))
 
 
-# @patch('builtins.print')
+@patch('builtins.print')
 class TestConfigNIH(unittest.TestCase):
 
     # Method executed before every test
