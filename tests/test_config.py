@@ -541,7 +541,6 @@ class TestConfigNIH(unittest.TestCase):
         check_ini_file(self, self.cfg.config_file,
                        NIH_SECTION, 'is_nih', 'False')
 
-
     @patch('inquirer.confirm', side_effect=[True, True, False])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
     def test_set_nih_when_shared_config(self, mock_print, mock_input_confirm, mock_input_promp):
@@ -555,14 +554,15 @@ class TestConfigNIH(unittest.TestCase):
 
         # Check that the configuration file was updated correctly
         check_ini_file(self, self.cfg.shared_config_file,
-                    NIH_SECTION, 'is_nih', 'True')
+                       NIH_SECTION, 'is_nih', 'True')
 
         # Call set_user method
         self.assertTrue(self.cfg.set_nih())
 
         # Check that the configuration file was updated correctly
         check_ini_file(self, self.cfg.shared_config_file,
-                    NIH_SECTION, 'is_nih', 'False')
+                       NIH_SECTION, 'is_nih', 'False')
+
 
 @patch('builtins.print')
 class TestConfigS3(unittest.TestCase):
@@ -670,7 +670,6 @@ class TestConfigS3(unittest.TestCase):
         # Check the bucket was created
         self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
-
     @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
     @patch('inquirer.confirm', side_effect=[True])
@@ -686,13 +685,13 @@ class TestConfigS3(unittest.TestCase):
 
         # Check that the configuration files were updated correctly
         check_ini_file(self, self.cfg.shared_config_file,
-                    S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
 
         check_ini_file(self, self.cfg.shared_config_file,
-                    S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
 
         check_ini_file(self, self.cfg.shared_config_file,
-                    S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
 
         # Check that the s3_init is set
         self.assertTrue(self.cfg.s3_init)
@@ -759,32 +758,32 @@ class TestConfigS3(unittest.TestCase):
 #         # Check that the configuration files were updated correctly
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'slurm_walltime_days', str(SLURM_WALLTIME_DAYS))
-        
+
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'slurm_walltime_hours', str(SLURM_WALLTIME_HOURS))
-        
+
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'slurm_partition', SLURM_PARTITION)
-        
+
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'slurm_qos', SLURM_QOS)
-        
+
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'slurm_lscratch', SLURM_LOCAL_SCRATCH)
-        
+
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'lscratch_mkdir', SLURM_SCRIPT_SCRATCH)
-        
+
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'lscratch_rmdir', SLURM_SCRIPT_TEARS_DOWN)
-        
+
 #         check_ini_file(self, self.cfg.config_file,
 #                        'SLURM', 'lscratch_root', SLURM_ROOT)
 
 
 if __name__ == '__main__':
 
-    if False:
+    if True:
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
