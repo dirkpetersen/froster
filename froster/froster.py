@@ -836,6 +836,9 @@ class ConfigManager:
 
             print(f'*** NIH S3 CONFIGURATION DONE***\n')
 
+            # Set the nih init flag
+            self.nih_init = True
+
             return True
 
         except:
