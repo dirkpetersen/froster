@@ -11,13 +11,16 @@ warnings.filterwarnings("ignore", category=ResourceWarning)
 
 
 # Variables
-NAME = "John Doe"
-EMAIL = "john@doe.com"
+NAME = "Bob"
+NAME_2 = "Alice"
+EMAIL = "bob@bob.com"
+EMAIL_2 = "alice@alice.com"
 
 AWS_REGION = "eu-west-1"
 AWS_REGION_2 = "eu-west-2"
-AWS_PROFILE = "froster-test"
-AWS_PROFILE_2 = "froster-test-2"
+AWS_PROFILE = "froster-unittest-bob"
+AWS_PROFILE_2 = "froster-unittest-alice"
+
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET = os.getenv('AWS_SECRET')
 
@@ -27,10 +30,10 @@ SHARED_SECTION = 'SHARED'
 NIH_SECTION = 'NIH'
 S3_SECTION = 'S3'
 
-S3_BUCKET_NAME = 'froster-githubactions-test'
-S3_BUCKET_NAME_2 = 'froster-githubactions-test-2'
-S3_ARCHIVE_DIR = 'froster'
-S3_ARCHIVE_DIR_2 = 'froster_2'
+S3_BUCKET_NAME = 'froster-unittest-bob'
+S3_BUCKET_NAME_2 = 'froster-unittest-alice'
+S3_ARCHIVE_DIR = 'froster_bob'
+S3_ARCHIVE_DIR_2 = 'froster_alice'
 S3_STORAGE_CLASS = 'DEEP_ARCHIVE'
 S3_STORAGE_CLASS_2 = 'GLACIER'
 
@@ -48,8 +51,8 @@ SHARED_DIR = os.path.join(tempfile.gettempdir(), 'shared_dir')
 
 
 def init_froster(self):
-
-    self.parser = parse_arguments()
+    self.cmd = Commands()
+    self.parser = self.cmd.parse_arguments()
     self.args = self.parser.parse_args()
     self.cfg = ConfigManager()
     self.arch = Archiver(self.args, self.cfg)
@@ -104,11 +107,44 @@ def deinit_froster(self):
         del self.aws
 
 
+def delete_buckets(self):
+
+    if self.aws.check_credentials():
+        # Get the buckets list
+        s3_buckets = self.aws.get_buckets()
+
+        # Delete the buckets if they exists
+        if S3_BUCKET_NAME in s3_buckets:
+            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME)
+        if S3_BUCKET_NAME_2 in s3_buckets:
+            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_2)
+
+
 def check_ini_file(self, ini_file, section, key, value):
     config = configparser.ConfigParser()
     config.read(ini_file)
     self.assertIn(section, config.sections())
     self.assertEqual(config.get(section, key), value)
+
+
+# @patch('builtins.print')
+# class TestConfig(unittest.TestCase):
+
+#     Method executed before every test
+#     def setUp(self):
+#         init_froster(self)
+
+#     Method executed after every test
+#     def tearDown(self):
+#         deinit_froster(self)
+
+#     @patch('inquirer.text', side_effect=[NAME, EMAIL, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, '+ Create new bucket', S3_STORAGE_CLASS])
+#     @patch('inquirer.confirm', side_effect=[False, True])
+#     def test_subcmd_config(self, mock_text, mock_list, mock_confirm):
+#         '''- Set full configuration'''
+
+#         self.assertTrue(self.cmd.subcmd_config(self.args, self.cfg, self.aws))
 
 
 @patch('builtins.print')
@@ -355,7 +391,7 @@ class TestConfigShared(unittest.TestCase):
     def test_set_shared(self, mock_print, mock_input_confirm, mock_input_prompt):
         '''- Set the shared flag to False and then to True in the configuration file.'''
 
-        # Call set_shared method
+        # Call set_shared method and set the shared flag to False
         self.assertTrue(self.cfg.set_shared())
 
         # Check that the configuration files were updated correctly
@@ -578,31 +614,19 @@ class TestConfigS3(unittest.TestCase):
         # Set valid credentials
         self.assertTrue(self.cfg.set_aws(self.aws))
 
-        # Get the buckets list
-        s3_buckets = self.aws.get_buckets()
-
-        # Delete the buckets if they exists
-        if S3_BUCKET_NAME in s3_buckets:
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME)
-        if S3_BUCKET_NAME_2 in s3_buckets:
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_2)
+        # Delete any existing buckets
+        delete_buckets(self)
 
     # Method executed after every test
     def tearDown(self):
 
-        # Get the buckets list
-        s3_buckets = self.aws.get_buckets()
-
-        # Delete the buckets if they exists
-        if S3_BUCKET_NAME in s3_buckets:
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME)
-        if S3_BUCKET_NAME_2 in s3_buckets:
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_2)
+        # Delete any existing buckets
+        delete_buckets(self)
 
         deinit_froster(self)
 
     def test_set_s3_aws_not_init(self, mock_print):
-        '''-  set_s3 method returns False if AWS credentials are not set.'''
+        '''- Set_s3 method returns False if AWS credentials are not set.'''
 
         # Mock the aws_init variable
         self.cfg.aws_init = False
@@ -753,7 +777,7 @@ class TestConfigS3(unittest.TestCase):
 #         '''-  set_slurm'''
 
 #         # Call set_slurm method
-#         self.cfg.set_slurm(self.args)
+#         self.assertTrue(self.cfg.set_slurm(self.args))
 
 #         # Check that the configuration files were updated correctly
 #         check_ini_file(self, self.cfg.config_file,
@@ -787,6 +811,7 @@ if __name__ == '__main__':
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
+        suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigUser))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigAWS))
         # suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestConfigShared))
@@ -794,6 +819,6 @@ if __name__ == '__main__':
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigS3))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigSlurm))
         # suite.addTest(TestConfigNIH('test_set_nih_when_shared_config'))
-        suite.addTest(TestConfigS3('test_set_s3_when_shared_config'))
+        # suite.addTest(TestConfigS3('test_set_s3_when_shared_config'))
         runner = unittest.TextTestRunner(verbosity=2)
         runner.run(suite)
