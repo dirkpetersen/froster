@@ -113,16 +113,16 @@ check_apt_dependencies() {
     fi
 
     # Check if lib32gcc-s1 is installed (pwalk compilation requirement)
-    if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
-        echo "Error: lib32gcc-s1 is not installed."
-        echo
-        echo "Please install lib32gcc-s1"
-        echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y lib32gcc-s1"
-        echo
-        exit 1
-    fi
+        if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
+            echo "Error: lib32gcc-s1 is not installed."
+            echo
+            echo "Please install lib32gcc-s1"
+            echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
+            echo "  sudo apt update"
+            echo "  sudo apt install -y lib32gcc-s1"
+            echo
+            exit 1
+        fi
 
     # Check if git is installed (pipx installation requirement)
     # TODO: Get rid of this requirement once froster is in PyPi repository
@@ -190,7 +190,7 @@ backup_old_installation() {
     echo "...older froster installation backed up"
 
     # Check if froster is already installed, if so uninstall it
-    if which froster >/dev/null; then
+    if [[ -z $(command -v froster) ]]; then
         echo
         echo "Uninstalling existing froster installation..."
         if pip list | grep -q froster >/dev/null 2>&1; then
@@ -242,7 +242,7 @@ install_froster() {
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
-    pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
+    pipx install git+$REPO@$BRANCH &
     spinner $!
 
     # Keep the config.ini file (if any)
