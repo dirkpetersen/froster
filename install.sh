@@ -190,7 +190,7 @@ backup_old_installation() {
     echo "...older froster installation backed up"
 
     # Check if froster is already installed, if so uninstall it
-    if [[ -z $(command -v froster) ]]; then
+    if which froster >/dev/null 2>&1; then
         echo
         echo "Uninstalling existing froster installation..."
         if pip list | grep -q froster >/dev/null 2>&1; then
