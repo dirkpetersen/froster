@@ -3366,33 +3366,47 @@ class Archiver:
         print()
 
     def _index_slurm(self, folders):
-        # TODO: Review slurm implementation regarding new changes
+        '''Index the given folders for archiving using Slurm'''
+
+        # Create a SlurmEssentials object
         se = SlurmEssentials(self.args, self.cfg)
+
+        # Get the labels for the Slurm job
         label = self._get_hotspots_file(folders[0]).replace('.csv', '')
         label = label.replace(' ', '_')
         shortlabel = os.path.basename(folders[0])
 
         se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
         se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
+        se.add_line(f'#SBATCH --mem={self.args.memory}')
         se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
         se.add_line(f'#SBATCH --mail-user={self.cfg.email}')
         se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
+        se.add_line(f'#SBATCH --partition={se.partition}')
+        se.add_line(f'#SBATCH --qos={se.qos}')
+
         # se.add_line(f'ml python')
+     
+        # Add the Python command to the Slurm script
         cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        cmdline = cmdline.replace('/froster.py ', '/froster ')
+
+        # Print the command line to be executed by Slurm
         if self.args.debug:
             print(f'Command line passed to Slurm:\n{cmdline}')
+
+        # Add the command line to the Slurm script
         se.add_line(cmdline)
+
+        # Execute the Slurm script
         jobid = se.sbatch()
-        print(f'Submitted froster indexing job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-index-{label}-{jobid}.out')
+
+        # Print the Slurm job information
+        print(f'\nSLURM JOB\n')
+        print(f'  ID: {jobid}')
+        print(f'  Type: Indexing')
+        print(f'  Check output: "tail -f froster-index-{label}-{jobid}.out"')
+        print(f'  Cancel the job: "scancel {jobid}"\n')
 
     def index(self, folders):
         '''Index the given folders for archiving'''
@@ -5628,6 +5642,25 @@ class SlurmEssentials:
 
         self.partition = cfg.slurm_partition if hasattr(
             cfg, 'slurm_partition') else None
+        
+        if self.partition is None:
+            print("WARNING: Slurm is not configured")
+            print('\nYou can configure slurm by using the command:')
+            print('    froster config --slurm\n')
+            sys.exit(1)
+
+        # Make sure we are not exceeding the number of cores available
+        total_cpus = self.get_total_cpus(self.partition)
+        if self.args.cores > total_cpus:
+            self.args.cores = total_cpus
+        
+        # Transform memory from GB to MB
+        self.args.memory *= 1024
+
+        # Make sure we are not exceeding the memory available
+        max_memory_per_node_in_mb = self.get_max_memory_per_node_in_mb()
+        if self.args.memory > max_memory_per_node_in_mb:
+            self.args.memory = max_memory_per_node_in_mb
 
         self.qos = cfg.slurm_partition if hasattr(cfg, 'slurm_qos') else None
         walltime_days = cfg.slurm_walltime_days if hasattr(
@@ -5659,6 +5692,35 @@ class SlurmEssentials:
         future_time = now + datetime.timedelta(hours=add_hours)
         return future_time.strftime("%Y-%m-%dT%H:%M")
 
+    def get_total_cpus(self, partition):
+        cmd = ['sinfo', '-N', '-p', partition, '--format="%n %c"']
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise Exception(f'Error executing command: {result.stderr}')
+        lines = result.stdout.split('\n')
+        total_cpus = 0
+        for line in lines[1:]:  # Skip the header line
+            if line:  # Skip empty lines
+                node, cpus = line.split()
+                cpus = cpus.replace('"', '').replace("'", '')
+                total_cpus += int(cpus)
+        return total_cpus
+
+    def get_max_memory_per_node_in_mb(self):
+        '''Get the maximum memory per node in MB.'''
+        # Run the sinfo command and capture its output
+        sinfo_output = subprocess.check_output("sinfo -N -o '%m'", shell=True).decode('utf-8')
+
+        # The output is a string with one line per node, so split it into lines
+        lines = sinfo_output.split('\n')
+
+        # The first line is a header, so ignore it. The rest of the lines are the memory values.
+        # Convert these values to integers and find the minimum value.
+        max_memory_per_node = min(int(line) for line in lines[1:] if line)
+
+        return max_memory_per_node
+
+    
     def _reorder_sbatch_lines(self, script_buffer):
         # we need to make sure that all #BATCH are at the top
         script_buffer.seek(0)
@@ -6453,17 +6515,23 @@ class Commands:
 
         parser.add_argument('-d', '--debug', dest='debug', action='store_true', default=False,
                             help="verbose output for all commands")
+        
         parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true', default=False,
                             help="do not submit a Slurm job, execute in the foreground. ")
-        parser.add_argument('-c', '--cores', dest='cores', action='store_true', default='4',
+        
+        parser.add_argument('-c', '--cores', dest='cores', type=int, default=4,
                             help='Number of cores to be allocated for the machine. (default=4)')
+        
+        parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
+                            help='Amount of memory to be allocated for the machine in GB. (default=64)')
+        
         parser.add_argument('-p', '--profile', dest='aws_profile', action='store_true', default='',
                             help='which AWS profile in ~/.aws/ should be used. default="aws"')
+        
         parser.add_argument('-v', '--version', dest='version', action='store_true',
                             help='print froster and packages version info')
 
-        subparsers = parser.add_subparsers(
-            dest="subcmd", help='sub-command help')
+        subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
 
         # ***
 
