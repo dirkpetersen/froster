@@ -5642,32 +5642,31 @@ class SlurmEssentials:
 
         self.partition = cfg.slurm_partition if hasattr(
             cfg, 'slurm_partition') else None
-        
-        if self.partition is None:
-            print("WARNING: Slurm is not configured")
-            print('\nYou can configure slurm by using the command:')
-            print('    froster config --slurm\n')
-            sys.exit(1)
 
-        # Make sure we are not exceeding the number of cores available
-        total_cpus = self.get_total_cpus(self.partition)
-        if self.args.cores > total_cpus:
-            self.args.cores = total_cpus
-        
-        # Transform memory from GB to MB
-        self.args.memory *= 1024
+        if self.partition is not None: 
 
-        # Make sure we are not exceeding the memory available
-        max_memory_per_node_in_mb = self.get_max_memory_per_node_in_mb()
-        if self.args.memory > max_memory_per_node_in_mb:
-            self.args.memory = max_memory_per_node_in_mb
+            # Make sure we are not exceeding the number of cores available
+            total_cpus = self.get_total_cpus(self.partition)
+            if self.args.cores > total_cpus:
+                self.args.cores = total_cpus
+            
+            # Transform memory from GB to MB
+            self.args.memory *= 1024
+
+            # Make sure we are not exceeding the memory available
+            max_memory_per_node_in_mb = self.get_max_memory_per_node_in_mb()
+            if self.args.memory > max_memory_per_node_in_mb:
+                self.args.memory = max_memory_per_node_in_mb
 
         self.qos = cfg.slurm_partition if hasattr(cfg, 'slurm_qos') else None
         walltime_days = cfg.slurm_walltime_days if hasattr(
             cfg, 'slurm_walltime_days') else None
         walltime_hours = cfg.slurm_walltime_hours if hasattr(
             cfg, 'slurm_walltime_hours') else None
-        self.walltime = f'{walltime_days}-{walltime_hours}'
+        if walltime_days is not None and walltime_hours is not None:
+            self.walltime = f'{walltime_days}-{walltime_hours}'
+        else:
+            self.walltime = '7-0'
 
         self.slurm_lscratch = cfg.slurm_lscratch if hasattr(
             cfg, 'slurm_lscratch') else None
