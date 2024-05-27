@@ -3268,6 +3268,8 @@ class Archiver:
 
                 # Get the path to the hotspots CSV file
                 folder_hotspot = self.get_hotspots_path(folder)
+                print(f"_index_locally: folder_hotspot: {folder_hotspot}")
+                print(f"_index_locally: folder: {folder}")
 
                 # If the folder is already indexed don't run pwalk again
                 if os.path.isfile(folder_hotspot):
@@ -3378,6 +3380,8 @@ class Archiver:
 
             # Get the path to the hotspots CSV file
             mycsv = self.get_hotspots_path(folder)
+            print(f"_index_locally: folder: {folder}")
+            print(f"_index_locally: mycsv: {mycsv}")
 
             # Write the hotspots to the CSV file
             with open(mycsv, 'w') as f:
@@ -5168,10 +5172,10 @@ class Archiver:
         # create hotspots directory if it does not exist
         os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
 
-        print(f'Hotspots directory: {hotspotdir}')
-        print(f'Folder: {folder}')
-        print(f'hsfile: {self._get_hotspots_file(folder)}')
-        
+        print(f'get_hotspots_path: Hotspots directory: {hotspotdir}')
+        print(f'get_hotspots_path: Folder: {folder}')
+        print(f'get_hotspots_path: hsfile: {self._get_hotspots_file(folder)}')
+
         # Get the full path name of the new hotspots file
         return os.path.join(hotspotdir, self._get_hotspots_file(folder))
 
@@ -5181,7 +5185,7 @@ class Archiver:
         mountlist = self._get_mount_info()
         traildir = ''
         hsfile = folder.replace('/', '+') + '.csv'
-        print(f'hsfile: {hsfile}')
+        print(f'_get_hotspots_file: hsfile: {hsfile}')
         for mnt in mountlist:
             if folder.startswith(mnt['mount_point']):
                 traildir = self._get_last_directory(mnt['mount_point'])
