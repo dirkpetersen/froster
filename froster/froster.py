@@ -160,7 +160,6 @@ class ConfigManager:
             if self.name and self.email:
                 self.user_init = True
 
-
             # AWS directory
             self.aws_dir = config.get(
                 'AWS', 'aws_dir', fallback=os.path.join(self.home_dir, '.aws'))
@@ -569,6 +568,12 @@ class ConfigManager:
 
             # Set the new AWS Directory
             self.aws_dir = aws_dir
+
+            # Set the new AWS config file
+            self.aws_config_file = os.path.join(self.aws_dir, 'config')
+            
+            # Set the new AWS credentials file
+            self.aws_credentials_file = os.path.join(self.aws_dir, 'credentials')
             
             # Get list of current AWS profiles under {$AWS_DIR}/credentials
             aws_profiles = aws.get_profiles()
