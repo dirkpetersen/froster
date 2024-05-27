@@ -247,7 +247,7 @@ install_froster() {
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
-    pipx install git+$REPO@$BRANCH &
+    pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
     spinner $!
 
     # Keep the config.ini file (if any)
