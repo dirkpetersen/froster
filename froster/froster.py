@@ -772,7 +772,7 @@ class ConfigManager:
         aws_credentials = configparser.ConfigParser()
 
         # if exists, read the aws credentials file
-        if os.path.exists(self.aws_credentials_file):
+        if hasattr(self, 'aws_credentials_file') and os.path.exists(self.aws_credentials_file):
             aws_credentials.read(self.aws_credentials_file)
 
         # Update the region of the profile
@@ -805,7 +805,8 @@ class ConfigManager:
         config = configparser.ConfigParser()
 
         # Read the aws config file
-        config.read(self.aws_config_file)
+        if hasattr(self, 'aws_config_file') and os.path.exists(self.aws_config_file):
+            config.read(self.aws_config_file)
 
         if config.has_section(aws_profile) and config.has_option(aws_profile, 'region'):
             return config.get(aws_profile, 'region')
