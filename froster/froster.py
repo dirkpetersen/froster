@@ -1230,7 +1230,8 @@ class AWSBoto:
         self.cfg = cfg
         self.arch = arch
 
-        self.set_aws_directory(self.cfg.aws_dir)
+        if hasattr(self.cfg, 'aws_dir'):
+            self.set_aws_directory(self.cfg.aws_dir)
         
     def set_aws_directory(self, aws_dir):
         # Specify the paths to the config and credentials files
