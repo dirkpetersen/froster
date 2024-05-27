@@ -105,28 +105,28 @@ class ConfigManager:
         # Froster's binary directory
         self.bin_dir = os.path.join(self.froster_dir, 'bin')
 
+
         # Froster's configuration directory
-        self.config_dir = os.path.join(self.home_dir, '.config', 'froster')
+        xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
+        if xdg_config_home:
+            self.config_dir = os.path.join(xdg_config_home, 'froster')
+        else:
+            self.config_dir = os.path.join(self.home_dir, '.config', 'froster')
 
         # Froster's configuration file
         self.config_file = os.path.join(self.config_dir, 'config.ini')
 
         # Froster's data directory
-        self.data_dir = os.path.join(
-            self.home_dir, '.local', 'share', 'froster')
+        xdg_data_home = os.environ.get('XDG_DATA_HOME')
+        if xdg_data_home:
+            self.data_dir = os.path.join(xdg_data_home, 'froster')
+        else:
+            self.data_dir = os.path.join(self.home_dir, '.local', 'share', 'froster')
 
         # Froster's archive json file
         self.archive_json = os.path.join(
             self.data_dir, self.archive_json_file_name)
 
-        # AWS directory
-        self.aws_dir = os.path.join(self.home_dir, '.aws')
-
-        # AWS config file
-        self.aws_config_file = os.path.join(self.aws_dir, 'config')
-
-        # AWS credentials file
-        self.aws_credentials_file = os.path.join(self.aws_dir, 'credentials')
 
         # Froster's default shared configuration
         self.is_shared = False
@@ -160,6 +160,17 @@ class ConfigManager:
             if self.name and self.email:
                 self.user_init = True
 
+
+            # AWS directory
+            self.aws_dir = config.get(
+                'AWS', 'aws_dir', fallback=os.path.join(self.home_dir, '.aws'))
+            
+            # AWS config file
+            self.aws_config_file = os.path.join(self.aws_dir, 'config')
+
+            # AWS credentials file
+            self.aws_credentials_file = os.path.join(self.aws_dir, 'credentials')
+                
             # AWS profile
             self.aws_profile = config.get(
                 'AWS', 'aws_profile', fallback=None)
@@ -531,7 +542,31 @@ class ConfigManager:
         try:
             print(f'\n*** AWS CONFIGURATION ***\n')
 
-            # Get list of current AWS profiles under ~/.aws/credentials
+            # Ask user to enter the path to a aws credentials directory
+            default_aws_dir = os.path.join(self.home_dir, '.aws')
+            aws_dir_question = [
+                    inquirer.Path(
+                        'aws_dir',
+                        message=f'Enter the path to aws credentials directory (default: ${default_aws_dir})',
+                        default=default_aws_dir,
+                        validate=self.__inquirer_check_path_exists)
+                ]
+
+            # Get the answer from the user
+            aws_dir_answer = inquirer.prompt(
+                aws_dir_question)
+            
+            # Get the AWS directory
+            aws_dir = os.path.expanduser(aws_dir_answer['aws_dir'])
+
+            # Create the aws directory in case it does not exist
+            os.makedirs(aws_dir, exist_ok=True, mode=0o775)
+            
+            # Create new profile in ~/.aws/config
+            self.__set_aws_config(aws_profile_name=aws_new_profile_name,
+                                    region=region)
+            
+            # Get list of current AWS profiles under {$AWS_DIR}/credentials
             aws_profiles = aws.get_profiles()
 
             # Add an option to create a new profile
@@ -653,6 +688,9 @@ class ConfigManager:
                 profile_name = aws_new_profile_name
             else:
                 profile_name = aws_profile
+
+            # Store aws dir in the config file
+            self.__set_configuration_entry('AWS', 'aws_dir', aws_dir)
 
             # Store aws profile in the config file
             self.__set_configuration_entry('AWS', 'aws_profile', profile_name)
@@ -1132,15 +1170,16 @@ class ConfigManager:
                 # Get the allowed partitions and QOS
                 parts = se.get_allowed_partitions_and_qos()
 
-                # Ask the user to select the Slurm partition and QOS
-                slurm_partition = inquirer.list_input(
-                    message=f'Select the Slurm partition for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
-                    choices=list(parts.keys()))
+                if parts is not None:
+                    # Ask the user to select the Slurm partition and QOS
+                    slurm_partition = inquirer.list_input(
+                        message=f'Select the Slurm partition for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+                        choices=list(parts.keys()))
 
-                # Ask the user to select the Slurm QOS
-                slurm_qos = inquirer.list_input(
-                    message=f'Select the Slurm QOS for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
-                    choices=list(parts[slurm_partition]))
+                    # Ask the user to select the Slurm QOS
+                    slurm_qos = inquirer.list_input(
+                        message=f'Select the Slurm QOS for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+                        choices=list(parts[slurm_partition]))
 
                 # Set the Slurm configuration in the config file
                 self.__set_configuration_entry(
@@ -1191,6 +1230,11 @@ class AWSBoto:
         self.args = args
         self.cfg = cfg
         self.arch = arch
+
+        # Specify the paths to the config and credentials files
+        os.environ['AWS_CONFIG_FILE'] = os.path.join(self.cfg.aws_dir, 'config')
+        os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(self.cfg.aws_dir, 'credentials')
+
 
     def _check_session(self):
         '''Check if the current session is valid'''
@@ -6820,7 +6864,7 @@ def print_error():
 
     # Check if the exception is a KeyboardInterrupt
     if exc_type is KeyboardInterrupt:
-        print(f'\nA KeyboardInterrupt occurred\n')
+        print(f'\nKeyboard Interrupt\n')
     else:
         print(
             f'\nError: file {file_name}: function {function_name}: line {exc_tb.tb_lineno}: {exc_value}\n', file=sys.stderr)
@@ -6897,7 +6941,7 @@ def main():
         aws.close_session()
 
     except KeyboardInterrupt:
-        print('Keyboard interrupt\n')
+        print('Keyboard Interrupt\n')
 
     except Exception as exc:
         print_error()
