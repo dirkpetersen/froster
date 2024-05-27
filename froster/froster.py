@@ -3442,7 +3442,7 @@ class Archiver:
         shortlabel = os.path.basename(folders[0])
 
         # Build output slurm dir
-        output_dir = os.path.join(self.cfg.slurm_dir, 'froster-index', label)
+        output_dir = os.path.join(self.cfg.slurm_dir, f'froster-index-{label}')
 
         se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
         se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
@@ -5829,7 +5829,9 @@ class SlurmEssentials:
             script.write(line + "\n")
         script.seek(0)
         oscript = self._reorder_sbatch_lines(script)
-        result = subprocess.run(["sbatch"], text=True, shell=True, input=oscript.read(),
+        script = oscript.read()
+        print(script)
+        result = subprocess.run(["sbatch"], text=True, shell=True, input=script,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             if 'Invalid generic resource' in result.stderr:
