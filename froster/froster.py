@@ -3252,247 +3252,254 @@ class Archiver:
 
     def _index_locally(self, folder):
         '''Index the given folder for archiving'''
+        try:
+            # move down to class
+            daysaged = [5475, 3650, 1825, 1095, 730, 365, 90, 30]
+            TiB = 1099511627776
+            # GiB=1073741824
+            # MiB=1048576
 
-        # move down to class
-        daysaged = [5475, 3650, 1825, 1095, 730, 365, 90, 30]
-        TiB = 1099511627776
-        # GiB=1073741824
-        # MiB=1048576
-
-        # If pwalkcopy location provided, run pwalk and copy the output to the specified location every time
-        if self.args.pwalkcopy:
-            print(
-                f'\nIndexing folder "{folder}" and copying output to {self.args.pwalkcopy}...', flush=True)
-        else:
-            print(f'\nIndexing folder "{folder}"...', flush=True)
-
-            # Get the path to the hotspots CSV file
-            folder_hotspot = self.get_hotspots_path(folder)
-
-            # If the folder is already indexed don't run pwalk again
-            if os.path.isfile(folder_hotspot):
+            # If pwalkcopy location provided, run pwalk and copy the output to the specified location every time
+            if self.args.pwalkcopy:
                 print(
-                    f'    ...folder already indexed at {folder_hotspot}\n')
-                return
+                    f'\nIndexing folder "{folder}" and copying output to {self.args.pwalkcopy}...', flush=True)
+            else:
+                print(f'\nIndexing folder "{folder}"...', flush=True)
 
-        # Run pwalk on given folder
-        with tempfile.NamedTemporaryFile() as pwalk_output:
-            with tempfile.NamedTemporaryFile() as pwalk_output_folders:
-                with tempfile.NamedTemporaryFile() as pwalk_output_folders_converted:
+                # Get the path to the hotspots CSV file
+                folder_hotspot = self.get_hotspots_path(folder)
 
-                    # Build the pwalk command
-                    pwalk_bin = os.path.join(sys.prefix, 'bin', 'pwalk')
-                    pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
-                    mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
+                # If the folder is already indexed don't run pwalk again
+                if os.path.isfile(folder_hotspot):
+                    print(
+                        f'    ...folder already indexed at {folder_hotspot}\n')
+                    return
 
-                    # Run the pwalk command
-                    ret = subprocess.run(mycmd, shell=True,
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Run pwalk on given folder
+            with tempfile.NamedTemporaryFile() as pwalk_output:
+                with tempfile.NamedTemporaryFile() as pwalk_output_folders:
+                    with tempfile.NamedTemporaryFile() as pwalk_output_folders_converted:
 
-                    # Check if the pwalk command was successful
-                    if ret.returncode != 0:
-                        print(
-                            f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
-                        sys.exit(1)
+                        # Build the pwalk command
+                        pwalk_bin = os.path.join(sys.prefix, 'bin', 'pwalk')
+                        pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
+                        mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
 
-                    # If pwalkcopy location provided, then copy the pwalk output file to the specified location
-                    if self.args.pwalkcopy:
+                        # Run the pwalk command
+                        ret = subprocess.run(mycmd, shell=True,
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-                        copy_filename = folder.replace('/', '+') + '.csv'
-                        copy_file_path = os.path.join(
-                            self.args.pwalkcopy, copy_filename)
+                        # Check if the pwalk command was successful
+                        if ret.returncode != 0:
+                            print(
+                                f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
+                            sys.exit(1)
 
-                        # Build the copy command
-                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
+                        # If pwalkcopy location provided, then copy the pwalk output file to the specified location
+                        if self.args.pwalkcopy:
 
-                        # Run the copy command
+                            copy_filename = folder.replace('/', '+') + '.csv'
+                            copy_file_path = os.path.join(
+                                self.args.pwalkcopy, copy_filename)
+
+                            # Build the copy command
+                            mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
+
+                            # Run the copy command
+                            result = subprocess.run(mycmd, shell=True)
+
+                            # Check if the copy command was successful
+                            if result.returncode != 0:
+                                print(
+                                    f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
+                                sys.exit(1)
+
+                        # Build the files removing command
+                        mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
+
+                        # Run the files removing command
                         result = subprocess.run(mycmd, shell=True)
 
-                        # Check if the copy command was successful
+                        # Check if the files removing command was successful
                         if result.returncode != 0:
                             print(
                                 f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
                             sys.exit(1)
 
-                    # Build the files removing command
-                    mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
+                        # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
+                        # pwalk does already output UTF-8, weird, probably duckdb error
 
-                    # Run the files removing command
-                    result = subprocess.run(mycmd, shell=True)
+                        # Build the file conversion command
+                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} -o {pwalk_output_folders_converted.name}'
 
-                    # Check if the files removing command was successful
-                    if result.returncode != 0:
-                        print(
-                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                        sys.exit(1)
+                        # Run the file conversion command
+                        result = subprocess.run(mycmd, shell=True)
 
-                    # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
-                    # pwalk does already output UTF-8, weird, probably duckdb error
+                        # Check if the file conversion command was successful
+                        if result.returncode != 0:
+                            print(
+                                f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
+                            sys.exit(1)
 
-                    # Build the file conversion command
-                    mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} -o {pwalk_output_folders_converted.name}'
+                        # Build the SQL query on the CSV file
+                        sql_query = f"""SELECT UID as User,
+                                        st_atime as AccD, st_mtime as ModD,
+                                        pw_dirsum/1073741824 as GiB,
+                                        pw_dirsum/1048576/pw_fcount as MiBAvg,
+                                        filename as Folder, GID as Group,
+                                        pw_dirsum/1099511627776 as TiB,
+                                        pw_fcount as FileCount, pw_dirsum as DirSize
+                                    FROM read_csv_auto('{pwalk_output_folders_converted.name}',
+                                            ignore_errors=1)
+                                    WHERE pw_fcount > -1 AND pw_dirsum > 0
+                                    ORDER BY pw_dirsum Desc
+                                """  # pw_dirsum > 1073741824
 
-                    # Run the file conversion command
-                    result = subprocess.run(mycmd, shell=True)
+                        # Connect to an in-memory DuckDB instance
+                        duckdb_connection = duckdb.connect(':memory:')
 
-                    # Check if the file conversion command was successful
-                    if result.returncode != 0:
-                        print(
-                            f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                        sys.exit(1)
+                        # Set the number of threads to use
+                        duckdb_connection.execute(
+                            f'PRAGMA threads={self.args.cores};')
 
-                    # Build the SQL query on the CSV file
-                    sql_query = f"""SELECT UID as User,
-                                    st_atime as AccD, st_mtime as ModD,
-                                    pw_dirsum/1073741824 as GiB,
-                                    pw_dirsum/1048576/pw_fcount as MiBAvg,
-                                    filename as Folder, GID as Group,
-                                    pw_dirsum/1099511627776 as TiB,
-                                    pw_fcount as FileCount, pw_dirsum as DirSize
-                                FROM read_csv_auto('{pwalk_output_folders_converted.name}',
-                                        ignore_errors=1)
-                                WHERE pw_fcount > -1 AND pw_dirsum > 0
-                                ORDER BY pw_dirsum Desc
-                            """  # pw_dirsum > 1073741824
+                        # Execute the SQL query
+                        rows = duckdb_connection.execute(sql_query).fetchall()
 
-                    # Connect to an in-memory DuckDB instance
-                    duckdb_connection = duckdb.connect(':memory:')
+                        # Get the column names
+                        header = duckdb_connection.execute(sql_query).description
 
-                    # Set the number of threads to use
-                    duckdb_connection.execute(
-                        f'PRAGMA threads={self.args.cores};')
+                        # Close the DuckDB connection
+                        duckdb_connection.close()
 
-                    # Execute the SQL query
-                    rows = duckdb_connection.execute(sql_query).fetchall()
+            # Set up variables for the hotspots
+            totalbytes = 0
+            numhotspots = 0
+            agedbytes = [0] * len(daysaged)
 
-                    # Get the column names
-                    header = duckdb_connection.execute(sql_query).description
+            # Get the path to the hotspots CSV file
+            mycsv = self.get_hotspots_path(folder)
 
-                    # Close the DuckDB connection
-                    duckdb_connection.close()
+            # Write the hotspots to the CSV file
+            with open(mycsv, 'w') as f:
+                writer = csv.writer(f, dialect='excel')
+                writer.writerow([col[0] for col in header])
+                # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
+                for r in rows:
+                    row = list(r)
+                    if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
+                        atime = self._get_newest_file_atime(row[5], row[1])
+                        mtime = self._get_newest_file_mtime(row[5], row[2])
+                        row[0] = self.uid2user(row[0])
+                        row[1] = self.daysago(atime)
+                        row[2] = self.daysago(mtime)
+                        row[3] = int(row[3])
+                        row[4] = int(row[4])
+                        row[6] = self.gid2group(row[6])
+                        row[7] = int(row[7])
+                        writer.writerow(row)
+                        numhotspots += 1
+                        totalbytes += row[9]
+                        for i in range(0, len(daysaged)):
+                            if row[1] > daysaged[i]:
+                                if i == 0:
+                                    # Is this really 15 years ?
+                                    printdbg(
+                                        f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
+                                agedbytes[i] += row[9]
 
-        # Set up variables for the hotspots
-        totalbytes = 0
-        numhotspots = 0
-        agedbytes = [0] * len(daysaged)
+            print(f'    ...indexing done.')
 
-        # Get the path to the hotspots CSV file
-        mycsv = self.get_hotspots_path(folder)
+            print(textwrap.dedent(f'''
+                Hotspots file: {mycsv}
+                    with {numhotspots} hotspots >= {self.thresholdGB} GiB
+                    with a total disk use of {round(totalbytes/TiB,3)} TiB
+                '''))
 
-        # Write the hotspots to the CSV file
-        with open(mycsv, 'w') as f:
-            writer = csv.writer(f, dialect='excel')
-            writer.writerow([col[0] for col in header])
-            # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
-            for r in rows:
-                row = list(r)
-                if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
-                    atime = self._get_newest_file_atime(row[5], row[1])
-                    mtime = self._get_newest_file_mtime(row[5], row[2])
-                    row[0] = self.uid2user(row[0])
-                    row[1] = self.daysago(atime)
-                    row[2] = self.daysago(mtime)
-                    row[3] = int(row[3])
-                    row[4] = int(row[4])
-                    row[6] = self.gid2group(row[6])
-                    row[7] = int(row[7])
-                    writer.writerow(row)
-                    numhotspots += 1
-                    totalbytes += row[9]
-                    for i in range(0, len(daysaged)):
-                        if row[1] > daysaged[i]:
-                            if i == 0:
-                                # Is this really 15 years ?
-                                printdbg(
-                                    f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
-                            agedbytes[i] += row[9]
+            print(f'Total folders processed: {len(rows)}')
 
-        print(f'    ...indexing done.')
+            lastagedbytes = 0
+            for i in range(0, len(daysaged)):
+                if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
+                    # dedented multi-line removing \n
+                    print(textwrap.dedent(f'''
+                    {round(agedbytes[i]/TiB,3)} TiB have not been accessed
+                    for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
+                    ''').replace('\n', ''))
+                lastagedbytes = agedbytes[i]
 
-        print(textwrap.dedent(f'''
-            Hotspots file: {mycsv}
-                with {numhotspots} hotspots >= {self.thresholdGB} GiB
-                with a total disk use of {round(totalbytes/TiB,3)} TiB
-            '''))
+            # Output decoration print
+            print()
 
-        print(f'Total folders processed: {len(rows)}')
-
-        lastagedbytes = 0
-        for i in range(0, len(daysaged)):
-            if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
-                # dedented multi-line removing \n
-                print(textwrap.dedent(f'''
-                {round(agedbytes[i]/TiB,3)} TiB have not been accessed
-                for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
-                ''').replace('\n', ''))
-            lastagedbytes = agedbytes[i]
-
-        # Output decoration print
-        print()
+        except:
+            print_error()
 
     def _index_slurm(self, folders):
         '''Index the given folders for archiving using Slurm'''
 
-        # Create a SlurmEssentials object
-        se = SlurmEssentials(self.args, self.cfg)
+        try:
+            # Create a SlurmEssentials object
+            se = SlurmEssentials(self.args, self.cfg)
 
-        # Get the labels for the Slurm job
-        label = self._get_hotspots_file(folders[0]).replace('.csv', '')
-        print("lable 1: ", label)
-        label = label.replace(' ', '_')
-        print("lable 2: ", label)
-        shortlabel = os.path.basename(folders[0])
+            # Get the labels for the Slurm job
+            label = self._get_hotspots_file(folders[0]).replace('.csv', '')
+            label = label.replace(' ', '_')
+            shortlabel = os.path.basename(folders[0])
 
-        output_file = f'froster-index-{label}.out'
-        print("output file", output_file)
+            output_file = f'froster-index-{label}.out'
+
+            # Build output slurm dir
+            output_dir = os.path.join(self.cfg.slurm_dir, f'froster-index@{label}')
+
+            se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
+            se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
+            se.add_line(f'#SBATCH --mem={self.args.memory}')
+            se.add_line(f'#SBATCH --output={output_dir}-%J.out')
+            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+            se.add_line(f'#SBATCH --mail-user={self.cfg.email}')
+            se.add_line(f'#SBATCH --time={se.walltime}')
+            se.add_line(f'#SBATCH --partition={se.partition}')
+            se.add_line(f'#SBATCH --qos={se.qos}')
+
+            # se.add_line(f'ml python')
         
-        # Build output slurm dir
-        output_dir = os.path.join(self.cfg.slurm_dir, f'froster-index-{label}')
+            # Add the Python command to the Slurm script
+            cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
 
-        se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
-        se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
-        se.add_line(f'#SBATCH --mem={self.args.memory}')
-        se.add_line(f'#SBATCH --output={output_dir}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={self.cfg.email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        se.add_line(f'#SBATCH --partition={se.partition}')
-        se.add_line(f'#SBATCH --qos={se.qos}')
+            # Print the command line to be executed by Slurm
+            if self.args.debug:
+                print(f'Command line passed to Slurm:\n{cmdline}')
 
-        # se.add_line(f'ml python')
-     
-        # Add the Python command to the Slurm script
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+            # Add the command line to the Slurm script
+            se.add_line(cmdline)
 
-        # Print the command line to be executed by Slurm
-        if self.args.debug:
-            print(f'Command line passed to Slurm:\n{cmdline}')
+            # Execute the Slurm script
+            jobid = se.sbatch()
 
-        # Add the command line to the Slurm script
-        se.add_line(cmdline)
+            # Print the Slurm job information
+            print(f'\nSLURM JOB\n')
+            print(f'  ID: {jobid}')
+            print(f'  Type: Indexing')
+            print(f'  Check output: "tail -f {output_dir}-{jobid}.out"')
+            print(f'  Cancel the job: "scancel {jobid}"\n')
+        
+        except:
+            print_error()
 
-        # Execute the Slurm script
-        jobid = se.sbatch()
-
-        # Print the Slurm job information
-        print(f'\nSLURM JOB\n')
-        print(f'  ID: {jobid}')
-        print(f'  Type: Indexing')
-        print(f'  Check output: "tail -f froster-index-{label}-{jobid}.out"')
-        print(f'  Cancel the job: "scancel {jobid}"\n')
 
     def index(self, folders):
         '''Index the given folders for archiving'''
+        try:
+            # Clean the provided paths
+            folders = clean_path_list(folders)
 
-        # Clean the provided paths
-        folders = clean_path_list(folders)
-
-        # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
-        if not shutil.which('sbatch') or self.args.noslurm or os.getenv('SLURM_JOB_ID'):
-            for folder in folders:
-                self._index_locally(folder)
-        else:
-            self._index_slurm(folders)
+            # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
+            if not shutil.which('sbatch') or self.args.noslurm or os.getenv('SLURM_JOB_ID'):
+                for folder in folders:
+                    self._index_locally(folder)
+            else:
+                self._index_slurm(folders)
+        except:
+            print_error()
 
     def archive_select_hotspots(self):
 
@@ -5746,11 +5753,14 @@ class SlurmEssentials:
             if self.args.memory > max_memory_per_node_in_mb:
                 self.args.memory = max_memory_per_node_in_mb
 
-        self.qos = cfg.slurm_partition if hasattr(cfg, 'slurm_qos') else None
+        self.qos = cfg.slurm_qos if hasattr(cfg, 'slurm_qos') else None
+
         walltime_days = cfg.slurm_walltime_days if hasattr(
             cfg, 'slurm_walltime_days') else None
+        
         walltime_hours = cfg.slurm_walltime_hours if hasattr(
             cfg, 'slurm_walltime_hours') else None
+        
         if walltime_days is not None and walltime_hours is not None:
             self.walltime = f'{walltime_days}-{walltime_hours}'
         else:
@@ -5758,14 +5768,18 @@ class SlurmEssentials:
 
         self.slurm_lscratch = cfg.slurm_lscratch if hasattr(
             cfg, 'slurm_lscratch') else None
+        
         self.lscratch_mkdir = cfg.lscratch_mkdir if hasattr(
             cfg, 'lscratch_mkdir') else None
+        
         self.lscratch_root = cfg.lscratch_root if hasattr(
             cfg, 'lscratch_root') else None
 
         if self.slurm_lscratch:
             self.add_line(f'#SBATCH {self.slurm_lscratch}')
+
         self.add_line(f'{self.lscratch_mkdir}')
+    
         if self.lscratch_root:
             self.add_line(
                 'export TMPDIR=%s/${SLURM_JOB_ID}' % self.lscratch_root)
@@ -6322,26 +6336,28 @@ class Commands:
 
     def subcmd_index(self, cfg: ConfigManager, arch: Archiver):
         '''Index folders for Froster.'''
-
-        # Check if user provided at least one argument
-        if not self.args.folders:
-            print(
-                '\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
-            sys.exit(1)
-
-        # Check if the provided pwalk copy folder exists
-        if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
-            print(f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
-            sys.exit(1)
-
-        # Check if all the provided folders exist
-        for folder in self.args.folders:
-            if not os.path.isdir(folder):
-                print(f'\nError: The folder {folder} does not exist.\n')
+        try:
+            # Check if user provided at least one argument
+            if not self.args.folders:
+                print(
+                    '\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
                 sys.exit(1)
 
-        # Index the given folders
-        arch.index(self.args.folders)
+            # Check if the provided pwalk copy folder exists
+            if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
+                print(f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
+                sys.exit(1)
+
+            # Check if all the provided folders exist
+            for folder in self.args.folders:
+                if not os.path.isdir(folder):
+                    print(f'\nError: The folder {folder} does not exist.\n')
+                    sys.exit(1)
+
+            # Index the given folders
+            arch.index(self.args.folders)
+        except:
+            print_error()
 
     def subcmd_archive(self, arch: Archiver):
         '''Check command for archiving folders for Froster.'''
