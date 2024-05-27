@@ -5168,6 +5168,10 @@ class Archiver:
         # create hotspots directory if it does not exist
         os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
 
+        print(f'Hotspots directory: {hotspotdir}')
+        print(f'Folder: {folder}')
+        print(f'hsfile: {self._get_hotspots_file(folder)}')
+        
         # Get the full path name of the new hotspots file
         return os.path.join(hotspotdir, self._get_hotspots_file(folder))
 
@@ -5177,6 +5181,7 @@ class Archiver:
         mountlist = self._get_mount_info()
         traildir = ''
         hsfile = folder.replace('/', '+') + '.csv'
+        print(f'hsfile: {hsfile}')
         for mnt in mountlist:
             if folder.startswith(mnt['mount_point']):
                 traildir = self._get_last_directory(mnt['mount_point'])
