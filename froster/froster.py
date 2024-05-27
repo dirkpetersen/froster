@@ -547,7 +547,7 @@ class ConfigManager:
             aws_dir_question = [
                     inquirer.Path(
                         'aws_dir',
-                        message=f'Enter the path to aws credentials directory (default: ${default_aws_dir})',
+                        message=f'Enter the path to aws credentials directory (default: {default_aws_dir})',
                         default=default_aws_dir,
                         validate=self.__inquirer_check_path_exists)
                 ]
@@ -561,11 +561,7 @@ class ConfigManager:
 
             # Create the aws directory in case it does not exist
             os.makedirs(aws_dir, exist_ok=True, mode=0o775)
-            
-            # Create new profile in ~/.aws/config
-            self.__set_aws_config(aws_profile_name=aws_new_profile_name,
-                                    region=region)
-            
+
             # Get list of current AWS profiles under {$AWS_DIR}/credentials
             aws_profiles = aws.get_profiles()
 
