@@ -3438,9 +3438,14 @@ class Archiver:
 
         # Get the labels for the Slurm job
         label = self._get_hotspots_file(folders[0]).replace('.csv', '')
+        print("lable 1: ", label)
         label = label.replace(' ', '_')
+        print("lable 2: ", label)
         shortlabel = os.path.basename(folders[0])
 
+        output_file = f'froster-index-{label}.out'
+        print("output file", output_file)
+        
         # Build output slurm dir
         output_dir = os.path.join(self.cfg.slurm_dir, f'froster-index-{label}')
 
