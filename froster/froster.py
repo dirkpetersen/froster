@@ -105,9 +105,19 @@ class ConfigManager:
         # Froster's binary directory
         self.bin_dir = os.path.join(self.froster_dir, 'bin')
 
+        # Froster's data directory
+        xdg_data_home = os.environ.get('XDG_DATA_HOME')
+
+        if xdg_data_home:
+            self.data_dir = os.path.join(xdg_data_home, 'froster')
+        else:
+            self.data_dir = os.path.join(self.home_dir, '.local', 'share', 'froster')
+
+        self.slurm_dir = os.path.join(self.data_dir, 'slurm')
 
         # Froster's configuration directory
         xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
+
         if xdg_config_home:
             self.config_dir = os.path.join(xdg_config_home, 'froster')
         else:
@@ -116,16 +126,10 @@ class ConfigManager:
         # Froster's configuration file
         self.config_file = os.path.join(self.config_dir, 'config.ini')
 
-        # Froster's data directory
-        xdg_data_home = os.environ.get('XDG_DATA_HOME')
-        if xdg_data_home:
-            self.data_dir = os.path.join(xdg_data_home, 'froster')
-        else:
-            self.data_dir = os.path.join(self.home_dir, '.local', 'share', 'froster')
-
         # Froster's archive json file
         self.archive_json = os.path.join(
             self.data_dir, self.archive_json_file_name)
+
 
 
         # Froster's default shared configuration
@@ -3437,10 +3441,13 @@ class Archiver:
         label = label.replace(' ', '_')
         shortlabel = os.path.basename(folders[0])
 
+        # Build output slurm dir
+        output_dir = os.path.join(self.cfg.slurm_dir, 'froster-index', label)
+
         se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
         se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
         se.add_line(f'#SBATCH --mem={self.args.memory}')
-        se.add_line(f'#SBATCH --output=froster-index-{label}-%J.out')
+        se.add_line(f'#SBATCH --output={output_dir}-%J.out')
         se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
         se.add_line(f'#SBATCH --mail-user={self.cfg.email}')
         se.add_line(f'#SBATCH --time={se.walltime}')
@@ -5705,6 +5712,10 @@ class SlurmEssentials:
     # exit code 64 causes Slurm to --requeue, e.g. sys.exit(64)
     # TODO: these variables are not READ from the config file
     def __init__(self, args, cfg: ConfigManager):
+
+        # Create the slurm directory if it does not exist
+        os.makedirs(cfg.slurm_dir, exist_ok=True, mode=0o775)
+
         self.script_lines = ["#!/bin/bash"]
         self.cfg = cfg
         self.args = args
