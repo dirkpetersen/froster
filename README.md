@@ -17,14 +17,14 @@ sudo apt-get install -y curl pipx git gcc lib32gcc-s1 unzip fuse3
 
 ```
 sudo yum update
-sudo yum install -y curl pipx git gcc lib32gcc-s1 unzip fuse3
+sudo yum install -y curl pipx git gcc lib32gcc-s1 unzip fuse3 python3-devel
 ```
 
 ### On HPC machine
 
 Please contact your administrator to install these packages:
 ```
-curl pipx git gcc lib32gcc-s1 unzip fuse3
+curl pipx git gcc lib32gcc-s1 unzip fuse3 python3.xx-devel
 ```
 
 </br>
