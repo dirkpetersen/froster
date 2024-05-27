@@ -434,9 +434,9 @@ class ConfigManager:
                 "", reason="Wrong email format. E.g.: xxx@yyy.zzz")
         return True
 
-    def __inquirer_check_is_empty_or_number(self, answers, current):
+    def __inquirer_check_is_number(self, answers, current):
 
-        pattern = r"^[0-9]+$|^$"
+        pattern = r"^[0-9]+$"
         if re.match(pattern, current) is None:
             raise inquirer.errors.ValidationError(
                 "", reason="Must be a number")
@@ -1169,10 +1169,14 @@ class ConfigManager:
                 print(f'\n*** SLURM CONFIGURATION ***\n')
 
                 slurm_walltime_days = inquirer.text(
-                    message="Set the Slurm --time (days) for froster jobs (suggested = 7)", validate=self.__inquirer_check_is_empty_or_number)
+                    message="Set the Slurm --time (days) for froster jobs (default = 7)",
+                    default=7,
+                    validate=self.__inquirer_check_is_number)
 
                 slurm_walltime_hours = inquirer.text(
-                    message="Set the Slurm --time (hours) for froster jobs (suggested = 0)", validate=self.__inquirer_check_is_empty_or_number)
+                    message="Set the Slurm --time (hours) for froster jobs (default = 0)",
+                    default=0,
+                    validate=self.__inquirer_check_is_number)
 
                 # TODO: This class __init__ should not be here, it should be in the main
                 se = SlurmEssentials(args, self)
@@ -5931,54 +5935,59 @@ class SlurmEssentials:
         return asso
 
     def get_allowed_partitions_and_qos(self):
-        """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
-        bacc = os.environ.get('SBATCH_ACCOUNT', '')
-        account = bacc if bacc else None
-        sacc = os.environ.get('SLURM_ACCOUNT', '')
-        account = sacc if sacc else account
-        allowed_partitions = {}
-        partition_str = self._get_output("scontrol show partition --oneliner")
-        partitions = self._parse_partition_data(partition_str)
-        user_groups = self._get_user_groups()
-        if account is None:
-            account = self._get_default_account()
-        for partition in partitions:
-            pname = partition['PartitionName']
-            add_partition = False
-            if partition.get('State', '') != 'UP':
-                continue
-            if any(group in user_groups for group in partition.get('DenyGroups', '').split(',')):
-                continue
-            if account in partition.get('DenyAccounts', '').split(','):
-                continue
-            allowedaccounts = partition.get('AllowAccounts', '').split(',')
-            if allowedaccounts != ['']:
-                if account in allowedaccounts or 'ALL' in allowedaccounts:
+        try:
+            """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
+            bacc = os.environ.get('SBATCH_ACCOUNT', '')
+            account = bacc if bacc else None
+            sacc = os.environ.get('SLURM_ACCOUNT', '')
+            account = sacc if sacc else account
+            allowed_partitions = {}
+            partition_str = self._get_output("scontrol show partition --oneliner")
+            partitions = self._parse_partition_data(partition_str)
+            user_groups = self._get_user_groups()
+            if account is None:
+                account = self._get_default_account()
+            for partition in partitions:
+                pname = partition['PartitionName']
+                add_partition = False
+                if partition.get('State', '') != 'UP':
+                    continue
+                if any(group in user_groups for group in partition.get('DenyGroups', '').split(',')):
+                    continue
+                if account in partition.get('DenyAccounts', '').split(','):
+                    continue
+                allowedaccounts = partition.get('AllowAccounts', '').split(',')
+                if allowedaccounts != ['']:
+                    if account in allowedaccounts or 'ALL' in allowedaccounts:
+                        add_partition = True
+                elif any(group in user_groups for group in partition.get('AllowGroups', '').split(',')):
                     add_partition = True
-            elif any(group in user_groups for group in partition.get('AllowGroups', '').split(',')):
-                add_partition = True
-            elif partition.get('AllowGroups', '') == 'ALL':
-                add_partition = True
-            if add_partition:
-                p_deniedqos = partition.get('DenyQos', '').split(',')
-                p_allowedqos = partition.get('AllowQos', '').split(',')
-                associations = self._get_associations()
-                account_qos = associations.get(account, [])
-                if p_deniedqos != ['']:
-                    allowed_qos = [
-                        q for q in account_qos if q not in p_deniedqos]
-                    # print(f"p_deniedqos: allowed_qos in {pname}:", allowed_qos)
-                elif p_allowedqos == ['ALL']:
-                    allowed_qos = account_qos
-                    # print(f"p_allowedqos = ALL in {pname}:", allowed_qos)
-                elif p_allowedqos != ['']:
-                    allowed_qos = [q for q in account_qos if q in p_allowedqos]
-                    # print(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos)
-                else:
-                    allowed_qos = []
-                    # print(f"p_allowedqos = [] in {pname}:", allowed_qos)
-                allowed_partitions[pname] = allowed_qos
-        return allowed_partitions
+                elif partition.get('AllowGroups', '') == 'ALL':
+                    add_partition = True
+                if add_partition:
+                    p_deniedqos = partition.get('DenyQos', '').split(',')
+                    p_allowedqos = partition.get('AllowQos', '').split(',')
+                    associations = self._get_associations()
+                    account_qos = associations.get(account, [])
+                    if p_deniedqos != ['']:
+                        allowed_qos = [
+                            q for q in account_qos if q not in p_deniedqos]
+                        # print(f"p_deniedqos: allowed_qos in {pname}:", allowed_qos)
+                    elif p_allowedqos == ['ALL']:
+                        allowed_qos = account_qos
+                        # print(f"p_allowedqos = ALL in {pname}:", allowed_qos)
+                    elif p_allowedqos != ['']:
+                        allowed_qos = [q for q in account_qos if q in p_allowedqos]
+                        # print(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos)
+                    else:
+                        allowed_qos = []
+                        # print(f"p_allowedqos = [] in {pname}:", allowed_qos)
+                    allowed_partitions[pname] = allowed_qos
+            return allowed_partitions
+        except:
+            print_error()
+            print("Are you in a Control Node?")
+            sys.exit(1)
 
     def display_job_info(self):
         print(self.job_info)
