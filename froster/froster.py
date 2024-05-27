@@ -3516,6 +3516,11 @@ class Archiver:
         # Get the folders to archive from the selected Hotspot file
         folders_to_archive = self.get_hotspot_folders(hotspot_selected)
 
+        if not folders_to_archive:
+            print(
+                f'\nNo hotspots to archive found in {hotspot_selected}.')
+            return
+
         # Archiving options
         archiving_options = ['Archive all hotspots',
                              'Archive one hotspot', 'Cancel']
@@ -3959,6 +3964,12 @@ class Archiver:
         duckdb_connection.execute(
             f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{hotspot_file}')")
 
+        query = "SELECT COUNT(*) FROM hs"
+        result = duckdb_connection.execute(query).fetchall()
+
+        if result[0][0] == 0:
+            return []
+        
         # Run SQL queries on this virtual table
         # Filter by given age and size. The default value for all is 0
         if self.args.older > 0:
@@ -6536,12 +6547,12 @@ class Commands:
                 return False
             print(ret.stdout, ret.stderr)
 
-    def subcmd_credentials(self, aws: AWSBoto):
+    def subcmd_credentials(self, cfg: ConfigManager, aws: AWSBoto):
         '''Check AWS credentials'''
 
         print("\nChecking AWS credentials...")
 
-        if aws.check_credentials():
+        if aws.check_credentials(aws_profile=cfg.aws_profile):
             print('    ...AWS credentials are valid\n')
             return True
         else:
@@ -6935,7 +6946,7 @@ def main():
         elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
             cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
-            cmd.subcmd_credentials(aws)
+            cmd.subcmd_credentials(cfg, aws)
         else:
             cmd.print_help()
 
