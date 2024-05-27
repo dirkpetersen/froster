@@ -559,9 +559,12 @@ class ConfigManager:
             # Get the AWS directory
             aws_dir = os.path.expanduser(aws_dir_answer['aws_dir'])
 
-            # Create the aws directory in case it does not exist
-            os.makedirs(aws_dir, exist_ok=True, mode=0o775)
+            # Set the new AWS directory at AWS Boto3
+            aws.set_aws_directory(aws_dir)
 
+            # Set the new AWS Directory
+            self.aws_dir = aws_dir
+            
             # Get list of current AWS profiles under {$AWS_DIR}/credentials
             aws_profiles = aws.get_profiles()
 
@@ -1227,10 +1230,12 @@ class AWSBoto:
         self.cfg = cfg
         self.arch = arch
 
+        self.set_aws_directory(self.cfg.aws_dir)
+        
+    def set_aws_directory(self, aws_dir):
         # Specify the paths to the config and credentials files
-        os.environ['AWS_CONFIG_FILE'] = os.path.join(self.cfg.aws_dir, 'config')
-        os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(self.cfg.aws_dir, 'credentials')
-
+        os.environ['AWS_CONFIG_FILE'] = os.path.join(aws_dir, 'config')
+        os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(aws_dir, 'credentials')
 
     def _check_session(self):
         '''Check if the current session is valid'''
