@@ -543,7 +543,12 @@ class ConfigManager:
             print(f'\n*** AWS CONFIGURATION ***\n')
 
             # Ask user to enter the path to a aws credentials directory
-            default_aws_dir = os.path.join(self.home_dir, '.aws')
+
+            if os.path.exists(os.path.join(self.home_dir, '.aws')):
+                default_aws_dir = os.path.join(self.home_dir, '.aws')
+            else:
+                default_aws_dir = None
+
             aws_dir_question = [
                     inquirer.Path(
                         'aws_dir',
