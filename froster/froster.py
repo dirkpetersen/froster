@@ -3378,8 +3378,6 @@ class Archiver:
 
             # Get the path to the hotspots CSV file
             mycsv = self.get_hotspots_path(folder)
-            print(f"_index_locally: folder: {folder}")
-            print(f"_index_locally: mycsv: {mycsv}")
 
             # Write the hotspots to the CSV file
             with open(mycsv, 'w') as f:
@@ -3481,7 +3479,8 @@ class Archiver:
             print(f'\nSLURM JOB\n')
             print(f'  ID: {jobid}')
             print(f'  Type: Indexing')
-            print(f'  Check output: "tail -f {output_dir}-{jobid}.out"')
+            print(f'  Check status: "squeue -j {jobid}"')
+            print(f'  Check output: "cat {output_dir}-{jobid}.out"')
             print(f'  Cancel the job: "scancel {jobid}"\n')
         
         except:
@@ -5858,7 +5857,7 @@ class SlurmEssentials:
         script.seek(0)
         oscript = self._reorder_sbatch_lines(script)
         script = oscript.read()
-        print(script)
+        #print(script)
         result = subprocess.run(["sbatch"], text=True, shell=True, input=script,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
