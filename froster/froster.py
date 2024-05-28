@@ -3440,6 +3440,7 @@ class Archiver:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
 
+            # Get the label for the job
             label = self._get_hotspots_file(folders[0]).replace('.csv', '').replace(' ', '_')
 
             # Submit the job
@@ -3583,8 +3584,9 @@ class Archiver:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
 
+            # Get the label for the job
             label = self._get_hotspots_file(folders[0]).replace('.csv', '').replace(' ', '_')
-            
+
             # Submit the job
             se.submit_job(folders, 'archive', label)
         except:
@@ -3794,7 +3796,7 @@ class Archiver:
             nih = app.run()
 
         if is_slurm:
-            self._archive_slurm(folders, is_recursive, nih)
+            self._archive_slurm(folders)
         else:
             for folder in folders:
                 if is_recursive:
