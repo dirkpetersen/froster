@@ -3266,6 +3266,7 @@ class Archiver:
             else:
                 print(f'\nIndexing folder "{folder}"...', flush=True)
 
+                print("FUNCTION: _index_locally")
                 # Get the path to the hotspots CSV file
                 folder_hotspot = self.get_hotspots_path(folder)
                 print(f"_index_locally: folder_hotspot: {folder_hotspot}")
@@ -5171,7 +5172,7 @@ class Archiver:
 
         # create hotspots directory if it does not exist
         os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
-
+        print("FUNCTION: get_hotspots_path")
         print(f'get_hotspots_path: Hotspots directory: {hotspotdir}')
         print(f'get_hotspots_path: Folder: {folder}')
         print(f'get_hotspots_path: hsfile: {self._get_hotspots_file(folder)}')
@@ -5185,7 +5186,8 @@ class Archiver:
         mountlist = self._get_mount_info()
         traildir = ''
         hsfile = folder.replace('/', '+') + '.csv'
-        print(f'_get_hotspots_file: hsfile: {hsfile}')
+        print("FUNCTION: _get_hotspots_file")
+        print(f'_get_hotspots_file: hsfile pre: {hsfile}')
         for mnt in mountlist:
             if folder.startswith(mnt['mount_point']):
                 traildir = self._get_last_directory(mnt['mount_point'])
@@ -5193,6 +5195,7 @@ class Archiver:
                 hsfile = f'@{traildir}+{hsfile}'
                 if len(hsfile) > 255:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
+        print(f'_get_hotspots_file: hsfile post: {hsfile}')
         return hsfile
 
     def _walker(self, top, skipdirs=['.snapshot',]):
