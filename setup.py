@@ -9,7 +9,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='froster',
-    version='0.10.13',
+    version='0.10.14',
     license='MIT',
     packages=find_packages(),
     install_requires=requirements,
