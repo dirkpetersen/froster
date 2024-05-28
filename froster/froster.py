@@ -1251,7 +1251,30 @@ class AWSBoto:
 
         if hasattr(self.cfg, 'aws_dir'):
             self.set_aws_directory(self.cfg.aws_dir)
-        
+
+        # If AWS is init then set the credentials in the environment
+        if self.cfg.aws_init:
+
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # Read AWS Credentials file
+            if os.path.exists(self.cfg.aws_credentials_file):
+                config.read(self.cfg.aws_credentials_file)
+
+                # Check if the AWS profile exists
+                if config.has_section(self.cfg.aws_profile):
+                       
+                    # Get the AWS access key and secret key from the specified profile
+                    self.aws_access_key_id = config.get(
+                        self.cfg.aws_profile, 'aws_access_key_id')
+                    self.aws_secret_access_key = config.get(
+                        self.cfg.aws_profile, 'aws_secret_access_key')
+
+                    # Set the environment variables for creds
+                    os.environ['AWS_ACCESS_KEY_ID'] = self.aws_access_key_id
+                    os.environ['AWS_SECRET_ACCESS_KEY'] = self.aws_secret_access_key
+
     def set_aws_directory(self, aws_dir):
         # Specify the paths to the config and credentials files
         os.environ['AWS_CONFIG_FILE'] = os.path.join(aws_dir, 'config')
@@ -3758,77 +3781,77 @@ class Archiver:
 
     def archive(self, folders):
         '''Archive the given folders'''
+        try:
+            # Clean the provided paths
+            folders = clean_path_list(folders)
 
-        # Clean the provided paths
-        folders = clean_path_list(folders)
+            # Set flags
+            is_recursive = self.args.recursive
+            print('self.args.recursive', self.args.recursive)
 
-        # Set flags
-        is_recursive = self.args.recursive
-        is_nih = self.cfg.is_nih or self.args.nih
+            is_nih = self.cfg.is_nih or self.args.nih
 
-        is_slurm = shutil.which(
-            'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
+            is_slurm = shutil.which(
+                'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
 
-        is_tar = not self.args.notar
-        is_force = self.args.force
+            is_tar = not self.args.notar
+            is_force = self.args.force
 
-        # Check if there is a conflict between folders and recursive flag,
-        # i.e. recursive flag is set and a folder is a subdirectory of another one
-        if is_recursive:
-            if self._is_recursive_collision(folders):
+            # Check if there is a conflict between folders and recursive flag,
+            # i.e. recursive flag is set and a folder is a subdirectory of another one
+            if is_recursive:
+                if self._is_recursive_collision(folders):
+                    print(
+                        f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
+                    sys.exit(1)
+
+            # Check if we can read & write all files and folders
+            if not self._is_correct_files_folders_permissions(folders, is_recursive):
                 print(
-                    f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
+                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
+                print(
+                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+                print(
+                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
                 sys.exit(1)
 
-        # Check if we can read & write all files and folders
-        if not self._is_correct_files_folders_permissions(folders, is_recursive):
-            print(
-                '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-            print(
-                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-            print(
-                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-            sys.exit(1)
+            nih = ''
 
-        nih = ''
+            if is_nih:
+                app = TableNIHGrants()
+                nih = app.run()
 
-        if is_nih:
-            app = TableNIHGrants()
-            nih = app.run()
-        print("FUNCTION: archive")
+            if is_slurm:
+                self._archive_slurm(folders)
+            else:
+                for folder in folders:
+                    if is_recursive:
+                        for root, dirs, files in self._walker(folder):
+                            if folder == root:
+                                is_subfolder = False
+                            else:
+                                is_subfolder = True
+                            print(f'\nARCHIVING RECURSIVE {root}')
+                            print(f'is_recursive: {is_recursive}')
+                            print(f'is_nih: {is_nih}')
+                            print(f'is_subfolder: {is_subfolder}')
+                            print(f'is_tar: {is_tar}')
+                            print(f'is_force: {is_force}')
+                            self._archive_locally(
+                                root, is_recursive, nih, is_subfolder, is_tar, is_force)
 
-        if is_slurm:
-
-            print("IS SLURM", is_slurm)
-            self._archive_slurm(folders)
-        else:
-            print("IS NOT SLURM", is_slurm)
-            for folder in folders:
-                if is_recursive:
-                    for root, dirs, files in self._walker(folder):
-                        if folder == root:
-                            is_subfolder = False
-                        else:
-                            is_subfolder = True
-                        print(f'\nARCHIVING RECURSIVE {root}')
+                    else:
+                        print(f'\nARCHIVING NOT RECURSIVE')
                         print(f'is_recursive: {is_recursive}')
                         print(f'is_nih: {is_nih}')
-                        print(f'is_subfolder: {is_subfolder}')
                         print(f'is_tar: {is_tar}')
                         print(f'is_force: {is_force}')
+                        is_subfolder = False
                         self._archive_locally(
-                            root, is_recursive, nih, is_subfolder, is_tar, is_force)
+                            folder, is_recursive, nih, is_subfolder, is_tar, is_force)
+        except:
+            print_error()
 
-                else:
-                    print(f'\nARCHIVING NOT RECURSIVE {root}')
-                    print(f'is_recursive: {is_recursive}')
-                    print(f'is_nih: {is_nih}')
-                    print(f'is_subfolder: {is_subfolder}')
-                    print(f'is_tar: {is_tar}')
-                    print(f'is_force: {is_force}')
-                    is_subfolder = False
-                    self._archive_locally(
-                        folder, is_recursive, nih, is_subfolder, is_tar, is_force)
 
     def get_mounts(self):
         try:
@@ -4321,7 +4344,7 @@ class Archiver:
                 if not didtar:
                     # Remove the tar file if it's empty
                     os.remove(tar_path)
-
+            print("AFTER TAR")
             return True
 
         except Exception as e:
@@ -5472,13 +5495,14 @@ class Rclone:
         self.rc = os.path.join(sys.prefix, 'bin', 'rclone')
 
         # Set the Rclone environment variables
+        # Note: Keys are set in the AWS Boto __init__ function
         self.envrn = {}
         self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
         self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
-        self.envrn['RCLONE_S3_PROFILE'] = self.cfg.aws_profile
         self.envrn['RCLONE_S3_REGION'] = self.cfg.aws_region
         self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.cfg.aws_region
         self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
+
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -5494,7 +5518,7 @@ class Rclone:
 
     def _run_rclone_command(self, command, background=False):
         '''Run Rclone command'''
-
+        print('FUNCTION: _run_rclone_command')
         try:
             # Add options to Rclone command
             command = self._add_opt(command, '--verbose')
@@ -5529,9 +5553,11 @@ class Rclone:
                     return False
 
             else:
+                print("_run_rclone_command: running")
+                print("command: ", command)
                 ret = subprocess.run(
                     command, capture_output=True, text=True, env=self.envrn)
-
+                print("_run_rclone_command: finished")
                 # Check if the command was successful
                 if ret.returncode == 0:
                     # Execution successfull
@@ -5574,7 +5600,7 @@ class Rclone:
 
     def copy(self, src, dst, *args):
         '''Copy files from source to destination using Rclone'''
-
+        print("FUNCTION: copy")
         # Build the copy command
         command = [self.rc, 'copy'] + list(args)
         command.append(src)
@@ -6383,48 +6409,51 @@ class Commands:
 
     def subcmd_archive(self, arch: Archiver):
         '''Check command for archiving folders for Froster.'''
+        try:
 
-        if self.args.older > 0 and self.args.newer > 0:
-            print(
-                '\nError: Cannot use both --older and --newer flags together.\n', file=sys.stderr)
-            sys.exit(1)
-
-        # Check if the user provided the permissions argument
-        if self.args.permissions:
-            if not self.args.folders:
+            if self.args.older > 0 and self.args.newer > 0:
                 print(
-                    '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n', file=sys.stderr)
+                    '\nError: Cannot use both --older and --newer flags together.\n', file=sys.stderr)
                 sys.exit(1)
 
-            # Print the permissions of the provided folders
-            arch.print_paths_rw_info(self.args.folder)
-            sys.exit(0)
+            # Check if the user provided the permissions argument
+            if self.args.permissions:
+                if not self.args.folders:
+                    print(
+                        '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n', file=sys.stderr)
+                    sys.exit(1)
 
-        # Check if the user provided the reset argument
-        if self.args.reset:
-            for folder in self.args.folders:
-                arch.reset_folder(folder, self.args.recursive)
-            sys.exit(0)
+                # Print the permissions of the provided folders
+                arch.print_paths_rw_info(self.args.folder)
+                sys.exit(0)
 
-        # Check if the user provided the hotspots argument
-        if self.args.hotspots:
-            if self.args.folders:
-                print('\nError: Incorrect "froster archive" usage. Choose between:')
-                print('    Using --hotspots flag to select hotspots')
-                print('    Provide folder(s) to archive\n')
-                sys.exit(1)
+            # Check if the user provided the reset argument
+            if self.args.reset:
+                for folder in self.args.folders:
+                    arch.reset_folder(folder, self.args.recursive)
+                sys.exit(0)
 
+            # Check if the user provided the hotspots argument
+            if self.args.hotspots:
+                if self.args.folders:
+                    print('\nError: Incorrect "froster archive" usage. Choose between:')
+                    print('    Using --hotspots flag to select hotspots')
+                    print('    Provide folder(s) to archive\n')
+                    sys.exit(1)
+
+                else:
+                    arch.archive_select_hotspots()
             else:
-                arch.archive_select_hotspots()
-        else:
-            if not self.args.folders:
-                print(
-                    '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n')
-                sys.exit(1)
+                if not self.args.folders:
+                    print(
+                        '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n')
+                    sys.exit(1)
 
-            else:
-                # Archive the given folders
-                arch.archive(self.args.folders)
+                else:
+                    # Archive the given folders
+                    arch.archive(self.args.folders)
+        except:
+            print_error()
 
     def subcmd_restore(self, arch: Archiver, aws: AWSBoto):
         '''Check command for restoring folders for Froster.'''
