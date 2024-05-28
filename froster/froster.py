@@ -1252,29 +1252,6 @@ class AWSBoto:
         if hasattr(self.cfg, 'aws_dir'):
             self.set_aws_directory(self.cfg.aws_dir)
 
-        # If AWS is init then set the credentials in the environment
-        if self.cfg.aws_init:
-
-            # Create a ConfigParser object
-            config = configparser.ConfigParser()
-
-            # Read AWS Credentials file
-            if os.path.exists(self.cfg.aws_credentials_file):
-                config.read(self.cfg.aws_credentials_file)
-
-                # Check if the AWS profile exists
-                if config.has_section(self.cfg.aws_profile):
-                       
-                    # Get the AWS access key and secret key from the specified profile
-                    self.aws_access_key_id = config.get(
-                        self.cfg.aws_profile, 'aws_access_key_id')
-                    self.aws_secret_access_key = config.get(
-                        self.cfg.aws_profile, 'aws_secret_access_key')
-
-                    # Set the environment variables for creds
-                    os.environ['AWS_ACCESS_KEY_ID'] = self.aws_access_key_id
-                    os.environ['AWS_SECRET_ACCESS_KEY'] = self.aws_secret_access_key
-
     def set_aws_directory(self, aws_dir):
         # Specify the paths to the config and credentials files
         os.environ['AWS_CONFIG_FILE'] = os.path.join(aws_dir, 'config')
@@ -5503,6 +5480,21 @@ class Rclone:
         self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.cfg.aws_region
         self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
 
+        # Set the credentials for AWS
+        if self.cfg.aws_init:
+
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # Read AWS Credentials file
+            if os.path.exists(self.cfg.aws_credentials_file):
+                config.read(self.cfg.aws_credentials_file)
+
+                # Check if the AWS profile exists
+                if config.has_section(self.cfg.aws_profile):
+                       # Set the environment variables for creds
+                    self.envrn['AWS_ACCESS_KEY_ID'] = config.get(self.cfg.aws_profile, 'aws_access_key_id')
+                    self.envrn['AWS_SECRET_ACCESS_KEY'] = config.get(self.cfg.aws_profile, 'aws_secret_access_key')
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -5518,7 +5510,6 @@ class Rclone:
 
     def _run_rclone_command(self, command, background=False):
         '''Run Rclone command'''
-        print('FUNCTION: _run_rclone_command')
         try:
             # Add options to Rclone command
             command = self._add_opt(command, '--verbose')
