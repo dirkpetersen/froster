@@ -3768,6 +3768,7 @@ class Archiver:
 
         is_slurm = shutil.which(
             'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
+
         is_tar = not self.args.notar
         is_force = self.args.force
 
@@ -3794,10 +3795,14 @@ class Archiver:
         if is_nih:
             app = TableNIHGrants()
             nih = app.run()
+        print("FUNCTION: archive")
 
         if is_slurm:
+
+            print("IS SLURM", is_slurm)
             self._archive_slurm(folders)
         else:
+            print("IS NOT SLURM", is_slurm)
             for folder in folders:
                 if is_recursive:
                     for root, dirs, files in self._walker(folder):
@@ -3805,11 +3810,22 @@ class Archiver:
                             is_subfolder = False
                         else:
                             is_subfolder = True
-
+                        print(f'\nARCHIVING RECURSIVE {root}')
+                        print(f'is_recursive: {is_recursive}')
+                        print(f'is_nih: {is_nih}')
+                        print(f'is_subfolder: {is_subfolder}')
+                        print(f'is_tar: {is_tar}')
+                        print(f'is_force: {is_force}')
                         self._archive_locally(
                             root, is_recursive, nih, is_subfolder, is_tar, is_force)
 
                 else:
+                    print(f'\nARCHIVING NOT RECURSIVE {root}')
+                    print(f'is_recursive: {is_recursive}')
+                    print(f'is_nih: {is_nih}')
+                    print(f'is_subfolder: {is_subfolder}')
+                    print(f'is_tar: {is_tar}')
+                    print(f'is_force: {is_force}')
                     is_subfolder = False
                     self._archive_locally(
                         folder, is_recursive, nih, is_subfolder, is_tar, is_force)
@@ -4243,6 +4259,7 @@ class Archiver:
                 # Flag to check if any files were tarred
                 didtar = False
 
+                print("BEFORE TAR")
                 # Create tar file and csv file
                 with tarfile.open(tar_path, "w") as tar_file, open(csv_path, 'w', newline='') as csv_file:
 
@@ -5492,16 +5509,19 @@ class Rclone:
                 output = False
 
                 if output:
+                    print("_run_rclone_command: running output")
                     # Print output in stdout
                     ret = subprocess.Popen(
                         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=self.envrn)
 
                 else:
                     # DO not print output
+                    print("_run_rclone_command: running WITHOUT output")
                     with open(os.devnull, 'w') as devnull:
                         ret = subprocess.Popen(
                             command, stdout=devnull, stderr=devnull, text=True, env=self.envrn)
 
+                print("_run_rclone_command: PID: ", ret.pid)
                 # If we have a pid we assume the command was successful
                 if ret.pid:
                     return True
@@ -6998,9 +7018,9 @@ def main():
             cmd.subcmd_delete(arch)
         elif args.subcmd in ['mount', 'mnt']:
             cmd.subcmd_mount(arch)
-        elif args.subcmd in ['umount']:  # or args.unmount:
+        elif args.subcmd in ['umount']:
             cmd.subcmd_umount(arch)
-        elif args.subcmd in ['ssh', 'scp']:  # or args.unmount:
+        elif args.subcmd in ['ssh', 'scp']:
             cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
             cmd.subcmd_credentials(cfg, aws)
