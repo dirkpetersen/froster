@@ -3266,11 +3266,8 @@ class Archiver:
             else:
                 print(f'\nIndexing folder "{folder}"...', flush=True)
 
-                print("FUNCTION: _index_locally")
                 # Get the path to the hotspots CSV file
                 folder_hotspot = self.get_hotspots_path(folder)
-                print(f"_index_locally: folder_hotspot: {folder_hotspot}")
-                print(f"_index_locally: folder: {folder}")
 
                 # If the folder is already indexed don't run pwalk again
                 if os.path.isfile(folder_hotspot):
@@ -5172,10 +5169,6 @@ class Archiver:
 
         # create hotspots directory if it does not exist
         os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
-        print("FUNCTION: get_hotspots_path")
-        print(f'get_hotspots_path: Hotspots directory: {hotspotdir}')
-        print(f'get_hotspots_path: Folder: {folder}')
-        print(f'get_hotspots_path: hsfile: {self._get_hotspots_file(folder)}')
 
         # Get the full path name of the new hotspots file
         return os.path.join(hotspotdir, self._get_hotspots_file(folder))
@@ -5187,15 +5180,20 @@ class Archiver:
         traildir = ''
         hsfile = folder.replace('/', '+') + '.csv'
         print("FUNCTION: _get_hotspots_file")
-        print(f'_get_hotspots_file: hsfile pre: {hsfile}')
+        print(f'hsfile pre: {hsfile}')
         for mnt in mountlist:
+            print(f'mnt: {mnt}')
             if folder.startswith(mnt['mount_point']):
+                print("it starts with mount point")
                 traildir = self._get_last_directory(mnt['mount_point'])
+                print("traildir: ", traildir)
                 hsfile = folder.replace(mnt['mount_point'], '')
+                print("hsfile replace: ", hsfile)
                 hsfile = f'@{traildir}+{hsfile}'
+                print("hsfile: ", hsfile)
                 if len(hsfile) > 255:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
-        print(f'_get_hotspots_file: hsfile post: {hsfile}')
+        print(f'hsfile post: {hsfile}')
         return hsfile
 
     def _walker(self, top, skipdirs=['.snapshot',]):
