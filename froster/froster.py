@@ -3440,8 +3440,10 @@ class Archiver:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
 
+            label = self._get_hotspots_file(folders[0]).replace('.csv', '').replace(' ', '_')
+
             # Submit the job
-            se.submit_job(folders, 'index')
+            se.submit_job(folders, 'index', label)
         
         except:
             print_error()
@@ -3581,8 +3583,10 @@ class Archiver:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
 
+            label = self._get_hotspots_file(folders[0]).replace('.csv', '').replace(' ', '_')
+            
             # Submit the job
-            se.submit_job(folders, 'archive')
+            se.submit_job(folders, 'archive', label)
         except:
             print_error()
 
@@ -5788,13 +5792,11 @@ class SlurmEssentials:
         return reordered_script
 
 
-    def submit_job(self, folders, cmd_type):
+    def submit_job(self, folders, cmd_type, label):
         '''Submit a Slurm job'''
 
         try:
             # Get the labels for the Slurm job
-            label = self._get_hotspots_file(folders[0]).replace('.csv', '')
-            label = label.replace(' ', '_')
             shortlabel = os.path.basename(folders[0])
 
             # Build output slurm dir
