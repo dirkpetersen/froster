@@ -9,6 +9,11 @@ set -e
 
 date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
 
+XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+
+
+
 #####################
 ### ERROR HANDLER ###
 #####################
@@ -29,13 +34,13 @@ catch() {
         fi
 
         # Restore (if any) backed up froster config files
-        if [[ -d ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.config/froster >/dev/null 2>&1
+        if [[ -d ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
+            mv -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ${XDG_CONFIG_HOME}/froster >/dev/null 2>&1
         fi
 
         # Restore (if any) backed up froster data files
-        if [[ -d ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak ${HOME}/.local/share/froster >/dev/null 2>&1
+        if [[ -d ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
+            mv -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ${XDG_DATA_HOME}/froster >/dev/null 2>&1
         fi
 
         rm -rf ${pwalk_path} >/dev/null 2>&1
@@ -113,16 +118,16 @@ check_apt_dependencies() {
     fi
 
     # Check if lib32gcc-s1 is installed (pwalk compilation requirement)
-    if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
-        echo "Error: lib32gcc-s1 is not installed."
-        echo
-        echo "Please install lib32gcc-s1"
-        echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y lib32gcc-s1"
-        echo
-        exit 1
-    fi
+        if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
+            echo "Error: lib32gcc-s1 is not installed."
+            echo
+            echo "Please install lib32gcc-s1"
+            echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
+            echo "  sudo apt update"
+            echo "  sudo apt install -y lib32gcc-s1"
+            echo
+            exit 1
+        fi
 
     # Check if git is installed (pipx installation requirement)
     # TODO: Get rid of this requirement once froster is in PyPi repository
@@ -170,27 +175,27 @@ backup_old_installation() {
     echo "Backing up older froster installation (if any)..."
 
     # Back up (if any) older froster data files
-    if [[ -d ${HOME}/.local/share/froster ]]; then
+    if [[ -d ${XDG_DATA_HOME}/froster ]]; then
 
         # Copy the froster directory to froster_YYYYMMDD.bak
-        cp -rf ${HOME}/.local/share/froster ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak
+        cp -rf ${XDG_DATA_HOME}/froster ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak
 
-        echo "    Data back up at ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak"
+        echo "    Data back up at ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak"
     fi
 
     # Back up (if any) older froster configurations
-    if [[ -d ${HOME}/.config/froster ]]; then
+    if [[ -d ${XDG_CONFIG_HOME}/froster ]]; then
 
         # Move the froster config directory to froster.bak
-        cp -rf ${HOME}/.config/froster ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak
+        cp -rf ${XDG_CONFIG_HOME}/froster ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak
 
-        echo "    Config back up at ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak"
+        echo "    Config back up at ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak"
     fi
 
     echo "...older froster installation backed up"
 
     # Check if froster is already installed, if so uninstall it
-    if which froster >/dev/null; then
+    if which froster >/dev/null 2>&1; then
         echo
         echo "Uninstalling existing froster installation..."
         if pip list | grep -q froster >/dev/null 2>&1; then
@@ -205,17 +210,17 @@ backup_old_installation() {
     fi
 
     # Keep the froster-archives.json file (if any)
-    if [[ -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+    if [[ -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
         # Create the froster directory if it does not exist
-        mkdir -p ${HOME}/.local/share/froster
+        mkdir -p ${XDG_DATA_HOME}/froster
 
         # Copy the froster-archives.json file to the data directory
-        cp -f ${HOME}/.local/share/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+        cp -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
     fi
 
     # Remove old files
-    rm -rf ${HOME}/.local/share/froster
-    rm -rf ${HOME}/.config/froster
+    rm -rf ${XDG_DATA_HOME}/froster
+    rm -rf ${XDG_CONFIG_HOME}/froster
     rm -f ${HOME}/.local/bin/froster
     rm -f ${HOME}/.local/bin/froster.py
     rm -f ${HOME}/.local/bin/s3-restore.py
@@ -246,21 +251,21 @@ install_froster() {
     spinner $!
 
     # Keep the config.ini file (if any)
-    if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
+    if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
         # Create the froster directory if it does not exist
-        mkdir -p ${HOME}/.config/froster
+        mkdir -p ${XDG_CONFIG_HOME}/froster
 
         # Copy the config file to the data directory
-        cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ${HOME}/.config/froster/config.ini
+        cp -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ${XDG_CONFIG_HOME}/froster/config.ini
     fi
 
     # Keep the froster-archives.json file (if any)
-    if [[ -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+    if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
         # Create the froster directory if it does not exist
-        mkdir -p ${HOME}/.local/share/froster
+        mkdir -p ${XDG_DATA_HOME}/froster
 
         # Copy the froster-archives.json file to the data directory
-        cp -f ${HOME}/.config/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${HOME}/.local/share/froster/froster-archives.json
+        cp -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
     fi
 
     echo "...froster installed"
@@ -291,8 +296,8 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-    if [ -d "${HOME}/.local/share/pipx" ]; then
-        mv ${pwalk_path}/pwalk ${HOME}/.local/share/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
+    if [ -d "${XDG_DATA_HOME}/pipx" ]; then
+        mv ${pwalk_path}/pwalk ${XDG_DATA_HOME}/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
         mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
@@ -345,8 +350,8 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-    if [ -d "${HOME}/.local/share/pipx" ]; then
-        mv rclone-v*/rclone ${HOME}/.local/share/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
+    if [ -d "${XDG_DATA_HOME}/pipx" ]; then
+        mv rclone-v*/rclone ${XDG_DATA_HOME}/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
     elif [ -d "${HOME}/.local/pipx" ]; then
         mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
     elif [ -v PIPX_HOME ]; then
