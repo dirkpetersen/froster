@@ -3440,48 +3440,8 @@ class Archiver:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
 
-            # Get the labels for the Slurm job
-            label = self._get_hotspots_file(folders[0]).replace('.csv', '')
-            label = label.replace(' ', '_')
-            shortlabel = os.path.basename(folders[0])
-
-            output_file = f'froster-index-{label}.out'
-
-            # Build output slurm dir
-            output_dir = os.path.join(self.cfg.slurm_dir, f'froster-index@{label}')
-
-            se.add_line(f'#SBATCH --job-name=froster:index:{shortlabel}')
-            se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
-            se.add_line(f'#SBATCH --mem={self.args.memory}')
-            se.add_line(f'#SBATCH --output={output_dir}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-            se.add_line(f'#SBATCH --mail-user={self.cfg.email}')
-            se.add_line(f'#SBATCH --time={se.walltime}')
-            se.add_line(f'#SBATCH --partition={se.partition}')
-            se.add_line(f'#SBATCH --qos={se.qos}')
-
-            # se.add_line(f'ml python')
-        
-            # Add the Python command to the Slurm script
-            cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-
-            # Print the command line to be executed by Slurm
-            if self.args.debug:
-                print(f'Command line passed to Slurm:\n{cmdline}')
-
-            # Add the command line to the Slurm script
-            se.add_line(cmdline)
-
-            # Execute the Slurm script
-            jobid = se.sbatch()
-
-            # Print the Slurm job information
-            print(f'\nSLURM JOB\n')
-            print(f'  ID: {jobid}')
-            print(f'  Type: Indexing')
-            print(f'  Check status: "squeue -j {jobid}"')
-            print(f'  Check output: "cat {output_dir}-{jobid}.out"')
-            print(f'  Cancel the job: "scancel {jobid}"\n')
+            # Submit the job
+            se.submit_job(folders, 'index')
         
         except:
             print_error()
@@ -3614,41 +3574,17 @@ class Archiver:
 
         return is_collision
 
-    def _archive_slurm(self, folders, is_recursive, nih):
-        se = SlurmEssentials(self.args, self.cfg)
-        label = folders[0].replace('/', '+')
-        label = label.replace(' ', '_')
-        shortlabel = os.path.basename(folders[0])
-        myjobname = f'froster:archive:{shortlabel}'
-        email = self.cfg.email
-        se.add_line(f'#SBATCH --job-name={myjobname}')
-        se.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
-        se.add_line(f'#SBATCH --mem=64G')
-        se.add_line(f'#SBATCH --requeue')
-        se.add_line(f'#SBATCH --output=froster-archive-{label}-%J.out')
-        se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-        se.add_line(f'#SBATCH --mail-user={email}')
-        se.add_line(f'#SBATCH --time={se.walltime}')
-        if se.partition:
-            se.add_line(f'#SBATCH --partition={se.partition}')
-        if se.qos:
-            se.add_line(f'#SBATCH --qos={se.qos}')
-        cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-        if not "--profile" in cmdline and self.args.aws_profile:
-            cmdline = cmdline.replace(
-                '/froster.py ', f'/froster --profile {self.args.aws_profile} ')
-        else:
-            cmdline = cmdline.replace('/froster.py ', '/froster ')
-        if not folders[0] in cmdline:
-            folders = '" "'.join(folders)
-            cmdline = f'{cmdline} "{folders}"'
-        if self.args.debug:
-            print(f'Command line passed to Slurm:\n{cmdline}')
-        se.add_line(cmdline)
-        jobid = se.sbatch()
-        print(f'Submitted froster archiving job: {jobid}')
-        print(f'Check Job Output:')
-        print(f' tail -f froster-archive-{label}-{jobid}.out')
+    def _archive_slurm(self, folders):
+        '''Archive the given folders using Slurm'''
+
+        try:
+            # Create a SlurmEssentials object
+            se = SlurmEssentials(self.args, self.cfg)
+
+            # Submit the job
+            se.submit_job(folders, 'archive')
+        except:
+            print_error()
 
     def _archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar, is_force):
         '''Archive the given folder'''
@@ -3823,6 +3759,7 @@ class Archiver:
         # Set flags
         is_recursive = self.args.recursive
         is_nih = self.cfg.is_nih or self.args.nih
+
         is_slurm = shutil.which(
             'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
         is_tar = not self.args.notar
@@ -5850,6 +5787,56 @@ class SlurmEssentials:
         reordered_script.seek(0)
         return reordered_script
 
+
+    def submit_job(self, folders, cmd_type):
+        '''Submit a Slurm job'''
+
+        try:
+            # Get the labels for the Slurm job
+            label = self._get_hotspots_file(folders[0]).replace('.csv', '')
+            label = label.replace(' ', '_')
+            shortlabel = os.path.basename(folders[0])
+
+            # Build output slurm dir
+            output_dir = os.path.join(self.cfg.slurm_dir, f'froster-{cmd_type}@{label}')
+
+            # Compile the Slurm script
+            self.add_line(f'#SBATCH --job-name=froster:{cmd_type}:{shortlabel}')
+            self.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
+            self.add_line(f'#SBATCH --mem={self.args.memory}')
+            self.add_line(f'#SBATCH --output={output_dir}-%J.out')
+            self.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
+            self.add_line(f'#SBATCH --mail-user={self.cfg.email}')
+            self.add_line(f'#SBATCH --time={self.walltime}')
+            self.add_line(f'#SBATCH --partition={self.partition}')
+            self.add_line(f'#SBATCH --qos={self.qos}')
+
+            # se.add_line(f'ml python')
+        
+            # Add the Python command to the Slurm script
+            cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
+
+            # Print the command line to be executed by Slurm
+            if self.args.debug:
+                print(f'Command line passed to Slurm:\n{cmdline}')
+
+            # Add the command line to the Slurm script
+            self.add_line(cmdline)
+
+            # Execute the Slurm script
+            jobid = self.sbatch()
+
+            # Print the Slurm job information
+            print(f'\nSLURM JOB\n')
+            print(f'  ID: {jobid}')
+            print(f'  Type: Indexing')
+            print(f'  Check status: "squeue -j {jobid}"')
+            print(f'  Check output: "cat {output_dir}-{jobid}.out"')
+            print(f'  Cancel the job: "scancel {jobid}"\n')
+
+        except:
+            print_error()
+
     def sbatch(self):
         script = io.StringIO()
         for line in self.script_lines:
@@ -5857,7 +5844,10 @@ class SlurmEssentials:
         script.seek(0)
         oscript = self._reorder_sbatch_lines(script)
         script = oscript.read()
-        #print(script)
+
+        # Print the script to be submitted
+        print(script)
+
         result = subprocess.run(["sbatch"], text=True, shell=True, input=script,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
