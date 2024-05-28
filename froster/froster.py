@@ -5177,23 +5177,22 @@ class Archiver:
         # get a full path name of a new hotspots file
         # based on a folder name that has been crawled
         mountlist = self._get_mount_info()
-        traildir = ''
-        hsfile = folder.replace('/', '+') + '.csv'
-        print("FUNCTION: _get_hotspots_file")
-        print(f'hsfile pre: {hsfile}')
+
         for mnt in mountlist:
-            print(f'mnt: {mnt}')
             if folder.startswith(mnt['mount_point']):
-                print("it starts with mount point")
+                # Get the last directory in the path
                 traildir = self._get_last_directory(mnt['mount_point'])
-                print("traildir: ", traildir)
+
+                # Build the hotspots file name
                 hsfile = folder.replace(mnt['mount_point'], '')
-                print("hsfile replace: ", hsfile)
-                hsfile = f'@{traildir}+{hsfile}'
-                print("hsfile: ", hsfile)
+                hsfile = f'@{traildir}{hsfile}'
+
+                # Shorten the length of the file if it is too long
                 if len(hsfile) > 255:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
-        print(f'hsfile post: {hsfile}')
+
+        hsfile = folder.replace('/', '+') + '.csv'
+    
         return hsfile
 
     def _walker(self, top, skipdirs=['.snapshot',]):
