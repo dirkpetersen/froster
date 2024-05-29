@@ -130,8 +130,6 @@ class ConfigManager:
         self.archive_json = os.path.join(
             self.data_dir, self.archive_json_file_name)
 
-
-
         # Froster's default shared configuration
         self.is_shared = False
 
@@ -1208,7 +1206,6 @@ class ConfigManager:
                     'SLURM', 'slurm_partition', slurm_partition)
                 self.__set_configuration_entry('SLURM', 'slurm_qos', slurm_qos)
 
-                # TODO: Is this shutil sbatch necessary?
                 if shutil.which('sbatch'):
                     slurm_lscratch = inquirer.text(
                         message="How do you request local scratch from Slurm? (Optional: press enter to skip)")
@@ -3433,18 +3430,21 @@ class Archiver:
         except:
             print_error()
 
-    def _index_slurm(self, folders):
-        '''Index the given folders for archiving using Slurm'''
+    def _slurm_cmd(self, folders, cmd_type):
+        '''Execute the current command using SLURM'''
 
         try:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
 
             # Get the label for the job
-            label = self._get_hotspots_file(folders[0]).replace('.csv', '').replace(' ', '_')
+            label = self._get_hotspots_filename(folders[0]).replace('.csv', '').replace(' ', '_')
+            
+            # Get the shortlabel for the Slurm job
+            shortlabel = os.path.basename(folders[0])
 
             # Submit the job
-            se.submit_job(folders, 'index', label)
+            se.submit_job(folders, cmd_type, label, shortlabel)
         
         except:
             print_error()
@@ -3456,12 +3456,11 @@ class Archiver:
             # Clean the provided paths
             folders = clean_path_list(folders)
 
-            # if slurm not available, or noslurm flag set or slurm is already running a job, then run the indexing locally
-            if not shutil.which('sbatch') or self.args.noslurm or os.getenv('SLURM_JOB_ID'):
+            if use_slurm(self.args.noslurm):
+                self._slurm_cmd('index', folders)
+            else:
                 for folder in folders:
                     self._index_locally(folder)
-            else:
-                self._index_slurm(folders)
         except:
             print_error()
 
@@ -3480,7 +3479,8 @@ class Archiver:
 
             print('\n For index a folder a find hotspots run:')
             print('    froster index "/your/folder/to/index"\n')
-            sys.exit(0)
+            
+            return
 
         # Get all the hotspot CSV files in the hotspots directory
         hotspots_files = [f for f in os.listdir(
@@ -3495,7 +3495,8 @@ class Archiver:
 
             print('For archive a specific folder run:')
             print('    froster archive "/your/folder/to/archive"\n')
-            sys.exit(0)
+            
+            return
 
         # Sort the CSV files by their modification time in descending order (newest first)
         hotspots_files.sort(key=lambda x: os.path.getmtime(
@@ -3507,7 +3508,7 @@ class Archiver:
 
         # No file selected
         if not ret:
-            sys.exit(0)
+            return
 
         # Get the selected CSV file
         hotspot_selected = os.path.join(hotspots_dir, ret[0])
@@ -3539,12 +3540,12 @@ class Archiver:
                 title="Select hotspot to archive ", items=folders_to_archive).run()
             if not ret:
                 # No file selected
-                sys.exit(0)
+                return
             else:
                 folders_to_archive = [ret[0]]
 
         elif archive_procedure == 'Cancel':
-            sys.exit(0)
+            return
 
         else:
             # We should never end up here
@@ -3576,21 +3577,6 @@ class Archiver:
             is_collision = True
 
         return is_collision
-
-    def _archive_slurm(self, folders):
-        '''Archive the given folders using Slurm'''
-
-        try:
-            # Create a SlurmEssentials object
-            se = SlurmEssentials(self.args, self.cfg)
-
-            # Get the label for the job
-            label = self._get_hotspots_file(folders[0]).replace('.csv', '').replace(' ', '_')
-
-            # Submit the job
-            se.submit_job(folders, 'archive', label)
-        except:
-            print_error()
 
     def _archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar, is_force):
         '''Archive the given folder'''
@@ -3768,9 +3754,6 @@ class Archiver:
 
             is_nih = self.cfg.is_nih or self.args.nih
 
-            is_slurm = shutil.which(
-                'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
-
             is_tar = not self.args.notar
             is_force = self.args.force
 
@@ -3798,8 +3781,8 @@ class Archiver:
                 app = TableNIHGrants()
                 nih = app.run()
 
-            if is_slurm:
-                self._archive_slurm(folders)
+            if use_slurm(self.args.noslurm):
+                self._slurm_cmd('archive', folders)
             else:
                 for folder in folders:
                     if is_recursive:
@@ -3852,12 +3835,8 @@ class Archiver:
         else:
             print('\nNO FOLDERS MOUNTED\n')
 
-    def mount(self, folders, mountpoint):
-        '''Mount the given folder'''
 
-        # Clean the provided paths
-        folders = clean_path_list(folders)
-        mountpoint = clean_path(mountpoint)
+    def _mount_locally(self, folders, mountpoint):
 
         for folder in folders:
 
@@ -3908,10 +3887,20 @@ class Archiver:
                 print('    ...FAILED\n')
                 return
 
-    def unmount(self, folders):
+
+    def mount(self, folders, mountpoint):
+        '''Mount the given folder'''
 
         # Clean the provided paths
         folders = clean_path_list(folders)
+        mountpoint = clean_path(mountpoint)
+
+        if use_slurm(self.args.noslurm):
+            self._slurm_cmd('mount', folders)
+        else:
+            self._mount_locally(folders, mountpoint)
+
+    def _unmount_locally(self, folders):
 
         # rclone instance
         rclone = Rclone(self.args, self.cfg)
@@ -3930,6 +3919,18 @@ class Archiver:
             else:
                 print(f'    ...IS NOT MOUNTED\n')
 
+
+    def unmount(self, folders):
+
+        # Clean the provided paths
+        folders = clean_path_list(folders)
+
+        if use_slurm(self.args.noslurm):
+            self._slurm_cmd('umount', folders)
+        else:
+            self._unmount_locally(folders)
+
+        
     def get_hotspot_folders(self, hotspot_file):
 
         agefld = 'AccD'
@@ -4382,7 +4383,7 @@ class Archiver:
             print(f"{filepath} not found.")
             return None, None, None
 
-    def delete_locally(self, folder_to_delete):
+    def _delete_locally(self, folder_to_delete):
         '''Delete the given folder'''
 
         print(f'\nDELETING {folder_to_delete}...')
@@ -4515,12 +4516,15 @@ class Archiver:
                 f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
             sys.exit(1)
 
-        for folder in folders:
-            if is_recursive:
-                for root, dirs, files in self._walker(folder):
-                    self.delete_locally(root)
-            else:
-                self.delete_locally(folder)
+        if use_slurm(self.args.noslurm):
+            self._slurm_cmd('delete', folders)
+        else:
+            for folder in folders:
+                if is_recursive:
+                    for root, dirs, files in self._walker(folder):
+                        self._delete_locally(root)
+                else:
+                    self._delete_locally(folder)
 
     def _delete_tar_content(self, directory, files):
         deleted = []
@@ -4558,7 +4562,7 @@ class Archiver:
             f'Files founds in _get_tar_content: {", ".join(files)}')
         return files
 
-    def _download_locally(self, folder):
+    def _download(self, folder):
 
         # Get the bucket and prefix
         bucket, prefix, *_ = self.archive_get_bucket_info(folder)
@@ -4607,6 +4611,7 @@ class Archiver:
                     print(f'        Expedited mode: ~ 5 minuts\n')
                     print(f'        Standard mode: ~ 12 hours\n')
                     print(f'        Bulk mode: ~ 48 hours\n')
+                    print(f'        \nNOTE: You can check more accurate times in the AWS S3 console\n')
                     return False
             else:
                 print(f'...no glacier restore needed\n')
@@ -4618,133 +4623,6 @@ class Archiver:
         except Exception:
             print_error()
             sys.exit(1)
-
-    def _restore_slurm(self, folders):
-        '''Restore the given folder using Slurm'''
-        '''
-        GIVEN BY COPILOT
-        # Create a temporary script file
-        script_file = os.path.join(
-            self.cfg.tmpdir, 'froster-restore-slurm.sh')
-
-        try:
-            # Open the script file
-            with open(script_file, 'w') as script:
-
-                # Write the shebang
-                script.write('#!/bin/bash\n\n')
-
-                # Write the commands to the script file
-                script.write(f'#!/bin/bash\n\n')
-                script.write(f'#SBATCH --job-name=froster-restore\n')
-                script.write(f'#SBATCH --output=froster-restore-%j.out\n')
-                script.write(f'#SBATCH --error=froster-restore-%j.err\n')
-                script.write(f'#SBATCH --time=24:00:00\n')
-                script.write(f'#SBATCH --mem=8G\n')
-                script.write(f'#SBATCH --cpus-per-task=1\n')
-                script.write(f'#SBATCH --partition=short\n\n')
-
-                # Write the commands to the script file
-                script.write(f'echo "Restoring folders..." \n\n')
-
-                # Write the commands to the script file
-                script.write(f'froster restore {" ".join(folders)}\n\n')
-
-            # Set the permissions of the script file
-            os.chmod(script_file, 0o755)
-
-            # Run the script file
-            ret = subprocess.run(['sbatch', script_file])
-
-            # Check if the script was submitted successfully
-            if ret.returncode == 0:
-                print(
-                    f'\nSlurm job submitted successfully. You can check the status of the job using the command:\n')
-                print(f'    squeue -u {self.cfg.whoami}\n')
-
-            else:
-                print(
-                    f'\nError: Slurm job submission failed. Please check the error message above.\n')
-
-        except Exception:
-            print_error()
-        '''
-
-        if shutil.which('sbatch') and args.noslurm == False and args.nodownload == False:
-            # start a future Slurm job just for the download
-            se = SlurmEssentials(args, cfg)
-            # get a job start time 12 hours from now
-            fut_time = se.get_future_start_time(12)
-            label = fld.replace('/', '+')
-            label = label.replace(' ', '_')
-            shortlabel = os.path.basename(fld)
-            myjobname = f'froster:restore:{shortlabel}'
-            email = cfg.email
-            se.add_line(f'#SBATCH --job-name={myjobname}')
-            se.add_line(f'#SBATCH --begin={fut_time}')
-            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-            se.add_line(f'#SBATCH --mem=64G')
-            se.add_line(f'#SBATCH --requeue')
-            se.add_line(
-                f'#SBATCH --output=froster-download-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-            se.add_line(f'#SBATCH --mail-user={email}')
-            se.add_line(f'#SBATCH --time={se.walltime}')
-            if se.partition:
-                se.add_line(f'#SBATCH --partition={se.partition}')
-            if se.qos:
-                se.add_line(f'#SBATCH --qos={se.qos}')
-            # original cmdline
-            cmdline = " ".join(map(shlex.quote, sys.argv))
-            if not "--profile" in cmdline and args.aws_profile:
-                cmdline = cmdline.replace(
-                    '/froster.py ', f'/froster --profile {args.aws_profile} ')
-            else:
-                cmdline = cmdline.replace('/froster.py ', '/froster ')
-            if not fld in cmdline:
-                cmdline = f'{cmdline} "{fld}"'
-            printdbg(f'Command line passed to Slurm:\n{cmdline}')
-            se.add_line(cmdline)
-            jobid = se.sbatch()
-            print(
-                f'Submitted froster download job to run in 12 hours: {jobid}')
-            print(f'Check Job Output:')
-            print(f' tail -f froster-download-{label}-{jobid}.out')
-
-        else:
-            se = SlurmEssentials(args, cfg)
-            label = args.folders[0].replace('/', '+')
-            label = label.replace(' ', '_')
-            shortlabel = os.path.basename(args.folders[0])
-            myjobname = f'froster:restore:{shortlabel}'
-            email = cfg.email
-            se.add_line(f'#SBATCH --job-name={myjobname}')
-            se.add_line(f'#SBATCH --cpus-per-task={args.cores}')
-            se.add_line(f'#SBATCH --mem=64G')
-            se.add_line(f'#SBATCH --requeue')
-            se.add_line(f'#SBATCH --output=froster-restore-{label}-%J.out')
-            se.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
-            se.add_line(f'#SBATCH --mail-user={email}')
-            se.add_line(f'#SBATCH --time={se.walltime}')
-            if se.partition:
-                se.add_line(f'#SBATCH --partition={se.partition}')
-            if se.qos:
-                se.add_line(f'#SBATCH --qos={se.qos}')
-            cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
-            if not "--profile" in cmdline and args.aws_profile:
-                cmdline = cmdline.replace(
-                    '/froster.py ', f'/froster --profile {args.aws_profile} ')
-            else:
-                cmdline = cmdline.replace('/froster.py ', '/froster ')
-            if not args.folders[0] in cmdline:
-                folders = '" "'.join(args.folders)
-                cmdline = f'{cmdline} "{folders}"'
-            printdbg(f'Command line passed to Slurm:\n{cmdline}')
-            se.add_line(cmdline)
-            jobid = se.sbatch()
-            print(f'Submitted froster restore job: {jobid}')
-            print(f'Check Job Output:')
-            print(f' tail -f froster-restore-{label}-{jobid}.out')
 
     def _is_folder_empty(self, folder):
         try:
@@ -4771,8 +4649,6 @@ class Archiver:
 
             # Set flags
             is_recursive = self.args.recursive
-            is_slurm = shutil.which(
-                'sbatch') and not self.args.noslurm and not os.getenv('SLURM_JOB_ID')
 
             # Check if there is a conflict between folders and recursive flag,
             # i.e. recursive flag is set and a folder is a subdirectory of another one
@@ -4782,8 +4658,8 @@ class Archiver:
                         f'\nError: You cannot restore folders recursively if there is a dependency between them.\n')
                     sys.exit(1)
 
-            if is_slurm:
-                self._restore_slurm(folders)
+            if use_slurm(self.args.noslurm):
+                self._slurm_cmd('restore', folders)
 
             else:
                 # Archive locally all folders. If recursive flag set, archive all subfolders too.
@@ -4807,7 +4683,7 @@ class Archiver:
                                     f'\nFolder restored but not downloaded (--no-download flag set)\n')
                                 return
                             else:
-                                self._download_locally(root)
+                                self._download(root)
 
         except Exception:
             print_error()
@@ -5118,9 +4994,9 @@ class Archiver:
         os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
 
         # Get the full path name of the new hotspots file
-        return os.path.join(hotspotdir, self._get_hotspots_file(folder))
+        return os.path.join(hotspotdir, self._get_hotspots_filename(folder))
 
-    def _get_hotspots_file(self, folder):
+    def _get_hotspots_filename(self, folder):
         # get a full path name of a new hotspots file
         # based on a folder name that has been crawled
         mountlist = self._get_mount_info()
@@ -5814,13 +5690,10 @@ class SlurmEssentials:
         return reordered_script
 
 
-    def submit_job(self, folders, cmd_type, label):
+    def submit_job(self, cmd_type, label, shortlabel):
         '''Submit a Slurm job'''
 
         try:
-            # Get the labels for the Slurm job
-            shortlabel = os.path.basename(folders[0])
-
             # Build output slurm dir
             output_dir = os.path.join(self.cfg.slurm_dir, f'froster-{cmd_type}@{label}')
 
@@ -6399,13 +6272,13 @@ class Commands:
 
                 # Print the permissions of the provided folders
                 arch.print_paths_rw_info(self.args.folder)
-                sys.exit(0)
+                return
 
             # Check if the user provided the reset argument
             if self.args.reset:
                 for folder in self.args.folders:
                     arch.reset_folder(folder, self.args.recursive)
-                sys.exit(0)
+                return
 
             # Check if the user provided the hotspots argument
             if self.args.hotspots:
@@ -6497,10 +6370,9 @@ class Commands:
     def subcmd_mount(self, arch: Archiver):
 
         try:
-
             if self.args.list:
                 arch.print_current_mounts()
-                sys.exit(0)
+                return
 
             if self.args.mountpoint:
                 if not os.path.isdir(self.args.mountpoint):
@@ -6514,18 +6386,14 @@ class Commands:
                     print('Check the mount command usage with "froster mount --help"\n')
                     sys.exit(1)
 
-            if self.args.list:
-                arch.print_current_mounts()
-                sys.exit(0)
-
             if not self.args.folders:
                 # Get the list of folders from the archive
                 files = arch.archive_json_get_csv(
                     ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
 
                 if not files:
-                    print("No archives available.")
-                    sys.exit(0)
+                    print("\nNo archives available.\n")
+                    return
 
                 app = TableArchive(files)
                 retline = app.run()
@@ -6545,7 +6413,7 @@ class Commands:
 
             arch.mount(folders=self.args.folders, mountpoint=self.args.mountpoint)
 
-        except Exception:
+        except:
             print_error()
 
     def subcmd_umount(self, arch: Archiver):
@@ -6945,6 +6813,21 @@ def clean_path_list(paths):
 
     return cleaned_paths
 
+
+def is_slurm_installed(): 
+    if shutil.which('sbatch'):
+        return True
+    else:
+        return False
+
+def is_inside_slurm_job():
+    if os.getenv('SLURM_JOB_ID'):
+        return True
+    else:
+        return False
+
+def use_slurm(noslurm_flag):
+    return is_slurm_installed() and not noslurm_flag and not is_inside_slurm_job()
 
 def print_error():
     exc_type, exc_value, exc_tb = sys.exc_info()
