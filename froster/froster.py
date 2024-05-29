@@ -3443,8 +3443,31 @@ class Archiver:
             # Get the shortlabel for the Slurm job
             shortlabel = os.path.basename(folders[0])
 
+    
+            # Store the original command line arguments
+            arguments = sys.argv
+    
+            cmd = " ".join(map(shlex.quote, arguments))
+
+            # Remove the hotspots flag from the arguments and add the selected folders
+            if '--hotspots' in arguments:
+                arguments.remove('--hotspots')
+                for folder in folders:
+                    arguments.append(folder)
+
+            # Add the nihref to arguments in case that it is not present
+            if hasattr(self.args, 'nihref') and self.args.nihref and '--nih-ref' not in arguments:
+                arguments.append('--nih-ref')
+                arguments.append(self.args.nihref[0])
+
+            # Add the original cmdline to the Slurm script
+            cmd = " ".join(map(shlex.quote, arguments))
+
             # Submit the job
-            se.submit_job(cmd_type, label, shortlabel)
+            se.submit_job(cmd=cmd,
+                          cmd_type=cmd_type,
+                          label=label,
+                          shortlabel=shortlabel)
         
         except:
             print_error()
@@ -3750,9 +3773,9 @@ class Archiver:
 
             # Set flags
             is_recursive = self.args.recursive
-            print('self.args.recursive', self.args.recursive)
 
-            is_nih = self.cfg.is_nih or self.args.nih
+            # Check if NIH information is required by configuration, by command line argument or if there is a NIH reference
+            is_nih = self.cfg.is_nih or self.args.nih and not self.args.nihref
 
             is_tar = not self.args.notar
             is_force = self.args.force
@@ -3780,6 +3803,12 @@ class Archiver:
             if is_nih:
                 app = TableNIHGrants()
                 nih = app.run()
+
+                if nih:
+                    # This is not the best place to store this variable but we need it in the _slurm_cmd function
+                    self.args.nihref = nih
+                else:
+                    return
 
             if use_slurm(self.args.noslurm):
                 self._slurm_cmd(folders=folders, cmd_type='archive')
@@ -5268,7 +5297,7 @@ class TableNIHGrants(App[list]):
     BINDINGS = [("q", "request_quit", "Quit")]
 
     def compose(self) -> ComposeResult:
-        yield Label("Enter search to link your data with metadata of an NIH grant/project")
+        yield Label("Enter search to link your data with metadata of an NIH grant/project and press Enter")
         yield Input(
             placeholder="Enter a part of a Grant Number, PI, Institution or Full Text (Title, Abstract, Terms) ...",
         )
@@ -5690,7 +5719,7 @@ class SlurmEssentials:
         return reordered_script
 
 
-    def submit_job(self, cmd_type, label, shortlabel):
+    def submit_job(self, cmd, cmd_type, label, shortlabel):
         '''Submit a Slurm job'''
 
         try:
@@ -5709,16 +5738,13 @@ class SlurmEssentials:
             self.add_line(f'#SBATCH --qos={self.qos}')
 
             # se.add_line(f'ml python')
-        
-            # Add the Python command to the Slurm script
-            cmdline = " ".join(map(shlex.quote, sys.argv))  # original cmdline
 
             # Print the command line to be executed by Slurm
             if self.args.debug:
-                print(f'Command line passed to Slurm:\n{cmdline}')
+                print(f'Command line passed to Slurm:\n{cmd}')
 
             # Add the command line to the Slurm script
-            self.add_line(cmdline)
+            self.add_line(cmd)
 
             # Execute the Slurm script
             jobid = self.sbatch()
@@ -6648,6 +6674,9 @@ class Commands:
         parser_archive.add_argument('-n', '--nih', dest='nih', action='store_true',
                                     help="Search and Link Metadata from NIH Reporter")
 
+        parser_archive.add_argument('-i', '--nih-ref', dest='nihref', action='store', default='',
+                                    help="Use NIH Reporter reference for the current archive")
+        
         parser_archive.add_argument('-m', '--mtime', dest='agemtime', action='store_true',
                                     help="Use modified file time (mtime) instead of accessed time (atime)")
 
