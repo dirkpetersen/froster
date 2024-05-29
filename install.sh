@@ -243,10 +243,8 @@ install_froster() {
 
     BRANCH=${BRANCH:-"main"}
 
-    version=$(grep -Eo "version='[^']+'" setup.py | awk -F"'" '{print $2}')
-
     echo
-    echo "Installing froster v$version of froster from \"$REPO@$BRANCH\"..."
+    echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
     spinner $!
