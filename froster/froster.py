@@ -3444,7 +3444,7 @@ class Archiver:
             shortlabel = os.path.basename(folders[0])
 
             # Submit the job
-            se.submit_job(folders, cmd_type, label, shortlabel)
+            se.submit_job(cmd_type, label, shortlabel)
         
         except:
             print_error()
