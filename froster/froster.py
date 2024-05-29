@@ -3443,7 +3443,7 @@ class Archiver:
             # Get the shortlabel for the Slurm job
             shortlabel = os.path.basename(folders[0])
             print(shortlabel)
-            exit(0)
+            return
             # Submit the job
             se.submit_job(cmd_type, label, shortlabel)
         
