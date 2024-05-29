@@ -3721,10 +3721,10 @@ class Archiver:
 
             # Check if the checksums are correct
             if ret:
-                print('    ...done')
+                print('        ...done')
                 is_checksum_correct = True
             else:
-                print('    ...FAILED\n')
+                print('        ...FAILED\n')
                 return
 
             # Add the metadata to the archive JSON file ONLY if this is not a subfolder
