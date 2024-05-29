@@ -3268,9 +3268,13 @@ class Archiver:
 
                 # If the folder is already indexed don't run pwalk again
                 if os.path.isfile(folder_hotspot):
-                    print(
-                        f'    ...folder already indexed at {folder_hotspot}\n')
-                    return
+                    if self.args.force:
+                        # Ignore the existing file and re-index the folder
+                        pass
+                    else:
+                        print(
+                            f'    ...folder already indexed at {folder_hotspot}. Use "-f" or "--force" flag to force indexing.\n')
+                        return
 
             # Run pwalk on given folder
             with tempfile.NamedTemporaryFile() as pwalk_output:
@@ -6618,6 +6622,9 @@ class Commands:
                                   help='Folders you would like to index (separated by space), ' +
                                   'using the pwalk file system crawler ')
 
+        parser_index.add_argument('-f', '--force', dest='force', action='store_true',
+                                    help="Force indexing")
+        
         parser_index.add_argument('-y', '--pwalk-copy', dest='pwalkcopy', action='store', default='',
                                   help='Directory where the pwalk CSV file should be copied to.')
 
