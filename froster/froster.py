@@ -3439,10 +3439,11 @@ class Archiver:
 
             # Get the label for the job
             label = self._get_hotspots_filename(folders[0]).replace('.csv', '').replace(' ', '_')
-            
+            print(label)
             # Get the shortlabel for the Slurm job
             shortlabel = os.path.basename(folders[0])
-
+            print(shortlabel)
+            exit(0)
             # Submit the job
             se.submit_job(cmd_type, label, shortlabel)
         
