@@ -3808,21 +3808,10 @@ class Archiver:
                                 is_subfolder = False
                             else:
                                 is_subfolder = True
-                            print(f'\nARCHIVING RECURSIVE {root}')
-                            print(f'is_recursive: {is_recursive}')
-                            print(f'is_nih: {is_nih}')
-                            print(f'is_subfolder: {is_subfolder}')
-                            print(f'is_tar: {is_tar}')
-                            print(f'is_force: {is_force}')
                             self._archive_locally(
                                 root, is_recursive, nih, is_subfolder, is_tar, is_force)
 
                     else:
-                        print(f'\nARCHIVING NOT RECURSIVE')
-                        print(f'is_recursive: {is_recursive}')
-                        print(f'is_nih: {is_nih}')
-                        print(f'is_tar: {is_tar}')
-                        print(f'is_force: {is_force}')
                         is_subfolder = False
                         self._archive_locally(
                             folder, is_recursive, nih, is_subfolder, is_tar, is_force)
@@ -4259,7 +4248,6 @@ class Archiver:
                 # Flag to check if any files were tarred
                 didtar = False
 
-                print("BEFORE TAR")
                 # Create tar file and csv file
                 with tarfile.open(tar_path, "w") as tar_file, open(csv_path, 'w', newline='') as csv_file:
 
@@ -4321,7 +4309,7 @@ class Archiver:
                 if not didtar:
                     # Remove the tar file if it's empty
                     os.remove(tar_path)
-            print("AFTER TAR")
+
             return True
 
         except Exception as e:
@@ -5524,19 +5512,16 @@ class Rclone:
                 output = False
 
                 if output:
-                    print("_run_rclone_command: running output")
                     # Print output in stdout
                     ret = subprocess.Popen(
                         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=self.envrn)
 
                 else:
                     # DO not print output
-                    print("_run_rclone_command: running WITHOUT output")
                     with open(os.devnull, 'w') as devnull:
                         ret = subprocess.Popen(
                             command, stdout=devnull, stderr=devnull, text=True, env=self.envrn)
 
-                print("_run_rclone_command: PID: ", ret.pid)
                 # If we have a pid we assume the command was successful
                 if ret.pid:
                     return True
@@ -5544,11 +5529,9 @@ class Rclone:
                     return False
 
             else:
-                print("_run_rclone_command: running")
-                print("command: ", command)
                 ret = subprocess.run(
                     command, capture_output=True, text=True, env=self.envrn)
-                print("_run_rclone_command: finished")
+
                 # Check if the command was successful
                 if ret.returncode == 0:
                     # Execution successfull
@@ -5591,7 +5574,7 @@ class Rclone:
 
     def copy(self, src, dst, *args):
         '''Copy files from source to destination using Rclone'''
-        print("FUNCTION: copy")
+
         # Build the copy command
         command = [self.rc, 'copy'] + list(args)
         command.append(src)
