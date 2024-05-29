@@ -3436,19 +3436,13 @@ class Archiver:
         try:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
-            print(folders)
-            print(folders[0])
+
             # Get the label for the job
-            label = self._get_hotspots_filename(folders[0])
-            print(label)
-            label = label.replace('.csv', '')
-            print(label)
-            label = label.replace(' ', '_')
-            print(label)
+            label = self._get_hotspots_filename(folders[0]).replace('.csv', '').replace(' ', '_')
+
             # Get the shortlabel for the Slurm job
             shortlabel = os.path.basename(folders[0])
-            print(shortlabel)
-            return
+
             # Submit the job
             se.submit_job(cmd_type, label, shortlabel)
         
