@@ -3436,7 +3436,8 @@ class Archiver:
         try:
             # Create a SlurmEssentials object
             se = SlurmEssentials(self.args, self.cfg)
-
+            print(folders)
+            print(folders[0])
             # Get the label for the job
             label = self._get_hotspots_filename(folders[0])
             print(label)
@@ -3462,7 +3463,7 @@ class Archiver:
             folders = clean_path_list(folders)
 
             if use_slurm(self.args.noslurm):
-                self._slurm_cmd('index', folders)
+                self._slurm_cmd(folders=folders, cmd_type='index')
             else:
                 for folder in folders:
                     self._index_locally(folder)
@@ -3787,7 +3788,7 @@ class Archiver:
                 nih = app.run()
 
             if use_slurm(self.args.noslurm):
-                self._slurm_cmd('archive', folders)
+                self._slurm_cmd(folders=folders, cmd_type='archive')
             else:
                 for folder in folders:
                     if is_recursive:
@@ -3901,7 +3902,7 @@ class Archiver:
         mountpoint = clean_path(mountpoint)
 
         if use_slurm(self.args.noslurm):
-            self._slurm_cmd('mount', folders)
+            self._slurm_cmd(folders=folders, cmd_type='mount')
         else:
             self._mount_locally(folders, mountpoint)
 
@@ -3931,7 +3932,7 @@ class Archiver:
         folders = clean_path_list(folders)
 
         if use_slurm(self.args.noslurm):
-            self._slurm_cmd('umount', folders)
+            self._slurm_cmd(folders=folders, cmd_type='umount')
         else:
             self._unmount_locally(folders)
 
@@ -4522,7 +4523,7 @@ class Archiver:
             sys.exit(1)
 
         if use_slurm(self.args.noslurm):
-            self._slurm_cmd('delete', folders)
+            self._slurm_cmd(folders=folders, cmd_type='delete')
         else:
             for folder in folders:
                 if is_recursive:
@@ -4664,7 +4665,7 @@ class Archiver:
                     sys.exit(1)
 
             if use_slurm(self.args.noslurm):
-                self._slurm_cmd('restore', folders)
+                self._slurm_cmd(folders=folders, cmd_type='restore')
 
             else:
                 # Archive locally all folders. If recursive flag set, archive all subfolders too.
