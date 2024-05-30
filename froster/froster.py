@@ -3466,6 +3466,21 @@ class Archiver:
             # Clean the provided paths
             folders = clean_path_list(folders)
 
+            if self._is_recursive_collision(folders):
+                print(
+                    f'\nError: You cannot index folders if there is a dependency between them. Specify only the parent folder.\n')
+                sys.exit(1)
+            
+            # Check if we can read & write all files and folders
+            if not self._is_correct_files_folders_permissions(folders, is_recursive=True):
+                print(
+                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
+                print(
+                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+                print(
+                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
+                sys.exit(1)
+
             if use_slurm(self.args.noslurm):
                 self._slurm_cmd(folders=folders, cmd_type='index')
             else:
@@ -4647,7 +4662,7 @@ class Archiver:
             print_error()
             sys.exit(1)
 
-    def _is_folder_empty(self, folder):
+    def _contains_non_froster_files(self, folder):
         try:
             # Check if the folder has any non-froster file
 
@@ -4681,6 +4696,16 @@ class Archiver:
                         f'\nError: You cannot restore folders recursively if there is a dependency between them.\n')
                     sys.exit(1)
 
+            # Check if we can read & write all files and folders
+            if not self._is_correct_files_folders_permissions(folders, is_recursive):
+                print(
+                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
+                print(
+                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+                print(
+                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
+                sys.exit(1)
+
             if use_slurm(self.args.noslurm):
                 self._slurm_cmd(folders=folders, cmd_type='restore')
 
@@ -4693,7 +4718,14 @@ class Archiver:
                         if not is_recursive and root != folder:
                             break
 
-                        if not self._is_folder_empty(root):
+                        archived_folder_info = self.froster_archives_get_entry(root)
+
+                        if archived_folder_info is None:
+                            print(f'\nFolder {root} is not archived')
+                            print(f'No entry found in froster-archives.json\n')
+                            continue
+
+                        if not self._contains_non_froster_files(root):
                             print(
                                 f'\nWARNING: Folder {root} contains non-froster files. Please empty the folder before restoring.\n')
                             continue
@@ -6744,8 +6776,7 @@ class Commands:
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
         parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
-                                    help='folders you would like to to restore (separated by space), ' +
-                                    '')
+                                    help='folders you would like to to restore (separated by space)')
 
         parser_restore.add_argument('-r', '--recursive', dest='recursive', action='store_true',
                                     help="Restore the current archived folder and all archived sub-folders")
@@ -6755,7 +6786,23 @@ class Commands:
 
         parser_restore.add_argument('-o', '--retrieve-opt', dest='retrieveopt', action='store', default='Bulk',
                                     help=textwrap.dedent(f'''
-                Bulk (default):
+            More information at:
+                https://docs.aws.amazon.com/AmazonS3/latest/userguide/restoring-objects-retrieval-options.html
+                https://aws.amazon.com/es/s3/pricing/
+
+            S3 GLACIER DEEP ARCHIVE or S3 INTELLIGET-TIERING DEEP ARCHIVE ACCESS
+                Bulk:
+                    - Within 48 hours retrieval            <-- default
+                    - costs of $2.50 per TiB
+                Standard:
+                    - Within 12 hours retrieval
+                    - costs of $10 per TiB
+                Expedited:
+                    - 9-12 hours retrieval
+                    - costs of $30 per TiB
+                                                         
+            S3 GLACIER FLEXIBLE RETRIEVAL or S3 INTELLIGET-TIERING ARCHIVE ACCESS
+                Bulk:
                     - 5-12 hours retrieval
                     - costs of $2.50 per TiB
                 Standard:
@@ -6765,6 +6812,7 @@ class Commands:
                     - 1-5 minutes retrieval
                     - costs of $30 per TiB
 
+                                                         
                 In addition to the retrieval cost, AWS will charge you about
                 $10/TiB/month for the duration you keep the data in S3.
                 (Costs in Summer 2023)
