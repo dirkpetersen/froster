@@ -29,7 +29,7 @@ catch() {
         echo
         echo "Rolling back installation..."
 
-        if pipx list >/dev/null 2>&1 | grep -q 'froster'; then
+        if pipx list >/dev/null 2>&1 | grep 'froster'; then
             pipx uninstall froster >/dev/null 2>&1
         fi
 
@@ -197,14 +197,14 @@ backup_old_installation() {
     # Check if froster is already installed, if so uninstall it
     if which froster >/dev/null 2>&1; then
         echo
-        echo "Uninstalling existing froster installation..."
-        if pip list | grep -q froster >/dev/null 2>&1; then
-            pip uninstall froster >/dev/null 2>&1 &
-            spinner $!
+            echo "Uninstalling existing froster installation..."
+            if pip list | grep froster >/dev/null 2>&1; then
+                    pip uninstall froster >/dev/null 2>&1 &
+                    spinner $!
         fi
-        if pipx list | grep -q froster >/dev/null 2>&1; then
-            pipx uninstall froster >/dev/null 2>&1 &
-            spinner $!
+            if pipx list | grep froster >/dev/null 2>&1; then
+                    pipx uninstall froster >/dev/null 2>&1 &
+                    spinner $!
         fi
         echo "...froster uninstalled"
     fi
@@ -242,7 +242,6 @@ install_froster() {
     fi
 
     BRANCH=${BRANCH:-"main"}
-
 
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
