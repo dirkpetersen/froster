@@ -3447,11 +3447,8 @@ class Archiver:
             # Get the shortlabel for the Slurm job
             shortlabel = os.path.basename(folders[0])
 
-    
             # Store the original command line arguments
             arguments = sys.argv
-    
-            cmd = " ".join(map(shlex.quote, arguments))
 
             # Remove the hotspots flag from the arguments and add the selected folders
             if '--hotspots' in arguments:
@@ -4511,15 +4508,14 @@ class Archiver:
                 rme.write(
                     f'\n\nPlease see more metadata in Froster.allfiles.csv file\n')
 
-            print(
-                f'\n  Deleted {len(deleted_files)} files and wrote manifest to "{readme}"\n')
+            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
 
             # Print the final message
             print(f'    LOCAL DELETED FOLDER:   {folder_to_delete}')
             print(f'    AWS S3 DESTINATION:     {s3_dest}\n')
             print(f'    Total files deleted:    {len(deleted_files)}\n')
             print(f'    Manifest:               {readme}\n')
-            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
+
 
         except Exception as e:
             print_error()
@@ -5756,7 +5752,7 @@ class SlurmEssentials:
             # Print the Slurm job information
             print(f'\nSLURM JOB\n')
             print(f'  ID: {jobid}')
-            print(f'  Type: Indexing')
+            print(f'  Type: {cmd_type}')
             print(f'  Check status: "squeue -j {jobid}"')
             print(f'  Check output: "cat {output_dir}-{jobid}.out"')
             print(f'  Cancel the job: "scancel {jobid}"\n')
@@ -6391,6 +6387,9 @@ class Commands:
                     return
 
                 self.args.folders = [retline[0]]
+
+                # Append the folder to delete to the arguments
+                sys.argv.append(self.args.folders[0])
 
             arch.delete(self.args.folders)
 
