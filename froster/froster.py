@@ -6564,6 +6564,16 @@ class Commands:
         else:
             print('    ...AWS credentials are NOT valid\n')
             return False
+        
+    def subcmd_update(self):
+        command = "curl -s https://raw.githubusercontent.com/hpcnow/froster/main/install.sh?$(date +%s) | bash"
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
+        output, error = process.communicate()
+
+        if error:
+            print(f"Error: {error}")
+        else:
+            print(output)
 
     def parse_arguments(self):
         '''Gather and parse command-line arguments'''
@@ -6836,13 +6846,23 @@ class Commands:
                                            help=textwrap.dedent(f'''
                 Login to an AWS EC2 instance to which data was restored with the --aws option
             '''), formatter_class=argparse.RawTextHelpFormatter)
+        
         parser_ssh.add_argument('--list', '-l', dest='list', action='store_true', default=False,
                                 help="List running Froster AWS EC2 instances")
+        
         parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='',
                                 metavar='<hostname>', help='Terminate AWS EC2 instance with this public IP Address.')
+        
         parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
                                 help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
                                 '')
+
+        # ***
+
+        parser_update = subparsers.add_parser('update', aliases=['upd'],
+                                               help=textwrap.dedent(f'''
+                Update froster to the latest version
+            '''), formatter_class=argparse.RawTextHelpFormatter)
 
         return parser
 
@@ -6990,6 +7010,8 @@ def main():
             cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
             cmd.subcmd_credentials(cfg, aws)
+        elif args.subcmd in ['update', 'upd']:
+            cmd.subcmd_update()
         else:
             cmd.print_help()
 
