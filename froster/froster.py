@@ -6575,7 +6575,11 @@ class Commands:
             return False
 
     def subcmd_update(self):
-        cmd = "curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash"
+        
+        if self.args.rclone:
+            cmd = "rclone selfupdate"
+        else:
+            cmd = "curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash"
 
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, shell=True)
@@ -6879,6 +6883,9 @@ class Commands:
                 Update froster to the latest version
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
+        parser_update.add_argument('--rclone', '-r', dest='rclone', action='store_true',
+                                help="Update rclone to latests version")
+        
         return parser
 
 
