@@ -4795,7 +4795,7 @@ class Archiver:
         try:
             cmd = f'md5sum {file_path}'
             ret = subprocess.run(cmd, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, Shell=True)
+                                 stderr=subprocess.PIPE, shell=True)
             if ret.returncode != 0:
                 print(f'md5sum return code > 0: {cmd} Error:\n{ret.stderr}')
             return ret.stdout.strip()  # , ret.stderr.strip()
@@ -6566,14 +6566,12 @@ class Commands:
             return False
         
     def subcmd_update(self):
-        command = "curl -s https://raw.githubusercontent.com/hpcnow/froster/main/install.sh?$(date +%s) | bash"
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-        output, error = process.communicate()
+        cmd = "curl -s https://raw.githubusercontent.com/hpcnow/froster/main/install.sh?$(date +%s) | bash"
 
-        if error:
-            print(f"Error: {error}")
-        else:
-            print(output)
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            print(f"Error in froster update: code {result.returncode}: error {result.stderr}")
 
     def parse_arguments(self):
         '''Gather and parse command-line arguments'''
