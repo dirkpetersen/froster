@@ -3588,7 +3588,7 @@ class Archiver:
 
         return is_collision
 
-    def _archive_locally(self, folder_to_archive, is_recursive, nih, is_subfolder, is_tar, is_force):
+    def _archive_locally(self, folder_to_archive, is_recursive, is_subfolder, is_tar, is_force):
         '''Archive the given folder'''
 
         # Set workflow execution flags
@@ -3733,8 +3733,8 @@ class Archiver:
                              }
 
                 # Add NIH information to the metadata dictionary
-                if nih:
-                    new_entry['nih_project'] = nih
+                if self.args.nihref:
+                    new_entry['nih_project'] = self.args.nihref
 
                 # Write the metadata to the archive JSON file
                 self._archive_json_add_entry(key=folder_to_archive.rstrip(os.path.sep),
@@ -3793,7 +3793,7 @@ class Archiver:
                     # Add the nihref to arguments for slurm script execution 
                     sys.argv.append('--nih-ref')
                     sys.argv.append(nih[0])
-                    nih = nih[0]
+                    self.args.nihref = nih[0]
 
                 else:
                     # Nothing selected. Exit
@@ -3822,12 +3822,12 @@ class Archiver:
                             else:
                                 is_subfolder = True
                             self._archive_locally(
-                                root, is_recursive, nih, is_subfolder, is_tar, is_force)
+                                root, is_recursive, is_subfolder, is_tar, is_force)
 
                     else:
                         is_subfolder = False
                         self._archive_locally(
-                            folder, is_recursive, nih, is_subfolder, is_tar, is_force)
+                            folder, is_recursive, is_subfolder, is_tar, is_force)
         except:
             print_error()
 
