@@ -3761,7 +3761,7 @@ class Archiver:
             print(f'    LOCAL SOURCE:       "{folder_to_archive}"')
             print(f'    AWS S3 DESTINATION: "{s3_dest}"\n')
             print(
-                f'All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
+                f'    All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
 
         except Exception:
             print_error()
@@ -3925,10 +3925,7 @@ class Archiver:
         folders = clean_path_list(folders)
         mountpoint = clean_path(mountpoint)
 
-        if use_slurm(self.args.noslurm):
-            self._slurm_cmd(folders=folders, cmd_type='mount')
-        else:
-            self._mount_locally(folders, mountpoint)
+        self._mount_locally(folders, mountpoint)
 
     def _unmount_locally(self, folders):
 
@@ -3955,10 +3952,7 @@ class Archiver:
         # Clean the provided paths
         folders = clean_path_list(folders)
 
-        if use_slurm(self.args.noslurm):
-            self._slurm_cmd(folders=folders, cmd_type='umount')
-        else:
-            self._unmount_locally(folders)
+        self._unmount_locally(folders)
 
         
     def get_hotspot_folders(self, hotspot_file):
