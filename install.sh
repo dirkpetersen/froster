@@ -29,7 +29,7 @@ catch() {
         echo
         echo "Rolling back installation..."
 
-        if pipx list >/dev/null 2>&1 | grep -q 'froster'; then
+        if pipx list >/dev/null 2>&1 | grep 'froster'; then
             pipx uninstall froster >/dev/null 2>&1
         fi
 
@@ -195,24 +195,16 @@ backup_old_installation() {
     echo "...older froster installation backed up"
 
     # Check if froster is already installed, if so uninstall it
-    echo "here -2"
     if which froster >/dev/null 2>&1; then
         echo
-        echo "here -1"
-        echo "Uninstalling existing froster installation..."
-        echo "here 0"
-        if pip list | grep -q froster >/dev/null 2>&1; then
-            echo "here 1"
-            pip uninstall froster >/dev/null 2>&1 &
-            echo "here 2"
-            spinner $!
+            echo "Uninstalling existing froster installation..."
+            if pip list | grep froster >/dev/null 2>&1; then
+                    pip uninstall froster >/dev/null 2>&1 &
+                    spinner $!
         fi
-        echo "here 3"
-        if pipx list | grep -q froster >/dev/null 2>&1; then
-            echo "here 4"
-            pipx uninstall froster >/dev/null 2>&1 &
-            echo "here 5"
-            spinner $!
+            if pipx list | grep froster >/dev/null 2>&1; then
+                    pipx uninstall froster >/dev/null 2>&1 &
+                    spinner $!
         fi
         echo "...froster uninstalled"
     fi
