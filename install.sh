@@ -200,7 +200,7 @@ backup_old_installation() {
         echo
         echo "here -1"
         echo "Uninstalling existing froster installation..."
-        echo "here 0
+        echo "here 0"
         if pip list | grep -q froster >/dev/null 2>&1; then
             echo "here 1"
             pip uninstall froster >/dev/null 2>&1 &
