@@ -111,7 +111,8 @@ class ConfigManager:
         if xdg_data_home:
             self.data_dir = os.path.join(xdg_data_home, 'froster')
         else:
-            self.data_dir = os.path.join(self.home_dir, '.local', 'share', 'froster')
+            self.data_dir = os.path.join(
+                self.home_dir, '.local', 'share', 'froster')
 
         self.slurm_dir = os.path.join(self.data_dir, 'slurm')
 
@@ -165,13 +166,14 @@ class ConfigManager:
             # AWS directory
             self.aws_dir = config.get(
                 'AWS', 'aws_dir', fallback=os.path.join(self.home_dir, '.aws'))
-            
+
             # AWS config file
             self.aws_config_file = os.path.join(self.aws_dir, 'config')
 
             # AWS credentials file
-            self.aws_credentials_file = os.path.join(self.aws_dir, 'credentials')
-                
+            self.aws_credentials_file = os.path.join(
+                self.aws_dir, 'credentials')
+
             # AWS profile
             self.aws_profile = config.get(
                 'AWS', 'aws_profile', fallback=None)
@@ -551,17 +553,17 @@ class ConfigManager:
                 default_aws_dir = None
 
             aws_dir_question = [
-                    inquirer.Path(
-                        'aws_dir',
-                        message=f'Enter the path to aws credentials directory (default: {default_aws_dir})',
-                        default=default_aws_dir,
-                        validate=self.__inquirer_check_path_exists)
-                ]
+                inquirer.Path(
+                    'aws_dir',
+                    message=f'Enter the path to aws credentials directory (default: {default_aws_dir})',
+                    default=default_aws_dir,
+                    validate=self.__inquirer_check_path_exists)
+            ]
 
             # Get the answer from the user
             aws_dir_answer = inquirer.prompt(
                 aws_dir_question)
-            
+
             # Get the AWS directory
             aws_dir = os.path.expanduser(aws_dir_answer['aws_dir'])
 
@@ -573,10 +575,11 @@ class ConfigManager:
 
             # Set the new AWS config file
             self.aws_config_file = os.path.join(self.aws_dir, 'config')
-            
+
             # Set the new AWS credentials file
-            self.aws_credentials_file = os.path.join(self.aws_dir, 'credentials')
-            
+            self.aws_credentials_file = os.path.join(
+                self.aws_dir, 'credentials')
+
             # Get list of current AWS profiles under {$AWS_DIR}/credentials
             aws_profiles = aws.get_profiles()
 
@@ -1252,7 +1255,8 @@ class AWSBoto:
     def set_aws_directory(self, aws_dir):
         # Specify the paths to the config and credentials files
         os.environ['AWS_CONFIG_FILE'] = os.path.join(aws_dir, 'config')
-        os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(aws_dir, 'credentials')
+        os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(
+            aws_dir, 'credentials')
 
     def _check_session(self):
         '''Check if the current session is valid'''
@@ -3288,7 +3292,7 @@ class Archiver:
 
                         # Run the pwalk command
                         ret = subprocess.run(mycmd, shell=True,
-                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
                         # Check if the pwalk command was successful
                         if ret.returncode != 0:
@@ -3367,7 +3371,8 @@ class Archiver:
                         rows = duckdb_connection.execute(sql_query).fetchall()
 
                         # Get the column names
-                        header = duckdb_connection.execute(sql_query).description
+                        header = duckdb_connection.execute(
+                            sql_query).description
 
                         # Close the DuckDB connection
                         duckdb_connection.close()
@@ -3442,7 +3447,8 @@ class Archiver:
             se = SlurmEssentials(self.args, self.cfg)
 
             # Get the label for the job
-            label = self._get_hotspots_filename(folders[0]).replace('.csv', '').replace(' ', '_')
+            label = self._get_hotspots_filename(
+                folders[0]).replace('.csv', '').replace(' ', '_')
 
             # Get the shortlabel for the Slurm job
             shortlabel = os.path.basename(folders[0])
@@ -3455,10 +3461,9 @@ class Archiver:
                           cmd_type=cmd_type,
                           label=label,
                           shortlabel=shortlabel)
-        
+
         except:
             print_error()
-
 
     def index(self, folders):
         '''Index the given folders for archiving'''
@@ -3470,7 +3475,7 @@ class Archiver:
                 print(
                     f'\nError: You cannot index folders if there is a dependency between them. Specify only the parent folder.\n')
                 sys.exit(1)
-            
+
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive=True):
                 print(
@@ -3504,7 +3509,7 @@ class Archiver:
 
             print('\n For index a folder a find hotspots run:')
             print('    froster index "/your/folder/to/index"\n')
-            
+
             return
 
         # Get all the hotspot CSV files in the hotspots directory
@@ -3520,7 +3525,7 @@ class Archiver:
 
             print('For archive a specific folder run:')
             print('    froster archive "/your/folder/to/archive"\n')
-            
+
             return
 
         # Sort the CSV files by their modification time in descending order (newest first)
@@ -3805,7 +3810,7 @@ class Archiver:
                 nih = app.run()
 
                 if nih:
-                    # Add the nihref to arguments for slurm script execution 
+                    # Add the nihref to arguments for slurm script execution
                     sys.argv.append('--nih-ref')
                     sys.argv.append(nih[0])
                     self.args.nihref = nih[0]
@@ -3846,7 +3851,6 @@ class Archiver:
         except:
             print_error()
 
-
     def get_mounts(self):
         try:
             rclone = Rclone(self.args, self.cfg)
@@ -3879,7 +3883,6 @@ class Archiver:
             print()
         else:
             print('\nNO FOLDERS MOUNTED\n')
-
 
     def _mount_locally(self, folders, mountpoint):
 
@@ -3932,7 +3935,6 @@ class Archiver:
                 print('    ...FAILED\n')
                 return
 
-
     def mount(self, folders, mountpoint):
         '''Mount the given folder'''
 
@@ -3961,7 +3963,6 @@ class Archiver:
             else:
                 print(f'    ...IS NOT MOUNTED\n')
 
-
     def unmount(self, folders):
 
         # Clean the provided paths
@@ -3969,7 +3970,6 @@ class Archiver:
 
         self._unmount_locally(folders)
 
-        
     def get_hotspot_folders(self, hotspot_file):
 
         agefld = 'AccD'
@@ -3993,7 +3993,7 @@ class Archiver:
 
         if result[0][0] == 0:
             return []
-        
+
         # Run SQL queries on this virtual table
         # Filter by given age and size. The default value for all is 0
         if self.args.older > 0:
@@ -4525,7 +4525,6 @@ class Archiver:
             print(f'    Total files deleted:    {len(deleted_files)}\n')
             print(f'    Manifest:               {readme}\n')
 
-
         except Exception as e:
             print_error()
             return
@@ -4649,7 +4648,8 @@ class Archiver:
                     print(f'        Expedited mode: ~ 5 minuts\n')
                     print(f'        Standard mode: ~ 12 hours\n')
                     print(f'        Bulk mode: ~ 48 hours\n')
-                    print(f'        \nNOTE: You can check more accurate times in the AWS S3 console\n')
+                    print(
+                        f'        \nNOTE: You can check more accurate times in the AWS S3 console\n')
                     return False
             else:
                 print(f'...no glacier restore needed\n')
@@ -4718,7 +4718,8 @@ class Archiver:
                         if not is_recursive and root != folder:
                             break
 
-                        archived_folder_info = self.froster_archives_get_entry(root)
+                        archived_folder_info = self.froster_archives_get_entry(
+                            root)
 
                         if archived_folder_info is None:
                             print(f'\nFolder {root} is not archived')
@@ -5070,7 +5071,7 @@ class Archiver:
                     hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
 
         hsfile = folder.replace('/', '+') + '.csv'
-    
+
         return hsfile
 
     def _walker(self, top, skipdirs=['.snapshot',]):
@@ -5411,9 +5412,11 @@ class Rclone:
 
                 # Check if the AWS profile exists
                 if config.has_section(self.cfg.aws_profile):
-                       # Set the environment variables for creds
-                    self.envrn['AWS_ACCESS_KEY_ID'] = config.get(self.cfg.aws_profile, 'aws_access_key_id')
-                    self.envrn['AWS_SECRET_ACCESS_KEY'] = config.get(self.cfg.aws_profile, 'aws_secret_access_key')
+                    # Set the environment variables for creds
+                    self.envrn['AWS_ACCESS_KEY_ID'] = config.get(
+                        self.cfg.aws_profile, 'aws_access_key_id')
+                    self.envrn['AWS_SECRET_ACCESS_KEY'] = config.get(
+                        self.cfg.aws_profile, 'aws_secret_access_key')
 
     # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
 
@@ -5640,13 +5643,13 @@ class SlurmEssentials:
         self.partition = cfg.slurm_partition if hasattr(
             cfg, 'slurm_partition') else None
 
-        if self.partition is not None: 
+        if self.partition is not None:
 
             # Make sure we are not exceeding the number of cores available
             total_cpus = self.get_total_cpus(self.partition)
             if self.args.cores > total_cpus:
                 self.args.cores = total_cpus
-            
+
             # Transform memory from GB to MB
             self.args.memory *= 1024
 
@@ -5659,10 +5662,10 @@ class SlurmEssentials:
 
         walltime_days = cfg.slurm_walltime_days if hasattr(
             cfg, 'slurm_walltime_days') else None
-        
+
         walltime_hours = cfg.slurm_walltime_hours if hasattr(
             cfg, 'slurm_walltime_hours') else None
-        
+
         if walltime_days is not None and walltime_hours is not None:
             self.walltime = f'{walltime_days}-{walltime_hours}'
         else:
@@ -5670,10 +5673,10 @@ class SlurmEssentials:
 
         self.slurm_lscratch = cfg.slurm_lscratch if hasattr(
             cfg, 'slurm_lscratch') else None
-        
+
         self.lscratch_mkdir = cfg.lscratch_mkdir if hasattr(
             cfg, 'lscratch_mkdir') else None
-        
+
         self.lscratch_root = cfg.lscratch_root if hasattr(
             cfg, 'lscratch_root') else None
 
@@ -5681,7 +5684,7 @@ class SlurmEssentials:
             self.add_line(f'#SBATCH {self.slurm_lscratch}')
 
         self.add_line(f'{self.lscratch_mkdir}')
-    
+
         if self.lscratch_root:
             self.add_line(
                 'export TMPDIR=%s/${SLURM_JOB_ID}' % self.lscratch_root)
@@ -5697,7 +5700,8 @@ class SlurmEssentials:
 
     def get_total_cpus(self, partition):
         cmd = ['sinfo', '-N', '-p', partition, '--format="%n %c"']
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode != 0:
             raise Exception(f'Error executing command: {result.stderr}')
         lines = result.stdout.split('\n')
@@ -5712,7 +5716,8 @@ class SlurmEssentials:
     def get_max_memory_per_node_in_mb(self):
         '''Get the maximum memory per node in MB.'''
         # Run the sinfo command and capture its output
-        sinfo_output = subprocess.check_output("sinfo -N -o '%m'", shell=True).decode('utf-8')
+        sinfo_output = subprocess.check_output(
+            "sinfo -N -o '%m'", shell=True).decode('utf-8')
 
         # The output is a string with one line per node, so split it into lines
         lines = sinfo_output.split('\n')
@@ -5723,7 +5728,6 @@ class SlurmEssentials:
 
         return max_memory_per_node
 
-    
     def _reorder_sbatch_lines(self, script_buffer):
         # we need to make sure that all #BATCH are at the top
         script_buffer.seek(0)
@@ -5744,16 +5748,17 @@ class SlurmEssentials:
         reordered_script.seek(0)
         return reordered_script
 
-
     def submit_job(self, cmd, cmd_type, label, shortlabel):
         '''Submit a Slurm job'''
 
         try:
             # Build output slurm dir
-            output_dir = os.path.join(self.cfg.slurm_dir, f'froster-{cmd_type}@{label}')
+            output_dir = os.path.join(
+                self.cfg.slurm_dir, f'froster-{cmd_type}@{label}')
 
             # Compile the Slurm script
-            self.add_line(f'#SBATCH --job-name=froster:{cmd_type}:{shortlabel}')
+            self.add_line(
+                f'#SBATCH --job-name=froster:{cmd_type}:{shortlabel}')
             self.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
             self.add_line(f'#SBATCH --mem={self.args.memory}')
             self.add_line(f'#SBATCH --output={output_dir}-%J.out')
@@ -5921,7 +5926,8 @@ class SlurmEssentials:
             sacc = os.environ.get('SLURM_ACCOUNT', '')
             account = sacc if sacc else account
             allowed_partitions = {}
-            partition_str = self._get_output("scontrol show partition --oneliner")
+            partition_str = self._get_output(
+                "scontrol show partition --oneliner")
             partitions = self._parse_partition_data(partition_str)
             user_groups = self._get_user_groups()
             if account is None:
@@ -5956,7 +5962,8 @@ class SlurmEssentials:
                         allowed_qos = account_qos
                         # print(f"p_allowedqos = ALL in {pname}:", allowed_qos)
                     elif p_allowedqos != ['']:
-                        allowed_qos = [q for q in account_qos if q in p_allowedqos]
+                        allowed_qos = [
+                            q for q in account_qos if q in p_allowedqos]
                         # print(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos)
                     else:
                         allowed_qos = []
@@ -6154,7 +6161,7 @@ class Commands:
 
     def print_help(self):
         self.parser.print_help()
-    
+
     def print_version(self):
 
         print(
@@ -6292,7 +6299,8 @@ class Commands:
 
             # Check if the provided pwalk copy folder exists
             if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
-                print(f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
+                print(
+                    f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
                 sys.exit(1)
 
             # Check if all the provided folders exist
@@ -6384,7 +6392,7 @@ class Commands:
                     return
 
                 self.args.folders = [retline[0]]
-                
+
                 # Append the folder for restoring to the arguments
                 sys.argv.append(self.args.folders[0])
 
@@ -6469,7 +6477,8 @@ class Commands:
             #     cfg.create_ec2_instance()
             #     return True
 
-            arch.mount(folders=self.args.folders, mountpoint=self.args.mountpoint)
+            arch.mount(folders=self.args.folders,
+                       mountpoint=self.args.mountpoint)
 
         except:
             print_error()
@@ -6564,11 +6573,12 @@ class Commands:
         else:
             print('    ...AWS credentials are NOT valid\n')
             return False
-        
-    def subcmd_update(self):
-        cmd = "curl -s https://raw.githubusercontent.com/hpcnow/froster/main/install.sh?$(date +%s) | bash"
 
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+    def subcmd_update(self):
+        cmd = "curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash"
+
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, shell=True)
 
         for line in iter(p.stdout.readline, b''):
             print(line.decode(), end='')
@@ -6578,7 +6588,6 @@ class Commands:
 
         if p.returncode != 0:
             print(f"Error: The update failed with exit code {p.returncode}.")
-
 
     def parse_arguments(self):
         '''Gather and parse command-line arguments'''
@@ -6591,23 +6600,24 @@ class Commands:
 
         parser.add_argument('-d', '--debug', dest='debug', action='store_true', default=False,
                             help="verbose output for all commands")
-        
+
         parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true', default=False,
                             help="do not submit a Slurm job, execute in the foreground. ")
-        
+
         parser.add_argument('-c', '--cores', dest='cores', type=int, default=4,
                             help='Number of cores to be allocated for the machine. (default=4)')
-        
+
         parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
                             help='Amount of memory to be allocated for the machine in GB. (default=64)')
-        
+
         parser.add_argument('-p', '--profile', dest='aws_profile', action='store_true', default='',
                             help='which AWS profile in ~/.aws/ should be used. default="aws"')
-        
+
         parser.add_argument('-v', '--version', dest='version', action='store_true',
                             help='print froster and packages version info')
 
-        subparsers = parser.add_subparsers(dest="subcmd", help='sub-command help')
+        subparsers = parser.add_subparsers(
+            dest="subcmd", help='sub-command help')
 
         # ***
 
@@ -6666,8 +6676,8 @@ class Commands:
                                   'using the pwalk file system crawler ')
 
         parser_index.add_argument('-f', '--force', dest='force', action='store_true',
-                                    help="Force indexing")
-        
+                                  help="Force indexing")
+
         parser_index.add_argument('-y', '--pwalk-copy', dest='pwalkcopy', action='store', default='',
                                   help='Directory where the pwalk CSV file should be copied to.')
 
@@ -6726,7 +6736,7 @@ class Commands:
 
         parser_archive.add_argument('-i', '--nih-ref', dest='nihref', action='store', default='',
                                     help="Use NIH Reporter reference for the current archive")
-        
+
         parser_archive.add_argument('-m', '--mtime', dest='agemtime', action='store_true',
                                     help="Use modified file time (mtime) instead of accessed time (atime)")
 
@@ -6851,13 +6861,13 @@ class Commands:
                                            help=textwrap.dedent(f'''
                 Login to an AWS EC2 instance to which data was restored with the --aws option
             '''), formatter_class=argparse.RawTextHelpFormatter)
-        
+
         parser_ssh.add_argument('--list', '-l', dest='list', action='store_true', default=False,
                                 help="List running Froster AWS EC2 instances")
-        
+
         parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='',
                                 metavar='<hostname>', help='Terminate AWS EC2 instance with this public IP Address.')
-        
+
         parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
                                 help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
                                 '')
@@ -6865,7 +6875,7 @@ class Commands:
         # ***
 
         parser_update = subparsers.add_parser('update', aliases=['upd'],
-                                               help=textwrap.dedent(f'''
+                                              help=textwrap.dedent(f'''
                 Update froster to the latest version
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
@@ -6919,11 +6929,12 @@ def clean_path_list(paths):
     return cleaned_paths
 
 
-def is_slurm_installed(): 
+def is_slurm_installed():
     if shutil.which('sbatch'):
         return True
     else:
         return False
+
 
 def is_inside_slurm_job():
     if os.getenv('SLURM_JOB_ID'):
@@ -6931,8 +6942,10 @@ def is_inside_slurm_job():
     else:
         return False
 
+
 def use_slurm(noslurm_flag):
     return is_slurm_installed() and not noslurm_flag and not is_inside_slurm_job()
+
 
 def print_error():
     exc_type, exc_value, exc_tb = sys.exc_info()
