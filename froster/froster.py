@@ -6568,10 +6568,28 @@ class Commands:
     def subcmd_update(self):
         cmd = "curl -s https://raw.githubusercontent.com/hpcnow/froster/main/install.sh?$(date +%s) | bash"
 
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        # OPCION 1
 
-        if result.returncode != 0:
-            print(f"Error in froster update: code {result.returncode}: error {result.stderr}")
+        # result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+        # if result.returncode != 0:
+        #     print(f"Error in froster update: code {result.returncode}: error {result.stderr}")
+
+        # OPCION 2
+
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+
+        for line in iter(p.stdout.readline, b''):
+            print(line.decode(), end='')
+
+        # Wait for the process to finish and get the exit code
+        p.wait()
+
+        if p.returncode != 0:
+            print(f"The command failed with exit code {p.returncode}.")
+        else:
+            print("The command succeeded.")
+
 
     def parse_arguments(self):
         '''Gather and parse command-line arguments'''
