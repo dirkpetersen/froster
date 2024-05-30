@@ -3447,22 +3447,8 @@ class Archiver:
             # Get the shortlabel for the Slurm job
             shortlabel = os.path.basename(folders[0])
 
-            # Store the original command line arguments
-            arguments = sys.argv
-
-            # Remove the hotspots flag from the arguments and add the selected folders
-            if '--hotspots' in arguments:
-                arguments.remove('--hotspots')
-                for folder in folders:
-                    arguments.append(folder)
-
-            # Add the nihref to arguments in case that it is not present
-            if hasattr(self.args, 'nihref') and self.args.nihref and '--nih-ref' not in arguments:
-                arguments.append('--nih-ref')
-                arguments.append(self.args.nihref[0])
-
             # Add the original cmdline to the Slurm script
-            cmd = " ".join(map(shlex.quote, arguments))
+            cmd = " ".join(map(shlex.quote, sys.argv))
 
             # Submit the job
             se.submit_job(cmd=cmd,
@@ -3748,9 +3734,7 @@ class Archiver:
 
                 # Add NIH information to the metadata dictionary
                 if nih:
-                    new_entry['nih_project'] = nih[0]
-                    new_entry['nih_project_url'] = nih[6]
-                    new_entry['nih_project_pi'] = nih[3]
+                    new_entry['nih_project'] = nih
 
                 # Write the metadata to the archive JSON file
                 self._archive_json_add_entry(key=folder_to_archive.rstrip(os.path.sep),
@@ -3806,13 +3790,29 @@ class Archiver:
                 nih = app.run()
 
                 if nih:
-                    # This is not the best place to store this variable but we need it in the _slurm_cmd function
-                    self.args.nihref = nih
+                    # Add the nihref to arguments for slurm script execution 
+                    sys.argv.append('--nih-ref')
+                    sys.argv.append(nih[0])
+                    nih = nih[0]
+
                 else:
+                    # Nothing selected. Exit
                     return
 
             if use_slurm(self.args.noslurm):
+
+                if '--hotspots' in sys.argv:
+
+                    # Remove the hotspots flag from the arguments as this will be a non-interactive slurm execution
+                    sys.argv.remove('--hotspots')
+
+                    # Append the selected folders to the arguments. Again: non-interactive slurm execution
+                    for folder in folders:
+                        sys.argv.append(folder)
+
+                # Execute slurm command
                 self._slurm_cmd(folders=folders, cmd_type='archive')
+
             else:
                 for folder in folders:
                     if is_recursive:
@@ -6352,6 +6352,9 @@ class Commands:
                     return
 
                 self.args.folders = [retline[0]]
+                
+                # Append the folder for restoring to the arguments
+                sys.argv.append(self.args.folders[0])
 
             arch.restore(self.args.folders, aws)
 
