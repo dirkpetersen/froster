@@ -4452,9 +4452,10 @@ class Archiver:
                             print(f'No entry found in froster-archives.json\n')
                             continue
 
-                        if not self._contains_non_froster_files(root):
-                            print(
-                                f'\nWARNING: Folder {root} contains non-froster files. Please empty the folder before restoring.\n')
+                        if not self._contains_non_froster_files(root) and not self.args.force:
+                            print(f'\nWARNING: Folder {root} contains non-froster metadata files')
+                            print('Has this folder been deleted using "froster delete" command?.')
+                            print('Please empty the folder before restoring or use "-f" flag to ignore this check.\n')
                             continue
 
                         if self._restore_locally(root, aws):
@@ -6650,11 +6651,24 @@ class Commands:
         parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
                                     help='folders you would like to to restore (separated by space)')
 
-        parser_restore.add_argument('-r', '--recursive', dest='recursive', action='store_true',
-                                    help="Restore the current archived folder and all archived sub-folders")
 
+        parser_restore.add_argument('-a', '--aws', dest='aws', action='store_true',
+                                    help="Restore folder on new AWS EC2 instance instead of local machine")
+        
         parser_restore.add_argument('-d', '--days', dest='days', action='store', default=30,
                                     help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
+        
+        parser_archive.add_argument('-f', '--force', dest='force', action='store_true',
+                                    help="Force restore of a folder")
+        
+        parser_restore.add_argument('-i', '--instance-type', dest='instancetype', action='store', default="",
+                                    help='The EC2 instance type is auto-selected, but you can pick any other type here')
+
+        parser_restore.add_argument('-l', '--no-download', dest='nodownload', action='store_true',
+                                    help="skip download to local storage after retrieval from Glacier")
+        
+        parser_restore.add_argument('-m', '--monitor', dest='monitor', action='store_true',
+                                    help="Monitor EC2 server for cost and idle time.")
 
         parser_restore.add_argument('-o', '--retrieve-opt', dest='retrieveopt', action='store', default='Bulk',
                                     help=textwrap.dedent(f'''
@@ -6690,17 +6704,8 @@ class Commands:
                 (Costs in Summer 2023)
                 '''))
 
-        parser_restore.add_argument('-a', '--aws', dest='aws', action='store_true',
-                                    help="Restore folder on new AWS EC2 instance instead of local machine")
-
-        parser_restore.add_argument('-i', '--instance-type', dest='instancetype', action='store', default="",
-                                    help='The EC2 instance type is auto-selected, but you can pick any other type here')
-
-        parser_restore.add_argument('-m', '--monitor', dest='monitor', action='store_true',
-                                    help="Monitor EC2 server for cost and idle time.")
-
-        parser_restore.add_argument('-l', '--no-download', dest='nodownload', action='store_true',
-                                    help="skip download to local storage after retrieval from Glacier")
+        parser_restore.add_argument('-r', '--recursive', dest='recursive', action='store_true',
+                                    help="Restore the current archived folder and all archived sub-folders")
 
         # ***
 
