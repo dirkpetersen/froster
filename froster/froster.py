@@ -4488,7 +4488,7 @@ class Archiver:
                     return
 
                 # Get the path to the hashfile
-                hashfile = os.path.join(restpath, '.froster-restored.md5sum')
+                hashfile = os.path.join(restpath,  self.md5sum_restored_filename)
 
                 # Create the Rclone object
                 rclone = Rclone(self.args, self.cfg)
@@ -4501,7 +4501,7 @@ class Archiver:
                     return
 
                 # Check if Froster.smallfiles.tar exists
-                tar_path = os.path.join(target, 'Froster.smallfiles.tar')
+                tar_path = os.path.join(target, self.smallfiles_tar_filename)
                 if os.path.exists(tar_path):
                     print(f'\nUntarring Froster.smallfiles.tar... ')
                     with tarfile.open(tar_path, "r") as tar:
@@ -4509,7 +4509,8 @@ class Archiver:
                     os.remove(tar_path)
                     print('    ...done\n')
 
-                os.remove(self.where_did_the_files_go_filename)
+                where_did_file_go_full_path = os.path.join(target, self.where_did_the_files_go_filename)
+                os.remove(where_did_file_go_full_path)
 
                 print(f'Restoration of {root} completed successfully\n')
 
