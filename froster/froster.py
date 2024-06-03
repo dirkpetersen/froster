@@ -6658,7 +6658,7 @@ class Commands:
         parser_restore.add_argument('-d', '--days', dest='days', action='store', default=30,
                                     help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
         
-        parser_archive.add_argument('-f', '--force', dest='force', action='store_true',
+        parser_restore.add_argument('-f', '--force', dest='force', action='store_true',
                                     help="Force restore of a folder")
         
         parser_restore.add_argument('-i', '--instance-type', dest='instancetype', action='store', default="",
