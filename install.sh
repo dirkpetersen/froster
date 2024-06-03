@@ -387,6 +387,9 @@ check_apt_dependencies
 # Set rw permissions on anyone in file's group
 umask 0002
 
+echo $REPO
+echo $BRANCH
+
 # Backup old installation (if any)
 backup_old_installation
 
