@@ -4319,6 +4319,9 @@ class Archiver:
         '''Download the restored files'''
 
         try:
+            where_did_file_go_full_path = os.path.join(
+                folder, self.where_did_the_files_go_filename)
+
             # Get the bucket and prefix
             bucket, prefix, *_ = self.archive_get_bucket_info(folder)
 
@@ -4510,7 +4513,8 @@ class Archiver:
                     print('    ...done\n')
 
                 where_did_file_go_full_path = os.path.join(target, self.where_did_the_files_go_filename)
-                os.remove(where_did_file_go_full_path)
+                if os.path.exists(where_did_file_go_full_path):
+                    os.remove(where_did_file_go_full_path)
 
                 print(f'Restoration of {root} completed successfully\n')
 
