@@ -237,22 +237,8 @@ install_froster() {
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
 
-    # TODO: Update path once froster is in PyPi repository
-
-    # Get the repository and branch from the github environment variables (if any)
-    # or set the default repository and branch
-    if [[ -v REPO ]]; then
-        REPO="https://github.com/$REPO"
-    else
-        REPO="https://github.com/dirkpetersen/froster.git"
-    fi
-
-    BRANCH=${BRANCH:-"main"}
-
-    echo
-    echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
-
-    pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
+    # Install froster from PyPi package repository
+    pipx install froster >/dev/null 2>&1 &
     spinner $!
 
     # Keep the config.ini file (if any)
