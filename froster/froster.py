@@ -4452,10 +4452,10 @@ class Archiver:
                             print(f'No entry found in froster-archives.json\n')
                             continue
 
-                        if not self._contains_non_froster_files(root) and not self.args.force:
+                        if not self._contains_non_froster_files(root):
                             print(f'\nWARNING: Folder {root} contains non-froster metadata files')
                             print('Has this folder been deleted using "froster delete" command?.')
-                            print('Please empty the folder before restoring or use "-f" flag to ignore this check.\n')
+                            print('Please empty the folder before restoring.\n')
                             continue
 
                         if self._restore_locally(root, aws):
@@ -6657,9 +6657,6 @@ class Commands:
         
         parser_restore.add_argument('-d', '--days', dest='days', action='store', default=30,
                                     help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
-        
-        parser_restore.add_argument('-f', '--force', dest='force', action='store_true',
-                                    help="Force restore of a folder")
         
         parser_restore.add_argument('-i', '--instance-type', dest='instancetype', action='store', default="",
                                     help='The EC2 instance type is auto-selected, but you can pick any other type here')
