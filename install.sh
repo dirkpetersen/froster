@@ -197,15 +197,18 @@ backup_old_installation() {
     # Check if froster is already installed, if so uninstall it
     if which froster >/dev/null 2>&1; then
         echo
-            echo "Uninstalling existing froster installation..."
-            if pip list | grep froster >/dev/null 2>&1; then
-                    pip uninstall froster >/dev/null 2>&1 &
-                    spinner $!
+        echo "Uninstalling existing froster installation..."
+
+        if pip list | grep froster >/dev/null 2>&1; then
+                pip uninstall froster >/dev/null 2>&1 &
+                spinner $!
         fi
-            if pipx list | grep froster >/dev/null 2>&1; then
-                    pipx uninstall froster >/dev/null 2>&1 &
-                    spinner $!
+
+        if pipx list | grep froster >/dev/null 2>&1; then
+                pipx uninstall froster &
+                spinner $!
         fi
+
         echo "...froster uninstalled"
     fi
 
@@ -370,6 +373,10 @@ install_rclone() {
 ############
 ### CODE ###
 ############
+
+#create tmp directory and move to it 
+tmp_dir=$(mktemp -d -t froster_XXXXXX 2>/dev/null || mktemp -d -t /tmp/froster_XXXXXX)
+cd "$tmp_dir"
 
 # Check linux package dependencies
 check_apt_dependencies
