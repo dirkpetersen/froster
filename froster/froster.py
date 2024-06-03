@@ -6412,32 +6412,6 @@ class Commands:
             print('    ...AWS credentials are NOT valid\n')
             return False
 
-    def subcmd_update(self):
-        '''Update Froster'''
-
-        try:
-            if self.args.rclone:
-                cmd = "rclone selfupdate"
-            else:
-                cmd = "curl -s https://raw.githubusercontent.com/hpcnow/froster/main/install.sh?$(date +%s) | bash"
-
-            print(f'\n Executing command "{cmd}"\n')
-
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                 stderr=subprocess.STDOUT, shell=True)
-
-            for line in iter(p.stdout.readline, b''):
-                print(line.decode(), end='')
-
-            # Wait for the process to finish and get the exit code
-            p.wait()
-
-            if p.returncode != 0:
-                print(
-                    f"Error: The update failed with exit code {p.returncode}.")
-        except Exception:
-            print_error()
-
     def parse_arguments(self):
         '''Gather and parse command-line arguments'''
 
@@ -6886,8 +6860,6 @@ def main():
             cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
             cmd.subcmd_credentials(cfg, aws)
-        elif args.subcmd in ['update', 'upd']:
-            cmd.subcmd_update()
         else:
             cmd.print_help()
 
