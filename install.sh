@@ -230,10 +230,10 @@ backup_old_installation() {
 }
 
 install_froster() {
-
+    echo "ahá"
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
-
+    echo "uhú"
     # TODO: Update path once froster is in PyPi repository
 
     # Get the repository and branch from the github environment variables (if any)
