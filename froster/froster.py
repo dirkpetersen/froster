@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 
 """
-Froster automates much of the challenging tasks when
-archiving many Terabytes of data on large (HPC) systems.
+    Froster automates much of the challenging tasks when
+    archiving many Terabytes of data on large (HPC) systems.
 """
 
 # internal modules
@@ -38,7 +38,6 @@ import hashlib
 import fnmatch
 import io
 import math
-import signal
 import shlex
 import shutil
 import tempfile
@@ -54,255 +53,221 @@ import re
 import urllib.parse
 import traceback
 import pkg_resources
-
 from pathlib import Path
-
-import warnings
-warnings.filterwarnings("always", category=ResourceWarning)
-warnings.filterwarnings("ignore", category=ResourceWarning)
-
-# stuff from pypi
 
 
 class ConfigManager:
     ''' Froster configuration manager
 
     This class manages the configuration of Froster.
-    It reads and writes the configuration files.'''
+    It reads and writes the configuration file.'''
 
     def __init__(self):
-        ''' Initialize the ConfigManager object
+        try:
+            ''' Initialize the ConfigManager object
 
-        This function initializes the ConfigManager object with default values.
-        Then it reads the configuration file (if exists) and populates the object variables.
-        It follows the XDG Base Directory conventions:
-        https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
-        '''
+            This function initializes the ConfigManager object with default values.
+            Then it reads the configuration file (if exists) and populates the object variables.
+            It follows the XDG Base Directory conventions:
+            https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
+            '''
 
-        # Debug: print current function name
-        printdbg(f'{inspect.stack()[0][3]}\n')
+            # Initialize the filename variables that are needed elsewhere
+            self.archive_json_file_name = 'froster-archives.json'
+            self.shared_config_file_name = 'shared_config.ini'
 
-        # Initialize the filename variables that are needed elsewhere
-        self.archive_json_file_name = 'froster-archives.json'
-        self.shared_config_file_name = 'shared_config.ini'
+            # Initialize the variables that check if specific configuration sections have been initialized
+            self.user_init = False
+            self.aws_init = False
+            self.nih_init = False
+            self.s3_init = False
+            self.configuration_done = False
 
-        # Initialize the variables that check if specific configuration sections have been initialized
-        self.user_init = False
-        self.aws_init = False
-        self.nih_init = False
-        self.s3_init = False
-        self.configuration_done = False
+            # Whoami
+            self.whoami = getpass.getuser()
 
-        # Whoami
-        self.whoami = getpass.getuser()
+            # Expand the ~ symbols to user's home directory
+            self.home_dir = os.path.expanduser('~')
 
-        # Expand the ~ symbols to user's home directory
-        self.home_dir = os.path.expanduser('~')
+            # Froster's home directory
+            self.froster_dir = os.path.join(sys.prefix)
 
-        # Froster's home directory
-        self.froster_dir = os.path.join(sys.prefix)
+            # Froster's binary directory
+            self.bin_dir = os.path.join(self.froster_dir, 'bin')
 
-        # Froster's binary directory
-        self.bin_dir = os.path.join(self.froster_dir, 'bin')
+            # Froster's data directory
+            xdg_data_home = os.environ.get('XDG_DATA_HOME')
 
-        # Froster's data directory
-        xdg_data_home = os.environ.get('XDG_DATA_HOME')
+            if xdg_data_home:
+                self.data_dir = os.path.join(xdg_data_home, 'froster')
+            else:
+                self.data_dir = os.path.join(
+                    self.home_dir, '.local', 'share', 'froster')
 
-        if xdg_data_home:
-            self.data_dir = os.path.join(xdg_data_home, 'froster')
-        else:
-            self.data_dir = os.path.join(
-                self.home_dir, '.local', 'share', 'froster')
+            self.slurm_dir = os.path.join(self.data_dir, 'slurm')
 
-        self.slurm_dir = os.path.join(self.data_dir, 'slurm')
+            # Froster's configuration directory
+            xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
 
-        # Froster's configuration directory
-        xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
+            if xdg_config_home:
+                self.config_dir = os.path.join(xdg_config_home, 'froster')
+            else:
+                self.config_dir = os.path.join(
+                    self.home_dir, '.config', 'froster')
 
-        if xdg_config_home:
-            self.config_dir = os.path.join(xdg_config_home, 'froster')
-        else:
-            self.config_dir = os.path.join(self.home_dir, '.config', 'froster')
+            # Froster's configuration file
+            self.config_file = os.path.join(self.config_dir, 'config.ini')
 
-        # Froster's configuration file
-        self.config_file = os.path.join(self.config_dir, 'config.ini')
+            # Froster's archive json file
+            self.archive_json = os.path.join(
+                self.data_dir, self.archive_json_file_name)
 
-        # Froster's archive json file
-        self.archive_json = os.path.join(
-            self.data_dir, self.archive_json_file_name)
+            # Froster's default shared configuration
+            self.is_shared = False
 
-        # Froster's default shared configuration
-        self.is_shared = False
+            # Basic setup, focus the indexer on larger folders and file sizes
+            self.max_small_file_size_kib = 1024
+            self.min_index_folder_size_gib = 1
+            self.min_index_folder_size_avg_mib = 10
+            self.max_hotspots_display_entries = 5000
 
-        # Basic setup, focus the indexer on larger folders and file sizes
-        self.max_small_file_size_kib = 1024
-        self.min_index_folder_size_gib = 1
-        self.min_index_folder_size_avg_mib = 10
-        self.max_hotspots_display_entries = 5000
+            # Froster's ssh default key name
+            self.ssh_key_name = 'froster-ec2'
 
-        # Froster's ssh default key name
-        self.ssh_key_name = 'froster-ec2'
+            # Hotspots dir
+            self.hotspots_dir = os.path.join(self.data_dir, 'hotspots')
 
-        # Hotspots dir
-        self.hotspots_dir = os.path.join(self.data_dir, 'hotspots')
+            # Check if there is a ~/.config/froster/config.ini file and populate the variables
+            if os.path.exists(self.config_file):
 
-        # Check if there is a ~/.config/froster/config.ini file and populate the variables
-        if os.path.exists(self.config_file):
+                # Create a ConfigParser object
+                config = configparser.ConfigParser()
 
-            # Create a ConfigParser object
-            config = configparser.ConfigParser()
+                # Populate self variables using local config.ini file
+                config.read(self.config_file)
 
-            # Populate self variables using local config.ini file
-            config.read(self.config_file)
+                # User configuration
+                self.name = config.get('USER', 'name', fallback=None)
+                self.email = config.get('USER', 'email', fallback=None)
 
-            # User configuration
-            self.name = config.get('USER', 'name', fallback=None)
-            self.email = config.get('USER', 'email', fallback=None)
+                # Check if user configuration is complete
+                if self.name and self.email:
+                    self.user_init = True
 
-            # Check if user configuration is complete
-            if self.name and self.email:
-                self.user_init = True
+                # AWS directory
+                self.aws_dir = config.get(
+                    'AWS', 'aws_dir', fallback=os.path.join(self.home_dir, '.aws'))
 
-            # AWS directory
-            self.aws_dir = config.get(
-                'AWS', 'aws_dir', fallback=os.path.join(self.home_dir, '.aws'))
+                # AWS config file
+                self.aws_config_file = os.path.join(self.aws_dir, 'config')
 
-            # AWS config file
-            self.aws_config_file = os.path.join(self.aws_dir, 'config')
+                # AWS credentials file
+                self.aws_credentials_file = os.path.join(
+                    self.aws_dir, 'credentials')
 
-            # AWS credentials file
-            self.aws_credentials_file = os.path.join(
-                self.aws_dir, 'credentials')
+                # AWS profile
+                self.aws_profile = config.get(
+                    'AWS', 'aws_profile', fallback=None)
 
-            # AWS profile
-            self.aws_profile = config.get(
-                'AWS', 'aws_profile', fallback=None)
+                # AWS region
+                self.aws_region = config.get(
+                    'AWS', 'aws_region', fallback=None)
 
-            # AWS region
-            self.aws_region = config.get(
-                'AWS', 'aws_region', fallback=None)
+                # Check if aws configuration is complete
+                if self.aws_profile and self.aws_region:
+                    self.aws_init = True
 
-            # Check if aws configuration is complete
-            if self.aws_profile and self.aws_region:
-                self.aws_init = True
+                # Shared configuration
+                self.is_shared = config.getboolean(
+                    'SHARED', 'is_shared', fallback=False)
 
-            # Shared configuration
-            self.is_shared = config.getboolean(
-                'SHARED', 'is_shared', fallback=False)
+                if self.is_shared:
 
-            if self.is_shared:
+                    self.shared_dir = config.get(
+                        'SHARED', 'shared_dir', fallback=None)
 
-                self.shared_dir = config.get(
-                    'SHARED', 'shared_dir', fallback=None)
+                    self.shared_config_file = os.path.join(
+                        self.shared_dir,  self.shared_config_file_name)
 
-                self.shared_config_file = os.path.join(
-                    self.shared_dir,  self.shared_config_file_name)
+                    self.archive_json = os.path.join(
+                        self.shared_dir, self.archive_json_file_name)
 
-                self.archive_json = os.path.join(
-                    self.shared_dir, self.archive_json_file_name)
+                    self.shared_hotspots_dir = os.path.join(
+                        self.shared_dir, 'hotspots')
 
-                self.shared_hotspots_dir = os.path.join(
-                    self.shared_dir, 'hotspots')
+                    # Change config file if this is a shared configuration
+                    config.read(self.shared_config_file)
 
-                # Change config file if this is a shared configuration
-                config.read(self.shared_config_file)
+                # NIH configuration
+                self.is_nih = config.getboolean('NIH', 'is_nih', fallback=None)
 
-            # NIH configuration
-            self.is_nih = config.getboolean('NIH', 'is_nih', fallback=None)
+                # Set nih init flag
+                self.nih_init = True if self.is_nih is not None else False
 
-            # Set nih init flag
-            self.nih_init = True if self.is_nih is not None else False
+                # Current S3 Bucket name
+                self.bucket_name = config.get(
+                    'S3', 'bucket_name', fallback=None)
 
-            # Current S3 Bucket name
-            self.bucket_name = config.get(
-                'S3', 'bucket_name', fallback=None)
+                # Archive directoy inside AWS S3 bucket
+                self.archive_dir = config.get(
+                    'S3', 'archive_dir', fallback=None)
 
-            # Archive directoy inside AWS S3 bucket
-            self.archive_dir = config.get(
-                'S3', 'archive_dir', fallback=None)
+                # Store aws s3 storage class in the config object
+                self.storage_class = config.get(
+                    'S3', 'storage_class', fallback=None)
 
-            # Store aws s3 storage class in the config object
-            self.storage_class = config.get(
-                'S3', 'storage_class', fallback=None)
+                # Check if s3 configuration is complete
+                if self.bucket_name and self.archive_dir and self.storage_class:
+                    self.s3_init = True
 
-            # Check if s3 configuration is complete
-            if self.bucket_name and self.archive_dir and self.storage_class:
-                self.s3_init = True
+                # Slurm configuration
+                self.slurm_walltime_days = config.get(
+                    'SLURM', 'slurm_walltime_days', fallback=None)
 
-            # Slurm configuration
-            self.slurm_walltime_days = config.get(
-                'SLURM', 'slurm_walltime_days', fallback=None)
+                self.slurm_walltime_hours = config.get(
+                    'SLURM', 'slurm_walltime_hours', fallback=None)
 
-            self.slurm_walltime_hours = config.get(
-                'SLURM', 'slurm_walltime_hours', fallback=None)
+                self.slurm_partition = config.get(
+                    'SLURM', 'slurm_partition', fallback=None)
 
-            self.slurm_partition = config.get(
-                'SLURM', 'slurm_partition', fallback=None)
+                self.slurm_qos = config.get(
+                    'SLURM', 'slurm_qos', fallback=None)
 
-            self.slurm_qos = config.get(
-                'SLURM', 'slurm_qos', fallback=None)
+                self.slurm_lscratch = config.get(
+                    'SLURM', 'slurm_lscratch', fallback=None)
 
-            self.slurm_lscratch = config.get(
-                'SLURM', 'slurm_lscratch', fallback=None)
+                self.lscratch_mkdir = config.get(
+                    'SLURM', 'lscratch_mkdir', fallback=None)
 
-            self.lscratch_mkdir = config.get(
-                'SLURM', 'lscratch_mkdir', fallback=None)
+                self.lscratch_rmdir = config.get(
+                    'SLURM', 'lscratch_rmdir', fallback=None)
 
-            self.lscratch_rmdir = config.get(
-                'SLURM', 'lscratch_rmdir', fallback=None)
+                self.lscratch_root = config.get(
+                    'SLURM', 'lscratch_root', fallback=None)
 
-            self.lscratch_root = config.get(
-                'SLURM', 'lscratch_root', fallback=None)
+                # Cloud configuration
+                self.ses_verify_requests_sent = config.get(
+                    'CLOUD', 'ses_verify_requests_sent', fallback=[])
 
-            # Cloud configuration
-            self.ses_verify_requests_sent = config.get(
-                'CLOUD', 'ses_verify_requests_sent', fallback=[])
+                self.ec2_last_instance = config.get(
+                    'CLOUD', 'ec2_last_instance', fallback=None)
 
-            self.ec2_last_instance = config.get(
-                'CLOUD', 'ec2_last_instance', fallback=None)
-
-        if self.user_init and self.aws_init and self.s3_init and self.nih_init:
-            self.configuration_done = True
+            if self.user_init and self.aws_init and self.s3_init and self.nih_init:
+                self.configuration_done = True
+        except Exception:
+            print_error()
 
     def __repr__(self):
         ''' Return a string representation of the object'''
-
-        return "<{klass} @{id:x} {attrs}>".format(
-            klass=self.__class__.__name__,
-            id=id(self) & 0xFFFFFF,
-            attrs=" ".join("{}={!r}\n".format(k, v)
-                           for k, v in self.__dict__.items()),
-        )
-
-    def add_cron_job(self, cmd, minute, hour='*', day_of_month='*', month='*', day_of_week='*'):
-        # FUNCTION CURRENTLY NOT BEING USED
-
-        if not minute:
-            print('You must set the minute (1-60) explicily')
-            return False
-        with tempfile.NamedTemporaryFile(delete=False) as temp:
-            # Dump the current crontab to the temporary file
-            try:
-                os.system('crontab -l > {}'.format(temp.name))
-            except Exception as e:
-                print(f"Error: {e}", file=sys.stderr)
-
-            # Add the new cron job to the temporary file
-            cron_time = "{} {} {} {} {}".format(
-                str(minute), hour, day_of_month, month, day_of_week)
-            with open(temp.name, 'a') as file:
-                file.write('{} {}\n'.format(cron_time, cmd))
-
-            # Install the new crontab
-            try:
-                os.system('crontab {}'.format(temp.name))
-            except Exception as e:
-                print(f"Error: {e}", file=sys.stderr)
-
-            # Clean up by removing the temporary file
-            os.unlink(temp.name)
-
-        print("Cron job added!")
+        try:
+            return "<{klass} @{id:x} {attrs}>".format(
+                klass=self.__class__.__name__,
+                id=id(self) & 0xFFFFFF,
+                attrs=" ".join("{}={!r}\n".format(k, v)
+                               for k, v in self.__dict__.items()),
+            )
+        except Exception:
+            print_error()
 
     def add_systemd_cron_job(self, cmd, minute, hour='*'):
 
@@ -343,7 +308,6 @@ class ConfigManager:
             """)
 
             # Ensure the directory exists
-            # TODO: Check this path
             user_systemd_dir = os.path.expanduser("~/.config/systemd/user/")
             os.makedirs(user_systemd_dir, exist_ok=True, mode=0o775)
 
@@ -360,25 +324,23 @@ class ConfigManager:
                 timer_file.write(TIMER_CONTENT)
 
             # Reload systemd and enable/start timer
-
             os.chdir(user_systemd_dir)
             os.system("systemctl --user daemon-reload")
             os.system("systemctl --user enable froster-monitor.service")
             os.system("systemctl --user enable froster-monitor.timer")
             os.system("systemctl --user start froster-monitor.timer")
-            print("Systemd froster-monitor.timer cron job started!")
 
+            print("Systemd froster-monitor.timer cron job started!")
             return True
-        except Exception as e:
-            print(
-                f'Could not add systemd scheduler job, Error: {e}', file=sys.stderr)
-            print_error()
+
+        except Exception:
+            print_error("Could not add systemd scheduler job")
             return False
 
     def assure_permissions_and_group(self, directory):
         '''Assure correct permissions and groupID of a directory'''
-        try:
 
+        try:
             if not os.path.isdir(directory):
                 raise ValueError(
                     f'{inspect.currentframe().f_code.co_name}: tried to fix permissions of a non-directory "{directory}"')
@@ -414,12 +376,11 @@ class ConfigManager:
                     # Change the group ID to the same as the directory
                     os.chown(path, -1, dir_gid)
 
-        except Exception as e:
-            print(f'\nError: {e}', file=sys.stderr)
-            print(
-                f'Could not fix permissions of shared folder "{directory}"\n', file=sys.stderr)
+        except Exception:
+            print_error(f"Could not fix permissions of directory: {directory}")
 
     def __inquirer_check_bucket_name(self, answers, current):
+        '''Check if the bucket name is correct'''
 
         if not current.startswith("froster-"):
             raise inquirer.errors.ValidationError(
@@ -432,6 +393,8 @@ class ConfigManager:
         return True
 
     def __inquirer_check_email_format(self, answers, current):
+        '''Check if the email format is correct'''
+
         pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
         if re.match(pattern, current) is None:
             raise inquirer.errors.ValidationError(
@@ -439,6 +402,7 @@ class ConfigManager:
         return True
 
     def __inquirer_check_is_number(self, answers, current):
+        '''Check if the input is a number'''
 
         pattern = r"^[0-9]+$"
         if re.match(pattern, current) is None:
@@ -447,12 +411,15 @@ class ConfigManager:
         return True
 
     def __inquirer_check_required(self, answers, current):
+        '''Check input is set'''
+
         if not current:
             raise inquirer.errors.ValidationError(
                 "", reason="Field is required")
         return True
 
     def __inquirer_check_path_exists(self, answers, current):
+        '''Check if the path exists'''
         if not os.path.exists(os.path.expanduser(current)):
             raise inquirer.errors.ValidationError(
                 "", reason="Path does not exist")
@@ -461,87 +428,40 @@ class ConfigManager:
     def print_config(self):
         '''Print the configuration files'''
 
-        if os.path.exists(self.config_file):
-            print(f'\n*** LOCAL CONFIGURATION AT: {self.config_file}\n')
-            with open(self.config_file, 'r') as f:
-                print(f.read())
-
-            if self.is_shared and os.path.exists(self.shared_config_file):
-                print(
-                    f'*** SHARED CONFIGURATION AT: {self.shared_config_file}\n')
-                with open(self.shared_config_file, 'r') as f:
+        try:
+            if os.path.exists(self.config_file):
+                print(f'\n*** LOCAL CONFIGURATION AT: {self.config_file}\n')
+                with open(self.config_file, 'r') as f:
                     print(f.read())
-        else:
-            print(f'\n*** NO CONFIGURATION FOUND ***')
-            print('\nYou can configure froster using the command:')
-            print('    froster config')
 
-    def set_env_vars(self, profile):
-        '''Set the environment variables for the AWS profile'''
+                if self.is_shared and os.path.exists(self.shared_config_file):
+                    print(
+                        f'*** SHARED CONFIGURATION AT: {self.shared_config_file}\n')
+                    with open(self.shared_config_file, 'r') as f:
+                        print(f.read())
+            else:
+                print(f'\n*** NO CONFIGURATION FOUND ***')
+                print('\nYou can configure froster using the command:')
+                print('    froster config')
+        except Exception:
+            print_error()
 
-        print(
-            f'TODO: Function {inspect.currentframe().f_code.co_name} I do not know if we really need to set environment variables to be functional')
-        exit(1)
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
+    def ses_verify_requests_sent(self, email_list):
+        '''Set the ses verify requests sent email list in configuration file'''
+        try:
+            if not email_list:
+                raise ValueError('No email list provided')
 
-        # Read the credentials file
-        config.read(self.aws_credentials_file)
-        self.aws_region = self.get_aws_region(profile)
+            # Write the config object to the config file
+            self.__set_configuration_entry(
+                'CLOULD', 'ses_verify_requests_sent', email_list)
 
-        if not config.has_section(profile):
-            if self.args.debug:
-                print(
-                    f'~/.aws/credentials has no section for profile {profile}')
-            return False
-        if not config.has_option(profile, 'aws_access_key_id'):
-            if self.args.debug:
-                print(
-                    f'~/.aws/credentials has no entry aws_access_key_id in section/profile {profile}')
-            return False
-
-        # Get the AWS access key and secret key from the specified profile
-        aws_access_key_id = config.get(profile, 'aws_access_key_id')
-        aws_secret_access_key = config.get(profile, 'aws_secret_access_key')
-
-        # Set the environment variables for creds
-        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
-        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
-        os.environ['AWS_PROFILE'] = profile
-        self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
-        self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
-        self.envrn['AWS_PROFILE'] = profile
-        self.envrn['RCLONE_S3_ACCESS_KEY_ID'] = aws_access_key_id
-        self.envrn['RCLONE_S3_SECRET_ACCESS_KEY'] = aws_secret_access_key
-
-        if profile in ['default', 'AWS', 'aws']:
-            # Set the environment variables for AWS
-            self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
-            self.envrn['RCLONE_S3_REGION'] = self.aws_region
-            self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
-            self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.read(
-                'general', 's3_storage_class')
-            os.environ['RCLONE_S3_STORAGE_CLASS'] = self.read(
-                'general', 's3_storage_class')
-        else:
-            prf = self.read('profiles', profile)
-            self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
-            self.envrn['RCLONE_S3_PROFILE'] = profile
-            # profile={'name': '', 'provider': '', 'storage_class': ''}
-            if isinstance(prf, dict):
-                self.envrn['RCLONE_S3_PROVIDER'] = prf['provider']
-                # TODO: There is a self.get_endpoint() in AWSBOTO class
-                self.envrn['RCLONE_S3_ENDPOINT'] = self._get_aws_s3_session_endpoint_url(
-                    profile)
-                self.envrn['RCLONE_S3_REGION'] = self.aws_region
-                self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.aws_region
-                self.envrn['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
-                os.environ['RCLONE_S3_STORAGE_CLASS'] = prf['storage_class']
-
-        return True
+        except Exception:
+            print_error()
 
     def set_aws(self, aws: 'AWSBoto'):
         '''Set the AWS configuration'''
+
         try:
             print(f'\n*** AWS CONFIGURATION ***\n')
 
@@ -721,166 +641,183 @@ class ConfigManager:
             print(f'*** AWS CONFIGURATION DONE ***\n')
 
             return True
-        except:
+
+        except Exception:
             print_error()
             return False
 
     def __set_aws_config(self, aws_profile_name, region):
         ''' Update the AWS config of the given profile'''
 
-        if not aws_profile_name:
-            raise ValueError('No AWS profile provided')
+        try:
+            if not aws_profile_name:
+                raise ValueError('No AWS profile provided')
 
-        if not region:
-            raise ValueError('No region provided')
+            if not region:
+                raise ValueError('No region provided')
 
-        # If it does not exist, create aws directory
-        os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
+            # If it does not exist, create aws directory
+            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
 
-        # Create a aws config ConfigParser object
-        aws_config = configparser.ConfigParser()
+            # Create a aws config ConfigParser object
+            aws_config = configparser.ConfigParser()
 
-        # If exists, read the aws config file
-        if os.path.exists(self.aws_config_file):
-            aws_config.read(self.aws_config_file)
+            # If exists, read the aws config file
+            if os.path.exists(self.aws_config_file):
+                aws_config.read(self.aws_config_file)
 
-        # If it does not exist, create a new profile in the aws config file
-        if not aws_config.has_section(aws_profile_name):
-            aws_config.add_section(aws_profile_name)
+            # If it does not exist, create a new profile in the aws config file
+            if not aws_config.has_section(aws_profile_name):
+                aws_config.add_section(aws_profile_name)
 
-        # Write the profile with the new region
-        aws_config[aws_profile_name]['region'] = region
+            # Write the profile with the new region
+            aws_config[aws_profile_name]['region'] = region
 
-        # Write the profile with the new output format
-        aws_config[aws_profile_name]['output'] = 'json'
+            # Write the profile with the new output format
+            aws_config[aws_profile_name]['output'] = 'json'
 
-        # Write the config object to the config file
-        with open(self.aws_config_file, 'w') as f:
-            aws_config.write(f)
+            # Write the config object to the config file
+            with open(self.aws_config_file, 'w') as f:
+                aws_config.write(f)
 
-        # Asure the permissions of the config file
-        os.chmod(self.aws_config_file, 0o600)
+            # Asure the permissions of the config file
+            os.chmod(self.aws_config_file, 0o600)
+
+        except Exception:
+            print_error()
 
     def __set_aws_credentials(self,
                               aws_profile_name,
                               aws_access_key_id,
                               aws_secret_access_key):
+        ''' Update the AWS credentials of the given profile'''
 
-        if not aws_profile_name:
-            raise ValueError('No AWS profile provided')
+        try:
+            if not aws_profile_name:
+                raise ValueError('No AWS profile provided')
 
-        if not aws_access_key_id:
-            raise ValueError('No AWS access key id provided')
+            if not aws_access_key_id:
+                raise ValueError('No AWS access key id provided')
 
-        if not aws_secret_access_key:
-            raise ValueError('No AWS secret access key provided')
+            if not aws_secret_access_key:
+                raise ValueError('No AWS secret access key provided')
 
-        # If it does not exist, create aws directory
-        os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
+            # If it does not exist, create aws directory
+            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
 
-        # Create a aws credentials ConfigParser object
-        aws_credentials = configparser.ConfigParser()
+            # Create a aws credentials ConfigParser object
+            aws_credentials = configparser.ConfigParser()
 
-        # if exists, read the aws credentials file
-        if hasattr(self, 'aws_credentials_file') and os.path.exists(self.aws_credentials_file):
-            aws_credentials.read(self.aws_credentials_file)
+            # if exists, read the aws credentials file
+            if hasattr(self, 'aws_credentials_file') and os.path.exists(self.aws_credentials_file):
+                aws_credentials.read(self.aws_credentials_file)
 
-        # Update the region of the profile
-        if not aws_credentials.has_section(aws_profile_name):
-            aws_credentials.add_section(aws_profile_name)
+            # Update the region of the profile
+            if not aws_credentials.has_section(aws_profile_name):
+                aws_credentials.add_section(aws_profile_name)
 
-        # Write the profile with the new access key id
-        aws_credentials[aws_profile_name]['aws_access_key_id'] = aws_access_key_id
+            # Write the profile with the new access key id
+            aws_credentials[aws_profile_name]['aws_access_key_id'] = aws_access_key_id
 
-        # Write the profile with the new secret access key
-        aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
+            # Write the profile with the new secret access key
+            aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
 
-        # Write the config object to the config file
-        with open(self.aws_credentials_file, 'w') as f:
-            aws_credentials.write(f)
+            # Write the config object to the config file
+            with open(self.aws_credentials_file, 'w') as f:
+                aws_credentials.write(f)
 
-        # Asure the permissions of the credentials file
-        os.chmod(self.aws_credentials_file, 0o600)
+            # Asure the permissions of the credentials file
+            os.chmod(self.aws_credentials_file, 0o600)
+
+        except Exception:
+            print_error()
 
     def __set_aws_get_config_region(self, aws_profile):
+        '''Set the AWS region for the given profile'''
 
-        if not aws_profile:
-            raise ValueError('No AWS profile provided')
+        try:
+            if not aws_profile:
+                raise ValueError('No AWS profile provided')
 
-        # Check if aws credentials file exists
-        if not os.path.exists(self.aws_config_file):
-            raise ValueError('AWS config file does not exist')
+            # Check if aws credentials file exists
+            if not os.path.exists(self.aws_config_file):
+                raise ValueError('AWS config file does not exist')
 
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
 
-        # Read the aws config file
-        if hasattr(self, 'aws_config_file') and os.path.exists(self.aws_config_file):
-            config.read(self.aws_config_file)
+            # Read the aws config file
+            if hasattr(self, 'aws_config_file') and os.path.exists(self.aws_config_file):
+                config.read(self.aws_config_file)
 
-        if config.has_section(aws_profile) and config.has_option(aws_profile, 'region'):
-            return config.get(aws_profile, 'region')
+            # Return the region if it exists
+            if config.has_section(aws_profile) and config.has_option(aws_profile, 'region'):
+                return config.get(aws_profile, 'region')
 
-        return
+            # Return None otherwise
+            return None
+
+        except Exception:
+            print_error()
+            return None
 
     def __set_configuration_entry(self, section, key, value):
         '''Set a configuration entry in the config file'''
 
-        # Create a ConfigParser object
-        config = configparser.ConfigParser()
+        try:
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
 
-        # Check which config file to use
-        if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
+            # Check which config file to use
+            if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
 
-            # Create shared config directory in case it does not exist
-            os.makedirs(self.shared_dir, exist_ok=True, mode=0o775)
+                # Create shared config directory in case it does not exist
+                os.makedirs(self.shared_dir, exist_ok=True, mode=0o775)
 
-            # Get the shared config file
-            file = self.shared_config_file
-        else:
+                # Get the shared config file
+                file = self.shared_config_file
+            else:
 
-            # Create config directory in case it does not exist
-            os.makedirs(self.config_dir, exist_ok=True, mode=0o775)
+                # Create config directory in case it does not exist
+                os.makedirs(self.config_dir, exist_ok=True, mode=0o775)
 
-            # Get the config file
-            file = self.config_file
+                # Get the config file
+                file = self.config_file
 
-        # if exists, read the config file
-        if os.path.exists(file):
-            config.read(file)
+            # if exists, read the config file
+            if os.path.exists(file):
+                config.read(file)
 
-        # Create the section if it does not exist
-        if not config.has_section(section):
-            config.add_section(section)
+            # Create the section if it does not exist
+            if not config.has_section(section):
+                config.add_section(section)
 
-        # Set the value
-        config[section][key] = str(value)
+            # Set the value
+            config[section][key] = str(value)
 
-        # Write the config object to the config file
-        with open(file, 'w') as f:
-            config.write(f)
+            # Write the config object to the config file
+            with open(file, 'w') as f:
+                config.write(f)
 
-        # Set the value in the config object
-        setattr(self, key, value)
+            # Set the value in the config object
+            setattr(self, key, value)
 
-    def ses_verify_requests_sent(self, email_list):
-        '''Set the ses verify requests sent email list in configuration file'''
-
-        if not email_list:
-            raise ValueError('No email list provided')
-
-        # Write the config object to the config file
-        self.__set_configuration_entry(
-            'CLOULD', 'ses_verify_requests_sent', email_list)
+        except Exception:
+            print_error()
 
     def set_ec2_last_instance(self, instance):
         '''Set the last ec2 instance in configuration file'''
 
-        if not instance:
-            raise ValueError('No instance provided')
+        try:
+            if not instance:
+                raise ValueError('No instance provided')
 
-        # Write the config object to the config file
-        self.__set_configuration_entry('CLOULD', 'ec2_last_instance', instance)
+            # Write the config object to the config file
+            self.__set_configuration_entry(
+                'CLOULD', 'ec2_last_instance', instance)
+
+        except Exception:
+            print_error()
 
     def set_nih(self):
         '''Set the NIH configuration'''
@@ -900,7 +837,7 @@ class ConfigManager:
 
             return True
 
-        except:
+        except Exception:
             print_error()
             return False
 
@@ -955,8 +892,10 @@ class ConfigManager:
                     return False
 
                 # Create new bucket
-                aws.create_bucket(bucket_name=new_bucket_name,
-                                  region=self.aws_region)
+                if not aws.create_bucket(bucket_name=new_bucket_name,
+                                         region=self.aws_region):
+                    print(f'Could not create bucket {new_bucket_name}')
+                    return False
 
                 # Store new aws s3 bucket in the config object
                 self.__set_configuration_entry(
@@ -999,7 +938,7 @@ class ConfigManager:
 
             return True
 
-        except:
+        except Exception:
             print_error()
             return False
 
@@ -1074,60 +1013,65 @@ class ConfigManager:
 
             return True
 
-        except:
+        except Exception:
             print_error()
             return False
 
     def __set_shared_move_config(self):
         '''Move the local configuration sections to the shared configuration file'''
 
-        # If shared configuration file exists, nothing to move
-        if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
-            print(
-                f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
-            return
+        try:
+            # If shared configuration file exists, nothing to move
+            if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
+                print(
+                    f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
+                return
 
-        # Clean up both configuration files
-        local_config = configparser.ConfigParser()
-        local_config.read(self.config_file)
+            # Clean up both configuration files
+            local_config = configparser.ConfigParser()
+            local_config.read(self.config_file)
 
-        if not 'NIH' in local_config and not 'S3' in local_config and not 'SLURM' in local_config:
-            # Nothing to copy from local configuration to shared configuration
-            return
+            if not 'NIH' in local_config and not 'S3' in local_config and not 'SLURM' in local_config:
+                # Nothing to copy from local configuration to shared configuration
+                return
 
-        move_config_to_shared = inquirer.confirm(
-            message="Do you want to move your current configuration to the shared directory?", default=True)
+            move_config_to_shared = inquirer.confirm(
+                message="Do you want to move your current configuration to the shared directory?", default=True)
 
-        if move_config_to_shared:
-            shutil.copy(self.config_file, self.shared_config_file)
-            print("NOTE: Shared configuration file was moved to the shared directory\n")
+            if move_config_to_shared:
+                shutil.copy(self.config_file, self.shared_config_file)
+                print(
+                    "NOTE: Shared configuration file was moved to the shared directory\n")
 
-            shared_config = configparser.ConfigParser()
-            shared_config.read(self.shared_config_file)
+                shared_config = configparser.ConfigParser()
+                shared_config.read(self.shared_config_file)
 
-            # Remove sections from local_config
-            if 'NIH' in local_config:
-                local_config.remove_section('NIH')
-            if 'S3' in local_config:
-                local_config.remove_section('S3')
-            if 'SLURM' in local_config:
-                local_config.remove_section('SLURM')
+                # Remove sections from local_config
+                if 'NIH' in local_config:
+                    local_config.remove_section('NIH')
+                if 'S3' in local_config:
+                    local_config.remove_section('S3')
+                if 'SLURM' in local_config:
+                    local_config.remove_section('SLURM')
 
-            # Remove sections from shared_config
-            if 'USER' in shared_config:
-                shared_config.remove_section('USER')
-            if 'AWS' in shared_config:
-                shared_config.remove_section('AWS')
-            if 'SHARED' in shared_config:
-                shared_config.remove_section('SHARED')
+                # Remove sections from shared_config
+                if 'USER' in shared_config:
+                    shared_config.remove_section('USER')
+                if 'AWS' in shared_config:
+                    shared_config.remove_section('AWS')
+                if 'SHARED' in shared_config:
+                    shared_config.remove_section('SHARED')
 
-            # Write the source INI file
-            with open(self.config_file, 'w') as f:
-                local_config.write(f)
+                # Write the source INI file
+                with open(self.config_file, 'w') as f:
+                    local_config.write(f)
 
-            # Write the source INI file
-            with open(self.shared_config_file, 'w') as f:
-                shared_config.write(f)
+                # Write the source INI file
+                with open(self.shared_config_file, 'w') as f:
+                    shared_config.write(f)
+
+        except Exception:
+            print_error()
 
     def set_user(self):
         '''Set the user configuration'''
@@ -1161,7 +1105,8 @@ class ConfigManager:
             print(f'*** USER CONFIGURATION DONE ***\n')
 
             return True
-        except:
+
+        except Exception:
             print_error()
             return False
 
@@ -1169,7 +1114,16 @@ class ConfigManager:
         '''Set the Slurm configuration'''
 
         try:
-            if shutil.which('scontrol') and shutil.which('sacctmgr'):
+            # Run the sacctmgr command
+            result = subprocess.run(
+                ['sacctmgr', 'show', 'config'], capture_output=False)
+
+            if result.returncode != 0:
+                print(
+                    "sacctmgr command failed. Please ensure it's installed and in your PATH and you are in a head node.")
+                return False
+
+            if shutil.which('scontrol'):
 
                 print(f'\n*** SLURM CONFIGURATION ***\n')
 
@@ -1184,7 +1138,7 @@ class ConfigManager:
                     validate=self.__inquirer_check_is_number)
 
                 # TODO: This class __init__ should not be here, it should be in the main
-                se = SlurmEssentials(args, self)
+                se = Slurm(args, self)
 
                 # Get the allowed partitions and QOS
                 parts = se.get_allowed_partitions_and_qos()
@@ -1235,7 +1189,11 @@ class ConfigManager:
 
             return True
 
-        except:
+        except FileNotFoundError:
+            print("sacctmgr command not found. Please ensure it's installed and in your PATH and you are in a head node.")
+            return False
+
+        except Exception:
             print_error()
             return False
 
@@ -1244,22 +1202,36 @@ class AWSBoto:
     '''AWS handler class. This class is used to interact with AWS services.'''
     # TODO: arch must be defined as an class Archive instance
 
-    def __init__(self, args, cfg: ConfigManager, arch):
-        self.args = args
-        self.cfg = cfg
-        self.arch = arch
+    def __init__(self, args: argparse.Namespace, cfg: ConfigManager, arch: "Archiver"):
+        '''Initialize the AWSBoto class'''
 
-        if hasattr(self.cfg, 'aws_dir'):
-            self.set_aws_directory(self.cfg.aws_dir)
+        try:
+            # Initialize variables
+            self.args = args
+            self.cfg = cfg
+            self.arch = arch
+
+            # Set the AWS directory
+            if hasattr(self.cfg, 'aws_dir'):
+                self.set_aws_directory(self.cfg.aws_dir)
+
+        except Exception:
+            print_error()
 
     def set_aws_directory(self, aws_dir):
-        # Specify the paths to the config and credentials files
-        os.environ['AWS_CONFIG_FILE'] = os.path.join(aws_dir, 'config')
-        os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(
-            aws_dir, 'credentials')
+        '''Set the AWS directory'''
+
+        try:
+            # Specify the paths to the config and credentials files
+            os.environ['AWS_CONFIG_FILE'] = os.path.join(aws_dir, 'config')
+            os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(
+                aws_dir, 'credentials')
+        except Exception:
+            print_error()
 
     def _check_session(self):
-        '''Check if the current session is valid'''
+        '''Check if the current AWS session is valid'''
+
         try:
             if not self.cfg.aws_init:
                 return False
@@ -1270,7 +1242,8 @@ class AWSBoto:
                 return True
             else:
                 return False
-        except:
+
+        except Exception:
             print_error()
             return False
 
@@ -1299,45 +1272,8 @@ class AWSBoto:
             else:
                 return (permission == 'READ')
 
-        except Exception as e:
+        except Exception:
             return False
-
-        # except botocore.exceptions.ClientError as e:
-        #     error_code = e.response['Error']['Code']
-        #     if error_code == '403':
-        #         print(
-        #             f"Error: Access denied to bucket {bucket_name} for profile {self.aws_profile}. Check your permissions.")
-        #     elif error_code == '404':
-        #         print(
-        #             f"Error: Bucket {bucket_name} does not exist in profile {self.aws_profile}.")
-        #         print("run 'froster config' to create this bucket.")
-        #     else:
-        #         print(
-        #             f"Error accessing bucket {bucket_name} in profile {self.aws_profile}: {e}")
-        #     return False
-        # except Exception as e:
-        #     print(
-        #         f"An unexpected error in function check_bucket_access for profile {self.aws_profile}: {e}")
-        #     return False
-
-        # if not readwrite:
-        #     return True
-
-        # # Test write access by uploading a small test file
-        # try:
-        #     test_object_key = "test_write_access.txt"
-        #     s3.put_object(Bucket=bucket_name, Key=test_object_key,
-        #                   Body="Test write access")
-        #     # print(f"Successfully wrote test to {bucket_name}")
-
-        #     # Clean up by deleting the test object
-        #     s3.delete_object(Bucket=bucket_name, Key=test_object_key)
-        #     # print(f"Successfully deleted test object from {bucket_name}")
-        #     return True
-        # except botocore.exceptions.ClientError as e:
-        #     print(
-        #         f"Error: cannot write to bucket {bucket_name} in profile {self.aws_profile}: {e}")
-        #     return False
 
     def check_credentials(self,
                           aws_profile=None,
@@ -1378,57 +1314,47 @@ class AWSBoto:
             # Credentials are valid
             return True
 
-        except Exception as e:
-            # Credentials are not valid
+        except boto3.exceptions.ClientError:
+            print("Error: Unable to retrieve AWS regions for the given credentials.")
             return False
 
-        # TODO: rework error checks
+        except boto3.exceptions.NoCredentialsError:
+            print("No AWS credentials found")
+            return False
 
-        # except boto3.exceptions.ClientError:
-        #     print("Error: Unable to retrieve AWS regions for the given credentials.")
-        #     exit(1)
+        except boto3.exceptions.EndpointConnectionError:
+            print("Unable to connect to the AWS S3 endpoint.")
+            return False
 
-        # except boto3.exceptions.NoCredentialsError:
-        #     print("No AWS credentials found")
-        #     return False
+        except boto3.exceptions.ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code')
 
-        # except boto3.exceptions.EndpointConnectionError:
-        #     print("Unable to connect to the AWS S3 endpoint.")
-        #     return False
+            if error_code == 'RequestTimeTooSkewed':
+                print(
+                    f"The time difference between S3 storage and your computer is too high:\n{e}")
 
-        # except boto3.exceptions.ClientError as e:
-        #     error_code = e.response.get('Error', {}).get('Code')
+            elif error_code == 'InvalidAccessKeyId':
+                print(f"Error: Invalid AWS Access Key ID:\n{e}")
 
-        #     if error_code == 'RequestTimeTooSkewed':
-        #         print(
-        #             f"The time difference between S3 storage and your computer is too high:\n{e}")
-        #     elif error_code == 'InvalidAccessKeyId':
-        #         print(
-        #             f"Error: Invalid AWS Access Key ID:\n{e}")
-        #         print(
-        #             f"Fix your credentials in ~/.aws/credentials")
-        #     elif error_code == 'SignatureDoesNotMatch':
-        #         if "Signature expired" in str(e):
-        #             print(
-        #                 f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
-        #             return False
-        #         else:
-        #             print(
-        #                 f"Error: Invalid AWS Secret Access Key:\n{e}")
-        #     elif error_code == 'InvalidClientTokenId':
-        #         print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
-        #         print(
-        #             f"Fix your credentials in ~/.aws/credentials")
-        #     else:
-        #         print(
-        #             f"Error validating credentials: {e}")
-        #         print(
-        #             f"Fix your credentials in ~/.aws/credentials")
-        #     return False
-        # except Exception as e:
-        #     print(
-        #         f"Unexpected error checking s3 credentials: {e}")
-        #     return False
+            elif error_code == 'SignatureDoesNotMatch':
+                if "Signature expired" in str(e):
+                    print(
+                        f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
+                else:
+                    print(f"Error: Invalid AWS Secret Access Key:\n{e}")
+
+            elif error_code == 'InvalidClientTokenId':
+                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
+                print(f"Fix your credentials in ~/.aws/credentials")
+            else:
+                print(f"Error validating credentials: {e}")
+                print(f"Fix your credentials in ~/.aws/credentials")
+
+            return False
+
+        except Exception:
+            print_error()
+            return False
 
     def create_bucket(self, bucket_name, region):
         '''Create a new S3 bucket with the provided name.'''
@@ -1443,7 +1369,7 @@ class AWSBoto:
                 print(
                     f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
-                sys.exit(1)
+                return False
 
             print(f'\nCreating bucket {bucket_name}...')
 
@@ -1467,91 +1393,23 @@ class AWSBoto:
             )
             print(f'    ...encryption applied.\n')
 
-        except Exception as e:
-            print(f'Error creating bucket {bucket_name}: {e}')
-            sys.exit(1)
+            return True
 
-        # TODO: expand error codes
-
-        # except botocore.exceptions.BotoCoreError as e:
-        #     print(f"BotoCoreError: {e}")
-        # except botocore.exceptions.ClientError as e:
-        #     error_code = e.response['Error']['Code']
-        #     if error_code == 'InvalidBucketName':
-        #         print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
-        #     elif error_code == 'BucketAlreadyExists':
-        #         pass
-        #         # print(f"Error: Bucket '{bucket_name}' already exists.")
-        #     elif error_code == 'BucketAlreadyOwnedByYou':
-        #         pass
-        #         # print(f"Error: You already own a bucket named '{bucket_name}'.")
-        #     elif error_code == 'InvalidAccessKeyId':
-        #         # pass
-        #         print(
-        #             "Error: InvalidAccessKeyId. The AWS Access Key Id you provided does not exist in our records")
-        #     elif error_code == 'SignatureDoesNotMatch':
-        #         pass
-        #         # print("Error: Invalid AWS Secret Access Key.")
-        #     elif error_code == 'AccessDenied':
-        #         print(
-        #             "Error: Access denied. Check your account permissions for creating S3 buckets")
-        #     elif error_code == 'IllegalLocationConstraintException':
-        #         print(f"Error: The specified region '{region}' is not valid.")
-        #     else:
-        #         print(f"ClientError: {e}")
-        #     return False
-        # except Exception as e:
-        #     print(f"An unexpected error occurred: {e}")
-        #     return False
-
-        # encryption_configuration = {
-        #     'Rules': [
-        #         {
-        #             'ApplyServerSideEncryptionByDefault': {
-        #                 'SSEAlgorithm': 'AES256'
-        #             }
-        #         }
-        #     ]
-        # }
-        # try:
-        #     response = s3_client.put_bucket_encryption(
-        #         Bucket=bucket_name,
-        #         ServerSideEncryptionConfiguration=encryption_configuration
-        #     )
-        #     print(f"Applied AES256 encryption to S3 bucket '{bucket_name}'")
-        # except botocore.exceptions.ClientError as e:
-        #     error_code = e.response['Error']['Code']
-        #     if error_code == 'InvalidBucketName':
-        #         print(f"Error: Invalid bucket name '{bucket_name}'\n{e}")
-        #     elif error_code == 'AccessDenied':
-        #         print(
-        #             "Error: Access denied. Check your account permissions for creating S3 buckets")
-        #     elif error_code == 'IllegalLocationConstraintException':
-        #         print(f"Error: The specified region '{region}' is not valid.")
-        #     elif error_code == 'InvalidLocationConstraint':
-        #         if not ep_url:
-        #             # do not show this error with non AWS endpoints
-        #             print(
-        #                 f"Error: The specified location-constraint '{region}' is not valid")
-        #     else:
-        #         print(f"ClientError: {e}")
-        # except Exception as e:
-        #     print(f"An unexpected error occurred in create_bucket: {e}")
-        #     return False
-        # return True
+        except Exception:
+            print_error()
+            return False
 
     def get_buckets(self):
         ''' Get a list of all the froster buckets in the current session'''
 
+        # Check if the session is valid
+        if not self._check_session():
+            print(
+                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
+
         try:
-
-            # Check if the session is valid
-            if not self._check_session():
-                print(
-                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                print("run 'froster config --aws' to fix this.\n")
-                sys.exit(1)
-
             # Get all the buckets
             existing_buckets = self.s3_client.list_buckets()
 
@@ -1566,54 +1424,17 @@ class AWSBoto:
             # Return the list of froster buckets
             return froster_bucket_list
 
-        # TODO: Expand exception handling
-        except Exception as e:
+        except Exception:
             print_error()
             sys.exit(1)
 
-    def get_endpoint(self):
-        ''' Get the endpoint URL of the current session'''
-        try:
-            # Check if the session is valid
-            if not self._check_session():
-                print(
-                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                print("run 'froster config --aws' to fix this.\n")
-                sys.exit(1)
-
-            if hasattr(self, 's3_client'):
-                return self.s3_client.meta.endpoint_url
-            else:
-                return None
-        except:
-            print_error()
-
-    def get_hostname(self):
-        ''' Get the hostname of the current session'''
-
-        try:
-
-            # Check if the session is valid
-            if not self._check_session():
-                print(
-                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                print("run 'froster config --aws' to fix this.\n")
-                sys.exit(1)
-
-            if (hasattr(self, 's3_client')):
-                ep = self.s3_client.meta.endpoint_url
-                return urllib.parse.urlparse(ep).hostname
-            else:
-                return None
-        except:
-            print_error()
-
     def get_profiles(self):
         ''' Get a list of available AWS profiles'''
-        try:
 
+        try:
             return boto3.Session().available_profiles
-        except:
+
+        except Exception:
             print_error()
             return None
 
@@ -1621,7 +1442,6 @@ class AWSBoto:
         '''Get the regions for the current session or get default regions.'''
 
         try:
-
             # Check if the session is valid
             self._check_session()
 
@@ -1630,51 +1450,34 @@ class AWSBoto:
                             for region in regions['Regions']]
             return region_names
 
-        except Exception as e:
+        except Exception:
             # If current session does not have a region, return default regions
-            s = boto3.Session()
-            dynamodb_regions = s.get_available_regions('dynamodb')
-            return dynamodb_regions
-
-        # print(regions)
-        # regions = [i for i in regions if not i.startswith('ap-')]
-        # return sorted(regions, reverse=True)
-
-        # if provider == 'AWS':
-        #     try:
-        #         session = boto3.Session(
-        #             profile_name=profile) if profile else boto3.Session()
-        #         regions = session.get_available_regions('ec2')
-        #         # make the list a little shorter
-        #         regions = [i for i in regions if not i.startswith('ap-')]
-        #         return sorted(regions, reverse=True)
-        #     except:
-        #         return ['us-west-2', 'us-west-1', 'us-east-1', '']
-        # elif provider == 'GCS':
-        #     return ['us-west1', 'us-east1', '']
-        # elif provider == 'Wasabi':
-        #     return ['us-west-1', 'us-east-1', '']
-        # elif provider == 'IDrive':
-        #     return ['us-or', 'us-va', 'us-la', '']
-        # elif provider == 'Ceph':
-        #     return ['default-placement', 'us-east-1', '']
+            try:
+                s = boto3.Session()
+                dynamodb_regions = s.get_available_regions('dynamodb')
+                return dynamodb_regions
+            except Exception:
+                print_error()
+                sys.exit(1)
 
     def list_objects_in_bucket(self, bucket_name):
+        '''List all the objects in the given bucket'''
+
         if not bucket_name:
             raise ValueError('No bucket name provided')
 
-        try:
-            # Check if the session is valid
-            if not self._check_session():
-                print(
-                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                print("run 'froster config --aws' to fix this.\n")
-                sys.exit(1)
+        # Check if the session is valid
+        if not self._check_session():
+            print(
+                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            print("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
 
+        try:
             response = self.s3_client.list_objects_v2(Bucket=bucket_name)
 
             return response.get('Contents', [])
-        except:
+        except Exception:
             print_error()
             return []
 
@@ -1682,7 +1485,6 @@ class AWSBoto:
         ''' Set the AWS profile for the current session'''
 
         try:
-
             # Initialize a Boto3 session using the configured profile
             session = boto3.Session(
                 profile_name=profile_name, region_name=region)
@@ -1738,33 +1540,8 @@ class AWSBoto:
             print(f'Error: {e}. Using default value "America/Los_Angeles"')
             return ('America/Los_Angeles')
 
-####################################################################################################
-
-    def check_bucket_access_folders(self, folders):
-        # TODO: function pendint to review
-        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
-        exit(1)
-
-        # check all the buckets that have been used for archiving
-        sufficient = True
-        myaccess = 'read'
-        buckets = []
-        for folder in folders:
-            bucket, *_ = self.arch.archive_get_bucket_info(folder)
-
-            if bucket:
-                buckets.append(bucket)
-            else:
-                print(f'Error: No archive config found for folder {folder}')
-                sufficient = False
-        buckets = list(set(buckets))  # remove dups
-        for bucket in buckets:
-            if not self.check_bucket_access(bucket):
-                print(f' You have no {myaccess} access to bucket "{bucket}" !')
-                sufficient = False
-        return sufficient
-
     def glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk"):
+        '''Restore the objects in the given bucket with the given prefix'''
 
         # Check if the session is valid
         if not self._check_session():
@@ -1838,7 +1615,7 @@ class AWSBoto:
                     )
                     triggered_keys.append(object_key)
 
-                except:
+                except Exception:
                     print_error()
                     print(f'Restore request for {object_key} failed.')
                     return [], [], [], []
@@ -2604,7 +2381,7 @@ class AWSBoto:
                 result = subprocess.run(
                     cmd, shell=True, capture_output=True, text=True)
                 return result
-            except:
+            except Exception:
                 print(f'Error executing "{cmd}."')
         else:
             subprocess.run(cmd, shell=True, capture_output=False, text=True)
@@ -2627,7 +2404,7 @@ class AWSBoto:
             if is_string:
                 os.remove(local_path)
             return result
-        except:
+        except Exception:
             print(f'Error executing "{cmd}."')
         return None
 
@@ -2640,7 +2417,7 @@ class AWSBoto:
             result = subprocess.run(
                 cmd, shell=True, capture_output=True, text=True)
             return result
-        except:
+        except Exception:
             print(f'Error executing "{cmd}."')
         return None
 
@@ -3436,7 +3213,7 @@ class Archiver:
             # Output decoration print
             print()
 
-        except:
+        except Exception:
             print_error()
 
     def _slurm_cmd(self, folders, cmd_type):
@@ -3444,7 +3221,7 @@ class Archiver:
 
         try:
             # Create a SlurmEssentials object
-            se = SlurmEssentials(self.args, self.cfg)
+            se = Slurm(self.args, self.cfg)
 
             # Get the label for the job
             label = self._get_hotspots_filename(
@@ -3462,7 +3239,7 @@ class Archiver:
                           label=label,
                           shortlabel=shortlabel)
 
-        except:
+        except Exception:
             print_error()
 
     def index(self, folders):
@@ -3491,7 +3268,7 @@ class Archiver:
             else:
                 for folder in folders:
                     self._index_locally(folder)
-        except:
+        except Exception:
             print_error()
 
     def archive_select_hotspots(self):
@@ -3848,7 +3625,7 @@ class Archiver:
                         is_subfolder = False
                         self._archive_locally(
                             folder, is_recursive, is_subfolder, is_tar, is_force)
-        except:
+        except Exception:
             print_error()
 
     def get_mounts(self):
@@ -4095,40 +3872,9 @@ class Archiver:
         except Exception:
             return False
 
-    def get_user_hotspot(self, hotspot_csv):
-        '''Reduce a hotspots file to the folders that the user has write access to'''
-        try:
-            hsdir, hsfile = os.path.split(hotspot_csv)
-            hsdiruser = os.path.join(hsdir, self.cfg.whoami)
-            os.makedirs(hsdiruser, exist_ok=True, mode=0o775)
-            user_csv = os.path.join(hsdiruser, hsfile)
-            if os.path.exists(user_csv):
-                if os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
-                    # print(f"File {user_csv} already exists and is newer than {hotspot_csv}.")
-                    return user_csv
-            print('Filtering hotspots for folders with write permissions ...')
-            writable_folders = []
-            with open(hotspot_csv, mode='r', newline='') as file:
-                reader = csv.DictReader(file)
-                mylen = sum(1 for row in reader)
-                file.seek(0)
-                reader = csv.DictReader(file)
-                progress = self._create_progress_bar(mylen+1)
-                for row in reader:
-                    ret = self.test_write(row['Folder'])
-                    if ret != 13 and ret != 2:
-                        writable_folders.append(row)
-                    progress(reader.line_num)
-            with open(user_csv, mode='w', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
-                writer.writeheader()
-                writer.writerows(writable_folders)
-            return user_csv
-        except Exception as e:
-            print(f"\nError in get_user_hotspot: {e}\n")
-            sys.exit(1)
-
     def _create_progress_bar(self, max_value):
+        '''Create a progress bar'''
+
         def show_progress_bar(iteration):
             percent = ("{0:.1f}").format(100 * (iteration / float(max_value)))
             length = 50  # adjust as needed for the bar length
@@ -4138,6 +3884,7 @@ class Archiver:
                 print(f'\r|{bar}| {percent}%', end='\r')
             if iteration == max_value:
                 print()
+
         return show_progress_bar
 
     def print_paths_rw_info(self, paths):
@@ -4352,9 +4099,8 @@ class Archiver:
 
             return True
 
-        except Exception as e:
-            if self.args.debug:
-                print_error()
+        except Exception:
+            print_error()
             return False
 
     def reset_folder(self, directory, recursive=False):
@@ -4503,7 +4249,7 @@ class Archiver:
                     f'The files in this folder have been moved to an AWS S3 archive!\n')
                 rme.write(f'\nArchive location: {s3_dest}\n')
                 rme.write(
-                    f"Archive profile (~/.aws): {archived_folder_info['profile']}\n")
+                    f"Archive aws profile: {archived_folder_info['profile']}\n")
                 rme.write(f"Archiver user: {archived_folder_info['user']}\n")
                 rme.write(f'Archiver email: {self.cfg.email}\n')
                 rme.write(
@@ -4515,7 +4261,9 @@ class Archiver:
                 rme.write(f'\n\nFirst 10 files deleted this time:\n')
                 rme.write(', '.join(deleted_files[:10]))
                 rme.write(
-                    f'\n\nPlease see more metadata in Froster.allfiles.csv file\n')
+                    f'\n\nPlease see more metadata in Froster.allfiles.csv file')
+                rme.write(
+                    f'\n\nYou can use "visidata" or "vd" tool to help you visualize Froster.allfiles.csv file\n')
 
             print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
 
@@ -4525,107 +4273,81 @@ class Archiver:
             print(f'    Total files deleted:    {len(deleted_files)}\n')
             print(f'    Manifest:               {readme}\n')
 
-        except Exception as e:
+        except Exception:
             print_error()
             return
 
     def delete(self, folders):
+        '''Delete the given folders'''
 
-        # Clean the provided paths
-        folders = clean_path_list(folders)
+        try:
+            # Clean the provided paths
+            folders = clean_path_list(folders)
 
-        # Set flags
-        is_recursive = self.args.recursive
+            # Set flags
+            is_recursive = self.args.recursive
 
-        if is_recursive:
-            if self._is_recursive_collision(folders):
+            if is_recursive:
+                if self._is_recursive_collision(folders):
+                    print(
+                        f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
+                    return
+
+            # Check if we can read & write all files and folders
+            if not self._is_correct_files_folders_permissions(folders, is_recursive):
                 print(
-                    f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
-                sys.exit(1)
+                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
+                print(
+                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
+                print(
+                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
+                return
 
-        # Check if we can read & write all files and folders
-        if not self._is_correct_files_folders_permissions(folders, is_recursive):
-            print(
-                '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-            print(
-                f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-            print(
-                f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-            sys.exit(1)
-
-        if use_slurm(self.args.noslurm):
-            self._slurm_cmd(folders=folders, cmd_type='delete')
-        else:
-            for folder in folders:
-                if is_recursive:
-                    for root, dirs, files in self._walker(folder):
-                        self._delete_locally(root)
-                else:
-                    self._delete_locally(folder)
-
-    def _delete_tar_content(self, directory, files):
-        deleted = []
-        for f in files:
-            fp = os.path.join(directory, f)
-
-            if os.path.isfile(fp) or os.path.islink(fp):
-                os.remove(fp)
-                deleted.append(f)
-        printdbg(
-            f'Files deleted in _delete_tar_content: {", ".join(deleted)}')
-
-        return deleted
-
-    def _get_tar_content(self, directory):
-        files = []
-        tar_path = os.path.join(directory, 'Froster.smallfiles.tar')
-        if os.path.exists(tar_path):
-            with tarfile.open(tar_path, 'r') as tar:
-                for member in tar.getmembers():
-                    files.append(member.name)
-        csv_path = os.path.join(directory, 'Froster.allfiles.csv')
-        if os.path.exists(csv_path):
-            file_list = []
-            with open(csv_path, 'r') as csvfile:
-                # Use csv reader
-                reader = csv.DictReader(csvfile)
-                # Iterate over each row in the csv
-                for row in reader:
-                    # If "Tarred" is "Yes", append the "File" to the list
-                    if row['Tarred'] == 'Yes':
-                        if not row['File'] in files:
-                            files.append(row['File'])
-        printdbg(
-            f'Files founds in _get_tar_content: {", ".join(files)}')
-        return files
+            if use_slurm(self.args.noslurm):
+                self._slurm_cmd(folders=folders, cmd_type='delete')
+            else:
+                for folder in folders:
+                    if is_recursive:
+                        for root, dirs, files in self._walker(folder):
+                            self._delete_locally(root)
+                    else:
+                        self._delete_locally(folder)
+        except Exception:
+            print_error()
 
     def _download(self, folder):
+        '''Download the restored files'''
 
-        # Get the bucket and prefix
-        bucket, prefix, *_ = self.archive_get_bucket_info(folder)
+        try:
+            # Get the bucket and prefix
+            bucket, prefix, *_ = self.archive_get_bucket_info(folder)
 
-        if not bucket:
-            print(f'\nFolder {folder} is not registered as archived')
-            return
+            if not bucket:
+                print(f'\nFolder {folder} is not registered as archived')
+                return
 
-        # All retrievals are done, now we can download the files
-        source = ':s3:' + bucket + '/' + prefix
-        target = folder
+            # All retrievals are done, now we can download the files
+            source = ':s3:' + bucket + '/' + prefix
+            target = folder
 
-        # Download the restored files
-        print(f'Downloading files...')
-        rclone = Rclone(self.args, self.cfg)
-        if rclone.copy(source, target, '--max-depth', '1'):
-            print('    ...done\n')
-        else:
-            print('    ...FAILED\n')
+            # Download the restored files
+            print(f'Downloading files...')
+            rclone = Rclone(self.args, self.cfg)
+            if rclone.copy(source, target, '--max-depth', '1'):
+                print('    ...done\n')
+            else:
+                print('    ...FAILED\n')
 
-        # checksum verification
-        self._restore_verify(source, target)
+            # checksum verification
+            self._restore_verify(source, target)
+
+        except Exception:
+            print_error()
 
     def _restore_locally(self, folder, aws: AWSBoto):
-        try:
+        '''Restore the given folder'''
 
+        try:
             print(f'\nRestoring folder "{folder}..."\n')
 
             # Get folder info
@@ -4660,9 +4382,10 @@ class Archiver:
 
         except Exception:
             print_error()
-            sys.exit(1)
 
     def _contains_non_froster_files(self, folder):
+        '''Check if the folder contains non-froster files'''
+
         try:
             # Check if the folder has any non-froster file
 
@@ -4674,7 +4397,7 @@ class Archiver:
                         return False
             return True
 
-        except:
+        except Exception:
             print_error()
             return False
 
@@ -4694,7 +4417,7 @@ class Archiver:
                 if self._is_recursive_collision(folders):
                     print(
                         f'\nError: You cannot restore folders recursively if there is a dependency between them.\n')
-                    sys.exit(1)
+                    return
 
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive):
@@ -4704,7 +4427,7 @@ class Archiver:
                     f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
                 print(
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-                sys.exit(1)
+                return
 
             if use_slurm(self.args.noslurm):
                 self._slurm_cmd(folders=folders, cmd_type='restore')
@@ -4746,6 +4469,7 @@ class Archiver:
 
     def _restore_verify(self, source, target):
         '''Verify the restored files'''
+
         try:
             for root, dirs, files in self._walker(target):
                 if root != target:
@@ -4792,19 +4516,6 @@ class Archiver:
         except Exception:
             print_error()
 
-    def md5sumex(self, file_path):
-        try:
-            cmd = f'md5sum {file_path}'
-            ret = subprocess.run(cmd, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, shell=True)
-            if ret.returncode != 0:
-                print(f'md5sum return code > 0: {cmd} Error:\n{ret.stderr}')
-            return ret.stdout.strip()  # , ret.stderr.strip()
-
-        except Exception as e:
-            print(f'md5sum Error: {str(e)}')
-            return None, str(e)
-
     def md5sum(self, file_path):
         '''Calculate md5sum of a file'''
 
@@ -4815,38 +4526,50 @@ class Archiver:
         return md5_hash.hexdigest()
 
     def uid2user(self, uid):
-        # try to convert uid to user name
+        '''Convert uid to username'''
+
         try:
             return pwd.getpwuid(uid)[0]
-        except:
-            printdbg(f'uid2user: Error converting uid {uid}')
+        except Exception:
+            print_error()
             return uid
 
     def gid2group(self, gid):
-        # try to convert gid to group name
+        '''Convert gid to group name'''
+
         try:
             return grp.getgrgid(gid)[0]
-        except:
-            printdbg(f'gid2group: Error converting gid {gid}')
+        except Exception:
+            print_error()
             return gid
 
     def daysago(self, unixtime):
-        # how many days ago is this epoch time ?
-        if not unixtime:
-            printdbg(
-                'daysago: an integer is required (got type NoneType)')
+        '''Calculate the number of days ago from a given unixtime'''
+        try:
+            if not unixtime:
+                printdbg(
+                    'daysago: an integer is required (got type NoneType)')
+                return 0
+            diff = datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
+            return diff.days
+
+        except Exception:
+            print_error()
             return 0
-        diff = datetime.datetime.now()-datetime.datetime.fromtimestamp(unixtime)
-        return diff.days
 
     def convert_size(self, size_bytes):
-        if size_bytes == 0:
-            return "0B"
-        size_name = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
-        i = int(math.floor(math.log(size_bytes, 1024)))
-        p = math.pow(1024, i)
-        s = round(size_bytes/p, 3)
-        return f"{s} {size_name[i]}"
+        '''Convert bytes to human readable format'''
+        try:
+            if size_bytes == 0:
+                return "0B"
+            size_name = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
+            i = int(math.floor(math.log(size_bytes, 1024)))
+            p = math.pow(1024, i)
+            s = round(size_bytes/p, 3)
+            return f"{s} {size_name[i]}"
+
+        except Exception:
+            print_error()
 
     def _archive_json_add_entry(self, key, value):
         '''Add a new entry to the archive JSON file'''
@@ -4860,7 +4583,7 @@ class Archiver:
                 with open(self.archive_json, 'r') as file:
                     try:
                         data = json.load(file)
-                    except:
+                    except Exception:
                         print('Error in Archiver._archive_json_add_entry():')
                         print(
                             f'Cannot read {self.archive_json}, file corrupt?')
@@ -4875,7 +4598,7 @@ class Archiver:
             # Write the updated data dictionary to the archive JSON file
             with open(self.archive_json, 'w') as file:
                 json.dump(data, file, indent=4)
-        except:
+        except Exception:
             print_error()
 
     def _is_folder_archived(self, folder):
@@ -4886,270 +4609,291 @@ class Archiver:
     def archive_get_bucket_info(self, folder):
         '''Get the bucket and prefix of an archived folder'''
 
-        is_glacier = False
-        is_recursive = False
+        try:
+            is_glacier = False
+            is_recursive = False
 
-        # Get the folder archiving info from froster-archives.json file
-        archive_folder_info = self.froster_archives_get_entry(folder)
+            # Get the folder archiving info from froster-archives.json file
+            archive_folder_info = self.froster_archives_get_entry(folder)
 
-        # Check the folder is archived
-        if not archive_folder_info:
-            print(f'\nFolder {folder} is not registered as archived')
+            # Check the folder is archived
+            if not archive_folder_info:
+                print(f'\nFolder {folder} is not registered as archived')
+                return None, None, None, None, None, None
+
+            # Get the archive folder
+            local_folder = archive_folder_info['local_folder']
+            archive_folder = archive_folder_info['archive_folder']
+            s3_storage_class = archive_folder_info['s3_storage_class']
+            profile = archive_folder_info['profile']
+            archive_mode = archive_folder_info['archive_mode']
+            user = archive_folder_info['user']
+
+            # Get the bucket and prefix
+            bucket, prefix = archive_folder.split('/', 1)
+
+            # Clean bucket
+            bucket = bucket.replace(':s3:', '')
+
+            # Clean prefix so it works even if folder is a subfolder of an stored parent
+            prefix = prefix.replace(local_folder, '')
+            prefix = prefix + folder + '/'
+
+            # Get the archived mode
+            if archive_mode == "Recursive":
+                is_recursive = True
+
+            # Get the S3 storage class
+            if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
+                is_glacier = True
+
+            return bucket, prefix, is_recursive, is_glacier, profile, user
+
+        except Exception:
+            print_error()
             return None, None, None, None, None, None
-
-        # Get the archive folder
-        local_folder = archive_folder_info['local_folder']
-        archive_folder = archive_folder_info['archive_folder']
-        s3_storage_class = archive_folder_info['s3_storage_class']
-        profile = archive_folder_info['profile']
-        archive_mode = archive_folder_info['archive_mode']
-        user = archive_folder_info['user']
-
-        # Get the bucket and prefix
-        bucket, prefix = archive_folder.split('/', 1)
-
-        # Clean bucket
-        bucket = bucket.replace(':s3:', '')
-
-        # Clean prefix so it works even if folder is a subfolder of an stored parent
-        prefix = prefix.replace(local_folder, '')
-        prefix = prefix + folder + '/'
-
-        # Get the archived mode
-        if archive_mode == "Recursive":
-            is_recursive = True
-
-        # Get the S3 storage class
-        if s3_storage_class in ['DEEP_ARCHIVE', 'GLACIER']:
-            is_glacier = True
-
-        return bucket, prefix, is_recursive, is_glacier, profile, user
 
     def froster_archives_get_entry(self, folder):
         '''Get an entry from the archive JSON file'''
 
-        # If the archive JSON file does not exist, the entry does not exist
-        if not os.path.isfile(self.archive_json):
-            return None
-
-        # Read the archive JSON file
-        with open(self.archive_json, 'r') as file:
-            try:
-                data = json.load(file)
-            except:
-                print('Error in Archiver._archive_json_entry_exists():')
-                print(f'Cannot read {self.archive_json}, file corrupt?')
+        try:
+            # If the archive JSON file does not exist, the entry does not exist
+            if not os.path.isfile(self.archive_json):
                 return None
 
-        # Check if the entry exists in the data dictionary
-        if folder in data:
-            return data[folder]
-        else:
-            # Check if a parent folder exists in the data dictionary with recursive archiving
-            path = Path(folder)
+            # Read the archive JSON file
+            with open(self.archive_json, 'r') as file:
+                try:
+                    data = json.load(file)
+                except Exception:
+                    print('Error in Archiver._archive_json_entry_exists():')
+                    print(f'Cannot read {self.archive_json}, file corrupt?')
+                    return None
 
-            for parent in path.parents:
-                parent = str(parent)
-                if parent in data and data[parent]['archive_mode'] == 'Recursive':
-                    return data[parent]
+            # Check if the entry exists in the data dictionary
+            if folder in data:
+                return data[folder]
+            else:
+                # Check if a parent folder exists in the data dictionary with recursive archiving
+                path = Path(folder)
 
-            return None
+                for parent in path.parents:
+                    parent = str(parent)
+                    if parent in data and data[parent]['archive_mode'] == 'Recursive':
+                        return data[parent]
+
+                return None
+
+        except Exception:
+            print_error()
 
     def archive_json_get_csv(self, columns):
-
-        if not os.path.exists(self.archive_json):
-            return
-
-        with open(self.archive_json, 'r') as file:
-            try:
-                data = json.load(file)
-
-            except:
-                print('Error in Archiver._archive_json_get_csv():')
-                print(f'Cannot read {self.archive_json}, file corrupt?')
+        '''Get the archive JSON data as a CSV string'''
+        try:
+            if not os.path.exists(self.archive_json):
                 return
 
-        # Sort data by timestamp in reverse order
-        sorted_data = sorted(
-            data.items(), key=lambda x: x[1]['timestamp'], reverse=True)
+            with open(self.archive_json, 'r') as file:
+                try:
+                    data = json.load(file)
 
-        # Prepare CSV data
-        csv_data = [columns]
+                except Exception:
+                    print('Error in Archiver._archive_json_get_csv():')
+                    print(f'Cannot read {self.archive_json}, file corrupt?')
+                    return
 
-        for path_name, row_data in sorted_data:
-            csv_row = [row_data[col] for col in columns if col in row_data]
-            csv_data.append(csv_row)
+            # Sort data by timestamp in reverse order
+            sorted_data = sorted(
+                data.items(), key=lambda x: x[1]['timestamp'], reverse=True)
 
-        # Convert CSV data to a CSV string
-        output = io.StringIO()
+            # Prepare CSV data
+            csv_data = [columns]
 
-        writer = csv.writer(output, dialect='excel')
-        writer.writerows(csv_data)
-        csv_string = output.getvalue()
+            for path_name, row_data in sorted_data:
+                csv_row = [row_data[col] for col in columns if col in row_data]
+                csv_data.append(csv_row)
 
-        output.close()
+            # Convert CSV data to a CSV string
+            output = io.StringIO()
 
-        return csv_string
+            writer = csv.writer(output, dialect='excel')
+            writer.writerows(csv_data)
+            csv_string = output.getvalue()
+
+            output.close()
+
+            return csv_string
+
+        except Exception:
+            print_error()
 
     def _get_newest_file_atime(self, folder_path, folder_atime=None):
-        # Because the folder atime is reset when crawling we need
-        # to lookup the atime of the last accessed file in this folder
-        if not folder_path or not os.path.exists(folder_path):
-            print(f" Invalid folder path: {folder_path}")
-            return folder_atime
-        last_accessed_time = None
+        '''Get the atime of the newest file in the folder'''
+
         try:
+            if not folder_path or not os.path.exists(folder_path):
+                print(f" Invalid folder path: {folder_path}")
+                return folder_atime
+
+            last_accessed_time = None
+
             subobjects = os.listdir(folder_path)
+
+            for file_name in subobjects:
+                if file_name in self.dirmetafiles:
+                    continue
+                file_path = os.path.join(folder_path, file_name)
+                if os.path.isfile(file_path):
+                    accessed_time = os.path.getatime(file_path)
+                    if last_accessed_time is None or accessed_time > last_accessed_time:
+                        last_accessed_time = accessed_time
+            if last_accessed_time == None:
+                last_accessed_time = folder_atime
+            return last_accessed_time
+
         except Exception as e:
-            print(f'Error accessing folder {folder_path}:\n{e}')
+            print_error()
             return folder_atime
-        for file_name in subobjects:
-            if file_name in self.dirmetafiles:
-                continue
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):
-                accessed_time = os.path.getatime(file_path)
-                if last_accessed_time is None or accessed_time > last_accessed_time:
-                    last_accessed_time = accessed_time
-        if last_accessed_time == None:
-            last_accessed_time = folder_atime
-        return last_accessed_time
 
     def _get_newest_file_mtime(self, folder_path, folder_mtime=None):
-        # Because the folder atime is reset when crawling we need
-        # to lookup the atime of the last modified file in this folder
-        if not folder_path or not os.path.exists(folder_path):
-            print(f" Invalid folder path: {folder_path}")
-            return folder_mtime
+        '''Get the mtime of the newest file in the folder'''
 
-        last_modified_time = None
         try:
+            if not folder_path or not os.path.exists(folder_path):
+                print(f" Invalid folder path: {folder_path}")
+                return folder_mtime
+
+            last_modified_time = None
+
             subobjects = os.listdir(folder_path)
+
+            for file_name in subobjects:
+                if file_name in self.dirmetafiles:
+                    continue
+                file_path = os.path.join(folder_path, file_name)
+                if os.path.isfile(file_path):
+                    modified_time = os.path.getmtime(file_path)
+                    if last_modified_time is None or modified_time > last_modified_time:
+                        last_modified_time = modified_time
+
+            if last_modified_time == None:
+                last_modified_time = folder_mtime
+
+            return last_modified_time
+
         except Exception as e:
-            print(f'Error accessing folder {folder_path}:\n{e}')
+            print_error()
             return folder_mtime
-        for file_name in subobjects:
-            if file_name in self.dirmetafiles:
-                continue
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):
-                modified_time = os.path.getmtime(file_path)
-                if last_modified_time is None or modified_time > last_modified_time:
-                    last_modified_time = modified_time
-        if last_modified_time == None:
-            last_modified_time = folder_mtime
-        return last_modified_time
 
     def get_hotspots_path(self, folder):
         ''' Get a full path name of a new hotspots file'''
+        try:
+            # Take the correct hotspots directory
+            hotspotdir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
 
-        # Take the correct hotspots directory
-        hotspotdir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
+            # create hotspots directory if it does not exist
+            os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
 
-        # create hotspots directory if it does not exist
-        os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
-
-        # Get the full path name of the new hotspots file
-        return os.path.join(hotspotdir, self._get_hotspots_filename(folder))
+            # Get the full path name of the new hotspots file
+            return os.path.join(hotspotdir, self._get_hotspots_filename(folder))
+        except Exception:
+            print_error()
+            return None
 
     def _get_hotspots_filename(self, folder):
-        # get a full path name of a new hotspots file
-        # based on a folder name that has been crawled
-        mountlist = self._get_mount_info()
+        '''Get the hotspots file name'''
+        try:
+            mountlist = self._get_mount_info()
 
-        for mnt in mountlist:
-            if folder.startswith(mnt['mount_point']):
-                # Get the last directory in the path
-                traildir = self._get_last_directory(mnt['mount_point'])
+            for mnt in mountlist:
+                if folder.startswith(mnt['mount_point']):
+                    # Get the last directory in the path
+                    traildir = self._get_last_directory(mnt['mount_point'])
 
-                # Build the hotspots file name
-                hsfile = folder.replace(mnt['mount_point'], '')
-                hsfile = f'@{traildir}{hsfile}'
+                    # Build the hotspots file name
+                    hsfile = folder.replace(mnt['mount_point'], '')
+                    hsfile = f'@{traildir}{hsfile}'
 
-                # Shorten the length of the file if it is too long
-                if len(hsfile) > 255:
-                    hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
+                    # Shorten the length of the file if it is too long
+                    if len(hsfile) > 255:
+                        hsfile = f'{hsfile[:25]}.....{hsfile[-225:]}'
 
-        hsfile = folder.replace('/', '+') + '.csv'
+            hsfile = folder.replace('/', '+') + '.csv'
 
-        return hsfile
+            return hsfile
+
+        except Exception:
+            print_error()
 
     def _walker(self, top, skipdirs=['.snapshot',]):
         """ returns subset of os.walk  """
-        for root, dirs, files in os.walk(top, topdown=True, onerror=self._walkerr):
-            for skipdir in skipdirs:
-                if skipdir in dirs:
-                    dirs.remove(skipdir)  # don't visit this directory
-            yield root, dirs, files
+        try:
+            for root, dirs, files in os.walk(top, topdown=True, onerror=self._walkerr):
+                for skipdir in skipdirs:
+                    if skipdir in dirs:
+                        dirs.remove(skipdir)  # don't visit this directory
+                yield root, dirs, files
+        except Exception:
+            print_error()
 
     def _walkerr(self, oserr):
-        sys.stderr.write(str(oserr))
-        sys.stderr.write('\n')
+        """ error handler for os.walk """
+        try:
+            sys.stderr.write(str(oserr))
+            sys.stderr.write('\n')
+        except Exception:
+            print_error()
 
     def _get_last_directory(self, path):
+        '''Get the last directory in the path'''
 
-        # Remove any trailing slashes
-        path = path.rstrip(os.path.sep)
+        try:
+            # Remove any trailing slashes
+            path = path.rstrip(os.path.sep)
 
-        # Split the path by the separator
-        path_parts = path.split(os.path.sep)
+            # Split the path by the separator
+            path_parts = path.split(os.path.sep)
 
-        # Return the last directory
-        return path_parts[-1]
+            # Return the last directory
+            return path_parts[-1]
+
+        except Exception:
+            print_error()
+            return None
 
     def _get_mount_info(self):
-        file_path = '/proc/self/mountinfo'
-
-        fs_types = {'nfs', 'nfs4', 'cifs', 'smb', 'afs', 'ncp',
-                    'ncpfs', 'glusterfs', 'ceph', 'beegfs',
-                    'lustre', 'orangefs', 'wekafs', 'gpfs'}
-
-        mountinfo_list = []
-
-        with open(file_path, 'r') as f:
-            for line in f:
-                fields = line.strip().split(' ')
-                _, _, _, _, mount_point, _ = fields[:6]
-                for field in fields[6:]:
-                    if field == '-':
-                        break
-                fs_type, mount_source, _ = fields[-3:]
-                mount_source_folder = mount_source.split(
-                    ':')[-1] if ':' in mount_source else ''
-                if fs_type in fs_types:
-                    mountinfo_list.append({
-                        'mount_source_folder': mount_source_folder,
-                        'mount_point': mount_point,
-                        'fs_type': fs_type,
-                        'mount_source': mount_source,
-                    })
-        return mountinfo_list
-
-    def download_restored_file(self, bucket_name, object_key, local_path):
-        s3 = boto3.resource('s3')
-        s3.Bucket(bucket_name).download_file(object_key, local_path)
-        print(f'Downloaded {object_key} to {local_path}.')
-
-    def _upload_file_to_s3(self, filename, bucket, object_name=None, profile=None):
-        session = boto3.Session(
-            profile_name=profile) if profile else boto3.Session()
-        s3 = session.client('s3')
-
-        # If S3 object_name was not specified, use the filename
-        if object_name is None:
-            object_name = os.path.basename(filename)
+        '''Get the mount information'''
         try:
+            file_path = '/proc/self/mountinfo'
 
-            # Upload the file with Intelligent-Tiering storage class
-            s3.upload_file(filename, bucket, object_name, ExtraArgs={
-                           'StorageClass': 'INTELLIGENT_TIERING'})
-            printdbg(
-                f"File {object_name} uploaded to Intelligent-Tiering storage class!")
-            # print(f"File {filename} uploaded successfully to Intelligent-Tiering storage class!")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            return False
-        return True
+            fs_types = {'nfs', 'nfs4', 'cifs', 'smb', 'afs', 'ncp',
+                        'ncpfs', 'glusterfs', 'ceph', 'beegfs',
+                        'lustre', 'orangefs', 'wekafs', 'gpfs'}
+
+            mountinfo_list = []
+
+            with open(file_path, 'r') as f:
+                for line in f:
+                    fields = line.strip().split(' ')
+                    _, _, _, _, mount_point, _ = fields[:6]
+                    for field in fields[6:]:
+                        if field == '-':
+                            break
+                    fs_type, mount_source, _ = fields[-3:]
+                    mount_source_folder = mount_source.split(
+                        ':')[-1] if ':' in mount_source else ''
+                    if fs_type in fs_types:
+                        mountinfo_list.append({
+                            'mount_source_folder': mount_source_folder,
+                            'mount_point': mount_point,
+                            'fs_type': fs_type,
+                            'mount_source': mount_source,
+                        })
+            return mountinfo_list
+
+        except Exception:
+            print_error()
+            return None
 
 
 class ScreenConfirm(ModalScreen[bool]):
@@ -5384,51 +5128,43 @@ class Rclone:
     def __init__(self, args: argparse.Namespace, cfg: ConfigManager):
         '''Initialize Rclone object'''
 
-        # Store the arguments and configuration
-        self.args = args
-        self.cfg = cfg
+        try:
+            # Store the arguments and configuration
+            self.args = args
+            self.cfg = cfg
 
-        # Set the Rclone executable path
-        self.rc = os.path.join(sys.prefix, 'bin', 'rclone')
+            # Set the Rclone executable path
+            self.rc = os.path.join(sys.prefix, 'bin', 'rclone')
 
-        # Set the Rclone environment variables
-        # Note: Keys are set in the AWS Boto __init__ function
-        self.envrn = {}
-        self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
-        self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
-        self.envrn['RCLONE_S3_REGION'] = self.cfg.aws_region
-        self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.cfg.aws_region
-        self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
+            # Set the Rclone environment variables
+            # Note: Keys are set in the AWS Boto __init__ function
+            self.envrn = {}
+            self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
+            self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
+            self.envrn['RCLONE_S3_REGION'] = self.cfg.aws_region
+            self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.cfg.aws_region
+            self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
 
-        # Set the credentials for AWS
-        if self.cfg.aws_init:
+            # Set the credentials for AWS
+            if self.cfg.aws_init:
 
-            # Create a ConfigParser object
-            config = configparser.ConfigParser()
+                # Create a ConfigParser object
+                config = configparser.ConfigParser()
 
-            # Read AWS Credentials file
-            if os.path.exists(self.cfg.aws_credentials_file):
-                config.read(self.cfg.aws_credentials_file)
+                # Read AWS Credentials file
+                if os.path.exists(self.cfg.aws_credentials_file):
+                    config.read(self.cfg.aws_credentials_file)
 
-                # Check if the AWS profile exists
-                if config.has_section(self.cfg.aws_profile):
-                    # Set the environment variables for creds
-                    self.envrn['AWS_ACCESS_KEY_ID'] = config.get(
-                        self.cfg.aws_profile, 'aws_access_key_id')
-                    self.envrn['AWS_SECRET_ACCESS_KEY'] = config.get(
-                        self.cfg.aws_profile, 'aws_secret_access_key')
-
-    # ensure that file exists or nagging /home/dp/.config/rclone/rclone.conf
-
-    # backup: rclone --verbose --files-from tmpfile --use-json-log copy --max-depth 1 ./tests/ :s3:posix-dp/tests4/ --exclude .froster.md5sum
-    # restore: rclone --verbose --use-json-log copy --max-depth 1 :s3:posix-dp/tests4/ ./tests2
-    # rclone copy --verbose --use-json-log --max-depth 1  :s3:posix-dp/tests5/ ./tests5
-    # rclone --use-json-log checksum md5 ./tests/.froster.md5sum :s3:posix-dp/tests2/
-    # storage tier for each file
-    # rclone lsf --csv :s3:posix-dp/tests4/ --format=pT
-    # list without subdir
-    # rclone lsjson --metadata --no-mimetype --no-modtime --hash :s3:posix-dp/tests4
-    # rclone checksum md5 ./tests/.froster.md5sum --verbose --use-json-log :s3:posix-dp/archive/home/dp/gh/froster/tests
+                    # Check if the AWS profile exists
+                    if config.has_section(self.cfg.aws_profile):
+                        # Set the environment variables for creds
+                        self.envrn['AWS_ACCESS_KEY_ID'] = config.get(
+                            self.cfg.aws_profile, 'aws_access_key_id')
+                        self.envrn['AWS_SECRET_ACCESS_KEY'] = config.get(
+                            self.cfg.aws_profile, 'aws_secret_access_key')
+        except Exception:
+            print_error()
+            sys.exit(1)
 
     def _run_rclone_command(self, command, background=False):
         '''Run Rclone command'''
@@ -5508,24 +5244,31 @@ class Rclone:
 
     def copy(self, src, dst, *args):
         '''Copy files from source to destination using Rclone'''
+        try:
+            # Build the copy command
+            command = [self.rc, 'copy'] + list(args)
+            command.append(src)
+            command.append(dst)
 
-        # Build the copy command
-        command = [self.rc, 'copy'] + list(args)
-        command.append(src)
-        command.append(dst)
-
-        # Run the copy command and return if it was successful
-        return self._run_rclone_command(command)
+            # Run the copy command and return if it was successful
+            return self._run_rclone_command(command)
+        except Exception:
+            print_error()
+            return False
 
     def checksum(self, md5file, dst, *args):
         '''Check the checksum of a file using Rclone'''
+        try:
+            command = [self.rc, 'checksum'] + list(args)
+            command.append('md5')
+            command.append(md5file)
+            command.append(dst)
 
-        command = [self.rc, 'checksum'] + list(args)
-        command.append('md5')
-        command.append(md5file)
-        command.append(dst)
+            return self._run_rclone_command(command)
 
-        return self._run_rclone_command(command)
+        except Exception:
+            print_error()
+            return False
 
     def mount(self, src, dst, *args):
         '''Mount files from url to on-premises using Rclone'''
@@ -5534,26 +5277,32 @@ class Rclone:
             print('Could not find "fusermount3". Please install the "fuse3" OS package')
             sys.exit(1)
 
-        # Build the copy command
-        command = [self.rc, 'mount'] + list(args)
-        command.append('--allow-non-empty')
-        command.append('--default-permissions')
-        command.append('--read-only')
-        command.append('--no-checksum')
-        command.append(src)
-        command.append(dst)
+        try:
+            # Build the copy command
+            command = [self.rc, 'mount'] + list(args)
+            command.append('--allow-non-empty')
+            command.append('--default-permissions')
+            command.append('--read-only')
+            command.append('--no-checksum')
+            command.append(src)
+            command.append(dst)
 
-        # Run the copy command and return if it was successful
-        return self._run_rclone_command(command, background=True)
+            # Run the copy command and return if it was successful
+            return self._run_rclone_command(command, background=True)
+
+        except Exception:
+            print_error()
+            return False
 
     def unmount(self, mountpoint, wait=False):
+        '''Unmount files from on-premises using Rclone'''
+
+        if not shutil.which('fusermount3'):
+            print(
+                'Could not find "fusermount3". Please install the "fuse3" OS package')
+            sys.exit(1)
 
         try:
-            if not shutil.which('fusermount3'):
-                print(
-                    'Could not find "fusermount3". Please install the "fuse3" OS package')
-                sys.exit(1)
-
             # Build command
             cmd = ['fusermount3', '-u', mountpoint]
             ret = subprocess.run(cmd, capture_output=False,
@@ -5566,187 +5315,240 @@ class Rclone:
 
         except Exception:
             print_error()
-            sys.exit(1)
+            return False
 
     def version(self):
-        command = [self.rc, 'version']
-        return self._run_rclone_command(command)
+        '''Get the Rclone version'''
+        try:
+            command = [self.rc, 'version']
+            return self._run_rclone_command(command)
+        except Exception:
+            print_error()
+            return False
 
     def get_mounts(self):
-        mounts = []
-        with open('/proc/mounts', 'r') as f:
-            for line in f:
-                parts = line.split()
-                mount_point, fs_type = parts[1], parts[2]
-                if fs_type.startswith('fuse.rclone'):
-                    mounts.append(mount_point)
-        return mounts
+        '''Get the mounted Rclone mounts'''
+        try:
+            mounts = []
+            with open('/proc/mounts', 'r') as f:
+                for line in f:
+                    parts = line.split()
+                    mount_point, fs_type = parts[1], parts[2]
+                    if fs_type.startswith('fuse.rclone'):
+                        mounts.append(mount_point)
+            return mounts
+        except Exception:
+            print_error()
+            return []
 
     def _get_pids(self, process, full=False):
-        process = process.rstrip(os.path.sep)
-        if full:
-            command = ['pgrep', '-f', process]
-        else:
-            command = ['pgrep', process]
+        '''Get the process ids of the given process name'''
+
         try:
+            process = process.rstrip(os.path.sep)
+
+            if full:
+                command = ['pgrep', '-f', process]
+            else:
+                command = ['pgrep', process]
+
             output = subprocess.check_output(command)
             pids = [int(pid) for pid in output.decode(
                 errors='ignore').split('\n') if pid]
+
             return pids
-        except subprocess.CalledProcessError:
-            # No rclone processes found
+
+        except Exception:
+            print_error()
             return []
 
     def _add_opt(self, cmd, option, value=None):
         '''Add an option to the command if it is not already present'''
+        try:
+            if option not in cmd:
+                cmd.append(option)
+                if value:
+                    cmd.append(value)
 
-        if option not in cmd:
-            cmd.append(option)
-            if value:
-                cmd.append(value)
+            return cmd
 
-        return cmd
+        except Exception:
+            print_error()
+            return cmd
 
     def _parse_log(self, strstderr):
-        lines = strstderr.split('\n')
-        data = [json.loads(line.rstrip()) for line in lines if line[0] == "{"]
-        stats = []
-        operations = []
-        for obj in data:
-            if 'accounting/stats' in obj['source']:
-                stats.append(obj)
-            elif 'operations/operations' in obj['source']:
-                operations.append(obj)
-        return stats, operations
+        '''Parse the Rclone log'''
+        try:
+            lines = strstderr.split('\n')
+            data = [json.loads(line.rstrip())
+                    for line in lines if line[0] == "{"]
+            stats = []
+            operations = []
+            for obj in data:
+                if 'accounting/stats' in obj['source']:
+                    stats.append(obj)
+                elif 'operations/operations' in obj['source']:
+                    operations.append(obj)
+            return stats, operations
 
-        # stats":{"bytes":0,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":4.121489785,"errors":12,"eta":null,"fatalError":false,
-        # "lastError":"failed to open source object: Object in GLACIER, restore first: bucket=\"posix-dp\", key=\"tests4/table_example.py\"",
-        # "renames":0,"retryError":true,"speed":0,"totalBytes":0,"totalChecks":0,"totalTransfers":0,"transferTime":0,"transfers":0},
-        # "time":"2023-04-16T10:18:46.121921-07:00"}
+        except Exception:
+            print_error()
+            return [], []
 
 
-class SlurmEssentials:
-    # exit code 64 causes Slurm to --requeue, e.g. sys.exit(64)
-    # TODO: these variables are not READ from the config file
+class Slurm:
+    '''Class to handle Slurm essentials'''
+
     def __init__(self, args, cfg: ConfigManager):
+        '''Initialize Slurm object'''
 
-        # Create the slurm directory if it does not exist
-        os.makedirs(cfg.slurm_dir, exist_ok=True, mode=0o775)
+        try:
+            # Create the slurm directory if it does not exist
+            os.makedirs(cfg.slurm_dir, exist_ok=True, mode=0o775)
 
-        self.script_lines = ["#!/bin/bash"]
-        self.cfg = cfg
-        self.args = args
-        self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
-        self.jobs = []
-        self.job_info = {}
+            self.script_lines = ["#!/bin/bash"]
+            self.cfg = cfg
+            self.args = args
+            self.squeue_output_format = '"%i","%j","%t","%M","%L","%D","%C","%m","%b","%R"'
+            self.jobs = []
+            self.job_info = {}
 
-        self.partition = cfg.slurm_partition if hasattr(
-            cfg, 'slurm_partition') else None
+            self.partition = cfg.slurm_partition if hasattr(
+                cfg, 'slurm_partition') else None
 
-        if self.partition is not None:
+            if self.partition is not None:
 
-            # Make sure we are not exceeding the number of cores available
-            total_cpus = self.get_total_cpus(self.partition)
-            if self.args.cores > total_cpus:
-                self.args.cores = total_cpus
+                # Make sure we are not exceeding the number of cores available
+                total_cpus = self.get_total_cpus(self.partition)
+                if self.args.cores > total_cpus:
+                    self.args.cores = total_cpus
 
-            # Transform memory from GB to MB
-            self.args.memory *= 1024
+                # Transform memory from GB to MB
+                self.args.memory *= 1024
 
-            # Make sure we are not exceeding the memory available
-            max_memory_per_node_in_mb = self.get_max_memory_per_node_in_mb()
-            if self.args.memory > max_memory_per_node_in_mb:
-                self.args.memory = max_memory_per_node_in_mb
+                # Make sure we are not exceeding the memory available
+                max_memory_per_node_in_mb = self.get_max_memory_per_node_in_mb()
+                if self.args.memory > max_memory_per_node_in_mb:
+                    self.args.memory = max_memory_per_node_in_mb
 
-        self.qos = cfg.slurm_qos if hasattr(cfg, 'slurm_qos') else None
+            self.qos = cfg.slurm_qos if hasattr(cfg, 'slurm_qos') else None
 
-        walltime_days = cfg.slurm_walltime_days if hasattr(
-            cfg, 'slurm_walltime_days') else None
+            walltime_days = cfg.slurm_walltime_days if hasattr(
+                cfg, 'slurm_walltime_days') else None
 
-        walltime_hours = cfg.slurm_walltime_hours if hasattr(
-            cfg, 'slurm_walltime_hours') else None
+            walltime_hours = cfg.slurm_walltime_hours if hasattr(
+                cfg, 'slurm_walltime_hours') else None
 
-        if walltime_days is not None and walltime_hours is not None:
-            self.walltime = f'{walltime_days}-{walltime_hours}'
-        else:
-            self.walltime = '7-0'
+            if walltime_days is not None and walltime_hours is not None:
+                self.walltime = f'{walltime_days}-{walltime_hours}'
+            else:
+                self.walltime = '7-0'
 
-        self.slurm_lscratch = cfg.slurm_lscratch if hasattr(
-            cfg, 'slurm_lscratch') else None
+            self.slurm_lscratch = cfg.slurm_lscratch if hasattr(
+                cfg, 'slurm_lscratch') else None
 
-        self.lscratch_mkdir = cfg.lscratch_mkdir if hasattr(
-            cfg, 'lscratch_mkdir') else None
+            self.lscratch_mkdir = cfg.lscratch_mkdir if hasattr(
+                cfg, 'lscratch_mkdir') else None
 
-        self.lscratch_root = cfg.lscratch_root if hasattr(
-            cfg, 'lscratch_root') else None
+            self.lscratch_root = cfg.lscratch_root if hasattr(
+                cfg, 'lscratch_root') else None
 
-        if self.slurm_lscratch:
-            self.add_line(f'#SBATCH {self.slurm_lscratch}')
+            if self.slurm_lscratch:
+                self.add_line(f'#SBATCH {self.slurm_lscratch}')
 
-        self.add_line(f'{self.lscratch_mkdir}')
+            self.add_line(f'{self.lscratch_mkdir}')
 
-        if self.lscratch_root:
-            self.add_line(
-                'export TMPDIR=%s/${SLURM_JOB_ID}' % self.lscratch_root)
+            if self.lscratch_root:
+                self.add_line(
+                    'export TMPDIR=%s/${SLURM_JOB_ID}' % self.lscratch_root)
+        except Exception:
+            print_error()
 
     def add_line(self, line):
-        if line:
-            self.script_lines.append(line)
+        '''Add a line to the Slurm script'''
+        try:
+            if line:
+                self.script_lines.append(line)
+        except Exception:
+            print_error()
 
     def get_future_start_time(self, add_hours):
-        now = datetime.datetime.now()
-        future_time = now + datetime.timedelta(hours=add_hours)
-        return future_time.strftime("%Y-%m-%dT%H:%M")
+        '''Get the future start time for a Slurm job'''
+        try:
+            now = datetime.datetime.now()
+            future_time = now + datetime.timedelta(hours=add_hours)
+            return future_time.strftime("%Y-%m-%dT%H:%M")
+        except Exception:
+            print_error()
+            return None
 
     def get_total_cpus(self, partition):
-        cmd = ['sinfo', '-N', '-p', partition, '--format="%n %c"']
-        result = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise Exception(f'Error executing command: {result.stderr}')
-        lines = result.stdout.split('\n')
-        total_cpus = 0
-        for line in lines[1:]:  # Skip the header line
-            if line:  # Skip empty lines
-                node, cpus = line.split()
-                cpus = cpus.replace('"', '').replace("'", '')
-                total_cpus += int(cpus)
-        return total_cpus
+        '''Get the total number of CPUs in a partition'''
+        try:
+            cmd = ['sinfo', '-N', '-p', partition, '--format="%n %c"']
+            result = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode != 0:
+                raise Exception(f'Error executing command: {result.stderr}')
+            lines = result.stdout.split('\n')
+            total_cpus = 0
+            for line in lines[1:]:  # Skip the header line
+                if line:  # Skip empty lines
+                    node, cpus = line.split()
+                    cpus = cpus.replace('"', '').replace("'", '')
+                    total_cpus += int(cpus)
+            return total_cpus
+
+        except Exception:
+            print_error()
+            return 1
 
     def get_max_memory_per_node_in_mb(self):
         '''Get the maximum memory per node in MB.'''
-        # Run the sinfo command and capture its output
-        sinfo_output = subprocess.check_output(
-            "sinfo -N -o '%m'", shell=True).decode('utf-8')
 
-        # The output is a string with one line per node, so split it into lines
-        lines = sinfo_output.split('\n')
+        try:
+            # Run the sinfo command and capture its output
+            sinfo_output = subprocess.check_output(
+                "sinfo -N -o '%m'", shell=True).decode('utf-8')
 
-        # The first line is a header, so ignore it. The rest of the lines are the memory values.
-        # Convert these values to integers and find the minimum value.
-        max_memory_per_node = min(int(line) for line in lines[1:] if line)
+            # The output is a string with one line per node, so split it into lines
+            lines = sinfo_output.split('\n')
 
-        return max_memory_per_node
+            # The first line is a header, so ignore it. The rest of the lines are the memory values.
+            # Convert these values to integers and find the minimum value.
+            max_memory_per_node = min(int(line) for line in lines[1:] if line)
+
+            return max_memory_per_node
+
+        except Exception:
+            print_error()
 
     def _reorder_sbatch_lines(self, script_buffer):
-        # we need to make sure that all #BATCH are at the top
-        script_buffer.seek(0)
-        lines = script_buffer.readlines()
-        # Remove the shebang line from the list of lines
-        shebang_line = lines.pop(0)
-        sbatch_lines = [line for line in lines if line.startswith("#SBATCH")]
-        non_sbatch_lines = [
-            line for line in lines if not line.startswith("#SBATCH")]
-        reordered_script = io.StringIO()
-        reordered_script.write(shebang_line)
-        for line in sbatch_lines:
-            reordered_script.write(line)
-        for line in non_sbatch_lines:
-            reordered_script.write(line)
-        # add a local scratch teardown, if configured
-        reordered_script.write(self.cfg.lscratch_rmdir)
-        reordered_script.seek(0)
-        return reordered_script
+        '''Reorder the Slurm script lines to have all #SBATCH lines at the top.'''
+
+        try:
+            # we need to make sure that all #BATCH are at the top
+            script_buffer.seek(0)
+            lines = script_buffer.readlines()
+            # Remove the shebang line from the list of lines
+            shebang_line = lines.pop(0)
+            sbatch_lines = [
+                line for line in lines if line.startswith("#SBATCH")]
+            non_sbatch_lines = [
+                line for line in lines if not line.startswith("#SBATCH")]
+            reordered_script = io.StringIO()
+            reordered_script.write(shebang_line)
+            for line in sbatch_lines:
+                reordered_script.write(line)
+            for line in non_sbatch_lines:
+                reordered_script.write(line)
+            # add a local scratch teardown, if configured
+            reordered_script.write(self.cfg.lscratch_rmdir)
+            reordered_script.seek(0)
+            return reordered_script
+
+        except Exception:
+            print_error()
 
     def submit_job(self, cmd, cmd_type, label, shortlabel):
         '''Submit a Slurm job'''
@@ -5768,12 +5570,6 @@ class SlurmEssentials:
             self.add_line(f'#SBATCH --partition={self.partition}')
             self.add_line(f'#SBATCH --qos={self.qos}')
 
-            # se.add_line(f'ml python')
-
-            # Print the command line to be executed by Slurm
-            if self.args.debug:
-                print(f'Command line passed to Slurm:\n{cmd}')
-
             # Add the command line to the Slurm script
             self.add_line(cmd)
 
@@ -5788,139 +5584,149 @@ class SlurmEssentials:
             print(f'  Check output: "cat {output_dir}-{jobid}.out"')
             print(f'  Cancel the job: "scancel {jobid}"\n')
 
-        except:
+        except Exception:
             print_error()
 
     def sbatch(self):
-        script = io.StringIO()
-        for line in self.script_lines:
-            script.write(line + "\n")
-        script.seek(0)
-        oscript = self._reorder_sbatch_lines(script)
-        script = oscript.read()
+        '''Submit the Slurm script'''
 
-        # Print the script to be submitted
-        print(script)
+        try:
+            script = io.StringIO()
+            for line in self.script_lines:
+                script.write(line + "\n")
+            script.seek(0)
+            oscript = self._reorder_sbatch_lines(script)
+            script = oscript.read()
 
-        result = subprocess.run(["sbatch"], text=True, shell=True, input=script,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode != 0:
-            if 'Invalid generic resource' in result.stderr:
-                print(
-                    'Invalid generic resource request. Please change configuration of slurm_lscratch')
-            else:
-                raise RuntimeError(
-                    f"Error running sbatch: {result.stderr.strip()}")
-            sys.exit(1)
-        job_id = int(result.stdout.split()[-1])
-        if self.args.debug:
-            oscript.seek(0)
-            with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
-                file.write(oscript.read())
-                print(f' Debug script created: submitted-{job_id}.sh')
-        return job_id
+            # Print the script to be submitted
+            printdbg(script)
+
+            result = subprocess.run(["sbatch"], text=True, shell=True, input=script,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode != 0:
+                if 'Invalid generic resource' in result.stderr:
+                    print(
+                        'Invalid generic resource request. Please change configuration of slurm_lscratch')
+                else:
+                    raise RuntimeError(
+                        f"Error running sbatch: {result.stderr.strip()}")
+                sys.exit(1)
+
+            job_id = int(result.stdout.split()[-1])
+
+            if self.args.debug:
+                oscript.seek(0)
+                with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
+                    file.write(oscript.read())
+                    print(f' Debug script created: submitted-{job_id}.sh')
+            return job_id
+
+        except Exception:
+            print_error()
+            return None
 
     def squeue(self):
-        result = subprocess.run(["squeue", "--me", "-o", self.squeue_output_format],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running squeue: {result.stderr.strip()}")
-        self.jobs = self._parse_squeue_output(result.stdout.strip())
+        '''Get the Slurm jobs'''
+        try:
+            result = subprocess.run(["squeue", "--me", "-o", self.squeue_output_format],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Error running squeue: {result.stderr.strip()}")
+            self.jobs = self._parse_squeue_output(result.stdout.strip())
+
+        except Exception:
+            print_error()
 
     def _parse_squeue_output(self, output):
-        csv_file = io.StringIO(output)
-        reader = csv.DictReader(csv_file, delimiter=',',
-                                quotechar='"', skipinitialspace=True)
-        jobs = [row for row in reader]
-        return jobs
-
-    def print_jobs(self):
-        for job in self.jobs:
-            print(job)
-
-    def job_comment_read(self, job_id):
-        jobdict = self._scontrol_show_job(job_id)
-        return jobdict['Comment']
-
-    def job_comment_write(self, job_id, comment):
-        # a comment can be maximum 250 characters, will be chopped automatically
-        args = ['update', f'JobId={str(job_id)}',
-                f'Comment={comment}', str(job_id)]
-        result = subprocess.run(['scontrol'] + args,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running scontrol: {result.stderr.strip()}")
-
-    def _scontrol_show_job(self, job_id):
-        args = ["--oneliner", "show", "job", str(job_id)]
-        result = subprocess.run(['scontrol'] + args,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running scontrol: {result.stderr.strip()}")
-        self.job_info = self._parse_scontrol_output(result.stdout)
-
-    def _parse_scontrol_output(self, output):
-        fields = output.strip().split()
-        job_info = {}
-        for field in fields:
-            key, value = field.split('=', 1)
-            job_info[key] = value
-        return job_info
+        try:
+            csv_file = io.StringIO(output)
+            reader = csv.DictReader(csv_file, delimiter=',',
+                                    quotechar='"', skipinitialspace=True)
+            jobs = [row for row in reader]
+            return jobs
+        except Exception:
+            print_error()
+            return []
 
     def _parse_tabular_data(self, data_str, separator="|"):
         """Parse data (e.g. acctmgr) presented in a tabular format into a list of dictionaries."""
-        lines = data_str.strip().splitlines()
-        headers = lines[0].split(separator)
-        data = []
-        for line in lines[1:]:
-            values = line.split(separator)
-            data.append(dict(zip(headers, values)))
-        return data
+
+        try:
+            lines = data_str.strip().splitlines()
+            headers = lines[0].split(separator)
+            data = []
+            for line in lines[1:]:
+                values = line.split(separator)
+                data.append(dict(zip(headers, values)))
+            return data
+
+        except Exception:
+            print_error()
+            return []
 
     def _parse_partition_data(self, data_str):
         """Parse data presented in a tabular format into a list of dictionaries."""
-        lines = data_str.strip().split('\n')
-        # Parse each line into a dictionary
-        partitions = []
-        for line in lines:
-            parts = line.split()
-            partition_dict = {}
-            for part in parts:
-                key, value = part.split("=", 1)
-                partition_dict[key] = value
-            partitions.append(partition_dict)
-        return partitions
+
+        try:
+            lines = data_str.strip().split('\n')
+            # Parse each line into a dictionary
+            partitions = []
+            for line in lines:
+                parts = line.split()
+                partition_dict = {}
+                for part in parts:
+                    key, value = part.split("=", 1)
+                    partition_dict[key] = value
+                partitions.append(partition_dict)
+            return partitions
+
+        except Exception:
+            print_error()
 
     def _get_user_groups(self):
         """Get the groups the current Unix user is a member of."""
-        groups = [grp.getgrgid(gid).gr_name for gid in os.getgroups()]
-        return groups
+        try:
+            groups = [grp.getgrgid(gid).gr_name for gid in os.getgroups()]
+            return groups
+        except Exception:
+            print_error()
+            return []
 
     def _get_output(self, command):
         """Execute a shell command and return its output."""
-        result = subprocess.run(command, shell=True, text=True,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Error running {command}: {result.stderr.strip()}")
-        return result.stdout.strip()
+        try:
+            result = subprocess.run(command, shell=True, text=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Error running {command}: {result.stderr.strip()}")
+            return result.stdout.strip()
+        except Exception:
+            print_error()
+            return None
 
     def _get_default_account(self):
+        """Get the default account for the current user."""
         return self._get_output(f'sacctmgr --noheader --parsable2 show user {self.cfg.whoami} format=DefaultAccount')
 
     def _get_associations(self):
-        mystr = self._get_output(
-            f"sacctmgr show associations where user={self.cfg.whoami} format=Account,QOS --parsable2")
-        asso = {item['Account']: item['QOS'].split(
-            ",") for item in self._parse_tabular_data(mystr) if 'Account' in item}
-        return asso
+        """Get the associations between accounts and QOSs."""
+        try:
+            mystr = self._get_output(
+                f"sacctmgr show associations where user={self.cfg.whoami} format=Account,QOS --parsable2")
+            asso = {item['Account']: item['QOS'].split(
+                ",") for item in self._parse_tabular_data(mystr) if 'Account' in item}
+            return asso
+
+        except Exception:
+            print_error()
+            return {}
 
     def get_allowed_partitions_and_qos(self):
+        """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
+
         try:
-            """Get a dictionary with keys = partitions and values = QOSs the user is allowed to use."""
             bacc = os.environ.get('SBATCH_ACCOUNT', '')
             account = bacc if bacc else None
             sacc = os.environ.get('SLURM_ACCOUNT', '')
@@ -5970,13 +5776,11 @@ class SlurmEssentials:
                         # print(f"p_allowedqos = [] in {pname}:", allowed_qos)
                     allowed_partitions[pname] = allowed_qos
             return allowed_partitions
-        except:
+
+        except Exception:
             print_error()
             print("Are you in a Control Node?")
             sys.exit(1)
-
-    def display_job_info(self):
-        print(self.job_info)
 
 
 class NIHReporter:
@@ -5984,7 +5788,7 @@ class NIHReporter:
     # for metadata
 
     def __init__(self, verbose=False, active=False, years=None):
-        # self.args = args
+        '''Initialize NIHReporter object'''
         self.verbose = verbose
         self.active = active
         self.years = years
@@ -5994,12 +5798,14 @@ class NIHReporter:
         self.grants = []
 
     def search_full(self, searchstr):
+        '''Search NIH Reporter for metadata using a search string'''
         searchstr = self._clean_string(searchstr)
         if not searchstr:
             return []
 
         # Search by PI
         if not self._is_number(searchstr):
+
             print('PI search ...')
             criteria = {"pi_names": [{"any_name": searchstr}]}
             self._post_request(criteria)
@@ -6031,11 +5837,17 @@ class NIHReporter:
         return self._result_sets(True)
 
     def search_one(self, criteria, header=False):
-        searchstr = self._clean_string(searchstr)
-        self._post_request(criteria)
-        return self._result_sets(header)
+        '''Search NIH Reporter for metadata using a criteria'''
+        try:
+            searchstr = self._clean_string(searchstr)
+            self._post_request(criteria)
+            return self._result_sets(header)
+
+        except Exception:
+            print_error()
 
     def _is_number(self, string):
+        '''Check if a string is a number'''
         try:
             float(string)
             return True
@@ -6043,6 +5855,8 @@ class NIHReporter:
             return False
 
     def _clean_string(self, mystring):
+        '''Clean a string'''
+
         mychars = ",:?'$^%&*!`~+={}\\[]"+'"'
         for i in mychars:
             mystring = mystring.replace(i, ' ')
@@ -6050,6 +5864,8 @@ class NIHReporter:
         return mystring
 
     def _post_request(self, criteria):
+        '''Make a POST request to NIH Reporter'''
+
         # make request with retries
         offset = 0
         timeout = 30
@@ -6109,60 +5925,70 @@ class NIHReporter:
                 time.sleep(retry_delay)
             else:
                 return
-        # raise Exception(f"Failed to complete POST request after {max_retries} attempts")
+        except Exception:
+            print_error()
+            return
 
     def _result_sets(self, header=False):
-        sets = []
-        if header:
-            sets.append(('project_num', 'start', 'end', 'contact_pi_name', 'project_title',
-                        'org_name', 'project_detail_url', 'pi_profile_id'))
-        grants = {}
-        for g in self.grants:
-            # print(json.dumps(g, indent=2))
-            # return
-            core_project_num = str(g.get('core_project_num', '')).strip()
-            line = (
-                core_project_num,
-                str(g.get('project_start_date', '')).strip()[:10],
-                str(g.get('project_end_date', '')).strip()[:10],
-                str(g.get('contact_pi_name', '')).strip(),
-                str(g.get('project_title', '')).strip()  # [:50]
-            )
-            org = ""
-            if g['organization']['org_name']:
-                org = g['organization']['org_name']
-            line += (
-                str(org.encode('utf-8'), 'utf-8'),
-                g.get('project_detail_url', '')
-            )
-            for p in g['principal_investigators']:
-                if p.get('is_contact_pi', False):
-                    line += (str(p.get('profile_id', '')),)
-            if not core_project_num in grants:
-                grants[core_project_num] = line
-        for g in grants.values():
-            sets.append(g)
-            # print(g)
-        # print("{0} total # of grants...".format(len(grants)),file=sys.stderr)
-        return sets
+        '''Get the result sets'''
+
+        try:
+            sets = []
+            if header:
+                sets.append(('project_num', 'start', 'end', 'contact_pi_name', 'project_title',
+                            'org_name', 'project_detail_url', 'pi_profile_id'))
+            grants = {}
+            for g in self.grants:
+                # print(json.dumps(g, indent=2))
+                # return
+                core_project_num = str(g.get('core_project_num', '')).strip()
+                line = (
+                    core_project_num,
+                    str(g.get('project_start_date', '')).strip()[:10],
+                    str(g.get('project_end_date', '')).strip()[:10],
+                    str(g.get('contact_pi_name', '')).strip(),
+                    str(g.get('project_title', '')).strip()  # [:50]
+                )
+                org = ""
+                if g['organization']['org_name']:
+                    org = g['organization']['org_name']
+                line += (
+                    str(org.encode('utf-8'), 'utf-8'),
+                    g.get('project_detail_url', '')
+                )
+                for p in g['principal_investigators']:
+                    if p.get('is_contact_pi', False):
+                        line += (str(p.get('profile_id', '')),)
+                if not core_project_num in grants:
+                    grants[core_project_num] = line
+            for g in grants.values():
+                sets.append(g)
+            return sets
+
+        except Exception:
+            print_error()
+            return []
 
 
 class Commands:
 
     def __init__(self):
+        '''Initialize Commands object'''
 
         # parse arguments using python's internal module argparse.py
         self.parser = self.parse_arguments()
         self.args = self.parser.parse_args()
 
         # TODO: OHSU-96: To be changed for a logger
-        global is_debug
-        is_debug = self.args.debug
+        if self.args.debug:
+            os.environ['DEBUG'] = '1'
 
     def print_help(self):
+        '''Print help message'''
         self.parser.print_help()
 
     def print_version(self):
+        '''Print version message'''
 
         print(
             f'froster v{pkg_resources.get_distribution("froster").version}\n')
@@ -6198,6 +6024,7 @@ class Commands:
 
     def subcmd_config(self, cfg: ConfigManager, aws: AWSBoto):
         '''Configure Froster settings.'''
+
         try:
             if self.args.user:
                 return cfg.set_user()
@@ -6284,12 +6111,13 @@ class Commands:
             print(f'    froster config --print\n')
 
             return True
-        except:
+        except Exception:
             print_error()
             return False
 
     def subcmd_index(self, cfg: ConfigManager, arch: Archiver):
         '''Index folders for Froster.'''
+
         try:
             # Check if user provided at least one argument
             if not self.args.folders:
@@ -6311,11 +6139,12 @@ class Commands:
 
             # Index the given folders
             arch.index(self.args.folders)
-        except:
+        except Exception:
             print_error()
 
     def subcmd_archive(self, arch: Archiver):
         '''Check command for archiving folders for Froster.'''
+
         try:
 
             if self.args.older > 0 and self.args.newer > 0:
@@ -6359,7 +6188,7 @@ class Commands:
                 else:
                     # Archive the given folders
                     arch.archive(self.args.folders)
-        except:
+        except Exception:
             print_error()
 
     def subcmd_restore(self, arch: Archiver, aws: AWSBoto):
@@ -6402,6 +6231,8 @@ class Commands:
             print_error()
 
     def subcmd_delete(self, arch: Archiver):
+        '''Check command for deleting folders for Froster.'''
+
         try:
             if not self.args.folders:
 
@@ -6480,10 +6311,11 @@ class Commands:
             arch.mount(folders=self.args.folders,
                        mountpoint=self.args.mountpoint)
 
-        except:
+        except Exception:
             print_error()
 
     def subcmd_umount(self, arch: Archiver):
+        '''Unmount a folder from the system.'''
 
         try:
             if self.args.list:
@@ -6512,6 +6344,7 @@ class Commands:
             print_error()
 
     def subcmd_ssh(self, cfg: ConfigManager, aws: AWSBoto):
+        '''SSH into an AWS EC2 instance'''
 
         ilist = aws.ec2_list_instances('Name', 'FrosterSelfDestruct')
         ips = [sublist[0] for sublist in ilist if sublist]
@@ -6575,23 +6408,28 @@ class Commands:
             return False
 
     def subcmd_update(self):
-        
-        if self.args.rclone:
-            cmd = "rclone selfupdate"
-        else:
-            cmd = "curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash"
+        '''Update Froster'''
 
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, shell=True)
+        try:
+            if self.args.rclone:
+                cmd = "rclone selfupdate"
+            else:
+                cmd = "curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash"
 
-        for line in iter(p.stdout.readline, b''):
-            print(line.decode(), end='')
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, shell=True)
 
-        # Wait for the process to finish and get the exit code
-        p.wait()
+            for line in iter(p.stdout.readline, b''):
+                print(line.decode(), end='')
 
-        if p.returncode != 0:
-            print(f"Error: The update failed with exit code {p.returncode}.")
+            # Wait for the process to finish and get the exit code
+            p.wait()
+
+            if p.returncode != 0:
+                print(
+                    f"Error: The update failed with exit code {p.returncode}.")
+        except Exception:
+            print_error()
 
     def parse_arguments(self):
         '''Gather and parse command-line arguments'''
@@ -6884,22 +6722,16 @@ class Commands:
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
         parser_update.add_argument('--rclone', '-r', dest='rclone', action='store_true',
-                                help="Update rclone to latests version")
-        
+                                   help="Update rclone to latests version")
+
         return parser
 
 
-# TODO: OHSU-103: Move this function to utils module
-# TODO: OHSU-96: To be changed for a logger
-
-
 def printdbg(*args, **kwargs):
-    if 'is_debug' in globals() and is_debug:
+    if os.environ.get('DEBUG') == '1':
         current_frame = inspect.currentframe()
         calling_function = current_frame.f_back.f_code.co_name
         print(f' DBG {calling_function}():', args, kwargs)
-
-# TODO: OHSU-103: Move this function to utils module
 
 
 def clean_path(path):
@@ -6954,7 +6786,7 @@ def use_slurm(noslurm_flag):
     return is_slurm_installed() and not noslurm_flag and not is_inside_slurm_job()
 
 
-def print_error():
+def print_error(msg: str = None):
     exc_type, exc_value, exc_tb = sys.exc_info()
     traceback_details = traceback.extract_tb(exc_tb)
 
@@ -6965,9 +6797,18 @@ def print_error():
     # Check if the exception is a KeyboardInterrupt
     if exc_type is KeyboardInterrupt:
         print(f'\nKeyboard Interrupt\n')
+
+    elif exc_type is SystemExit:
+        pass
+
     else:
-        print(
-            f'\nError: file {file_name}: function {function_name}: line {exc_tb.tb_lineno}: {exc_value}\n', file=sys.stderr)
+        print('Error')
+        print('  File:', file_name, file=sys.stderr)
+        print('  Function:', function_name, file=sys.stderr)
+        print('  Line:', exc_tb.tb_lineno, file=sys.stderr)
+        print('  Error:', exc_value, file=sys.stderr)
+        if (msg):
+            print('  \nMessage:', msg, file=sys.stderr)
 
 
 def main():
@@ -7009,12 +6850,12 @@ def main():
         # Do not allow other commands rather than config if the configuration is not set
         if not cfg.configuration_done and args.subcmd not in ['config', 'cnf']:
             print('\nWARNING: Froster is not full configured yet:')
-            print(f'    user: {"done" if cfg.user_init else "pending"}')
-            print(f'    aws: {"done" if cfg.aws_init else "pending"}')
-            print(f'    s3: {"done" if cfg.s3_init else "pending"}')
-            print(f'    nih: {"done" if cfg.nih_init else "pending"}')
+            print(f'  user: {"done" if cfg.user_init else "pending"}')
+            print(f'  aws: {"done" if cfg.aws_init else "pending"}')
+            print(f'  s3: {"done" if cfg.s3_init else "pending"}')
+            print(f'  nih: {"done" if cfg.nih_init else "pending"}')
             print(f'\nRun "froster config --help" for more information.\n')
-            return True
+            return
 
         # call a function for each sub command in our CLI
         if args.subcmd in ['config', 'cnf']:
@@ -7042,12 +6883,8 @@ def main():
 
         aws.close_session()
 
-    except KeyboardInterrupt:
-        print('Keyboard Interrupt\n')
-
-    except Exception as exc:
+    except Exception:
         print_error()
-        sys.exit(1)
 
 
 if __name__ == "__main__":
