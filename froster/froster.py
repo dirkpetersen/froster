@@ -3021,7 +3021,6 @@ class Archiver:
         self.where_did_the_files_go_filename = 'Where-did-the-files-go.txt'
 
         self.dirmetafiles = [self.allfiles_csv_filename,
-                             self.smallfiles_tar_filename,
                              self.md5sum_filename,
                              self.md5sum_restored_filename,
                              self.where_did_the_files_go_filename]
@@ -4124,6 +4123,7 @@ class Archiver:
                     print('    Untarring Froster.smallfiles.tar... ', end='')
                     with tarfile.open(tar_path, "r") as tar:
                         tar.extractall(path=root)
+                    os.remove(tar_path)
                     print('done.')
 
                 for file in self.dirmetafiles:
