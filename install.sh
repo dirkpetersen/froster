@@ -237,6 +237,9 @@ install_froster() {
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
 
+    echo
+    echo "Installing latest version of froster..."
+
     # Install froster from PyPi package repository
     pipx install froster >/dev/null 2>&1 &
     spinner $!
@@ -372,9 +375,6 @@ check_apt_dependencies
 
 # Set rw permissions on anyone in file's group
 umask 0002
-
-echo $REPO
-echo $BRANCH
 
 # Backup old installation (if any)
 backup_old_installation
