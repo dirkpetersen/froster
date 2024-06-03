@@ -6419,7 +6419,9 @@ class Commands:
             if self.args.rclone:
                 cmd = "rclone selfupdate"
             else:
-                cmd = "curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash"
+                cmd = "curl -s https://raw.githubusercontent.com/hpcnow/froster/main/install.sh?$(date +%s) | bash"
+
+            print(f'\n Executing command "{cmd}"\n')
 
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, shell=True)

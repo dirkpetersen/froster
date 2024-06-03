@@ -205,8 +205,7 @@ backup_old_installation() {
         fi
 
         if pipx list | grep froster >/dev/null 2>&1; then
-                pipx uninstall froster &
-                spinner $!
+                pipx uninstall froster
         fi
 
         echo "...froster uninstalled"
