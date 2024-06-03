@@ -205,8 +205,12 @@ backup_old_installation() {
         fi
 
         if pipx list | grep froster >/dev/null 2>&1; then
-                pipx uninstall froster
-                echo "pipx uninstall froster returned: " $?
+                # If froster is installed with pipx, uninstall it and ignore errors
+                # sometime pipx uninstall fails with error code 1 if PIPX_HOME is set, but froster is still uninstalled
+                set +e
+                pipx uninstall froster >/dev/null 2>&1 &
+                spinner $!
+                set -e
         fi
 
         echo "...froster uninstalled"
@@ -230,10 +234,10 @@ backup_old_installation() {
 }
 
 install_froster() {
-    echo "ahá"
+
     # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
-    echo "uhú"
+
     # TODO: Update path once froster is in PyPi repository
 
     # Get the repository and branch from the github environment variables (if any)
@@ -249,10 +253,8 @@ install_froster() {
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
-    echo "here fails?"
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
     spinner $!
-    echo "here arrives?"
 
     # Keep the config.ini file (if any)
     if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
