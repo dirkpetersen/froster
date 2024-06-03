@@ -249,8 +249,10 @@ install_froster() {
     echo
     echo "Installing latest version of froster from \"$REPO@$BRANCH\"..."
 
+    echo "here fails?"
     pipx install git+$REPO@$BRANCH >/dev/null 2>&1 &
     spinner $!
+    echo "here arrives?"
 
     # Keep the config.ini file (if any)
     if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
