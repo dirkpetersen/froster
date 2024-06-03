@@ -6812,13 +6812,15 @@ def print_error(msg: str = None):
         pass
 
     else:
-        print('Error')
+        print('\nError')
         print('  File:', file_name, file=sys.stderr)
         print('  Function:', function_name, file=sys.stderr)
         print('  Line:', exc_tb.tb_lineno, file=sys.stderr)
         print('  Error:', exc_value, file=sys.stderr)
         if (msg):
             print('  \nMessage:', msg, file=sys.stderr)
+
+        print('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n', file=sys.stderr)
 
 
 def main():
