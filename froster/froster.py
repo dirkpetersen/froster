@@ -5176,9 +5176,7 @@ class Rclone:
         '''Run Rclone command'''
         try:
             # Add options to Rclone command
-            command = self._add_opt(command, '--verbose')
             command = self._add_opt(command, '--use-json-log')
-            command = self._add_opt(command, '--progress')
 
             # Run the command
             if background:
@@ -5255,6 +5253,7 @@ class Rclone:
             command = [self.rc, 'copy'] + list(args)
             command.append(src)
             command.append(dst)
+            command.append('-vvv')
 
             # Run the copy command and return if it was successful
             return self._run_rclone_command(command)
