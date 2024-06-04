@@ -180,7 +180,7 @@ class ConfigManager:
                 # Last timestamp we checked for an updated
                 self.update_check_timestamp = config.get(
                     'UPDATE', 'timestamp', fallback=None)
-                
+
                 # Shared configuration
                 self.is_shared = config.getboolean(
                     'SHARED', 'is_shared', fallback=False)
@@ -1210,6 +1210,9 @@ class ConfigManager:
 
             if hasattr(self, 'update_check_timestamp') and self.update_check_timestamp is not None:
                 # Check if last day was less than 86400 * 7 = (1 day) * 7  = 1 week
+                print(timestamp)
+                print(self.update_check_timestamp)
+                print(timestamp - self.update_check_timestamp)
                 if timestamp - self.update_check_timestamp < (86400*7):
                     # Less than a week since last check
                     return False
@@ -4479,8 +4482,10 @@ class Archiver:
                             continue
 
                         if not self._contains_non_froster_files(root):
-                            print(f'\nWARNING: Folder {root} contains non-froster metadata files')
-                            print('Has this folder been deleted using "froster delete" command?.')
+                            print(
+                                f'\nWARNING: Folder {root} contains non-froster metadata files')
+                            print(
+                                'Has this folder been deleted using "froster delete" command?.')
                             print('Please empty the folder before restoring.\n')
                             continue
 
@@ -4518,7 +4523,8 @@ class Archiver:
                     return
 
                 # Get the path to the hashfile
-                hashfile = os.path.join(restpath,  self.md5sum_restored_filename)
+                hashfile = os.path.join(
+                    restpath,  self.md5sum_restored_filename)
 
                 # Create the Rclone object
                 rclone = Rclone(self.args, self.cfg)
@@ -4539,7 +4545,8 @@ class Archiver:
                     os.remove(tar_path)
                     print('    ...done\n')
 
-                where_did_file_go_full_path = os.path.join(target, self.where_did_the_files_go_filename)
+                where_did_file_go_full_path = os.path.join(
+                    target, self.where_did_the_files_go_filename)
                 if os.path.exists(where_did_file_go_full_path):
                     os.remove(where_did_file_go_full_path)
 
@@ -6201,7 +6208,8 @@ class Commands:
                 return
 
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
 
             # Check if the user provided the hotspots argument
@@ -6231,7 +6239,8 @@ class Commands:
 
         try:
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
 
             if self.args.monitor:
@@ -6274,9 +6283,10 @@ class Commands:
 
         try:
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
-        
+
             if not self.args.folders:
 
                 # Get the list of folders from the archive
@@ -6311,9 +6321,10 @@ class Commands:
 
         try:
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
-        
+
             if self.args.list:
                 arch.print_current_mounts()
                 return
@@ -6458,15 +6469,16 @@ class Commands:
         '''Check if an update is available'''
         try:
 
-            cmd = "curl -s https://api.github.com/repos/dirkpetersen/froster/releases"
-            
+            cmd = "curl -s https://api.github.com/repos/hpcnow/froster/releases"
+
             result = subprocess.run(cmd, shell=True, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
+
             if result.returncode != 0:
-                print(f"Error checking if froster update available. Command run: {cmd}: {result.stderr.strip()}")
+                print(
+                    f"Error checking if froster update available. Command run: {cmd}: {result.stderr.strip()}")
                 return False
-            
+
             def compare_versions(version1, version2):
                 v1 = [int(v) for v in version1.split(".")]
                 v2 = [int(v) for v in version2.split(".")]
@@ -6477,7 +6489,7 @@ class Commands:
                     if v1_part != v2_part:
                         return v1_part - v2_part
                 return 0
-            
+
             releases = json.loads(result.stdout)
             if not releases:
                 print('Note: Could not check for updates')
@@ -6489,7 +6501,8 @@ class Commands:
             if compare_versions(latest, current) > 0:
                 print(f'\nA froster update is available: froster v{latest}')
                 print(f'You can update froster using the command:')
-                print(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
+                print(
+                    f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
             else:
                 print(f'\nFroster is up to date: froster v{current}\n')
 
@@ -6710,19 +6723,18 @@ class Commands:
         parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
                                     help='folders you would like to to restore (separated by space)')
 
-
         parser_restore.add_argument('-a', '--aws', dest='aws', action='store_true',
                                     help="Restore folder on new AWS EC2 instance instead of local machine")
-        
+
         parser_restore.add_argument('-d', '--days', dest='days', action='store', default=30,
                                     help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
-        
+
         parser_restore.add_argument('-i', '--instance-type', dest='instancetype', action='store', default="",
                                     help='The EC2 instance type is auto-selected, but you can pick any other type here')
 
         parser_restore.add_argument('-l', '--no-download', dest='nodownload', action='store_true',
                                     help="skip download to local storage after retrieval from Glacier")
-        
+
         parser_restore.add_argument('-m', '--monitor', dest='monitor', action='store_true',
                                     help="Monitor EC2 server for cost and idle time.")
 
@@ -6950,7 +6962,7 @@ def main():
             cmd.print_help()
 
         # Check if there are updates on froster every X days
-        if cfg.check_update():
+        if cfg.check_update() and args.subcmd not in ['update', 'upd']:
             cmd.subcmd_update()
 
         # Close the AWS session
