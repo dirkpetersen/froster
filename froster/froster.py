@@ -177,6 +177,10 @@ class ConfigManager:
                 if self.aws_profile and self.aws_region:
                     self.aws_init = True
 
+                # Last timestamp we checked for an updated
+                self.update_check_timestamp = config.get(
+                    'UPDATE', 'timestamp', fallback=None)
+                
                 # Shared configuration
                 self.is_shared = config.getboolean(
                     'SHARED', 'is_shared', fallback=False)
@@ -254,6 +258,7 @@ class ConfigManager:
 
             if self.user_init and self.aws_init and self.s3_init and self.nih_init:
                 self.configuration_done = True
+
         except Exception:
             print_error()
 
@@ -1192,6 +1197,27 @@ class ConfigManager:
         except FileNotFoundError:
             print("sacctmgr command not found. Please ensure it's installed and in your PATH and you are in a head node.")
             return False
+
+        except Exception:
+            print_error()
+            return False
+
+    def check_update(self):
+        '''Set the update check'''
+
+        try:
+            timestamp = time.time()
+
+            if hasattr(self, 'update_check_timestamp') and self.update_check_timestamp is not None:
+                # Check if last day was less than 86400 * 7 = (1 day) * 7  = 1 week
+                if timestamp - self.update_check_timestamp < (86400*7):
+                    # Less than a week since last check
+                    return False
+
+            # Set the update check flag in the config file
+            self.__set_configuration_entry(
+                'UPDATE', 'update_check_timestamp', timestamp)
+            return True
 
         except Exception:
             print_error()
@@ -6147,7 +6173,7 @@ class Commands:
         except Exception:
             print_error()
 
-    def subcmd_archive(self, arch: Archiver):
+    def subcmd_archive(self, arch: Archiver, aws: AWSBoto):
         '''Check command for archiving folders for Froster.'''
 
         try:
@@ -6173,6 +6199,10 @@ class Commands:
                 for folder in self.args.folders:
                     arch.reset_folder(folder, self.args.recursive)
                 return
+
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
 
             # Check if the user provided the hotspots argument
             if self.args.hotspots:
@@ -6200,6 +6230,10 @@ class Commands:
         '''Check command for restoring folders for Froster.'''
 
         try:
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
+
             if self.args.monitor:
                 # aws inactivity and cost monitoring
                 aws.monitor_ec2()
@@ -6235,10 +6269,14 @@ class Commands:
         except Exception:
             print_error()
 
-    def subcmd_delete(self, arch: Archiver):
+    def subcmd_delete(self, arch: Archiver, aws: AWSBoto):
         '''Check command for deleting folders for Froster.'''
 
         try:
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
+        
             if not self.args.folders:
 
                 # Get the list of folders from the archive
@@ -6269,9 +6307,13 @@ class Commands:
         except Exception:
             print_error()
 
-    def subcmd_mount(self, arch: Archiver):
+    def subcmd_mount(self, arch: Archiver, aws: AWSBoto):
 
         try:
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
+        
             if self.args.list:
                 arch.print_current_mounts()
                 return
@@ -6413,26 +6455,40 @@ class Commands:
             return False
 
     def subcmd_update(self):
-        '''Update Froster'''
-
+        '''Check if an update is available'''
         try:
-            if self.args.rclone:
-                cmd = "rclone selfupdate"
+
+            cmd = "curl -s https://api.github.com/repos/dirkpetersen/froster/releases"
+            
+            result = subprocess.run(cmd, shell=True, text=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            if result.returncode != 0:
+                print(f"Error checking if froster update available. Command run: {cmd}: {result.stderr.strip()}")
+                return False
+            
+            def compare_versions(version1, version2):
+                v1 = [int(v) for v in version1.split(".")]
+                v2 = [int(v) for v in version2.split(".")]
+
+                for i in range(max(len(v1), len(v2))):
+                    v1_part = v1[i] if i < len(v1) else 0
+                    v2_part = v2[i] if i < len(v2) else 0
+                    if v1_part != v2_part:
+                        return v1_part - v2_part
+                return 0
+            
+            releases = json.loads(result.stdout)
+            latest = releases[0]['tag_name'].replace('v', '')
+            current = pkg_resources.get_distribution("froster").version
+
+            if compare_versions(latest, current) > 0:
+                print(f'\nA froster update is available: froster v{latest}')
+                print(f'You can update froster using the command:')
+                print(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
             else:
-                cmd = "curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash"
+                print(f'\nFroster is up to date: froster v{current}\n')
 
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                 stderr=subprocess.STDOUT, shell=True)
-
-            for line in iter(p.stdout.readline, b''):
-                print(line.decode(), end='')
-
-            # Wait for the process to finish and get the exit code
-            p.wait()
-
-            if p.returncode != 0:
-                print(
-                    f"Error: The update failed with exit code {p.returncode}.")
         except Exception:
             print_error()
 
@@ -6871,15 +6927,15 @@ def main():
         elif args.subcmd in ['index', 'ind']:
             cmd.subcmd_index(cfg, arch)
         elif args.subcmd in ['archive', 'arc']:
-            cmd.subcmd_archive(arch)
+            cmd.subcmd_archive(arch, aws)
         elif args.subcmd in ['restore', 'rst']:
             cmd.subcmd_restore(arch, aws)
         elif args.subcmd in ['delete', 'del']:
-            cmd.subcmd_delete(arch)
+            cmd.subcmd_delete(arch, aws)
         elif args.subcmd in ['mount', 'mnt']:
-            cmd.subcmd_mount(arch)
+            cmd.subcmd_mount(arch, aws)
         elif args.subcmd in ['umount']:
-            cmd.subcmd_umount(arch)
+            cmd.subcmd_umount(arch, aws)
         elif args.subcmd in ['ssh', 'scp']:
             cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
@@ -6889,6 +6945,11 @@ def main():
         else:
             cmd.print_help()
 
+        # Check if there are updates on froster every X days
+        if cfg.check_update():
+            cmd.subcmd_update(cfg)
+
+        # Close the AWS session
         aws.close_session()
 
     except Exception:
