@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "froster"
-version = "0.11.3"
+version = "0.11.4"
 description = "Add your project description here"
 authors = ["Victor Machado <victor.machado@hpcnow.com>"]
 readme = "README.md"
