@@ -207,9 +207,7 @@ backup_old_installation() {
         if pipx list | grep froster >/dev/null 2>&1; then
                 # If froster is installed with pipx, uninstall it and ignore errors
                 # sometime pipx uninstall fails with error code 1 if PIPX_HOME is set, but froster is still uninstalled
-                set +e
-                pipx uninstall froster -vvv
-                set -e
+                pipx uninstall froster
         fi
 
         echo "...froster uninstalled"
