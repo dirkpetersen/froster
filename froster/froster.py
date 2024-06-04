@@ -6941,7 +6941,7 @@ def main():
         elif args.subcmd in ['credentials', 'crd']:
             cmd.subcmd_credentials(cfg, aws)
         elif args.subcmd in ['update', 'upd']:
-            cmd.subcmd_update(cfg)
+            cmd.subcmd_update()
         else:
             cmd.print_help()
 
