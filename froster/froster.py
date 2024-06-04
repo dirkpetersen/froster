@@ -6479,6 +6479,10 @@ class Commands:
                 return 0
             
             releases = json.loads(result.stdout)
+            if not releases:
+                print('Note: Could not check for updates')
+                return
+
             latest = releases[0]['tag_name'].replace('v', '')
             current = pkg_resources.get_distribution("froster").version
 
