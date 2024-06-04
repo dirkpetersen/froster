@@ -6500,7 +6500,7 @@ class Commands:
 
             if compare_versions(latest, current) > 0:
                 print(f'\nA froster update is available: froster v{latest}')
-                print(f'You can update froster using the command:')
+                print(f'\nYou can update froster using the command:')
                 print(
                     f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
             else:
