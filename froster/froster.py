@@ -6947,7 +6947,7 @@ def main():
 
         # Check if there are updates on froster every X days
         if cfg.check_update():
-            cmd.subcmd_update(cfg)
+            cmd.subcmd_update()
 
         # Close the AWS session
         aws.close_session()
