@@ -6147,7 +6147,7 @@ class Commands:
         except Exception:
             print_error()
 
-    def subcmd_archive(self, arch: Archiver):
+    def subcmd_archive(self, arch: Archiver, aws: AWSBoto):
         '''Check command for archiving folders for Froster.'''
 
         try:
@@ -6173,6 +6173,10 @@ class Commands:
                 for folder in self.args.folders:
                     arch.reset_folder(folder, self.args.recursive)
                 return
+
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
 
             # Check if the user provided the hotspots argument
             if self.args.hotspots:
@@ -6200,6 +6204,10 @@ class Commands:
         '''Check command for restoring folders for Froster.'''
 
         try:
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
+
             if self.args.monitor:
                 # aws inactivity and cost monitoring
                 aws.monitor_ec2()
@@ -6235,10 +6243,14 @@ class Commands:
         except Exception:
             print_error()
 
-    def subcmd_delete(self, arch: Archiver):
+    def subcmd_delete(self, arch: Archiver, aws: AWSBoto):
         '''Check command for deleting folders for Froster.'''
 
         try:
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
+        
             if not self.args.folders:
 
                 # Get the list of folders from the archive
@@ -6269,9 +6281,13 @@ class Commands:
         except Exception:
             print_error()
 
-    def subcmd_mount(self, arch: Archiver):
+    def subcmd_mount(self, arch: Archiver, aws: AWSBoto):
 
         try:
+            if not aws.check_credentials():
+                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                sys.exit(1)
+        
             if self.args.list:
                 arch.print_current_mounts()
                 return
@@ -6847,15 +6863,15 @@ def main():
         elif args.subcmd in ['index', 'ind']:
             cmd.subcmd_index(cfg, arch)
         elif args.subcmd in ['archive', 'arc']:
-            cmd.subcmd_archive(arch)
+            cmd.subcmd_archive(arch, aws)
         elif args.subcmd in ['restore', 'rst']:
             cmd.subcmd_restore(arch, aws)
         elif args.subcmd in ['delete', 'del']:
-            cmd.subcmd_delete(arch)
+            cmd.subcmd_delete(arch, aws)
         elif args.subcmd in ['mount', 'mnt']:
-            cmd.subcmd_mount(arch)
+            cmd.subcmd_mount(arch, aws)
         elif args.subcmd in ['umount']:
-            cmd.subcmd_umount(arch)
+            cmd.subcmd_umount(arch, aws)
         elif args.subcmd in ['ssh', 'scp']:
             cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
