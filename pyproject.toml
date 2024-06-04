@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "froster"
-version = "0.11.5"
-description = "Add your project description here"
+version = "0.11.6"
+description = "Froster is a tool for easy data transfer between local file systems and AWS S3 storage."
 authors = ["Victor Machado <victor.machado@hpcnow.com>"]
 readme = "README.md"
 license = "MIT"
