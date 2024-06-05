@@ -6,7 +6,8 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Upload Python Package
+name: Upload as PyPi package
+run-name: Publish froster in PyPi and install in Ubuntu-latest
 
 on: 
   release:
@@ -37,3 +38,13 @@ jobs:
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
+
+  check-froster-installation:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:   
+      - name: Install Froster
+        run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
+
+      - name: Check Froster is installed
+        run: froster --version
