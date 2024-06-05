@@ -5997,7 +5997,12 @@ class Commands:
         self.parser.print_help()
 
     def print_version(self):
-        '''Print version message'''
+        '''Print froster version'''
+        print(
+            f'froster v{pkg_resources.get_distribution("froster").version}')
+        
+    def print_info(self):
+        '''Print froster info'''
 
         print(
             f'froster v{pkg_resources.get_distribution("froster").version}\n')
@@ -6488,23 +6493,26 @@ class Commands:
 
         # ***
 
-        parser.add_argument('-d', '--debug', dest='debug', action='store_true', default=False,
-                            help="verbose output for all commands")
-
-        parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true', default=False,
-                            help="do not submit a Slurm job, execute in the foreground. ")
-
         parser.add_argument('-c', '--cores', dest='cores', type=int, default=4,
                             help='Number of cores to be allocated for the machine. (default=4)')
+        
+        parser.add_argument('-d', '--debug', dest='debug', action='store_true',
+                            help="verbose output for all commands")
+        
+        parser.add_argument('-i', '--info', dest='info', action='store_true',
+                    help='print froster and packages info')
 
         parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
                             help='Amount of memory to be allocated for the machine in GB. (default=64)')
-
+        
+        parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true',
+                            help="do not submit a Slurm job, execute in the foreground. ")
+        
         parser.add_argument('-p', '--profile', dest='aws_profile', action='store_true', default='',
                             help='which AWS profile in ~/.aws/ should be used. default="aws"')
 
         parser.add_argument('-v', '--version', dest='version', action='store_true',
-                            help='print froster and packages version info')
+                            help='print froster version')
 
         subparsers = parser.add_subparsers(
             dest="subcmd", help='sub-command help')
@@ -6920,6 +6928,10 @@ def main():
         # Print current version of froster
         if args.version:
             cmd.print_version()
+            return
+        
+        if args.info:
+            cmd.print_info()
             return
 
         if cfg.is_shared and cfg.shared_dir:
