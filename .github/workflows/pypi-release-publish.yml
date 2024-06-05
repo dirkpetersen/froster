@@ -61,4 +61,6 @@ jobs:
           if [[ "$VERSION" != "froster $TAG" ]]; then
             echo "Version $VERSION does not match tag $TAG"
             exit 1
+          else
+            echo "froster $VERSION successfully installed"
           fi
