@@ -227,9 +227,15 @@ install_froster() {
     echo
     echo "Installing latest version of froster..."
 
-    # Install froster from PyPi package repository
-    pipx install froster >/dev/null 2>&1 &
-    spinner $!
+    if [ "$LOCAL_INSTALL" = "true" ]; then
+        echo "  Installing from the current directory"
+        pipx install . >/dev/null 2>&1 &
+        spinner $!
+    else 
+        echo "  Installing from PyPi package repository"
+        pipx install froster >/dev/null 2>&1 &
+        spinner $!
+    fi
 
     # Keep the config.ini file (if any)
     if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
