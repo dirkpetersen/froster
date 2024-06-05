@@ -9,6 +9,9 @@ jobs:
   install:
     runs-on: ubuntu-latest
 
+    env:
+      LOCAL_INSTALL: true
+
     steps:
     - uses: actions/checkout@v4
 
@@ -17,22 +20,18 @@ jobs:
       with:
         python-version: '3.x'
 
-    - name: Install dependencies
+    - name: Upgrade pip
       run: |
         python -m pip install --upgrade pip
-        pip install build
-
-    - name: Build package
-      run: python -m build
 
     - name: Install pipx
       run: |
         python -m pip install pipx
         python -m pipx ensurepath
 
-    - name: Install package
-      run: pipx install dist/*.whl
+    - name: Install froster locally
+      run: ./install.sh
 
     - name: Check Froster is installed
-      run: pipx list | grep -q froster
+      run: froster --version
 
