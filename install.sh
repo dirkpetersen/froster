@@ -281,13 +281,17 @@ install_pwalk() {
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
     spinner $!
 
-    echo "Froster installed in:"
-    which froster
     echo
     echo "Options:"
     echo "${XDG_DATA_HOME}/pipx"
     echo "${HOME}/.local/pipx"
     echo "${PIPX_HOME}"
+    source ~/.bashrc
+    echo
+    echo "Froster installed in:"
+    which froster
+    echo
+
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"

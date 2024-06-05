@@ -20,17 +20,15 @@ jobs:
       with:
         python-version: '3.x'
 
-    - name: Upgrade pip
-      run: |
-        python -m pip install --upgrade pip
-
     - name: Install pipx
       run: |
         python -m pip install pipx
         python -m pipx ensurepath
 
     - name: Install froster locally
-      run: ./install.sh
+      run: |
+        source ~/.bashrc
+        ./install.sh
 
     - name: Check Froster is installed
       run: froster --version
