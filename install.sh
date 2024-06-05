@@ -229,7 +229,8 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pipx install .
+        pipx install . >/dev/null 2>&1 &
+        spinner $!
     else 
         echo "  Installing from PyPi package repository"
         pipx install froster >/dev/null 2>&1 &
@@ -279,18 +280,6 @@ install_pwalk() {
     echo "    Compiling pwalk"
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
     spinner $!
-
-    echo
-    echo "Options:"
-    echo "${XDG_DATA_HOME}/pipx"
-    echo "${HOME}/.local/pipx"
-    echo "${PIPX_HOME}"
-    source ~/.bashrc
-    echo
-    echo "Froster installed in:"
-    which froster
-    echo
-
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
