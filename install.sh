@@ -129,18 +129,6 @@ check_apt_dependencies() {
             exit 1
         fi
 
-    # Check if git is installed (pipx installation requirement)
-    # TODO: Get rid of this requirement once froster is in PyPi repository
-    if [[ -z $(command -v git) ]]; then
-        echo "Error: git is not installed."
-        echo
-        echo "Please install git"
-        echo "In most linux distros you can install the latest version of git by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y git"
-        echo
-        exit 1
-    fi
 
     # Check if unzip is installed (rclone requirement)
     if [[ -z $(command -v unzip) ]]; then

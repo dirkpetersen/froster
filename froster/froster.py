@@ -180,7 +180,7 @@ class ConfigManager:
                 # Last timestamp we checked for an updated
                 self.update_check_timestamp = config.get(
                     'UPDATE', 'timestamp', fallback=None)
-                
+
                 # Shared configuration
                 self.is_shared = config.getboolean(
                     'SHARED', 'is_shared', fallback=False)
@@ -1210,6 +1210,9 @@ class ConfigManager:
 
             if hasattr(self, 'update_check_timestamp') and self.update_check_timestamp is not None:
                 # Check if last day was less than 86400 * 7 = (1 day) * 7  = 1 week
+                print(timestamp)
+                print(self.update_check_timestamp)
+                print(timestamp - self.update_check_timestamp)
                 if timestamp - self.update_check_timestamp < (86400*7):
                     # Less than a week since last check
                     return False
@@ -3241,7 +3244,7 @@ class Archiver:
         except Exception:
             print_error()
 
-    def _slurm_cmd(self, folders, cmd_type):
+    def _slurm_cmd(self, folders, cmd_type, scheduled):
         '''Execute the current command using SLURM'''
 
         try:
@@ -3262,7 +3265,8 @@ class Archiver:
             se.submit_job(cmd=cmd,
                           cmd_type=cmd_type,
                           label=label,
-                          shortlabel=shortlabel)
+                          shortlabel=shortlabel,
+                          scheduled=scheduled)
 
         except Exception:
             print_error()
@@ -4458,41 +4462,50 @@ class Archiver:
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
                 return
 
-            if use_slurm(self.args.noslurm):
-                self._slurm_cmd(folders=folders, cmd_type='restore')
 
-            else:
-                # Archive locally all folders. If recursive flag set, archive all subfolders too.
-                for folder in folders:
-                    for root, dirs, files in self._walker(folder):
+            # Archive locally all folders. If recursive flag set, archive all subfolders too.
+            for folder in folders:
+                for root, dirs, files in self._walker(folder):
 
-                        # Break in case of non-recursive restore
-                        if not is_recursive and root != folder:
-                            break
+                    # Break in case of non-recursive restore
+                    if not is_recursive and root != folder:
+                        break
 
-                        archived_folder_info = self.froster_archives_get_entry(
-                            root)
+                    archived_folder_info = self.froster_archives_get_entry(
+                        root)
 
-                        if archived_folder_info is None:
-                            print(f'\nFolder {root} is not archived')
-                            print(f'No entry found in froster-archives.json\n')
-                            continue
+                    if archived_folder_info is None:
+                        print(f'\nFolder {root} is not archived')
+                        print(f'No entry found in froster-archives.json\n')
+                        continue
 
-                        if not self._contains_non_froster_files(root):
-                            print(f'\nWARNING: Folder {root} contains non-froster metadata files')
-                            print('Has this folder been deleted using "froster delete" command?.')
-                            print('Please empty the folder before restoring.\n')
-                            continue
+                    if not self._contains_non_froster_files(root):
+                        print(
+                            f'\nWARNING: Folder {root} contains non-froster metadata files')
+                        print(
+                            'Has this folder been deleted using "froster delete" command?.')
+                        print('Please empty the folder before restoring.\n')
+                        continue
 
-                        if self._restore_locally(root, aws):
+                    if self._restore_locally(root, aws):
+                        # Already restored
 
-                            # If nodownload flag is set we are done
-                            if self.args.nodownload:
-                                print(
-                                    f'\nFolder restored but not downloaded (--no-download flag set)\n')
-                                return
-                            else:
+                        # If nodownload flag is set we are done
+                        if self.args.nodownload:
+                            print(
+                                f'\nFolder restored but not downloaded (--no-download flag set)\n')
+                            return
+                        else:
                                 self._download(root)
+                    else:
+                        # Restore ongoing
+                        # In this case the slurm will only be used for downloading. AWS has taken care of the restore
+                           if is_slurm_installed() and not self.args.noslurm:
+                                # schedule execution in 12 hours
+                                self._slurm_cmd(
+                                    folders=folders, cmd_type='restore', scheduled=12)
+
+
 
         except Exception:
             print_error()
@@ -4518,7 +4531,8 @@ class Archiver:
                     return
 
                 # Get the path to the hashfile
-                hashfile = os.path.join(restpath,  self.md5sum_restored_filename)
+                hashfile = os.path.join(
+                    restpath,  self.md5sum_restored_filename)
 
                 # Create the Rclone object
                 rclone = Rclone(self.args, self.cfg)
@@ -4539,7 +4553,8 @@ class Archiver:
                     os.remove(tar_path)
                     print('    ...done\n')
 
-                where_did_file_go_full_path = os.path.join(target, self.where_did_the_files_go_filename)
+                where_did_file_go_full_path = os.path.join(
+                    target, self.where_did_the_files_go_filename)
                 if os.path.exists(where_did_file_go_full_path):
                     os.remove(where_did_file_go_full_path)
 
@@ -5581,7 +5596,7 @@ class Slurm:
         except Exception:
             print_error()
 
-    def submit_job(self, cmd, cmd_type, label, shortlabel):
+    def submit_job(self, cmd, cmd_type, label, shortlabel, scheduled=None):
         '''Submit a Slurm job'''
 
         try:
@@ -5594,6 +5609,9 @@ class Slurm:
                 f'#SBATCH --job-name=froster:{cmd_type}:{shortlabel}')
             self.add_line(f'#SBATCH --cpus-per-task={self.args.cores}')
             self.add_line(f'#SBATCH --mem={self.args.memory}')
+            if scheduled:
+                self.add_line(f'#SBATCH --begin={scheduled}')
+            self.add_line(f'#SBATCH --requeue')
             self.add_line(f'#SBATCH --output={output_dir}-%J.out')
             self.add_line(f'#SBATCH --mail-type=FAIL,REQUEUE,END')
             self.add_line(f'#SBATCH --mail-user={self.cfg.email}')
@@ -6201,7 +6219,8 @@ class Commands:
                 return
 
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
 
             # Check if the user provided the hotspots argument
@@ -6231,7 +6250,8 @@ class Commands:
 
         try:
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
 
             if self.args.monitor:
@@ -6274,9 +6294,10 @@ class Commands:
 
         try:
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
-        
+
             if not self.args.folders:
 
                 # Get the list of folders from the archive
@@ -6311,9 +6332,10 @@ class Commands:
 
         try:
             if not aws.check_credentials():
-                print('\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+                print(
+                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
                 sys.exit(1)
-        
+
             if self.args.list:
                 arch.print_current_mounts()
                 return
@@ -6454,19 +6476,20 @@ class Commands:
             print('    ...AWS credentials are NOT valid\n')
             return False
 
-    def subcmd_update(self):
+    def subcmd_update(self, mute_no_update):
         '''Check if an update is available'''
         try:
 
-            cmd = "curl -s https://api.github.com/repos/dirkpetersen/froster/releases"
-            
+            cmd = "curl -s https://api.github.com/repos/hpcnow/froster/releases"
+
             result = subprocess.run(cmd, shell=True, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
+
             if result.returncode != 0:
-                print(f"Error checking if froster update available. Command run: {cmd}: {result.stderr.strip()}")
+                print(
+                    f"Error checking if froster update available. Command run: {cmd}: {result.stderr.strip()}")
                 return False
-            
+
             def compare_versions(version1, version2):
                 v1 = [int(v) for v in version1.split(".")]
                 v2 = [int(v) for v in version2.split(".")]
@@ -6477,7 +6500,7 @@ class Commands:
                     if v1_part != v2_part:
                         return v1_part - v2_part
                 return 0
-            
+
             releases = json.loads(result.stdout)
             if not releases:
                 print('Note: Could not check for updates')
@@ -6488,10 +6511,12 @@ class Commands:
 
             if compare_versions(latest, current) > 0:
                 print(f'\nA froster update is available: froster v{latest}')
-                print(f'You can update froster using the command:')
-                print(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
+                print(f'\nYou can update froster using the command:')
+                print(
+                    f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
             else:
-                print(f'\nFroster is up to date: froster v{current}\n')
+                if not mute_no_update:
+                    print(f'\nFroster is up to date: froster v{current}\n')
 
         except Exception:
             print_error()
@@ -6710,19 +6735,18 @@ class Commands:
         parser_restore.add_argument('folders', action='store', default=[],  nargs='*',
                                     help='folders you would like to to restore (separated by space)')
 
-
         parser_restore.add_argument('-a', '--aws', dest='aws', action='store_true',
                                     help="Restore folder on new AWS EC2 instance instead of local machine")
-        
+
         parser_restore.add_argument('-d', '--days', dest='days', action='store', default=30,
                                     help='Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)')
-        
+
         parser_restore.add_argument('-i', '--instance-type', dest='instancetype', action='store', default="",
                                     help='The EC2 instance type is auto-selected, but you can pick any other type here')
 
         parser_restore.add_argument('-l', '--no-download', dest='nodownload', action='store_true',
                                     help="skip download to local storage after retrieval from Glacier")
-        
+
         parser_restore.add_argument('-m', '--monitor', dest='monitor', action='store_true',
                                     help="Monitor EC2 server for cost and idle time.")
 
@@ -6945,13 +6969,13 @@ def main():
         elif args.subcmd in ['credentials', 'crd']:
             cmd.subcmd_credentials(cfg, aws)
         elif args.subcmd in ['update', 'upd']:
-            cmd.subcmd_update()
+            cmd.subcmd_update(mute_no_update=False)
         else:
             cmd.print_help()
 
         # Check if there are updates on froster every X days
-        if cfg.check_update():
-            cmd.subcmd_update()
+        if cfg.check_update() and args.subcmd not in ['update', 'upd']:
+            cmd.subcmd_update(mute_no_update=True)
 
         # Close the AWS session
         aws.close_session()

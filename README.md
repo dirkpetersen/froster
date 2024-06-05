@@ -10,21 +10,21 @@ Froster is a user-friendly archiving tool for teams that move data between highe
 
 ```
 sudo apt-get update
-sudo apt-get install -y curl pipx git gcc lib32gcc-s1 unzip fuse3
+sudo apt-get install -y curl pipx gcc lib32gcc-s1 unzip fuse3
 ```
 
 ### On RHEL 
 
 ```
 sudo yum update
-sudo yum install -y curl pipx git gcc lib32gcc-s1 unzip fuse3 python3-devel
+sudo yum install -y curl pipx gcc lib32gcc-s1 unzip fuse3 python3-devel
 ```
 
 ### On HPC machine
 
 Please contact your administrator to install these packages:
 ```
-curl pipx git gcc lib32gcc-s1 unzip fuse3 python3.xx-devel
+curl pipx gcc lib32gcc-s1 unzip fuse3 python3.xx-devel
 ```
 
 </br>
