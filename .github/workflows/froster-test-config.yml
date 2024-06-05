@@ -2,10 +2,6 @@ name: Test "froster config" command
 run-name: Test "froster config" command
 on: [push, pull_request]
 
-env:
-  REPO: ${{ github.repository }}
-  BRANCH: ${{ github.ref }}
-
 jobs:
   check-froster-installation:
     runs-on: ubuntu-latest
@@ -19,7 +15,7 @@ jobs:
         run: ./install.sh
 
       - name: Check froster version
-        run: froster --version
+        run: froster --info
 
       - name: Install requirements
         run: pip3 install -r requirements.txt
