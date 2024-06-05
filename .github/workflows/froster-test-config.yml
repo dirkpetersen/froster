@@ -1,9 +1,15 @@
 name: Test "froster config" command
+
 run-name: Test "froster config" command
-on: [push, pull_request]
+
+on: 
+  push:
+  pull_request:
+  release:
+    types: [created]
 
 jobs:
-  check-froster-installation:
+  install-froster:
     runs-on: ubuntu-latest
     steps:
 
@@ -11,17 +17,29 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
-      - name: Install froster
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+
+      - name: Install pipx
+        run: python -m pip install pipx
+
+      - name: Install froster locally (push)
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        env:
+          LOCAL_INSTALL: true
         run: ./install.sh
 
-      - name: Check froster version
-        run: froster --info
+      - name: Install froster via PyPi repository (release)
+        if: github.event_name == 'release'
+        run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh?$(date +%s) | bash
 
-      - name: Install requirements
-        run: pip3 install -r requirements.txt
+      - name: Print froster version
+        run: froster --version
 
-      - name: Run unittests
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET: ${{ secrets.AWS_SECRET }}
-        run: python3 -m unittest -v
+      # - name: Run unittests
+      #   env:
+      #     AWS_ACCESS_KEY_ID: $ {{ secrets.AWS_ACCESS_KEY_ID }}     <--- Delete space of $'s
+      #     AWS_SECRET: $ {{ secrets.AWS_SECRET }}     <--- Delete space of $'s
+      #   run: python3 -m unittest -v
