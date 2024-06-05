@@ -6934,7 +6934,7 @@ def main():
         # Print current version of froster
         if args.version:
             cmd.print_version()
-            return True
+            return
 
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
