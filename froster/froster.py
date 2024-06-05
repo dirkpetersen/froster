@@ -5988,7 +5988,6 @@ class Commands:
         self.parser = self.parse_arguments()
         self.args = self.parser.parse_args()
 
-        # TODO: OHSU-96: To be changed for a logger
         if self.args.debug:
             os.environ['DEBUG'] = '1'
 
