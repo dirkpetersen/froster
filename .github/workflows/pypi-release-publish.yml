@@ -48,8 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:   
 
-      - name: Give PyPi repo some time to update. Sleep 60 seconds
-        run: sleep 60
+      - name: Give PyPi repo some time to update. Sleep 120 seconds
+        run: sleep 120
 
       - name: Install Froster
         run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh?$(date +%s) | bash
