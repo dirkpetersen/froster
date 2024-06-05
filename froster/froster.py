@@ -1258,7 +1258,7 @@ class AWSBoto:
         except Exception:
             print_error()
 
-    def _check_session(self):
+    def check_session(self):
         '''Check if the current AWS session is valid'''
 
         try:
@@ -1331,8 +1331,7 @@ class AWSBoto:
                 sts = self.sts_client
 
             else:
-                raise ValueError(
-                    "No AWS credentials nor profile provided and current AWS session not set.")
+                return False
 
             # Check that we can get the caller identity
             sts.get_caller_identity()
@@ -1342,44 +1341,6 @@ class AWSBoto:
 
             # Credentials are valid
             return True
-
-        except boto3.exceptions.ClientError:
-            print("Error: Unable to retrieve AWS regions for the given credentials.")
-            return False
-
-        except boto3.exceptions.NoCredentialsError:
-            print("No AWS credentials found")
-            return False
-
-        except boto3.exceptions.EndpointConnectionError:
-            print("Unable to connect to the AWS S3 endpoint.")
-            return False
-
-        except boto3.exceptions.ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code')
-
-            if error_code == 'RequestTimeTooSkewed':
-                print(
-                    f"The time difference between S3 storage and your computer is too high:\n{e}")
-
-            elif error_code == 'InvalidAccessKeyId':
-                print(f"Error: Invalid AWS Access Key ID:\n{e}")
-
-            elif error_code == 'SignatureDoesNotMatch':
-                if "Signature expired" in str(e):
-                    print(
-                        f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
-                else:
-                    print(f"Error: Invalid AWS Secret Access Key:\n{e}")
-
-            elif error_code == 'InvalidClientTokenId':
-                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
-                print(f"Fix your credentials in ~/.aws/credentials")
-            else:
-                print(f"Error validating credentials: {e}")
-                print(f"Fix your credentials in ~/.aws/credentials")
-
-            return False
 
         except Exception:
             print_error()
@@ -6218,9 +6179,8 @@ class Commands:
                     arch.reset_folder(folder, self.args.recursive)
                 return
 
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error('Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             # Check if the user provided the hotspots argument
@@ -6249,9 +6209,9 @@ class Commands:
         '''Check command for restoring folders for Froster.'''
 
         try:
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error(
+                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             if self.args.monitor:
@@ -6293,9 +6253,8 @@ class Commands:
         '''Check command for deleting folders for Froster.'''
 
         try:
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error('Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             if not self.args.folders:
@@ -6331,9 +6290,9 @@ class Commands:
     def subcmd_mount(self, arch: Archiver, aws: AWSBoto):
 
         try:
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error(
+                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             if self.args.list:
@@ -6875,14 +6834,42 @@ def is_inside_slurm_job():
 def use_slurm(noslurm_flag):
     return is_slurm_installed() and not noslurm_flag and not is_inside_slurm_job()
 
+def get_caller_line():
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back
+    line_number = caller_frame.f_lineno
+    return line_number
+
+def get_caller_function():
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back
+    caller_name = caller_frame.f_code.co_name
+    return caller_name
 
 def print_error(msg: str = None):
     exc_type, exc_value, exc_tb = sys.exc_info()
-    traceback_details = traceback.extract_tb(exc_tb)
 
-    # Get the last call stack. The third element in the tuple is the function name
-    function_name = traceback_details[-1][2]
-    file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    if exc_tb is None:
+        # Printing error message but no error raised from the code
+        function_name = get_caller_function()
+        line = get_caller_line()
+        file_name = os.path.split(__file__)[1]
+        error_code = 1
+    else:
+        # Get the traceback details
+        traceback_details = traceback.extract_tb(exc_tb)
+
+        # Get the last call stack. The third element in the tuple is the function name
+        function_name = traceback_details[-1][2]
+        
+        # Get the filename
+        file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+
+        # Get the line number
+        line = exc_tb.tb_lineno
+
+        # Get the error code
+        error_code = exc_value
 
     # Check if the exception is a KeyboardInterrupt
     if exc_type is KeyboardInterrupt:
@@ -6895,10 +6882,10 @@ def print_error(msg: str = None):
         print('\nError')
         print('  File:', file_name, file=sys.stderr)
         print('  Function:', function_name, file=sys.stderr)
-        print('  Line:', exc_tb.tb_lineno, file=sys.stderr)
-        print('  Error:', exc_value, file=sys.stderr)
+        print('  Line:', line, file=sys.stderr)
+        print('  Error code:', error_code, file=sys.stderr)
         if (msg):
-            print('  \nMessage:', msg, file=sys.stderr)
+            print('  Error message:', msg, file=sys.stderr)
 
         print('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n', file=sys.stderr)
 
