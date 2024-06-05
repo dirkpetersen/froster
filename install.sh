@@ -229,8 +229,7 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pipx install . >/dev/null 2>&1 &
-        spinner $!
+        pipx install .
     else 
         echo "  Installing from PyPi package repository"
         pipx install froster >/dev/null 2>&1 &

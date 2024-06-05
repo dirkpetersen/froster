@@ -26,9 +26,7 @@ jobs:
         python -m pipx ensurepath
 
     - name: Install froster locally
-      run: |
-        source ~/.bashrc
-        ./install.sh
+      run: ./install.sh
 
     - name: Check Froster is installed
       run: froster --version
