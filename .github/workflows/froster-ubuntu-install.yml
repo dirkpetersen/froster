@@ -1,18 +1,38 @@
-name: froster-ubuntu-install
-run-name: Check that froster installs correctly in Ubuntu-latest
+name: Install Froster locally
+run-name: Froster local install succeeded on Ubuntu-latest.
 on: [push, pull_request]
 env:
   REPO: ${{ github.repository }}
   BRANCH: ${{ github.ref }}
 
 jobs:
-  check-froster-installation:
+  install:
     runs-on: ubuntu-latest
-    steps:   
-      - name: Install Froster
-        run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh | bash
 
-      - name: Check Froster is installed
-        run: froster --version
+    steps:
+    - uses: actions/checkout@v4
 
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+
+    - name: Build package
+      run: python -m build
+
+    - name: Install pipx
+      run: |
+        python -m pip install pipx
+        python -m pipx ensurepath
+
+    - name: Install package
+      run: pipx install dist/*.whl
+
+    - name: Check Froster is installed
+      run: pipx list | grep -q froster
 
