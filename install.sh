@@ -370,10 +370,6 @@ install_rclone() {
 ### CODE ###
 ############
 
-#create tmp directory and move to it 
-tmp_dir=$(mktemp -d -t froster_XXXXXX 2>/dev/null || mktemp -d -t /tmp/froster_XXXXXX)
-cd "$tmp_dir"
-
 # Check linux package dependencies
 check_apt_dependencies
 
