@@ -1,4 +1,4 @@
-name: froster-config
+name: Test "froster config" command
 run-name: Test "froster config" command
 on: [push, pull_request]
 
