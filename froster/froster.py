@@ -50,7 +50,6 @@ import pwd
 import grp
 import stat
 import re
-import urllib.parse
 import traceback
 import pkg_resources
 from pathlib import Path
