@@ -25,13 +25,13 @@ jobs:
       - name: Install pipx
         run: python -m pip install pipx
 
-      - name: Install froster locally (push)
+      - name: Install froster locally
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         env:
           LOCAL_INSTALL: true
         run: ./install.sh
 
-      - name: Install froster via PyPi repository (release)
+      - name: Install froster via PyPi repository
         if: github.event_name == 'release'
         run: |
           sleep 300
