@@ -1,10 +1,11 @@
 from froster import *
-from unittest.mock import patch
-import unittest
+from argparse import Namespace
 import configparser
 import os
 import shutil
 import tempfile
+from unittest.mock import patch
+import unittest
 import warnings
 warnings.filterwarnings("always", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=ResourceWarning)
@@ -131,24 +132,110 @@ def check_ini_file(self, ini_file, section, key, value):
     self.assertEqual(config.get(section, key), value)
 
 
-# @patch('builtins.print')
-# class TestConfig(unittest.TestCase):
+@patch('builtins.print')
+class TestConfig(unittest.TestCase):
 
-#     Method executed before every test
-#     def setUp(self):
-#         init_froster(self)
+    # Method executed only once before all tests
+    @classmethod
+    def setUpClass(cls):
+        if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
+            raise ValueError("AWS credentials are not set")
 
-#     Method executed after every test
-#     def tearDown(self):
-#         deinit_froster(self)
+    # Method executed before every test
+    def setUp(self):
 
-#     @patch('inquirer.text', side_effect=[NAME, EMAIL, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
-#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, '+ Create new bucket', S3_STORAGE_CLASS])
-#     @patch('inquirer.confirm', side_effect=[False, True])
-#     def test_subcmd_config(self, mock_text, mock_list, mock_confirm):
-#         '''- Set full configuration'''
+        init_froster(self)
 
-#         self.assertTrue(self.cmd.subcmd_config(self.args, self.cfg, self.aws))
+        # Delete any existing buckets
+        delete_buckets(self)
+
+    # Method executed after every test
+    def tearDown(self):
+
+        # Delete any existing buckets
+        delete_buckets(self)
+
+        deinit_froster(self)
+
+    def helper_set_default_cli_arguments(self):
+        '''- Set default arguments.'''
+
+        self.cmd.args = Namespace(cores=4, debug=False, info=False, memory=64, noslurm=False, aws_profile='', version=False,
+                                  subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
+
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
+    @patch('inquirer.confirm', side_effect=[False, False])
+    def test_subcmd_config(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
+        '''- Set full configuration'''
+
+        # Check that nothing is set
+        self.assertFalse(self.cfg.user_init)
+        self.assertFalse(self.cfg.aws_init)
+        self.assertFalse(self.cfg.nih_init)
+        self.assertFalse(self.cfg.s3_init)
+
+        # Mock the CLI default arguments
+        self.helper_set_default_cli_arguments()
+
+        # Mock the "froster config" command
+        self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
+
+        # Check that everything is set
+        self.assertTrue(self.cfg.user_init)
+        self.assertTrue(self.cfg.aws_init)
+        self.assertTrue(self.cfg.nih_init)
+        self.assertTrue(self.cfg.s3_init)
+
+        # USER config checks
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'name', NAME)
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'email', EMAIL)
+
+        # AWS config checks
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE)
+
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION)
+
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
+
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'region', AWS_REGION)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'output', 'json')
+
+        self.assertTrue(self.aws.check_credentials())
+
+        # SHARED config checks
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'False')
+
+        # NIH config checks
+        check_ini_file(self, self.cfg.config_file,
+                       NIH_SECTION, 'is_nih', 'False')
+        
+        # S3 config checks
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
+
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
+
+        # Check the bucket was created
+        s3_buckets = self.aws.get_buckets()
+        self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
 
 @patch('builtins.print')
@@ -640,6 +727,9 @@ class TestConfigS3(unittest.TestCase):
     def test_set_s3(self, mock_print, mock_list, mock_text):
         '''- Set a new S3 bucket.'''
 
+        # Assert S3 is not set
+        self.assertFalse(self.cfg.s3_init)
+
         # Call set_s3 method
         self.assertTrue(self.cfg.set_s3(self.aws))
 
@@ -769,12 +859,12 @@ class TestConfigS3(unittest.TestCase):
 
 if __name__ == '__main__':
 
-    if True:
+    if False:
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
         # FULL CONFIGURATION
-        # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
+        suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
 
         # PARTIAL CONFIGURATION
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigUser))
