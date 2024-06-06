@@ -50,7 +50,6 @@ import pwd
 import grp
 import stat
 import re
-import urllib.parse
 import traceback
 import pkg_resources
 from pathlib import Path
@@ -1258,7 +1257,7 @@ class AWSBoto:
         except Exception:
             print_error()
 
-    def _check_session(self):
+    def check_session(self):
         '''Check if the current AWS session is valid'''
 
         try:
@@ -1284,7 +1283,7 @@ class AWSBoto:
 
         try:
             # Check if the session is valid
-            if not self._check_session():
+            if not self.check_session():
                 print(
                     f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
@@ -1331,8 +1330,7 @@ class AWSBoto:
                 sts = self.sts_client
 
             else:
-                raise ValueError(
-                    "No AWS credentials nor profile provided and current AWS session not set.")
+                return False
 
             # Check that we can get the caller identity
             sts.get_caller_identity()
@@ -1342,44 +1340,6 @@ class AWSBoto:
 
             # Credentials are valid
             return True
-
-        except boto3.exceptions.ClientError:
-            print("Error: Unable to retrieve AWS regions for the given credentials.")
-            return False
-
-        except boto3.exceptions.NoCredentialsError:
-            print("No AWS credentials found")
-            return False
-
-        except boto3.exceptions.EndpointConnectionError:
-            print("Unable to connect to the AWS S3 endpoint.")
-            return False
-
-        except boto3.exceptions.ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code')
-
-            if error_code == 'RequestTimeTooSkewed':
-                print(
-                    f"The time difference between S3 storage and your computer is too high:\n{e}")
-
-            elif error_code == 'InvalidAccessKeyId':
-                print(f"Error: Invalid AWS Access Key ID:\n{e}")
-
-            elif error_code == 'SignatureDoesNotMatch':
-                if "Signature expired" in str(e):
-                    print(
-                        f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
-                else:
-                    print(f"Error: Invalid AWS Secret Access Key:\n{e}")
-
-            elif error_code == 'InvalidClientTokenId':
-                print(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
-                print(f"Fix your credentials in ~/.aws/credentials")
-            else:
-                print(f"Error validating credentials: {e}")
-                print(f"Fix your credentials in ~/.aws/credentials")
-
-            return False
 
         except Exception:
             print_error()
@@ -1394,7 +1354,7 @@ class AWSBoto:
         try:
 
             # Check if the session is valid
-            if not self._check_session():
+            if not self.check_session():
                 print(
                     f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
                 print("run 'froster config --aws' to fix this.\n")
@@ -1432,7 +1392,7 @@ class AWSBoto:
         ''' Get a list of all the froster buckets in the current session'''
 
         # Check if the session is valid
-        if not self._check_session():
+        if not self.check_session():
             print(
                 f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
             print("run 'froster config --aws' to fix this.\n")
@@ -1472,7 +1432,7 @@ class AWSBoto:
 
         try:
             # Check if the session is valid
-            self._check_session()
+            self.check_session()
 
             regions = self.ec2_client.describe_regions()
             region_names = [region['RegionName']
@@ -1496,7 +1456,7 @@ class AWSBoto:
             raise ValueError('No bucket name provided')
 
         # Check if the session is valid
-        if not self._check_session():
+        if not self.check_session():
             print(
                 f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
             print("run 'froster config --aws' to fix this.\n")
@@ -1573,7 +1533,7 @@ class AWSBoto:
         '''Restore the objects in the given bucket with the given prefix'''
 
         # Check if the session is valid
-        if not self._check_session():
+        if not self.check_session():
             print(
                 f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
             print("run 'froster config --aws' to fix this.\n")
@@ -4462,7 +4422,6 @@ class Archiver:
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
                 return
 
-
             # Archive locally all folders. If recursive flag set, archive all subfolders too.
             for folder in folders:
                 for root, dirs, files in self._walker(folder):
@@ -4496,16 +4455,14 @@ class Archiver:
                                 f'\nFolder restored but not downloaded (--no-download flag set)\n')
                             return
                         else:
-                                self._download(root)
+                            self._download(root)
                     else:
                         # Restore ongoing
                         # In this case the slurm will only be used for downloading. AWS has taken care of the restore
-                           if is_slurm_installed() and not self.args.noslurm:
-                                # schedule execution in 12 hours
-                                self._slurm_cmd(
-                                    folders=folders, cmd_type='restore', scheduled=12)
-
-
+                        if is_slurm_installed() and not self.args.noslurm:
+                            # schedule execution in 12 hours
+                            self._slurm_cmd(
+                                folders=folders, cmd_type='restore', scheduled=12)
 
         except Exception:
             print_error()
@@ -6028,7 +5985,6 @@ class Commands:
         self.parser = self.parse_arguments()
         self.args = self.parser.parse_args()
 
-        # TODO: OHSU-96: To be changed for a logger
         if self.args.debug:
             os.environ['DEBUG'] = '1'
 
@@ -6037,7 +5993,12 @@ class Commands:
         self.parser.print_help()
 
     def print_version(self):
-        '''Print version message'''
+        '''Print froster version'''
+        print(
+            f'froster v{pkg_resources.get_distribution("froster").version}')
+
+    def print_info(self):
+        '''Print froster info'''
 
         print(
             f'froster v{pkg_resources.get_distribution("froster").version}\n')
@@ -6218,9 +6179,9 @@ class Commands:
                     arch.reset_folder(folder, self.args.recursive)
                 return
 
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error(
+                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             # Check if the user provided the hotspots argument
@@ -6249,9 +6210,9 @@ class Commands:
         '''Check command for restoring folders for Froster.'''
 
         try:
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error(
+                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             if self.args.monitor:
@@ -6293,9 +6254,9 @@ class Commands:
         '''Check command for deleting folders for Froster.'''
 
         try:
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error(
+                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             if not self.args.folders:
@@ -6331,9 +6292,9 @@ class Commands:
     def subcmd_mount(self, arch: Archiver, aws: AWSBoto):
 
         try:
-            if not aws.check_credentials():
-                print(
-                    '\nError: invalid credentials. Check the AWS configuration with "froster config --aws"\n')
+            if not aws.check_session():
+                print_error(
+                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
             if self.args.list:
@@ -6530,23 +6491,26 @@ class Commands:
 
         # ***
 
-        parser.add_argument('-d', '--debug', dest='debug', action='store_true', default=False,
-                            help="verbose output for all commands")
-
-        parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true', default=False,
-                            help="do not submit a Slurm job, execute in the foreground. ")
-
         parser.add_argument('-c', '--cores', dest='cores', type=int, default=4,
                             help='Number of cores to be allocated for the machine. (default=4)')
 
+        parser.add_argument('-d', '--debug', dest='debug', action='store_true',
+                            help="verbose output for all commands")
+
+        parser.add_argument('-i', '--info', dest='info', action='store_true',
+                            help='print froster and packages info')
+
         parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
                             help='Amount of memory to be allocated for the machine in GB. (default=64)')
+
+        parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true',
+                            help="do not submit a Slurm job, execute in the foreground. ")
 
         parser.add_argument('-p', '--profile', dest='aws_profile', action='store_true', default='',
                             help='which AWS profile in ~/.aws/ should be used. default="aws"')
 
         parser.add_argument('-v', '--version', dest='version', action='store_true',
-                            help='print froster and packages version info')
+                            help='print froster version')
 
         subparsers = parser.add_subparsers(
             dest="subcmd", help='sub-command help')
@@ -6876,13 +6840,44 @@ def use_slurm(noslurm_flag):
     return is_slurm_installed() and not noslurm_flag and not is_inside_slurm_job()
 
 
+def get_caller_line():
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back
+    line_number = caller_frame.f_lineno
+    return line_number
+
+
+def get_caller_function():
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back
+    caller_name = caller_frame.f_code.co_name
+    return caller_name
+
+
 def print_error(msg: str = None):
     exc_type, exc_value, exc_tb = sys.exc_info()
-    traceback_details = traceback.extract_tb(exc_tb)
 
-    # Get the last call stack. The third element in the tuple is the function name
-    function_name = traceback_details[-1][2]
-    file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    if exc_tb is None:
+        # Printing error message but no error raised from the code
+        function_name = get_caller_function()
+        line = get_caller_line()
+        file_name = os.path.split(__file__)[1]
+        error_code = 1
+    else:
+        # Get the traceback details
+        traceback_details = traceback.extract_tb(exc_tb)
+
+        # Get the last call stack. The third element in the tuple is the function name
+        function_name = traceback_details[-1][2]
+
+        # Get the filename
+        file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+
+        # Get the line number
+        line = exc_tb.tb_lineno
+
+        # Get the error code
+        error_code = exc_value
 
     # Check if the exception is a KeyboardInterrupt
     if exc_type is KeyboardInterrupt:
@@ -6895,10 +6890,10 @@ def print_error(msg: str = None):
         print('\nError')
         print('  File:', file_name, file=sys.stderr)
         print('  Function:', function_name, file=sys.stderr)
-        print('  Line:', exc_tb.tb_lineno, file=sys.stderr)
-        print('  Error:', exc_value, file=sys.stderr)
+        print('  Line:', line, file=sys.stderr)
+        print('  Error code:', error_code, file=sys.stderr)
         if (msg):
-            print('  \nMessage:', msg, file=sys.stderr)
+            print('  Error message:', msg, file=sys.stderr)
 
         print('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n', file=sys.stderr)
 
@@ -6934,7 +6929,11 @@ def main():
         # Print current version of froster
         if args.version:
             cmd.print_version()
-            return True
+            return
+
+        if args.info:
+            cmd.print_info()
+            return
 
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
@@ -6985,4 +6984,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        print_error()
+        sys.exit(1)

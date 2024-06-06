@@ -6,7 +6,8 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Upload Python Package
+name: Upload as PyPi package
+run-name: Publish froster in PyPi and install in Ubuntu-latest
 
 on: 
   release:
@@ -22,18 +23,52 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
         python-version: '3.x'
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build
+
     - name: Build package
       run: python -m build
+
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
+
+  check-froster-installation:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:   
+
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+
+      - name: Install pipx
+        run: python -m pip install pipx
+
+      - name: Give PyPi repo some minuts to update
+        run: sleep 300 # Wait for 5 minutes
+
+      - name: Install Froster
+        run: curl -s https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref }}/install.sh?$(date +%s) | bash
+
+      - name: Check Froster version matches tag
+        run: |
+          VERSION=$(froster --version)
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ "$VERSION" != "froster $TAG" ]]; then
+            echo "Version $VERSION does not match tag $TAG"
+            exit 1
+          else
+            echo "froster $VERSION successfully installed"
+          fi
