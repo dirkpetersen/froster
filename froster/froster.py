@@ -6058,10 +6058,10 @@ class Commands:
             if self.args.print:
                 return cfg.print_config()
 
-            if self.args.monitor:
-                froster_binary = os.path.join(cfg.bin_dir, 'froster')
-                return cfg.add_systemd_cron_job(
-                    f'{froster_binary} restore --monitor', '30')
+            # if self.args.monitor:
+            #     froster_binary = os.path.join(cfg.bin_dir, 'froster')
+            #     return cfg.add_systemd_cron_job(
+            #         f'{froster_binary} restore --monitor', '30')
 
             print(f'\n*****************************')
             print(f'*** FROSTER CONFIGURATION ***')
@@ -6087,7 +6087,7 @@ class Commands:
 
             if not cfg.set_shared():
                 return False
-
+            
             # If shared configuration and shared_config.ini file exists, then use it
             if cfg.is_shared:
                 if hasattr(cfg, 'shared_config_file') and os.path.exists(cfg.shared_config_file):
@@ -6216,10 +6216,10 @@ class Commands:
                     'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
 
-            if self.args.monitor:
-                # aws inactivity and cost monitoring
-                aws.monitor_ec2()
-                return
+            # if self.args.monitor:
+            #     # aws inactivity and cost monitoring
+            #     aws.monitor_ec2()
+            #     return
 
             if not self.args.folders:
 
