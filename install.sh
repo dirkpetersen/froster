@@ -377,9 +377,14 @@ install_pwalk
 # Install rclone
 install_rclone
 
-echo
-echo "Installation complete!"
+# Get the installed froster version
+version=$(pipx runpip froster show froster | grep Version | awk '{print $2}')
 
+# Print success message
+echo
+echo "froster v$version has been successfully installed!"
+
+# Print post-installation instructions
 echo
 echo "You will need to open a new terminal or refresh your current terminal session by running command:"
 echo "  source ~/.bashrc"
