@@ -6471,7 +6471,9 @@ class Commands:
             current = pkg_resources.get_distribution("froster").version
 
             if compare_versions(latest, current) > 0:
-                print(f'\nA froster update is available: froster v{latest}')
+                print(f'\nA froster update is available!')
+                print(f'  Current version: froster v{current}')
+                print(f'  Latest version: froster v{latest}')
                 print(f'\nYou can update froster using the command:')
                 print(
                     f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
@@ -6939,7 +6941,7 @@ def main():
             cfg.assure_permissions_and_group(cfg.shared_dir)
 
         # Do not allow other commands rather than config if the configuration is not set
-        if not cfg.configuration_done and args.subcmd not in ['config', 'cnf']:
+        if not cfg.configuration_done and args.subcmd not in ['config', 'cnf'] and args.subcmd not in ['update', 'upd']:
             print('\nWARNING: Froster is not full configured yet:')
             print(f'  user: {"done" if cfg.user_init else "pending"}')
             print(f'  aws: {"done" if cfg.aws_init else "pending"}')
