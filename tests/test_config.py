@@ -627,7 +627,6 @@ class TestConfigS3(unittest.TestCase):
         # Delete any existing buckets
         delete_buckets(self)
 
-
     # Method executed after every test
     def tearDown(self):
 
@@ -766,54 +765,6 @@ class TestConfigS3(unittest.TestCase):
 
         # Check the bucket was created
         self.assertNotIn(S3_BUCKET_NAME, s3_buckets)
-
-
-# TODO: SLURM part pending
-
-# # @patch('builtins.print')
-# class TestConfigSlurm(unittest.TestCase):
-
-#     # Method executed before every test
-#     def setUp(self):
-#         init_froster(self)
-
-#     # Method executed after every test
-#     def tearDown(self):
-#         deinit_froster(self)
-
-#     @patch('shutil.which', return_value=True)
-#     @patch('inquirer.text', side_effect=[SLURM_WALLTIME_DAYS, SLURM_WALLTIME_HOURS, SLURM_LOCAL_SCRATCH, SLURM_SCRIPT_SCRATCH, SLURM_SCRIPT_TEARS_DOWN, SLURM_ROOT])
-#     @patch('inquirer.list_input', side_effect=[SLURM_PARTITION, SLURM_QOS])
-#     def test_set_slurm(self, mock_shutil, mock_text, mock_list):
-#         '''-  set_slurm'''
-
-#         # Call set_slurm method
-#         self.assertTrue(self.cfg.set_slurm(self.args))
-
-#         # Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'slurm_walltime_days', str(SLURM_WALLTIME_DAYS))
-
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'slurm_walltime_hours', str(SLURM_WALLTIME_HOURS))
-
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'slurm_partition', SLURM_PARTITION)
-
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'slurm_qos', SLURM_QOS)
-
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'slurm_lscratch', SLURM_LOCAL_SCRATCH)
-
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'lscratch_mkdir', SLURM_SCRIPT_SCRATCH)
-
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'lscratch_rmdir', SLURM_SCRIPT_TEARS_DOWN)
-
-#         check_ini_file(self, self.cfg.config_file,
-#                        'SLURM', 'lscratch_root', SLURM_ROOT)
 
 
 if __name__ == '__main__':
