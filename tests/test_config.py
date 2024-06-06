@@ -16,6 +16,7 @@ NAME_2 = "Alice"
 EMAIL = "bob@bob.com"
 EMAIL_2 = "alice@alice.com"
 
+AWS_DEFAULT_PATH = os.path.join(tempfile.gettempdir(), '.aws')
 AWS_REGION = "eu-west-1"
 AWS_REGION_2 = "eu-west-2"
 AWS_PROFILE = "froster-unittest-bob"
@@ -59,12 +60,12 @@ def init_froster(self):
     self.aws = AWSBoto(self.args, self.cfg, self.arch)
 
     # Create a fresh data directory
-    if os.path.exists(self.cfg.data_dir):
+    if hasattr(self.cfg, 'data_dir') and os.path.exists(self.cfg.data_dir):
         shutil.rmtree(self.cfg.data_dir)
     os.makedirs(self.cfg.data_dir, exist_ok=True, mode=0o775)
 
     # Create a fresh data directory
-    if os.path.exists(self.cfg.config_dir):
+    if hasattr(self.cfg, 'config_dir') and os.path.exists(self.cfg.config_dir):
         shutil.rmtree(self.cfg.config_dir)
     os.makedirs(self.cfg.config_dir, exist_ok=True, mode=0o775)
 
@@ -74,9 +75,9 @@ def init_froster(self):
     os.makedirs(SHARED_DIR, exist_ok=True, mode=0o775)
 
     # Create a fresh aws directory
-    if os.path.exists(self.cfg.aws_dir):
-        shutil.rmtree(self.cfg.aws_dir)
-    os.makedirs(self.cfg.aws_dir, exist_ok=True, mode=0o775)
+    if os.path.exists(AWS_DEFAULT_PATH):
+        shutil.rmtree(AWS_DEFAULT_PATH)
+    os.makedirs(AWS_DEFAULT_PATH, exist_ok=True, mode=0o775)
 
 
 def deinit_froster(self):
@@ -93,6 +94,9 @@ def deinit_froster(self):
 
     if os.path.exists(SHARED_DIR):
         shutil.rmtree(SHARED_DIR)
+
+    if os.path.exists(AWS_DEFAULT_PATH):
+        shutil.rmtree(AWS_DEFAULT_PATH)
 
     # Delete initizalized objects
     if hasattr(self, 'parser'):
@@ -159,7 +163,7 @@ class TestConfigUser(unittest.TestCase):
         deinit_froster(self)
 
     @patch('inquirer.text', side_effect=[NAME, EMAIL])
-    def test_set_user(self, mock_print, mock_input_text):
+    def test_set_user(self, mock_print, mock_text):
         '''- Set the user and email in the configuration file.'''
 
         # Check that the user is not set
@@ -195,9 +199,10 @@ class TestConfigAWS(unittest.TestCase):
     def tearDown(self):
         deinit_froster(self)
 
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-    def test_set_aws(self, mock_print, mock_input_list, mock_input_text):
+    def test_set_aws(self, mock_print, mock_prompt, mock_list, mock_text):
         '''- Set a new AWS profile with valid credentials.'''
 
         # Check that the aws_init is not set
@@ -230,9 +235,10 @@ class TestConfigAWS(unittest.TestCase):
 
         self.assertTrue(self.aws.check_credentials())
 
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, 'wrong_access_key_id', 'wrong_secret'])
-    def test_set_aws_invalid_credentials(self, mock_print, mock_input_list, mock_input_text):
+    def test_set_aws_invalid_credentials(self, mock_print, mock_prompt, mock_list, mock_text):
         '''- Set a new AWS profile with invalid credentials.'''
 
         # Check that the aws_init is not set
@@ -249,9 +255,10 @@ class TestConfigAWS(unittest.TestCase):
         config.read(self.cfg.aws_credentials_file)
         self.assertNotIn(AWS_PROFILE, config.sections())
 
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, AWS_PROFILE, AWS_REGION])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-    def test_set_aws_select_profile(self, mock_print, mock_input_list, mock_input_text):
+    def test_set_aws_select_profile(self, mock_print, mock_prompt, mock_list, mock_text):
         '''- Select profile from AWS configuration file.'''
 
         # Check that the aws_init is not set
@@ -290,10 +297,11 @@ class TestConfigAWS(unittest.TestCase):
 
         self.assertTrue(self.aws.check_credentials())
 
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new profile', AWS_REGION_2])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET])
     @patch('inquirer.confirm', side_effect=['y'])
-    def test_set_aws_overwrite_profile(self, mock_print, mock_input_list, mock_input_text, mock_input_confirm):
+    def test_set_aws_overwrite_profile(self, mock_print, mock_prompt, mock_list, mock_text, mock_confirm):
         '''- Overwrite an existing AWS profile.'''
 
         # Check that the aws_init is not set
@@ -332,10 +340,11 @@ class TestConfigAWS(unittest.TestCase):
 
         self.assertTrue(self.aws.check_credentials())
 
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new profile'])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, AWS_PROFILE])
     @patch('inquirer.confirm', side_effect=[False])
-    def test_set_aws_do_not_overwrite_profile(self, mock_print, mock_input_list, mock_input_text, mock_input_confirm):
+    def test_set_aws_do_not_overwrite_profile(self, mock_print, mock_prompt, mock_list, mock_text, mock_confirm):
         '''- Do not overwrite an existing AWS profile.'''
 
         # Check that the aws_init is not set
@@ -388,7 +397,7 @@ class TestConfigShared(unittest.TestCase):
 
     @patch('inquirer.confirm', side_effect=[False, True])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    def test_set_shared(self, mock_print, mock_input_confirm, mock_input_prompt):
+    def test_set_shared(self, mock_print, mock_confirm, mock_prompt):
         '''- Set the shared flag to False and then to True in the configuration file.'''
 
         # Call set_shared method and set the shared flag to False
@@ -414,7 +423,7 @@ class TestConfigShared(unittest.TestCase):
 
     @patch('inquirer.confirm', side_effect=[True, False])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    def test_set_shared_do_not_move_froster_archives(self, mock_print, mock_input_confirm, mock_input_prompt):
+    def test_set_shared_do_not_move_froster_archives(self, mock_print, mock_confirm, mock_prompt):
         '''- Set the shared flag to True and do not move the froster_archives.json file.'''
 
         # Create a dummy froster_archives.json file
@@ -446,7 +455,7 @@ class TestConfigShared(unittest.TestCase):
 
     @patch('inquirer.confirm', side_effect=[True, True])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    def test_set_shared_move_froster_archives(self, mock_print, mock_input_confirm, mock_input_prompt):
+    def test_set_shared_move_froster_archives(self, mock_print, mock_confirm, mock_prompt):
         '''- Set the shared flag to True and move the froster_archives.json file.'''
 
         # Create a dummy froster_archives.json file
@@ -479,7 +488,7 @@ class TestConfigShared(unittest.TestCase):
 
     @patch('inquirer.confirm', side_effect=[True])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    def test_set_shared_froster_archives_exist(self, mock_print, mock_input_confirm, mock_input_prompt):
+    def test_set_shared_froster_archives_exist(self, mock_print, mock_confirm, mock_prompt):
         '''- Set the shared flag to True when froster_archives.json file already exists in shared dir.'''
 
         # Create a dummy froster_archives.json file in the shared directory
@@ -512,7 +521,7 @@ class TestConfigShared(unittest.TestCase):
 
     @patch('inquirer.confirm', side_effect=[True])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    def test_set_shared_froster_shared_config_exist(self, mock_print, mock_input_confirm, mock_input_prompt):
+    def test_set_shared_froster_shared_config_exist(self, mock_print, mock_confirm, mock_prompt):
         '''- Set the shared flag to True when froster_archives.json file already exists in shared dir.'''
 
         # Create a dummy froster_archives.json file in the shared directory
@@ -551,7 +560,7 @@ class TestConfigNIH(unittest.TestCase):
         deinit_froster(self)
 
     @patch('inquirer.confirm', side_effect=[True, False])
-    def test_set_nih(self, mock_print, mock_input_confirm):
+    def test_set_nih(self, mock_print, mock_confirm):
         '''- Set the NIH flag to True and then to False.'''
 
         # Check that the nih_init is not set
@@ -579,7 +588,7 @@ class TestConfigNIH(unittest.TestCase):
 
     @patch('inquirer.confirm', side_effect=[True, True, False])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    def test_set_nih_when_shared_config(self, mock_print, mock_input_confirm, mock_input_promp):
+    def test_set_nih_when_shared_config(self, mock_print, mock_confirm, mock_promp):
         '''- Set the NIH flag to True and then to False.'''
 
         # Call set_shared method
@@ -604,10 +613,11 @@ class TestConfigNIH(unittest.TestCase):
 class TestConfigS3(unittest.TestCase):
 
     # Method executed before every test
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
     @patch('builtins.print')
-    def setUp(self, mock_print, mock_input_list, mock_input_text):
+    def setUp(self, mock_print, mock_prompt, mock_input_list, mock_input_text):
 
         init_froster(self)
 
@@ -617,6 +627,7 @@ class TestConfigS3(unittest.TestCase):
         # Delete any existing buckets
         delete_buckets(self)
 
+
     # Method executed after every test
     def tearDown(self):
 
@@ -624,6 +635,33 @@ class TestConfigS3(unittest.TestCase):
         delete_buckets(self)
 
         deinit_froster(self)
+
+    @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
+    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    def test_set_s3(self, mock_print, mock_list, mock_text):
+        '''- Set a new S3 bucket.'''
+
+        # Call set_s3 method
+        self.assertTrue(self.cfg.set_s3(self.aws))
+
+        # Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
+
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
+
+        # Check that the s3_init is set
+        self.assertTrue(self.cfg.s3_init)
+
+        # Get the buckets list
+        s3_buckets = self.aws.get_buckets()
+
+        # Check the bucket was created
+        self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
     def test_set_s3_aws_not_init(self, mock_print):
         '''- Set_s3 method returns False if AWS credentials are not set.'''
@@ -669,36 +707,9 @@ class TestConfigS3(unittest.TestCase):
 
     @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
-    def test_set_s3(self, mock_print, mock_input_list, mock_input_text):
-        '''- Set a new S3 bucket.'''
-
-        # Call set_s3 method
-        self.assertTrue(self.cfg.set_s3(self.aws))
-
-        # Check that the configuration files were updated correctly
-        check_ini_file(self, self.cfg.config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
-
-        check_ini_file(self, self.cfg.config_file,
-                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
-
-        check_ini_file(self, self.cfg.config_file,
-                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
-
-        # Check that the s3_init is set
-        self.assertTrue(self.cfg.s3_init)
-
-        # Get the buckets list
-        s3_buckets = self.aws.get_buckets()
-
-        # Check the bucket was created
-        self.assertIn(S3_BUCKET_NAME, s3_buckets)
-
-    @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
-    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
     @patch('inquirer.confirm', side_effect=[True])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    def test_set_s3_when_shared_config(self, mock_print, mock_input_list, mock_input_text, mock_input_confirm, mock_input_prompt):
+    def test_set_s3_when_shared_config(self, mock_print, mock_list, mock_text, mock_confirm, mock_prompt):
         '''- Set a new S3 bucket when shared configuration.'''
 
         # Call set_shared method
@@ -728,7 +739,7 @@ class TestConfigS3(unittest.TestCase):
 
     @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS, S3_BUCKET_NAME, S3_STORAGE_CLASS_2])
     @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR, S3_ARCHIVE_DIR_2])
-    def test_set_s3_select_bucket(self, mock_print, mock_input_list, mock_input_text):
+    def test_set_s3_select_bucket(self, mock_print, mock_list, mock_text):
         '''- Select S3 bucket.'''
 
         # Call set_s3 method
@@ -773,7 +784,7 @@ class TestConfigS3(unittest.TestCase):
 #     @patch('shutil.which', return_value=True)
 #     @patch('inquirer.text', side_effect=[SLURM_WALLTIME_DAYS, SLURM_WALLTIME_HOURS, SLURM_LOCAL_SCRATCH, SLURM_SCRIPT_SCRATCH, SLURM_SCRIPT_TEARS_DOWN, SLURM_ROOT])
 #     @patch('inquirer.list_input', side_effect=[SLURM_PARTITION, SLURM_QOS])
-#     def test_set_slurm(self, mock_shutil, mock_input_text, mock_input_list):
+#     def test_set_slurm(self, mock_shutil, mock_text, mock_list):
 #         '''-  set_slurm'''
 
 #         # Call set_slurm method
@@ -811,14 +822,23 @@ if __name__ == '__main__':
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
-        suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
+        # FULL CONFIGURATION
+        # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
+
+        # PARTIAL CONFIGURATION
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigUser))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigAWS))
         # suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestConfigShared))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigNIH))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigS3))
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigSlurm))
-        # suite.addTest(TestConfigNIH('test_set_nih_when_shared_config'))
-        # suite.addTest(TestConfigS3('test_set_s3_when_shared_config'))
+
+        # BASIC TEST CASE FOR EVERY TEST
+        # suite.addTest(TestConfigUser('test_set_user'))
+        # suite.addTest(TestConfigAWS('test_set_aws'))
+        # suite.addTest(TestConfigShared('test_set_shared'))
+        # suite.addTest(TestConfigNIH('test_set_nih'))
+        # suite.addTest(TestConfigS3('test_set_s3'))
+
         runner = unittest.TextTestRunner(verbosity=2)
         runner.run(suite)
