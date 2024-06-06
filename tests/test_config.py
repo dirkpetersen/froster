@@ -157,6 +157,8 @@ class TestConfig(unittest.TestCase):
 
         deinit_froster(self)
 
+    # HELPERS
+
     def helper_set_default_cli_arguments(self):
         '''- Set default arguments.'''
 
@@ -167,10 +169,10 @@ class TestConfig(unittest.TestCase):
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[False, False])
-    def test_subcmd_config(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
-        '''- Set full configuration'''
+    def helper_run_subcmd_config(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
+        '''- Helper that sets full configuration'''
 
-        # Check that nothing is set
+        # Check that nothing is set yet
         self.assertFalse(self.cfg.user_init)
         self.assertFalse(self.cfg.aws_init)
         self.assertFalse(self.cfg.nih_init)
@@ -181,6 +183,21 @@ class TestConfig(unittest.TestCase):
 
         # Mock the "froster config" command
         self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
+
+    @patch('inquirer.text', side_effect=[NAME_2, EMAIL_2, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_2, S3_ARCHIVE_DIR_2])
+    @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION_2, '+ Create new bucket', S3_STORAGE_CLASS_2])
+    @patch('inquirer.confirm', side_effect=[True, False, False])
+    def helper_run_subcmd_config_overwrite(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
+        '''- Helper that sets full configuration'''
+
+        # Mock the CLI default arguments
+        self.helper_set_default_cli_arguments()
+
+        # Mock the "froster config" command
+        self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
+
+    def helper_check_subcmd_config(self):
 
         # Check that everything is set
         self.assertTrue(self.cfg.user_init)
@@ -222,7 +239,7 @@ class TestConfig(unittest.TestCase):
         # NIH config checks
         check_ini_file(self, self.cfg.config_file,
                        NIH_SECTION, 'is_nih', 'False')
-        
+
         # S3 config checks
         check_ini_file(self, self.cfg.config_file,
                        S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
@@ -236,6 +253,83 @@ class TestConfig(unittest.TestCase):
         # Check the bucket was created
         s3_buckets = self.aws.get_buckets()
         self.assertIn(S3_BUCKET_NAME, s3_buckets)
+
+    def helper_check_subcmd_config_overwrite(self):
+
+        # Check that everything is set
+        self.assertTrue(self.cfg.user_init)
+        self.assertTrue(self.cfg.aws_init)
+        self.assertTrue(self.cfg.nih_init)
+        self.assertTrue(self.cfg.s3_init)
+
+        # USER config checks
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'name', NAME_2)
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'email', EMAIL_2)
+
+        # AWS config checks
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE_2)
+
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION_2)
+
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE_2,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
+
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE_2, 'aws_secret_access_key', AWS_SECRET)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE_2, 'region', AWS_REGION_2)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE_2, 'output', 'json')
+
+        self.assertTrue(self.aws.check_credentials())
+
+        # SHARED config checks
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'False')
+
+        # NIH config checks
+        check_ini_file(self, self.cfg.config_file,
+                       NIH_SECTION, 'is_nih', 'False')
+
+        # S3 config checks
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_2)
+
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR_2)
+
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS_2)
+
+        # Check the bucket was created
+        s3_buckets = self.aws.get_buckets()
+        self.assertIn(S3_BUCKET_NAME_2, s3_buckets)
+
+    # TESTS
+
+    def test_subcmd_config(self, mock_print):
+        '''- Set full configuration'''
+
+        self.helper_run_subcmd_config(None)
+
+        self.helper_check_subcmd_config()
+
+    def test_subcmd_config_overwrite(self, mock_print,):
+        '''- Overwirte current configuration'''
+
+        self.helper_run_subcmd_config(None)
+
+        self.helper_check_subcmd_config()
+
+        self.helper_run_subcmd_config_overwrite(None)
+
+        self.helper_check_subcmd_config_overwrite()
 
 
 @patch('builtins.print')
