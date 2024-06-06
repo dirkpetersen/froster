@@ -471,15 +471,14 @@ class ConfigManager:
 
             # Ask user to enter the path to a aws credentials directory
 
-            if os.path.exists(os.path.join(self.home_dir, '.aws')):
-                default_aws_dir = os.path.join(self.home_dir, '.aws')
-            else:
-                default_aws_dir = None
+            default_aws_dir = os.path.join(self.home_dir, '.aws')
+            if not os.path.exists(os.path.join(self.home_dir, '.aws')):
+                os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
 
             aws_dir_question = [
                 inquirer.Path(
                     'aws_dir',
-                    message=f'Enter the path to aws credentials directory (default: {default_aws_dir})',
+                    message=f'Enter the path to aws credentials directory (default: ~/.aws)',
                     default=default_aws_dir,
                     validate=self.__inquirer_check_path_exists)
             ]
@@ -660,9 +659,6 @@ class ConfigManager:
             if not region:
                 raise ValueError('No region provided')
 
-            # If it does not exist, create aws directory
-            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
-
             # Create a aws config ConfigParser object
             aws_config = configparser.ConfigParser()
 
@@ -705,9 +701,6 @@ class ConfigManager:
 
             if not aws_secret_access_key:
                 raise ValueError('No AWS secret access key provided')
-
-            # If it does not exist, create aws directory
-            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
 
             # Create a aws credentials ConfigParser object
             aws_credentials = configparser.ConfigParser()
@@ -1118,20 +1111,21 @@ class ConfigManager:
         '''Set the Slurm configuration'''
 
         try:
-            # Run the sacctmgr command
-            result = subprocess.run(
-                ['sacctmgr', 'show', 'config'], capture_output=True)
-
-            if result.returncode != 0:
-                print(
-                    "\nError: sacctmgr command failed. Please ensure it's installed and in your PATH and you are in a head node.")
-                print(f'\n  stdout: {result.stdout.decode("utf-8")}\n')
-                print(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
-                return False
 
             if shutil.which('scontrol'):
 
                 print(f'\n*** SLURM CONFIGURATION ***\n')
+
+                # Run the sacctmgr command
+                result = subprocess.run(
+                    ['sacctmgr', 'show', 'config'], capture_output=True)
+
+                if result.returncode != 0:
+                    print(
+                        "\nError: sacctmgr command failed. Please ensure it's installed and in your PATH and you are in a head node.")
+                    print(f'\n  stdout: {result.stdout.decode("utf-8")}\n')
+                    print(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
+                    return False
 
                 slurm_walltime_days = inquirer.text(
                     message="Set the Slurm --time (days) for froster jobs (default = 7)",
