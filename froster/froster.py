@@ -1120,11 +1120,13 @@ class ConfigManager:
         try:
             # Run the sacctmgr command
             result = subprocess.run(
-                ['sacctmgr', 'show', 'config'], capture_output=False)
+                ['sacctmgr', 'show', 'config'], capture_output=True)
 
             if result.returncode != 0:
                 print(
-                    "sacctmgr command failed. Please ensure it's installed and in your PATH and you are in a head node.")
+                    "\nError: sacctmgr command failed. Please ensure it's installed and in your PATH and you are in a head node.")
+                print(f'\n  stdout: {result.stdout.decode("utf-8")}\n')
+                print(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
                 return False
 
             if shutil.which('scontrol'):
@@ -1141,12 +1143,11 @@ class ConfigManager:
                     default=0,
                     validate=self.__inquirer_check_is_number)
 
-                # TODO: This class __init__ should not be here, it should be in the main
                 se = Slurm(args, self)
 
                 # Get the allowed partitions and QOS
                 parts = se.get_allowed_partitions_and_qos()
-
+                print (parts)
                 if parts is not None:
                     # Ask the user to select the Slurm partition and QOS
                     slurm_partition = inquirer.list_input(
