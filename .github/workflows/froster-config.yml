@@ -40,8 +40,8 @@ jobs:
       - name: Print froster version
         run: froster --version
 
-      # - name: Run unittests
-      #   env:
-      #     AWS_ACCESS_KEY_ID: $ {{ secrets.AWS_ACCESS_KEY_ID }}     <--- Delete space of $'s
-      #     AWS_SECRET: $ {{ secrets.AWS_SECRET }}     <--- Delete space of $'s
-      #   run: python3 -m unittest -v
+      - name: Run unittests
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET: ${{ secrets.AWS_SECRET }}
+        run: python3 -m unittest -v
