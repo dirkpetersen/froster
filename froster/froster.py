@@ -982,7 +982,7 @@ class ConfigManager:
 
                         # Ask user if they want to move the local list of files and directories that were archived to the shared directory
                         local_froster_archives_to_shared = inquirer.confirm(
-                            message="Do you want to move the local list of files and directories that were archived to the shared directory?", default=True)
+                            message="Do you want to copy the local list of files and directories that were archived to the shared directory?", default=True)
 
                         # Move the local froster archives to shared directory
                         if local_froster_archives_to_shared:
