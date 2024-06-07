@@ -550,14 +550,14 @@ class TestConfig(unittest.TestCase):
 
         self.helper_run_subcmd_config(None)
 
-        self.helper_check_subcmd_config_not_shared()
+        self.helper_check_subcmd_config()
 
     def test_subcmd_config_overwrite(self, mock_print,):
         '''- Overwirte current configuration'''
 
         self.helper_run_subcmd_config(None)
 
-        self.helper_check_subcmd_config_not_shared()
+        self.helper_check_subcmd_config()
 
         self.helper_run_subcmd_config_overwrite(None)
 
@@ -568,7 +568,7 @@ class TestConfig(unittest.TestCase):
 
         self.helper_run_subcmd_config(None)
 
-        self.helper_check_subcmd_config_not_shared()
+        self.helper_check_subcmd_config()
 
     def test_subcmd_config_shared_existing_config(self, mock_print):
         '''- Set full configuration with shared directory with existing'''
