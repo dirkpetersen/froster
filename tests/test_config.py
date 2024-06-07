@@ -50,6 +50,7 @@ SLURM_SCRIPT_TEARS_DOWN = 'test_script_tears_down'
 SLURM_ROOT = 'test_root'
 
 SHARED_DIR = os.path.join(tempfile.gettempdir(), 'shared_dir')
+SHARED_CONFIG_FILE = os.path.join(SHARED_DIR, 'shared_config.ini')
 
 
 def init_froster(self):
@@ -157,7 +158,7 @@ class TestConfig(unittest.TestCase):
 
         deinit_froster(self)
 
-    # HELPERS
+    # HELPER RUNS
 
     def helper_set_default_cli_arguments(self):
         '''- Set default arguments.'''
@@ -166,7 +167,7 @@ class TestConfig(unittest.TestCase):
                                   subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
 
     @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
-    @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
+    @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[False, False])
     def helper_run_subcmd_config(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
@@ -184,8 +185,49 @@ class TestConfig(unittest.TestCase):
         # Mock the "froster config" command
         self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
 
-    @patch('inquirer.text', side_effect=[NAME_2, EMAIL_2, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_2, S3_ARCHIVE_DIR_2])
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
+    @patch('inquirer.confirm', side_effect=[True, False])
+    def helper_run_subcmd_config_shared(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
+        '''- Helper that sets full configuration'''
+
+        # Check that nothing is set yet
+        self.assertFalse(self.cfg.user_init)
+        self.assertFalse(self.cfg.aws_init)
+        self.assertFalse(self.cfg.nih_init)
+        self.assertFalse(self.cfg.s3_init)
+
+        # Mock the CLI default arguments
+        self.helper_set_default_cli_arguments()
+
+        # Mock the "froster config" command
+        self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
+
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR, NAME_2, EMAIL_2])
+    @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}, {'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS, AWS_PROFILE, AWS_REGION])
+    @patch('inquirer.confirm', side_effect=[True, False, True, True])
+    def helper_run_subcmd_config_shared_existing_config(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
+        '''- Helper that sets full configuration'''
+
+        # Check that nothing is set yet
+        self.assertFalse(self.cfg.user_init)
+        self.assertFalse(self.cfg.aws_init)
+        self.assertFalse(self.cfg.nih_init)
+        self.assertFalse(self.cfg.s3_init)
+
+        # Mock the CLI default arguments
+        self.helper_set_default_cli_arguments()
+
+        # Mock the "froster config" command
+        self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
+
+        # Mock the "froster config" command again (now we have an existing shared configuration file)
+        self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
+
+    @patch('inquirer.text', side_effect=[NAME_2, EMAIL_2, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_2, S3_ARCHIVE_DIR_2])
+    @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION_2, '+ Create new bucket', S3_STORAGE_CLASS_2])
     @patch('inquirer.confirm', side_effect=[True, False, False])
     def helper_run_subcmd_config_overwrite(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
@@ -197,7 +239,62 @@ class TestConfig(unittest.TestCase):
         # Mock the "froster config" command
         self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
 
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
+    @patch('inquirer.confirm', side_effect=[True, True, False])
+    def helper_run_subcmd_config_shared_move_froster_archives_json(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
+        '''- Helper that sets full configuration'''
+
+        # Check that nothing is set yet
+        self.assertFalse(self.cfg.user_init)
+        self.assertFalse(self.cfg.aws_init)
+        self.assertFalse(self.cfg.nih_init)
+        self.assertFalse(self.cfg.s3_init)
+
+        # Mock the CLI default arguments
+        self.helper_set_default_cli_arguments()
+
+        # Assert that the froster-archives.json file is set to not shared path
+        self.assertEqual(self.cfg.archive_json, os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name))
+
+        # Assert that the froster-archives.json file does not exist yet
+        self.assertTrue(not os.path.exists(self.cfg.archive_json))
+
+        # Create a mock froster-archives.json file
+        with open(self.cfg.archive_json, 'w') as f:
+            f.write('Hello, world!')
+
+        # Assert that the froster-archives.json file exists
+        self.assertTrue(os.path.exists(self.cfg.archive_json))
+
+        # Mock the "froster config" command
+        self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
+
+    @patch('inquirer.confirm', side_effect=[True, True])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def helper_run_subcmd_config_shared_move_config_sections(self, mock_print, mock_confirm, mock_prompt):
+        '''- Helper that sets full configuration and moves the config sections to the shared directory'''
+
+        # Call set_shared method and set the shared flag to True
+        self.assertTrue(self.cfg.set_shared())
+
+        # Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
+
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
+
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', os.path.join(
+                           SHARED_DIR, self.cfg.shared_config_file_name))
+
+    # HELPER CHECKS
+
     def helper_check_subcmd_config(self):
+        '''- Check the configuration files after setting full configuration'''
 
         # Check that everything is set
         self.assertTrue(self.cfg.user_init)
@@ -248,6 +345,128 @@ class TestConfig(unittest.TestCase):
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
 
         check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
+
+        # Check the bucket was created
+        s3_buckets = self.aws.get_buckets()
+        self.assertIn(S3_BUCKET_NAME, s3_buckets)
+
+    def helper_check_subcmd_config_shared(self):
+        '''- Check the configuration files after setting full configuration with shared directory'''
+        # Check that everything is set
+        self.assertTrue(self.cfg.user_init)
+        self.assertTrue(self.cfg.aws_init)
+        self.assertTrue(self.cfg.nih_init)
+        self.assertTrue(self.cfg.s3_init)
+
+        # USER config checks
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'name', NAME)
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'email', EMAIL)
+
+        # AWS config checks
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE)
+
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION)
+
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
+
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'region', AWS_REGION)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'output', 'json')
+
+        self.assertTrue(self.aws.check_credentials())
+
+        # SHARED config checks
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', SHARED_CONFIG_FILE)
+
+        # NIH config checks
+        check_ini_file(self, self.cfg.shared_config_file,
+                       NIH_SECTION, 'is_nih', 'False')
+
+        # S3 config checks
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
+
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
+
+        # Check the bucket was created
+        s3_buckets = self.aws.get_buckets()
+        self.assertIn(S3_BUCKET_NAME, s3_buckets)
+
+    def helper_check_subcmd_config_shared_existing_config(self):
+        '''- Check the configuration files after setting full configuration with shared directory'''
+        # Check that everything is set
+        self.assertTrue(self.cfg.user_init)
+        self.assertTrue(self.cfg.aws_init)
+        self.assertTrue(self.cfg.nih_init)
+        self.assertTrue(self.cfg.s3_init)
+
+        # USER config checks
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'name', NAME_2)
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'email', EMAIL_2)
+
+        # AWS config checks
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE)
+
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION)
+
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
+
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'region', AWS_REGION)
+
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'output', 'json')
+
+        self.assertTrue(self.aws.check_credentials())
+
+        # SHARED config checks
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', SHARED_CONFIG_FILE)
+
+        # NIH config checks
+        check_ini_file(self, self.cfg.shared_config_file,
+                       NIH_SECTION, 'is_nih', 'False')
+
+        # S3 config checks
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
+
+        check_ini_file(self, self.cfg.shared_config_file,
                        S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
 
         # Check the bucket was created
@@ -311,6 +530,19 @@ class TestConfig(unittest.TestCase):
         s3_buckets = self.aws.get_buckets()
         self.assertIn(S3_BUCKET_NAME_2, s3_buckets)
 
+    def helper_check_subcmd_config_shared_move_froster_archives_json(self):
+        '''- Check the configuration files after setting full configuration with shared directory'''
+
+        self.helper_check_subcmd_config_shared()
+
+        # Assert that the froster-archives.json is still in the user directory
+        self.assertTrue(os.path.exists(os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name)))
+
+        # Assert that the froster-archives.json has been copied to the shared directory
+        self.assertTrue(os.path.exists(os.path.join(
+            SHARED_DIR, self.cfg.archive_json_file_name)))
+
     # TESTS
 
     def test_subcmd_config(self, mock_print):
@@ -318,18 +550,51 @@ class TestConfig(unittest.TestCase):
 
         self.helper_run_subcmd_config(None)
 
-        self.helper_check_subcmd_config()
+        self.helper_check_subcmd_config_not_shared()
 
     def test_subcmd_config_overwrite(self, mock_print,):
         '''- Overwirte current configuration'''
 
         self.helper_run_subcmd_config(None)
 
-        self.helper_check_subcmd_config()
+        self.helper_check_subcmd_config_not_shared()
 
         self.helper_run_subcmd_config_overwrite(None)
 
         self.helper_check_subcmd_config_overwrite()
+
+    def test_subcmd_config_shared(self, mock_print):
+        '''- Set full configuration with shared directory'''
+
+        self.helper_run_subcmd_config(None)
+
+        self.helper_check_subcmd_config_not_shared()
+
+    def test_subcmd_config_shared_existing_config(self, mock_print):
+        '''- Set full configuration with shared directory with existing'''
+
+        self.helper_run_subcmd_config_shared_existing_config(None)
+
+        self.helper_check_subcmd_config_shared_existing_config()
+
+    def test_subcmd_config_shared_move_froster_archives_json(self, mock_print):
+        '''- Set full configuration with shared directory moving the froster-archives.json file'''
+
+        self.helper_run_subcmd_config_shared_move_froster_archives_json(None)
+
+        self.helper_check_subcmd_config_shared_move_froster_archives_json()
+
+    def test_subcmd_config_shared_move_config(self, mock_print):
+        '''- Set full configuration then set shared and move the config sections to the shared directory config file'''
+
+        # Not shared full configuration
+        self.helper_run_subcmd_config(None)
+
+        # Set share config so the config sections are moved to the shared directory
+        self.helper_run_subcmd_config_shared_move_config_sections(None)
+
+        # Check we are in the shared directory scenario
+        self.helper_check_subcmd_config_shared()
 
 
 @patch('builtins.print')
@@ -953,12 +1218,12 @@ class TestConfigS3(unittest.TestCase):
 
 if __name__ == '__main__':
 
-    if False:
+    if True:
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
         # FULL CONFIGURATION
-        suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
+        # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
 
         # PARTIAL CONFIGURATION
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigUser))
@@ -969,6 +1234,7 @@ if __name__ == '__main__':
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigSlurm))
 
         # BASIC TEST CASE FOR EVERY TEST
+        # suite.addTest(TestConfig('test_subcmd_config'))
         # suite.addTest(TestConfigUser('test_set_user'))
         # suite.addTest(TestConfigAWS('test_set_aws'))
         # suite.addTest(TestConfigShared('test_set_shared'))

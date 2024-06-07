@@ -177,7 +177,7 @@ class ConfigManager:
                     self.aws_init = True
 
                 # Last timestamp we checked for an updated
-                self.update_check_timestamp = config.get(
+                self.last_timestamp = config.getint(
                     'UPDATE', 'timestamp', fallback=None)
 
                 # Shared configuration
@@ -982,7 +982,7 @@ class ConfigManager:
 
                         # Ask user if they want to move the local list of files and directories that were archived to the shared directory
                         local_froster_archives_to_shared = inquirer.confirm(
-                            message="Do you want to move the local list of files and directories that were archived to the shared directory?", default=True)
+                            message="Do you want to copy the local list of files and directories that were archived to the shared directory?", default=True)
 
                         # Move the local froster archives to shared directory
                         if local_froster_archives_to_shared:
@@ -1200,20 +1200,18 @@ class ConfigManager:
         '''Set the update check'''
 
         try:
-            timestamp = time.time()
+            timestamp = int(time.time())
 
-            if hasattr(self, 'update_check_timestamp') and self.update_check_timestamp is not None:
+            if hasattr(self, 'last_timestamp') and self.last_timestamp is not None:
                 # Check if last day was less than 86400 * 7 = (1 day) * 7  = 1 week
-                print(timestamp)
-                print(self.update_check_timestamp)
-                print(timestamp - self.update_check_timestamp)
-                if timestamp - self.update_check_timestamp < (86400*7):
+                if timestamp - self.last_timestamp < (86400*7):
                     # Less than a week since last check
                     return False
 
             # Set the update check flag in the config file
             self.__set_configuration_entry(
-                'UPDATE', 'update_check_timestamp', timestamp)
+                'UPDATE', 'timestamp', timestamp)
+    
             return True
 
         except Exception:
