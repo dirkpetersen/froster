@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from unittest.mock import patch
 import unittest
+
 import warnings
 warnings.filterwarnings("always", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=ResourceWarning)
@@ -54,6 +55,8 @@ SHARED_CONFIG_FILE = os.path.join(SHARED_DIR, 'shared_config.ini')
 
 
 def init_froster(self):
+    '''Initialize the froster objects.'''
+
     self.cmd = Commands()
     self.parser = self.cmd.parse_arguments()
     self.args = self.parser.parse_args()
@@ -83,6 +86,7 @@ def init_froster(self):
 
 
 def deinit_froster(self):
+    '''Deinitialize the froster objects.'''
 
     if hasattr(self, 'cfg'):
         if hasattr(self.cfg, 'aws_dir') and os.path.exists(self.cfg.aws_dir):
@@ -114,6 +118,7 @@ def deinit_froster(self):
 
 
 def delete_buckets(self):
+    '''Delete created S3 buckets if they exists.'''
 
     if self.aws.check_credentials():
         # Get the buckets list
@@ -127,6 +132,8 @@ def delete_buckets(self):
 
 
 def check_ini_file(self, ini_file, section, key, value):
+    '''Check the value of a key in a section of an ini file.'''
+
     config = configparser.ConfigParser()
     config.read(ini_file)
     self.assertIn(section, config.sections())
@@ -135,16 +142,20 @@ def check_ini_file(self, ini_file, section, key, value):
 
 @patch('builtins.print')
 class TestConfig(unittest.TestCase):
+    '''Test the subcmd_confing method.'''
 
     # Method executed only once before all tests
     @classmethod
     def setUpClass(cls):
+        
+        # Check if the AWS credentials are set
         if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
             raise ValueError("AWS credentials are not set")
 
     # Method executed before every test
     def setUp(self):
 
+        # Initialize the froster objects
         init_froster(self)
 
         # Delete any existing buckets
@@ -156,12 +167,13 @@ class TestConfig(unittest.TestCase):
         # Delete any existing buckets
         delete_buckets(self)
 
+        # Deinitialize the froster objects
         deinit_froster(self)
 
     # HELPER RUNS
 
     def helper_set_default_cli_arguments(self):
-        '''- Set default arguments.'''
+        '''- Set default cli arguments.'''
 
         self.cmd.args = Namespace(cores=4, debug=False, info=False, memory=64, noslurm=False, aws_profile='', version=False,
                                   subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
@@ -190,7 +202,7 @@ class TestConfig(unittest.TestCase):
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[True, False])
     def helper_run_subcmd_config_shared(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
-        '''- Helper that sets full configuration'''
+        '''- Helper that sets full configuration with shared directory'''
 
         # Check that nothing is set yet
         self.assertFalse(self.cfg.user_init)
@@ -209,7 +221,7 @@ class TestConfig(unittest.TestCase):
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS, AWS_PROFILE, AWS_REGION])
     @patch('inquirer.confirm', side_effect=[True, False, True, True])
     def helper_run_subcmd_config_shared_existing_config(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
-        '''- Helper that sets full configuration'''
+        '''- Helper that sets full configuration with a shared directory where there is already a shared configuration file'''
 
         # Check that nothing is set yet
         self.assertFalse(self.cfg.user_init)
@@ -231,7 +243,7 @@ class TestConfig(unittest.TestCase):
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION_2, '+ Create new bucket', S3_STORAGE_CLASS_2])
     @patch('inquirer.confirm', side_effect=[True, False, False])
     def helper_run_subcmd_config_overwrite(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
-        '''- Helper that sets full configuration'''
+        '''- Helper that sets full configuration and overwrites the current configuration'''
 
         # Mock the CLI default arguments
         self.helper_set_default_cli_arguments()
@@ -244,7 +256,7 @@ class TestConfig(unittest.TestCase):
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[True, True, False])
     def helper_run_subcmd_config_shared_move_froster_archives_json(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
-        '''- Helper that sets full configuration'''
+        '''- Helper that sets full configuration with a shared directory and moves the froster-archives.json file'''
 
         # Check that nothing is set yet
         self.assertFalse(self.cfg.user_init)
@@ -294,7 +306,6 @@ class TestConfig(unittest.TestCase):
     # HELPER CHECKS
 
     def helper_check_subcmd_config(self):
-        '''- Check the configuration files after setting full configuration'''
 
         # Check that everything is set
         self.assertTrue(self.cfg.user_init)
@@ -352,7 +363,7 @@ class TestConfig(unittest.TestCase):
         self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
     def helper_check_subcmd_config_shared(self):
-        '''- Check the configuration files after setting full configuration with shared directory'''
+    
         # Check that everything is set
         self.assertTrue(self.cfg.user_init)
         self.assertTrue(self.cfg.aws_init)
@@ -413,7 +424,7 @@ class TestConfig(unittest.TestCase):
         self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
     def helper_check_subcmd_config_shared_existing_config(self):
-        '''- Check the configuration files after setting full configuration with shared directory'''
+
         # Check that everything is set
         self.assertTrue(self.cfg.user_init)
         self.assertTrue(self.cfg.aws_init)
@@ -531,7 +542,6 @@ class TestConfig(unittest.TestCase):
         self.assertIn(S3_BUCKET_NAME_2, s3_buckets)
 
     def helper_check_subcmd_config_shared_move_froster_archives_json(self):
-        '''- Check the configuration files after setting full configuration with shared directory'''
 
         self.helper_check_subcmd_config_shared()
 
@@ -553,7 +563,7 @@ class TestConfig(unittest.TestCase):
         self.helper_check_subcmd_config()
 
     def test_subcmd_config_overwrite(self, mock_print,):
-        '''- Overwirte current configuration'''
+        '''- Set full configuration overwritting current configuration'''
 
         self.helper_run_subcmd_config(None)
 
@@ -571,7 +581,7 @@ class TestConfig(unittest.TestCase):
         self.helper_check_subcmd_config()
 
     def test_subcmd_config_shared_existing_config(self, mock_print):
-        '''- Set full configuration with shared directory with existing'''
+        '''- Set full configuration with shared directory where there is already a shared configuration file'''
 
         self.helper_run_subcmd_config_shared_existing_config(None)
 
@@ -585,7 +595,7 @@ class TestConfig(unittest.TestCase):
         self.helper_check_subcmd_config_shared_move_froster_archives_json()
 
     def test_subcmd_config_shared_move_config(self, mock_print):
-        '''- Set full configuration then set shared and move the config sections to the shared directory config file'''
+        '''- Set full configuration and move config to the shared directory config file'''
 
         # Not shared full configuration
         self.helper_run_subcmd_config(None)
@@ -599,6 +609,7 @@ class TestConfig(unittest.TestCase):
 
 @patch('builtins.print')
 class TestConfigUser(unittest.TestCase):
+    '''Test the set_user method.'''
 
     # Method executed before every test
     def setUp(self):
@@ -630,6 +641,7 @@ class TestConfigUser(unittest.TestCase):
 
 @patch('builtins.print')
 class TestConfigAWS(unittest.TestCase):
+    '''Test the set_aws method.'''
 
     # Method executed only once before all tests
     @classmethod
@@ -832,6 +844,7 @@ class TestConfigAWS(unittest.TestCase):
 
 @patch('builtins.print')
 class TestConfigShared(unittest.TestCase):
+    '''Test the set_shared method.'''
 
     # Method executed before every test
     def setUp(self):
@@ -996,6 +1009,7 @@ class TestConfigShared(unittest.TestCase):
 
 @patch('builtins.print')
 class TestConfigNIH(unittest.TestCase):
+    '''Test the set_nih method.'''
 
     # Method executed before every test
     def setUp(self):
@@ -1035,7 +1049,7 @@ class TestConfigNIH(unittest.TestCase):
     @patch('inquirer.confirm', side_effect=[True, True, False])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
     def test_set_nih_when_shared_config(self, mock_print, mock_confirm, mock_promp):
-        '''- Set the NIH flag to True and then to False.'''
+        '''- Set the NIH flag to True and then to False when shared configuration.'''
 
         # Call set_shared method
         self.assertTrue(self.cfg.set_shared())
@@ -1057,6 +1071,7 @@ class TestConfigNIH(unittest.TestCase):
 
 @patch('builtins.print')
 class TestConfigS3(unittest.TestCase):
+    '''Test the set_s3 method.'''
 
     # Method executed before every test
     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
@@ -1112,7 +1127,7 @@ class TestConfigS3(unittest.TestCase):
         self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
     def test_set_s3_aws_not_init(self, mock_print):
-        '''- Set_s3 method returns False if AWS credentials are not set.'''
+        '''- set_s3 method returns False if AWS credentials are not set.'''
 
         # Mock the aws_init variable
         self.cfg.aws_init = False
