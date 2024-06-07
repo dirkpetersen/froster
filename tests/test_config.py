@@ -1218,7 +1218,7 @@ class TestConfigS3(unittest.TestCase):
 
 if __name__ == '__main__':
 
-    if False:
+    if True:
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
@@ -1234,8 +1234,7 @@ if __name__ == '__main__':
         # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigSlurm))
 
         # BASIC TEST CASE FOR EVERY TEST
-        suite.addTest(TestConfig(
-            'test_subcmd_config_shared_move_config'))
+        # suite.addTest(TestConfig('test_subcmd_config'))
         # suite.addTest(TestConfigUser('test_set_user'))
         # suite.addTest(TestConfigAWS('test_set_aws'))
         # suite.addTest(TestConfigShared('test_set_shared'))
