@@ -28,7 +28,7 @@ jobs:
           LOCAL_INSTALL: true
         run: ./install.sh
 
-      - name: Run unittests
+      - name: Run test_config tests
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET: ${{ secrets.AWS_SECRET }}
