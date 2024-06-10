@@ -1,9 +1,9 @@
 from froster import *
+from .config import *
 from argparse import Namespace
 import configparser
 import os
 import shutil
-import tempfile
 from unittest.mock import patch
 import unittest
 
@@ -11,48 +11,9 @@ import warnings
 warnings.filterwarnings("always", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=ResourceWarning)
 
-
-# Variables
-NAME = "Bob"
-NAME_2 = "Alice"
-EMAIL = "bob@bob.com"
-EMAIL_2 = "alice@alice.com"
-
-AWS_DEFAULT_PATH = os.path.join(tempfile.gettempdir(), '.aws')
-AWS_REGION = "eu-west-1"
-AWS_REGION_2 = "eu-west-2"
-AWS_PROFILE = "froster-unittest-bob"
-AWS_PROFILE_2 = "froster-unittest-alice"
-
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-AWS_SECRET = os.getenv('AWS_SECRET')
-
-USER_SECTION = 'USER'
-AWS_SECTION = 'AWS'
-SHARED_SECTION = 'SHARED'
-NIH_SECTION = 'NIH'
-S3_SECTION = 'S3'
-
-S3_BUCKET_NAME = 'froster-unittest-bob'
-S3_BUCKET_NAME_2 = 'froster-unittest-alice'
-S3_ARCHIVE_DIR = 'froster_bob'
-S3_ARCHIVE_DIR_2 = 'froster_alice'
-S3_STORAGE_CLASS = 'DEEP_ARCHIVE'
-S3_STORAGE_CLASS_2 = 'GLACIER'
-
-SLURM_WALLTIME_DAYS = 8
-SLURM_WALLTIME_HOURS = 1
-SLURM_PARTITION = 'test_partition'
-SLURM_QOS = 'test_qos'
-
-SLURM_LOCAL_SCRATCH = 'test_lscratch'
-SLURM_SCRIPT_SCRATCH = 'test_script_scratch'
-SLURM_SCRIPT_TEARS_DOWN = 'test_script_tears_down'
-SLURM_ROOT = 'test_root'
-
-SHARED_DIR = os.path.join(tempfile.gettempdir(), 'shared_dir')
-SHARED_CONFIG_FILE = os.path.join(SHARED_DIR, 'shared_config.ini')
-
+##################
+# FUNCTION UTILS #
+##################
 
 def init_froster(self):
     '''Initialize the froster objects.'''
@@ -69,7 +30,7 @@ def init_froster(self):
         shutil.rmtree(self.cfg.data_dir)
     os.makedirs(self.cfg.data_dir, exist_ok=True, mode=0o775)
 
-    # Create a fresh data directory
+    # Create a fresh config directory
     if hasattr(self.cfg, 'config_dir') and os.path.exists(self.cfg.config_dir):
         shutil.rmtree(self.cfg.config_dir)
     os.makedirs(self.cfg.config_dir, exist_ok=True, mode=0o775)
@@ -139,6 +100,9 @@ def check_ini_file(self, ini_file, section, key, value):
     self.assertIn(section, config.sections())
     self.assertEqual(config.get(section, key), value)
 
+#################
+# TESTS CLASSES #
+#################
 
 @patch('builtins.print')
 class TestConfig(unittest.TestCase):
@@ -147,7 +111,7 @@ class TestConfig(unittest.TestCase):
     # Method executed only once before all tests
     @classmethod
     def setUpClass(cls):
-        
+
         # Check if the AWS credentials are set
         if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
             raise ValueError("AWS credentials are not set")
@@ -363,7 +327,7 @@ class TestConfig(unittest.TestCase):
         self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
     def helper_check_subcmd_config_shared(self):
-    
+
         # Check that everything is set
         self.assertTrue(self.cfg.user_init)
         self.assertTrue(self.cfg.aws_init)
