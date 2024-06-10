@@ -575,11 +575,11 @@ def check_ini_file(self, ini_file, section, key, value):
 class TestConfigUser(unittest.TestCase):
     '''Test the set_user method.'''
 
-    Method executed before every test
+    # Method executed before every test
     def setUp(self):
         init_froster(self)
 
-    Method executed after every test
+    # Method executed after every test
     def tearDown(self):
         deinit_froster(self)
 
@@ -607,17 +607,17 @@ class TestConfigUser(unittest.TestCase):
 class TestConfigAWS(unittest.TestCase):
     '''Test the set_aws method.'''
 
-    Method executed only once before all tests
+    # Method executed only once before all tests
     @classmethod
     def setUpClass(cls):
         if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
             raise ValueError("AWS credentials are not set")
 
-    Method executed before every test
+    # Method executed before every test
     def setUp(self):
         init_froster(self)
 
-    Method executed after every test
+    # Method executed after every test
     def tearDown(self):
         deinit_froster(self)
 
@@ -810,11 +810,11 @@ class TestConfigAWS(unittest.TestCase):
 class TestConfigShared(unittest.TestCase):
     '''Test the set_shared method.'''
 
-    Method executed before every test
+    # Method executed before every test
     def setUp(self):
         init_froster(self)
 
-    Method executed after every test
+    # Method executed after every test
     def tearDown(self):
         deinit_froster(self)
 
@@ -975,11 +975,11 @@ class TestConfigShared(unittest.TestCase):
 class TestConfigNIH(unittest.TestCase):
     '''Test the set_nih method.'''
 
-    Method executed before every test
+    # Method executed before every test
     def setUp(self):
         init_froster(self)
 
-    Method executed after every test
+    # Method executed after every test
     def tearDown(self):
         deinit_froster(self)
 
