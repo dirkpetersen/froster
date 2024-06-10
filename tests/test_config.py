@@ -571,466 +571,466 @@ def check_ini_file(self, ini_file, section, key, value):
 #         self.helper_check_subcmd_config_shared()
 
 
-# @patch('builtins.print')
-# class TestConfigUser(unittest.TestCase):
-#     '''Test the set_user method.'''
+@patch('builtins.print')
+class TestConfigUser(unittest.TestCase):
+    '''Test the set_user method.'''
 
-#     Method executed before every test
-#     def setUp(self):
-#         init_froster(self)
+    Method executed before every test
+    def setUp(self):
+        init_froster(self)
 
-#     Method executed after every test
-#     def tearDown(self):
-#         deinit_froster(self)
+    Method executed after every test
+    def tearDown(self):
+        deinit_froster(self)
 
-#     @patch('inquirer.text', side_effect=[NAME, EMAIL])
-#     def test_set_user(self, mock_print, mock_text):
-#         '''- Set the user and email in the configuration file.'''
+    @patch('inquirer.text', side_effect=[NAME, EMAIL])
+    def test_set_user(self, mock_print, mock_text):
+        '''- Set the user and email in the configuration file.'''
 
-#         Check that the user is not set
-#         self.assertFalse(self.cfg.user_init)
+        Check that the user is not set
+        self.assertFalse(self.cfg.user_init)
 
-#         Call set_user method
-#         self.assertTrue(self.cfg.set_user())
+        Call set_user method
+        self.assertTrue(self.cfg.set_user())
 
-#         Check that the user is set
-#         self.assertTrue(self.cfg.user_init)
+        Check that the user is set
+        self.assertTrue(self.cfg.user_init)
 
-#         Check that the configuration file was updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        USER_SECTION, 'name', NAME)
-#         check_ini_file(self, self.cfg.config_file,
-#                        USER_SECTION, 'email', EMAIL)
+        Check that the configuration file was updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'name', NAME)
+        check_ini_file(self, self.cfg.config_file,
+                       USER_SECTION, 'email', EMAIL)
 
 
-# @patch('builtins.print')
-# class TestConfigAWS(unittest.TestCase):
-#     '''Test the set_aws method.'''
+@patch('builtins.print')
+class TestConfigAWS(unittest.TestCase):
+    '''Test the set_aws method.'''
 
-#     Method executed only once before all tests
-#     @classmethod
-#     def setUpClass(cls):
-#         if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
-#             raise ValueError("AWS credentials are not set")
+    Method executed only once before all tests
+    @classmethod
+    def setUpClass(cls):
+        if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
+            raise ValueError("AWS credentials are not set")
 
-#     Method executed before every test
-#     def setUp(self):
-#         init_froster(self)
+    Method executed before every test
+    def setUp(self):
+        init_froster(self)
 
-#     Method executed after every test
-#     def tearDown(self):
-#         deinit_froster(self)
+    Method executed after every test
+    def tearDown(self):
+        deinit_froster(self)
 
-#     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
-#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
-#     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-#     def test_set_aws(self, mock_print, mock_prompt, mock_list, mock_text):
-#         '''- Set a new AWS profile with valid credentials.'''
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
+    @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
+    def test_set_aws(self, mock_print, mock_prompt, mock_list, mock_text):
+        '''- Set a new AWS profile with valid credentials.'''
 
-#         Check that the aws_init is not set
-#         self.assertFalse(self.cfg.aws_init)
+        Check that the aws_init is not set
+        self.assertFalse(self.cfg.aws_init)
 
-#         Call set_aws method
-#         self.assertTrue(self.cfg.set_aws(self.aws))
+        Call set_aws method
+        self.assertTrue(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is set
-#         self.assertTrue(self.cfg.aws_init)
+        Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_profile', AWS_PROFILE)
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_region', AWS_REGION)
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
-#                        'aws_access_key_id', AWS_ACCESS_KEY_ID)
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file,
-#                        AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE, 'region', AWS_REGION)
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'region', AWS_REGION)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE, 'output', 'json')
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'output', 'json')
 
-#         self.assertTrue(self.aws.check_credentials())
+        self.assertTrue(self.aws.check_credentials())
 
-#     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
-#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
-#     @patch('inquirer.text', side_effect=[AWS_PROFILE, 'wrong_access_key_id', 'wrong_secret'])
-#     def test_set_aws_invalid_credentials(self, mock_print, mock_prompt, mock_list, mock_text):
-#         '''- Set a new AWS profile with invalid credentials.'''
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
+    @patch('inquirer.text', side_effect=[AWS_PROFILE, 'wrong_access_key_id', 'wrong_secret'])
+    def test_set_aws_invalid_credentials(self, mock_print, mock_prompt, mock_list, mock_text):
+        '''- Set a new AWS profile with invalid credentials.'''
 
-#         Check that the aws_init is not set
-#         self.assertFalse(self.cfg.aws_init)
+        Check that the aws_init is not set
+        self.assertFalse(self.cfg.aws_init)
 
-#         Set valid credentials
-#         self.assertFalse(self.cfg.set_aws(self.aws))
+        Set valid credentials
+        self.assertFalse(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is not set
-#         self.assertFalse(self.cfg.aws_init)
+        Check that the aws_init is not set
+        self.assertFalse(self.cfg.aws_init)
 
-#         Check that the configuration files were not updated
-#         config = configparser.ConfigParser()
-#         config.read(self.cfg.aws_credentials_file)
-#         self.assertNotIn(AWS_PROFILE, config.sections())
+        Check that the configuration files were not updated
+        config = configparser.ConfigParser()
+        config.read(self.cfg.aws_credentials_file)
+        self.assertNotIn(AWS_PROFILE, config.sections())
 
-#     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
-#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, AWS_PROFILE, AWS_REGION])
-#     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-#     def test_set_aws_select_profile(self, mock_print, mock_prompt, mock_list, mock_text):
-#         '''- Select profile from AWS configuration file.'''
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, AWS_PROFILE, AWS_REGION])
+    @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
+    def test_set_aws_select_profile(self, mock_print, mock_prompt, mock_list, mock_text):
+        '''- Select profile from AWS configuration file.'''
 
-#         Check that the aws_init is not set
-#         self.assertFalse(self.cfg.aws_init)
+        Check that the aws_init is not set
+        self.assertFalse(self.cfg.aws_init)
 
-#         Call set_aws methon and create a new profile
-#         self.assertTrue(self.cfg.set_aws(self.aws))
+        Call set_aws methon and create a new profile
+        self.assertTrue(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is set
-#         self.assertTrue(self.cfg.aws_init)
+        Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-#         Call set_aws method and select an existing profile
-#         self.assertTrue(self.cfg.set_aws(self.aws))
+        Call set_aws method and select an existing profile
+        self.assertTrue(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is set
-#         self.assertTrue(self.cfg.aws_init)
+        Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_profile', AWS_PROFILE)
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_region', AWS_REGION)
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
-#                        'aws_access_key_id', AWS_ACCESS_KEY_ID)
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file,
-#                        AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE, 'region', AWS_REGION)
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'region', AWS_REGION)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE, 'output', 'json')
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'output', 'json')
 
-#         self.assertTrue(self.aws.check_credentials())
+        self.assertTrue(self.aws.check_credentials())
 
-#     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
-#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new profile', AWS_REGION_2])
-#     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET])
-#     @patch('inquirer.confirm', side_effect=['y'])
-#     def test_set_aws_overwrite_profile(self, mock_print, mock_prompt, mock_list, mock_text, mock_confirm):
-#         '''- Overwrite an existing AWS profile.'''
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new profile', AWS_REGION_2])
+    @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET])
+    @patch('inquirer.confirm', side_effect=['y'])
+    def test_set_aws_overwrite_profile(self, mock_print, mock_prompt, mock_list, mock_text, mock_confirm):
+        '''- Overwrite an existing AWS profile.'''
 
-#         Check that the aws_init is not set
-#         self.assertFalse(self.cfg.aws_init)
+        Check that the aws_init is not set
+        self.assertFalse(self.cfg.aws_init)
 
-#         Call set_aws method and create a new profile
-#         self.assertTrue(self.cfg.set_aws(self.aws))
+        Call set_aws method and create a new profile
+        self.assertTrue(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is set
-#         self.assertTrue(self.cfg.aws_init)
+        Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-#         Call set_aws method and overwrite the existing profile
-#         self.assertTrue(self.cfg.set_aws(self.aws))
+        Call set_aws method and overwrite the existing profile
+        self.assertTrue(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is set
-#         self.assertTrue(self.cfg.aws_init)
+        Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_profile', AWS_PROFILE_2)
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE_2)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_region', AWS_REGION_2)
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION_2)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE_2,
-#                        'aws_access_key_id', AWS_ACCESS_KEY_ID)
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE_2,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file,
-#                        AWS_PROFILE_2, 'aws_secret_access_key', AWS_SECRET)
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE_2, 'aws_secret_access_key', AWS_SECRET)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE_2, 'region', AWS_REGION_2)
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE_2, 'region', AWS_REGION_2)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE_2, 'output', 'json')
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE_2, 'output', 'json')
 
-#         self.assertTrue(self.aws.check_credentials())
+        self.assertTrue(self.aws.check_credentials())
 
-#     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
-#     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new profile'])
-#     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, AWS_PROFILE])
-#     @patch('inquirer.confirm', side_effect=[False])
-#     def test_set_aws_do_not_overwrite_profile(self, mock_print, mock_prompt, mock_list, mock_text, mock_confirm):
-#         '''- Do not overwrite an existing AWS profile.'''
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new profile'])
+    @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, AWS_PROFILE])
+    @patch('inquirer.confirm', side_effect=[False])
+    def test_set_aws_do_not_overwrite_profile(self, mock_print, mock_prompt, mock_list, mock_text, mock_confirm):
+        '''- Do not overwrite an existing AWS profile.'''
 
-#         Check that the aws_init is not set
-#         self.assertFalse(self.cfg.aws_init)
+        Check that the aws_init is not set
+        self.assertFalse(self.cfg.aws_init)
 
-#         Call set_aws method and create a new profile
-#         self.assertTrue(self.cfg.set_aws(self.aws))
+        Call set_aws method and create a new profile
+        self.assertTrue(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is set
-#         self.assertTrue(self.cfg.aws_init)
+        Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-#         Call set_aws method and do not overwrite the existing profile
-#         self.assertFalse(self.cfg.set_aws(self.aws))
+        Call set_aws method and do not overwrite the existing profile
+        self.assertFalse(self.cfg.set_aws(self.aws))
 
-#         Check that the aws_init is set
-#         self.assertTrue(self.cfg.aws_init)
+        Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_profile', AWS_PROFILE)
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_profile', AWS_PROFILE)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        AWS_SECTION, 'aws_region', AWS_REGION)
+        check_ini_file(self, self.cfg.config_file,
+                       AWS_SECTION, 'aws_region', AWS_REGION)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
-#                        'aws_access_key_id', AWS_ACCESS_KEY_ID)
+        check_ini_file(self, self.cfg.aws_credentials_file, AWS_PROFILE,
+                       'aws_access_key_id', AWS_ACCESS_KEY_ID)
 
-#         check_ini_file(self, self.cfg.aws_credentials_file,
-#                        AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
+        check_ini_file(self, self.cfg.aws_credentials_file,
+                       AWS_PROFILE, 'aws_secret_access_key', AWS_SECRET)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE, 'region', AWS_REGION)
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'region', AWS_REGION)
 
-#         check_ini_file(self, self.cfg.aws_config_file,
-#                        AWS_PROFILE, 'output', 'json')
+        check_ini_file(self, self.cfg.aws_config_file,
+                       AWS_PROFILE, 'output', 'json')
 
-#         self.assertTrue(self.aws.check_credentials())
+        self.assertTrue(self.aws.check_credentials())
 
 
-# @patch('builtins.print')
-# class TestConfigShared(unittest.TestCase):
-#     '''Test the set_shared method.'''
+@patch('builtins.print')
+class TestConfigShared(unittest.TestCase):
+    '''Test the set_shared method.'''
 
-#     Method executed before every test
-#     def setUp(self):
-#         init_froster(self)
+    Method executed before every test
+    def setUp(self):
+        init_froster(self)
 
-#     Method executed after every test
-#     def tearDown(self):
-#         deinit_froster(self)
+    Method executed after every test
+    def tearDown(self):
+        deinit_froster(self)
 
-#     @patch('inquirer.confirm', side_effect=[False, True])
-#     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-#     def test_set_shared(self, mock_print, mock_confirm, mock_prompt):
-#         '''- Set the shared flag to False and then to True in the configuration file.'''
+    @patch('inquirer.confirm', side_effect=[False, True])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_shared(self, mock_print, mock_confirm, mock_prompt):
+        '''- Set the shared flag to False and then to True in the configuration file.'''
 
-#         Call set_shared method and set the shared flag to False
-#         self.assertTrue(self.cfg.set_shared())
+        Call set_shared method and set the shared flag to False
+        self.assertTrue(self.cfg.set_shared())
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'is_shared', 'False')
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'False')
 
-#         Call set_shared method
-#         self.assertTrue(self.cfg.set_shared())
+        Call set_shared method
+        self.assertTrue(self.cfg.set_shared())
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'is_shared', 'True')
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_dir', SHARED_DIR)
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_config_file', os.path.join(
-#                            SHARED_DIR, self.cfg.shared_config_file_name))
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', os.path.join(
+                           SHARED_DIR, self.cfg.shared_config_file_name))
 
-#     @patch('inquirer.confirm', side_effect=[True, False])
-#     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-#     def test_set_shared_do_not_move_froster_archives(self, mock_print, mock_confirm, mock_prompt):
-#         '''- Set the shared flag to True and do not move the froster_archives.json file.'''
+    @patch('inquirer.confirm', side_effect=[True, False])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_shared_do_not_move_froster_archives(self, mock_print, mock_confirm, mock_prompt):
+        '''- Set the shared flag to True and do not move the froster_archives.json file.'''
 
-#         Create a dummy froster_archives.json file
-#         archive_json_file = os.path.join(
-#             self.cfg.data_dir, self.cfg.archive_json_file_name)
-#         with open(archive_json_file, 'w') as f:
-#             f.write('Hello, world!')
+        Create a dummy froster_archives.json file
+        archive_json_file = os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name)
+        with open(archive_json_file, 'w') as f:
+            f.write('Hello, world!')
 
-#         Call set_shared method
-#         self.assertTrue(self.cfg.set_shared())
+        Call set_shared method
+        self.assertTrue(self.cfg.set_shared())
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'is_shared', 'True')
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_dir', SHARED_DIR)
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_config_file', os.path.join(
-#                            SHARED_DIR, self.cfg.shared_config_file_name))
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', os.path.join(
+                           SHARED_DIR, self.cfg.shared_config_file_name))
 
-#         Check that the froster_archives.json is still in the data directory
-#         self.assertTrue(os.path.exists(archive_json_file))
+        Check that the froster_archives.json is still in the data directory
+        self.assertTrue(os.path.exists(archive_json_file))
 
-#         Check that the froster_archives.json file was not copied to the shared directory
-#         self.assertFalse(os.path.exists(os.path.join(
-#             SHARED_DIR, self.cfg.archive_json_file_name)))
+        Check that the froster_archives.json file was not copied to the shared directory
+        self.assertFalse(os.path.exists(os.path.join(
+            SHARED_DIR, self.cfg.archive_json_file_name)))
 
-#     @patch('inquirer.confirm', side_effect=[True, True])
-#     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-#     def test_set_shared_move_froster_archives(self, mock_print, mock_confirm, mock_prompt):
-#         '''- Set the shared flag to True and move the froster_archives.json file.'''
+    @patch('inquirer.confirm', side_effect=[True, True])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_shared_move_froster_archives(self, mock_print, mock_confirm, mock_prompt):
+        '''- Set the shared flag to True and move the froster_archives.json file.'''
 
-#         Create a dummy froster_archives.json file
-#         archive_json_file = os.path.join(
-#             self.cfg.data_dir, self.cfg.archive_json_file_name)
-#         with open(archive_json_file, 'w') as f:
-#             f.write('Hello, world!')
+        Create a dummy froster_archives.json file
+        archive_json_file = os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name)
+        with open(archive_json_file, 'w') as f:
+            f.write('Hello, world!')
 
-#         Call set_shared method
-#         self.assertTrue(self.cfg.set_shared())
+        Call set_shared method
+        self.assertTrue(self.cfg.set_shared())
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'is_shared', 'True')
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_dir', SHARED_DIR)
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_config_file', os.path.join(
-#                            SHARED_DIR, self.cfg.shared_config_file_name))
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', os.path.join(
+                           SHARED_DIR, self.cfg.shared_config_file_name))
 
-#         Check that the froster_archives.json is still in the data directory (as we only copy the file)
-#         self.assertTrue(os.path.exists(os.path.join(
-#             self.cfg.data_dir, self.cfg.archive_json_file_name)))
+        Check that the froster_archives.json is still in the data directory (as we only copy the file)
+        self.assertTrue(os.path.exists(os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name)))
 
-#         Check that the froster_archives.json file was copied to the shared directory
-#         self.assertTrue(os.path.exists(os.path.join(
-#             SHARED_DIR, self.cfg.archive_json_file_name)))
+        Check that the froster_archives.json file was copied to the shared directory
+        self.assertTrue(os.path.exists(os.path.join(
+            SHARED_DIR, self.cfg.archive_json_file_name)))
 
-#     @patch('inquirer.confirm', side_effect=[True])
-#     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-#     def test_set_shared_froster_archives_exist(self, mock_print, mock_confirm, mock_prompt):
-#         '''- Set the shared flag to True when froster_archives.json file already exists in shared dir.'''
+    @patch('inquirer.confirm', side_effect=[True])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_shared_froster_archives_exist(self, mock_print, mock_confirm, mock_prompt):
+        '''- Set the shared flag to True when froster_archives.json file already exists in shared dir.'''
 
-#         Create a dummy froster_archives.json file in the shared directory
-#         archive_json_file_shared = os.path.join(
-#             SHARED_DIR, self.cfg.archive_json_file_name)
-#         with open(archive_json_file_shared, 'w') as f:
-#             f.write('Hello, world!')
+        Create a dummy froster_archives.json file in the shared directory
+        archive_json_file_shared = os.path.join(
+            SHARED_DIR, self.cfg.archive_json_file_name)
+        with open(archive_json_file_shared, 'w') as f:
+            f.write('Hello, world!')
 
-#         Call set_shared method
-#         self.assertTrue(self.cfg.set_shared())
+        Call set_shared method
+        self.assertTrue(self.cfg.set_shared())
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'is_shared', 'True')
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_dir', SHARED_DIR)
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_config_file', os.path.join(
-#                            SHARED_DIR, self.cfg.shared_config_file_name))
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', os.path.join(
+                           SHARED_DIR, self.cfg.shared_config_file_name))
 
-#         Check that the froster_archives.json is not in the data directory
-#         self.assertFalse(os.path.exists(os.path.join(
-#             self.cfg.data_dir, self.cfg.archive_json_file_name)))
+        Check that the froster_archives.json is not in the data directory
+        self.assertFalse(os.path.exists(os.path.join(
+            self.cfg.data_dir, self.cfg.archive_json_file_name)))
 
-#         Check that the froster_archives.json file is still in the shared directory
-#         self.assertTrue(os.path.exists(os.path.join(
-#             SHARED_DIR, self.cfg.archive_json_file_name)))
+        Check that the froster_archives.json file is still in the shared directory
+        self.assertTrue(os.path.exists(os.path.join(
+            SHARED_DIR, self.cfg.archive_json_file_name)))
 
-#     @patch('inquirer.confirm', side_effect=[True])
-#     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-#     def test_set_shared_froster_shared_config_exist(self, mock_print, mock_confirm, mock_prompt):
-#         '''- Set the shared flag to True when froster_archives.json file already exists in shared dir.'''
+    @patch('inquirer.confirm', side_effect=[True])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_shared_froster_shared_config_exist(self, mock_print, mock_confirm, mock_prompt):
+        '''- Set the shared flag to True when froster_archives.json file already exists in shared dir.'''
 
-#         Create a dummy froster_archives.json file in the shared directory
-#         archive_json_file_shared = os.path.join(
-#             SHARED_DIR, self.cfg.shared_config_file_name)
-#         with open(archive_json_file_shared, 'w') as f:
-#             f.write('Hello, world!')
+        Create a dummy froster_archives.json file in the shared directory
+        archive_json_file_shared = os.path.join(
+            SHARED_DIR, self.cfg.shared_config_file_name)
+        with open(archive_json_file_shared, 'w') as f:
+            f.write('Hello, world!')
 
-#         Call set_shared method
-#         self.assertTrue(self.cfg.set_shared())
+        Call set_shared method
+        self.assertTrue(self.cfg.set_shared())
 
-#         Check that the configuration files were updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'is_shared', 'True')
+        Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'is_shared', 'True')
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_dir', SHARED_DIR)
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_dir', SHARED_DIR)
 
-#         check_ini_file(self, self.cfg.config_file,
-#                        SHARED_SECTION, 'shared_config_file', os.path.join(
-#                            SHARED_DIR, self.cfg.shared_config_file_name))
+        check_ini_file(self, self.cfg.config_file,
+                       SHARED_SECTION, 'shared_config_file', os.path.join(
+                           SHARED_DIR, self.cfg.shared_config_file_name))
 
-#         Check that the shared_config.ini file is still in the shared directory
-#         self.assertTrue(os.path.exists(archive_json_file_shared))
+        Check that the shared_config.ini file is still in the shared directory
+        self.assertTrue(os.path.exists(archive_json_file_shared))
 
 
-# @patch('builtins.print')
-# class TestConfigNIH(unittest.TestCase):
-#     '''Test the set_nih method.'''
+@patch('builtins.print')
+class TestConfigNIH(unittest.TestCase):
+    '''Test the set_nih method.'''
 
-#     Method executed before every test
-#     def setUp(self):
-#         init_froster(self)
+    Method executed before every test
+    def setUp(self):
+        init_froster(self)
 
-#     Method executed after every test
-#     def tearDown(self):
-#         deinit_froster(self)
+    Method executed after every test
+    def tearDown(self):
+        deinit_froster(self)
 
-#     @patch('inquirer.confirm', side_effect=[True, False])
-#     def test_set_nih(self, mock_print, mock_confirm):
-#         '''- Set the NIH flag to True and then to False.'''
+    @patch('inquirer.confirm', side_effect=[True, False])
+    def test_set_nih(self, mock_print, mock_confirm):
+        '''- Set the NIH flag to True and then to False.'''
 
-#         Check that the nih_init is not set
-#         self.assertFalse(self.cfg.nih_init)
+        Check that the nih_init is not set
+        self.assertFalse(self.cfg.nih_init)
 
-#         Call set_user method
-#         self.assertTrue(self.cfg.set_nih())
+        Call set_user method
+        self.assertTrue(self.cfg.set_nih())
 
-#         Check that the nih_init is set
-#         self.assertTrue(self.cfg.nih_init)
+        Check that the nih_init is set
+        self.assertTrue(self.cfg.nih_init)
 
-#         Check that the configuration file was updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        NIH_SECTION, 'is_nih', 'True')
+        Check that the configuration file was updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       NIH_SECTION, 'is_nih', 'True')
 
-#         Call set_user method
-#         self.assertTrue(self.cfg.set_nih())
+        Call set_user method
+        self.assertTrue(self.cfg.set_nih())
 
-#         Check that the nih_init is still set
-#         self.assertTrue(self.cfg.nih_init)
+        Check that the nih_init is still set
+        self.assertTrue(self.cfg.nih_init)
 
-#         Check that the configuration file was updated correctly
-#         check_ini_file(self, self.cfg.config_file,
-#                        NIH_SECTION, 'is_nih', 'False')
+        Check that the configuration file was updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       NIH_SECTION, 'is_nih', 'False')
 
-#     @patch('inquirer.confirm', side_effect=[True, True, False])
-#     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-#     def test_set_nih_when_shared_config(self, mock_print, mock_confirm, mock_promp):
-#         '''- Set the NIH flag to True and then to False when shared configuration.'''
+    @patch('inquirer.confirm', side_effect=[True, True, False])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_nih_when_shared_config(self, mock_print, mock_confirm, mock_promp):
+        '''- Set the NIH flag to True and then to False when shared configuration.'''
 
-#         Call set_shared method
-#         self.assertTrue(self.cfg.set_shared())
+        Call set_shared method
+        self.assertTrue(self.cfg.set_shared())
 
-#         Call set_user method
-#         self.assertTrue(self.cfg.set_nih())
+        Call set_user method
+        self.assertTrue(self.cfg.set_nih())
 
-#         Check that the configuration file was updated correctly
-#         check_ini_file(self, self.cfg.shared_config_file,
-#                        NIH_SECTION, 'is_nih', 'True')
+        Check that the configuration file was updated correctly
+        check_ini_file(self, self.cfg.shared_config_file,
+                       NIH_SECTION, 'is_nih', 'True')
 
-#         Call set_user method
-#         self.assertTrue(self.cfg.set_nih())
+        Call set_user method
+        self.assertTrue(self.cfg.set_nih())
 
-#         Check that the configuration file was updated correctly
-#         check_ini_file(self, self.cfg.shared_config_file,
-#                        NIH_SECTION, 'is_nih', 'False')
+        Check that the configuration file was updated correctly
+        check_ini_file(self, self.cfg.shared_config_file,
+                       NIH_SECTION, 'is_nih', 'False')
 
 
 @patch('builtins.print')
