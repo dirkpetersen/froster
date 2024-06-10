@@ -1069,7 +1069,7 @@ def check_ini_file(self, ini_file, section, key, value):
 #                        NIH_SECTION, 'is_nih', 'False')
 
 
-@patch('builtins.print')
+# @patch('builtins.print')
 class TestConfigS3(unittest.TestCase):
     '''Test the set_s3 method.'''
 
@@ -1077,8 +1077,8 @@ class TestConfigS3(unittest.TestCase):
     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-    @patch('builtins.print')
-    def setUp(self, mock_print, mock_prompt, mock_input_list, mock_input_text):
+    # @patch('builtins.print')
+    def setUp(self, mock_prompt, mock_input_list, mock_input_text):
 
         init_froster(self)
 
@@ -1098,7 +1098,7 @@ class TestConfigS3(unittest.TestCase):
 
     @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
-    def test_set_s3(self, mock_print, mock_list, mock_text):
+    def test_set_s3(self, mock_list, mock_text):
         '''- Set a new S3 bucket.'''
 
         # Assert S3 is not set
