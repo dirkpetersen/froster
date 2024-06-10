@@ -472,8 +472,8 @@ class ConfigManager:
             # Ask user to enter the path to a aws credentials directory
 
             default_aws_dir = os.path.join(self.home_dir, '.aws')
-            if not os.path.exists(os.path.join(self.home_dir, '.aws')):
-                os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
+            if not os.path.exists(default_aws_dir):
+                os.makedirs(default_aws_dir, exist_ok=True, mode=0o775)
 
             aws_dir_question = [
                 inquirer.Path(
