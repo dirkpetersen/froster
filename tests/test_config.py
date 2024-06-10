@@ -1,15 +1,11 @@
 from froster import *
-from .config import *
+from config import *
 from argparse import Namespace
 import configparser
 import os
 import shutil
 from unittest.mock import patch
 import unittest
-
-import warnings
-warnings.filterwarnings("always", category=ResourceWarning)
-warnings.filterwarnings("ignore", category=ResourceWarning)
 
 ##################
 # FUNCTION UTILS #
@@ -1197,7 +1193,7 @@ class TestConfigS3(unittest.TestCase):
 
 if __name__ == '__main__':
 
-    if False:
+    if True:
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
