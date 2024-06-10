@@ -229,7 +229,7 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pipx install . >/dev/null 2>&1 &
+        pip install . >/dev/null 2>&1 &
         spinner $!
     else 
         echo "  Installing from PyPi package repository"
@@ -283,16 +283,9 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-    if [ -d "${XDG_DATA_HOME}/pipx" ]; then
-        mv ${pwalk_path}/pwalk ${XDG_DATA_HOME}/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
-    elif [ -d "${HOME}/.local/pipx" ]; then
-        mv ${pwalk_path}/pwalk ${HOME}/.local/pipx/venvs/froster/bin/pwalk >/dev/null 2>&1
-    elif [ -v PIPX_HOME ]; then
-        mv ${pwalk_path}/pwalk ${PIPX_HOME}/venvs/froster/bin/pwalk >/dev/null 2>&1
-    else
-        echo "Error: pipx installation path not found."
-        exit 1
-    fi
+    froster_path=$(which froster)
+    froster_dir=$(dirname ${froster_path})
+    mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
     echo "    Cleaning up pwalk installation files"
@@ -337,16 +330,10 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-    if [ -d "${XDG_DATA_HOME}/pipx" ]; then
-        mv rclone-v*/rclone ${XDG_DATA_HOME}/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
-    elif [ -d "${HOME}/.local/pipx" ]; then
-        mv rclone-v*/rclone ${HOME}/.local/pipx/venvs/froster/bin/rclone >/dev/null 2>&1
-    elif [ -v PIPX_HOME ]; then
-        mv rclone-v*/rclone ${PIPX_HOME}/venvs/froster/bin/rclone >/dev/null 2>&1
-    else
-        echo "Error: pipx installation path not found."
-        exit 1
-    fi
+    froster_path=$(which froster)
+    froster_dir=$(dirname ${froster_path})
+    mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
+  
 
     # Remove the downloaded zip file
     echo "    Cleaning up rclone installation files"
@@ -378,11 +365,11 @@ install_pwalk
 install_rclone
 
 # Get the installed froster version
-version=$(pipx runpip froster show froster | grep Version | awk '{print $2}')
+version=$(froster -v | awk '{print $2}')
 
 # Print success message
 echo
-echo "froster v$version has been successfully installed!"
+echo "froster $version has been successfully installed!"
 
 # Print post-installation instructions
 echo

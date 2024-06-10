@@ -1233,7 +1233,7 @@ class TestConfigS3(unittest.TestCase):
 
 if __name__ == '__main__':
 
-    if True:
+    if False:
         unittest.main(verbosity=2)
     else:
         suite = unittest.TestSuite()
@@ -1254,7 +1254,7 @@ if __name__ == '__main__':
         # suite.addTest(TestConfigAWS('test_set_aws'))
         # suite.addTest(TestConfigShared('test_set_shared'))
         # suite.addTest(TestConfigNIH('test_set_nih'))
-        # suite.addTest(TestConfigS3('test_set_s3'))
+        suite.addTest(TestConfigS3('test_set_s3'))
 
         runner = unittest.TextTestRunner(verbosity=2)
         runner.run(suite)
