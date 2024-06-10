@@ -1069,7 +1069,7 @@ def check_ini_file(self, ini_file, section, key, value):
 #                        NIH_SECTION, 'is_nih', 'False')
 
 
-# @patch('builtins.print')
+@patch('builtins.print')
 class TestConfigS3(unittest.TestCase):
     '''Test the set_s3 method.'''
 
@@ -1077,8 +1077,8 @@ class TestConfigS3(unittest.TestCase):
     @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
     @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-    # @patch('builtins.print')
-    def setUp(self, mock_prompt, mock_input_list, mock_input_text):
+    @patch('builtins.print')
+    def setUp(self, mock_print, mock_prompt, mock_input_list, mock_input_text):
 
         init_froster(self)
 
@@ -1098,7 +1098,7 @@ class TestConfigS3(unittest.TestCase):
 
     @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
-    def test_set_s3(self, mock_list, mock_text):
+    def test_set_s3(self, mock_print, mock_list, mock_text):
         '''- Set a new S3 bucket.'''
 
         # Assert S3 is not set
@@ -1126,109 +1126,109 @@ class TestConfigS3(unittest.TestCase):
         # Check the bucket was created
         self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
-    # def test_set_s3_aws_not_init(self, mock_print):
-    #     '''- set_s3 method returns False if AWS credentials are not set.'''
+    def test_set_s3_aws_not_init(self, mock_print):
+        '''- set_s3 method returns False if AWS credentials are not set.'''
 
-    #     # Mock the aws_init variable
-    #     self.cfg.aws_init = False
+        # Mock the aws_init variable
+        self.cfg.aws_init = False
 
-    #     # Call set_s3 method
-    #     self.assertFalse(self.cfg.set_s3(self.aws))
+        # Call set_s3 method
+        self.assertFalse(self.cfg.set_s3(self.aws))
 
-    #     # Check that the aws_init is not set
-    #     self.assertFalse(self.cfg.aws_init)
+        # Check that the aws_init is not set
+        self.assertFalse(self.cfg.aws_init)
 
-    #     # Check that the s3_init is not set
-    #     self.assertFalse(self.cfg.s3_init)
+        # Check that the s3_init is not set
+        self.assertFalse(self.cfg.s3_init)
 
-    #     # Restore the aws_init variable
-    #     self.cfg.aws_init = True
+        # Restore the aws_init variable
+        self.cfg.aws_init = True
 
-    # def test_set_s3_invalid_aws_credentials(self, mock_print):
-    #     '''- set_s3 method returns False if AWS credentials are invalid.'''
+    def test_set_s3_invalid_aws_credentials(self, mock_print):
+        '''- set_s3 method returns False if AWS credentials are invalid.'''
 
-    #     # Manually change to a profile not set
-    #     self.cfg.aws_profile = AWS_PROFILE_2
+        # Manually change to a profile not set
+        self.cfg.aws_profile = AWS_PROFILE_2
 
-    #     # Check that the aws_init is set
-    #     self.assertTrue(self.cfg.aws_init)
+        # Check that the aws_init is set
+        self.assertTrue(self.cfg.aws_init)
 
-    #     # Check that the s3_init is not set
-    #     self.assertFalse(self.cfg.s3_init)
+        # Check that the s3_init is not set
+        self.assertFalse(self.cfg.s3_init)
 
-    #     # Call set_s3 method
-    #     self.assertFalse(self.cfg.set_s3(self.aws))
+        # Call set_s3 method
+        self.assertFalse(self.cfg.set_s3(self.aws))
 
-    #     # Check that the aws_init is still set
-    #     self.assertTrue(self.cfg.aws_init)
+        # Check that the aws_init is still set
+        self.assertTrue(self.cfg.aws_init)
 
-    #     # Check that the s3_init is not set
-    #     self.assertFalse(self.cfg.s3_init)
+        # Check that the s3_init is not set
+        self.assertFalse(self.cfg.s3_init)
 
-    #     # Restore the changed profile
-    #     self.cfg.aws_profile = AWS_PROFILE
+        # Restore the changed profile
+        self.cfg.aws_profile = AWS_PROFILE
 
-    # @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
-    # @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
-    # @patch('inquirer.confirm', side_effect=[True])
-    # @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
-    # def test_set_s3_when_shared_config(self, mock_print, mock_list, mock_text, mock_confirm, mock_prompt):
-    #     '''- Set a new S3 bucket when shared configuration.'''
+    @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
+    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.confirm', side_effect=[True])
+    @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
+    def test_set_s3_when_shared_config(self, mock_print, mock_list, mock_text, mock_confirm, mock_prompt):
+        '''- Set a new S3 bucket when shared configuration.'''
 
-    #     # Call set_shared method
-    #     self.assertTrue(self.cfg.set_shared())
+        # Call set_shared method
+        self.assertTrue(self.cfg.set_shared())
 
-    #     # Call set_s3 method
-    #     self.assertTrue(self.cfg.set_s3(self.aws))
+        # Call set_s3 method
+        self.assertTrue(self.cfg.set_s3(self.aws))
 
-    #     # Check that the configuration files were updated correctly
-    #     check_ini_file(self, self.cfg.shared_config_file,
-    #                    S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+        # Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
 
-    #     check_ini_file(self, self.cfg.shared_config_file,
-    #                    S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
 
-    #     check_ini_file(self, self.cfg.shared_config_file,
-    #                    S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
+        check_ini_file(self, self.cfg.shared_config_file,
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS)
 
-    #     # Check that the s3_init is set
-    #     self.assertTrue(self.cfg.s3_init)
+        # Check that the s3_init is set
+        self.assertTrue(self.cfg.s3_init)
 
-    #     # Get the buckets list
-    #     s3_buckets = self.aws.get_buckets()
+        # Get the buckets list
+        s3_buckets = self.aws.get_buckets()
 
-    #     # Check the bucket was created
-    #     self.assertIn(S3_BUCKET_NAME, s3_buckets)
+        # Check the bucket was created
+        self.assertIn(S3_BUCKET_NAME, s3_buckets)
 
-    # @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS, S3_BUCKET_NAME, S3_STORAGE_CLASS_2])
-    # @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR, S3_ARCHIVE_DIR_2])
-    # def test_set_s3_select_bucket(self, mock_print, mock_list, mock_text):
-    #     '''- Select S3 bucket.'''
+    @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS, S3_BUCKET_NAME, S3_STORAGE_CLASS_2])
+    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR, S3_ARCHIVE_DIR_2])
+    def test_set_s3_select_bucket(self, mock_print, mock_list, mock_text):
+        '''- Select S3 bucket.'''
 
-    #     # Call set_s3 method
-    #     self.assertTrue(self.cfg.set_s3(self.aws))
+        # Call set_s3 method
+        self.assertTrue(self.cfg.set_s3(self.aws))
 
-    #     # Call set_s3 method
-    #     self.assertTrue(self.cfg.set_s3(self.aws))
+        # Call set_s3 method
+        self.assertTrue(self.cfg.set_s3(self.aws))
 
-    #     # Check that the configuration files were updated correctly
-    #     check_ini_file(self, self.cfg.config_file,
-    #                    S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+        # Check that the configuration files were updated correctly
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
 
-    #     check_ini_file(self, self.cfg.config_file,
-    #                    S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR_2)
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR_2)
 
-    #     check_ini_file(self, self.cfg.config_file,
-    #                    S3_SECTION, 'storage_class', S3_STORAGE_CLASS_2)
+        check_ini_file(self, self.cfg.config_file,
+                       S3_SECTION, 'storage_class', S3_STORAGE_CLASS_2)
 
-    #     # Delete the bucket
-    #     self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME)
+        # Delete the bucket
+        self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME)
 
-    #     # Get the buckets list
-    #     s3_buckets = self.aws.get_buckets()
+        # Get the buckets list
+        s3_buckets = self.aws.get_buckets()
 
-    #     # Check the bucket was created
-    #     self.assertNotIn(S3_BUCKET_NAME, s3_buckets)
+        # Check the bucket was created
+        self.assertNotIn(S3_BUCKET_NAME, s3_buckets)
 
 
 if __name__ == '__main__':
