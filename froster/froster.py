@@ -1314,9 +1314,33 @@ class AWSBoto:
                                     region_name=aws_region_name).client('sts')
 
             elif aws_profile:
-                # Build a new STS client with the provided profile
-                sts = boto3.Session(profile_name=aws_profile,
-                                    region_name=aws_region_name).client('sts')
+
+
+                # Set the credentials for AWS
+                # But since aws/crendentials file is not in the default location, we need to set the environment variables
+                if not self.cfg.aws_init or not os.path.exists(self.cfg.aws_credentials_file):
+                    return False
+
+                # Create a ConfigParser object
+                config = configparser.ConfigParser()
+                
+                config.read(self.cfg.aws_credentials_file)
+                
+
+                # Check if the AWS profile exists
+                if config.has_section(aws_profile):
+                
+                    # Set the environment variables for creds
+                    access_key = config.get(
+                        aws_profile, 'aws_access_key_id')
+                    secret_key = config.get(
+                        aws_profile, 'aws_secret_access_key')
+
+                    sts = boto3.Session(aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key,
+                                        region_name=aws_region_name).client('sts')
+                else:
+                    return False
 
             elif hasattr(self, 's3_client'):
                 # Get the current sts_client
@@ -1414,7 +1438,11 @@ class AWSBoto:
         ''' Get a list of available AWS profiles'''
 
         try:
-            return boto3.Session().available_profiles
+            config = configparser.ConfigParser()
+            config.read(os.getenv('AWS_SHARED_CREDENTIALS_FILE'))
+            profiles = config.sections()
+
+            return profiles
 
         except Exception:
             print_error()
