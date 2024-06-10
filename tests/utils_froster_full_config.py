@@ -1,6 +1,6 @@
 import sys
 from froster import *
-from .config import *
+from config import *
 from argparse import Namespace
 import os
 import shutil
