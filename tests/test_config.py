@@ -6,6 +6,7 @@ import os
 import shutil
 from unittest.mock import patch
 import unittest
+import time
 
 #############
 # Variables #
@@ -1054,8 +1055,14 @@ class TestConfigS3(unittest.TestCase):
         # Delete any existing buckets
         delete_buckets(self)
 
+        # Give AWS some time to update
+        time.sleep(10)
+
     # Method executed after every test
     def tearDown(self):
+
+        # Give AWS some time to update
+        time.sleep(10)
 
         # Delete any existing buckets
         delete_buckets(self)
