@@ -33,3 +33,36 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET: ${{ secrets.AWS_SECRET }}
         run: python3 tests/test_config.py
+
+  froster-config-debug:
+    runs-on: ubuntu-latest
+    steps:
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+
+      - name: Create and activate virtual environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+
+      - name: Install froster
+        env:
+          LOCAL_INSTALL: true
+        run: ./install.sh
+
+      - name: Run test_config tests
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET: ${{ secrets.AWS_SECRET }}
+          DEBUG: 1
+        run: python3 tests/test_config.py
+
+      - name: Print debug log
+        run: froster --log-print
