@@ -11,6 +11,10 @@ import warnings
 warnings.filterwarnings("always", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=ResourceWarning)
 
+# VARIABLES
+S3_BUCKET_NAME = "froster-unittest"
+S3_BUCKET_NAME = "froster-unittest-2"
+
 class FrosterConfiguration():
 
     def init_froster_objects(self):
@@ -163,10 +167,10 @@ class FrosterConfiguration():
 
 def config_froster(caller_name="utils_froster_full_config"):
     global S3_BUCKET_NAME
-    S3_BUCKET_NAME = "froster-unittest-" + caller_name
+    S3_BUCKET_NAME = S3_BUCKET_NAME + caller_name
 
     global S3_BUCKET_NAME_2
-    S3_BUCKET_NAME_2 = S3_BUCKET_NAME + "-2"
+    S3_BUCKET_NAME_2 = S3_BUCKET_NAME_2 + "-" + caller_name
     
     froster = FrosterConfiguration()
 
