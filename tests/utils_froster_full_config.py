@@ -11,8 +11,6 @@ import warnings
 warnings.filterwarnings("always", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=ResourceWarning)
 
-
-
 class FrosterConfiguration():
 
     def init_froster_objects(self):
@@ -163,7 +161,13 @@ class FrosterConfiguration():
 
 
 
-def config_froster():
+def config_froster(caller_name="utils_froster_full_config"):
+    global S3_BUCKET_NAME
+    S3_BUCKET_NAME = "froster-unittest-" + caller_name
+
+    global S3_BUCKET_NAME_2
+    S3_BUCKET_NAME_2 = S3_BUCKET_NAME + "-2"
+    
     froster = FrosterConfiguration()
 
     froster.init_froster_objects()

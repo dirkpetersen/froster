@@ -8,11 +8,6 @@ import shutil
 from unittest.mock import patch
 import unittest
 
-#############
-# Variables #
-#############
-S3_BUCKET_NAME = 'froster-unittest-index-bob'
-S3_BUCKET_NAME_2 = 'froster-unittest-index-alice'
 
 @patch('builtins.print')
 class TestIndex(unittest.TestCase):
@@ -30,7 +25,7 @@ class TestIndex(unittest.TestCase):
 
     @patch('inquirer.text', side_effect=[NAME, EMAIL])
     def test_subcmd_index(self, mock_print, mock_text):
-        self.assertTrue(config_froster())
+        self.assertTrue(config_froster(caller_name="index"))
 
 
 if __name__ == '__main__':

@@ -10,8 +10,8 @@ import unittest
 #############
 # Variables #
 #############
-S3_BUCKET_NAME = 'froster-unittest-config-bob'
-S3_BUCKET_NAME_2 = 'froster-unittest-config-alice'
+S3_BUCKET_NAME = 'froster-unittest-config'
+S3_BUCKET_NAME_2 = 'froster-unittest-config-2'
 
 ##################
 # FUNCTION UTILS #
@@ -1217,7 +1217,7 @@ if __name__ == '__main__':
         # BASIC TEST CASE FOR EVERY TEST
         # suite.addTest(TestConfig('test_subcmd_config'))
         # suite.addTest(TestConfigUser('test_set_user'))
-        # suite.addTest(TestConfigAWS('test_set_aws'))
+        suite.addTest(TestConfigAWS('test_set_aws'))
         # suite.addTest(TestConfigShared('test_set_shared'))
         # suite.addTest(TestConfigNIH('test_set_nih'))
         suite.addTest(TestConfigS3('test_set_s3'))
