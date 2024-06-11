@@ -54,6 +54,8 @@ import traceback
 import pkg_resources
 from pathlib import Path
 
+logger = ""
+
 
 class ConfigManager:
     ''' Froster configuration manager
@@ -102,6 +104,9 @@ class ConfigManager:
             else:
                 self.data_dir = os.path.join(
                     self.home_dir, '.local', 'share', 'froster')
+
+            global logger
+            logger = os.path.join(self.data_dir, 'froster.log')
 
             self.slurm_dir = os.path.join(self.data_dir, 'slurm')
 
@@ -334,7 +339,7 @@ class ConfigManager:
             os.system("systemctl --user enable froster-monitor.timer")
             os.system("systemctl --user start froster-monitor.timer")
 
-            print("Systemd froster-monitor.timer cron job started!")
+            log("Systemd froster-monitor.timer cron job started!")
             return True
 
         except Exception:
@@ -434,19 +439,20 @@ class ConfigManager:
 
         try:
             if os.path.exists(self.config_file):
-                print(f'\n*** LOCAL CONFIGURATION AT: {self.config_file}\n')
+                log(
+                    f'\n*** LOCAL CONFIGURATION AT: {self.config_file}\n')
                 with open(self.config_file, 'r') as f:
-                    print(f.read())
+                    log(f.read())
 
                 if self.is_shared and os.path.exists(self.shared_config_file):
-                    print(
+                    log(
                         f'*** SHARED CONFIGURATION AT: {self.shared_config_file}\n')
                     with open(self.shared_config_file, 'r') as f:
-                        print(f.read())
+                        log(f.read())
             else:
-                print(f'\n*** NO CONFIGURATION FOUND ***')
-                print('\nYou can configure froster using the command:')
-                print('    froster config')
+                log(f'\n*** NO CONFIGURATION FOUND ***')
+                log('\nYou can configure froster using the command:')
+                log('    froster config')
         except Exception:
             print_error()
 
@@ -467,13 +473,13 @@ class ConfigManager:
         '''Set the AWS configuration'''
 
         try:
-            print(f'\n*** AWS CONFIGURATION ***\n')
+            log(f'\n*** AWS CONFIGURATION ***\n')
 
             # Ask user to enter the path to a aws credentials directory
 
-            default_aws_dir = os.path.join(self.home_dir, '.aws')
-            if not os.path.exists(default_aws_dir):
-                os.makedirs(default_aws_dir, exist_ok=True, mode=0o775)
+            default_aws_dir = os.path.join('~', '.aws')
+            if not os.path.exists(os.path.expanduser(default_aws_dir)):
+                os.makedirs(os.path.expanduser(default_aws_dir), exist_ok=True, mode=0o775)
 
             aws_dir_question = [
                 inquirer.Path(
@@ -538,15 +544,16 @@ class ConfigManager:
                     message="AWS Secret Access Key", validate=self.__inquirer_check_required)
 
                 # Check if the provided aws credentials are valid
-                print("\nChecking AWS credentials...")
+                log("\nChecking AWS credentials...")
 
                 if aws.check_credentials(aws_access_key_id=aws_access_key_id,
                                          aws_secret_access_key=aws_secret_access_key):
-                    print('    ...AWS credentials are valid\n')
+                    log('    ...AWS credentials are valid\n')
                 else:
-                    print('    ...AWS credentials are NOT valid\n')
-                    print('\nYou can configure aws credentials using the command:')
-                    print('    froster config --aws\n')
+                    log('    ...AWS credentials are NOT valid\n')
+                    log(
+                        '\nYou can configure aws credentials using the command:')
+                    log('    froster config --aws\n')
                     return False
 
                 # Get list of AWS regions
@@ -556,16 +563,16 @@ class ConfigManager:
                 region = inquirer.list_input("Choose your region",
                                              choices=aws_regions)
 
-                print("\nChecking region...")
+                log("\nChecking region...")
                 if aws.check_credentials(aws_access_key_id=aws_access_key_id,
                                          aws_secret_access_key=aws_secret_access_key,
                                          aws_region_name=region):
-                    print('    ...region is valid\n')
+                    log('    ...region is valid\n')
                 else:
-                    print('    ...region is NOT valid\n')
-                    print(
+                    log('    ...region is NOT valid\n')
+                    log(
                         '\nYou can configure aws credentials and region using the command:')
-                    print('    froster config --aws\n')
+                    log('    froster config --aws\n')
                     return False
 
                 # Create new profile in ~/.aws/credentials
@@ -581,14 +588,15 @@ class ConfigManager:
                 # EXISTING PROFILE CONFIGURATION
 
                 # Check if the provided aws credentials are valid
-                print("\nChecking AWS credentials...")
+                log("\nChecking AWS credentials...")
 
                 if aws.check_credentials(aws_profile=aws_profile):
-                    print('    ...AWS credentials are valid\n')
+                    log('    ...AWS credentials are valid\n')
                 else:
-                    print('    ...AWS credentials are NOT valid\n')
-                    print('\nConfigure new aws credentials using the command:')
-                    print('    froster config --aws\n')
+                    log('    ...AWS credentials are NOT valid\n')
+                    log(
+                        '\nConfigure new aws credentials using the command:')
+                    log('    froster config --aws\n')
                     return False
 
                 # Check the seletected profile region
@@ -603,15 +611,15 @@ class ConfigManager:
                                              default=aws_profile_region,
                                              choices=aws_regions)
 
-                print("\nChecking region...")
+                log("\nChecking region...")
                 if aws.check_credentials(aws_profile=aws_profile,
                                          aws_region_name=region):
-                    print('    ...region is valid\n')
+                    log('    ...region is valid\n')
                 else:
-                    print('    ...region is NOT valid\n')
-                    print(
+                    log('    ...region is NOT valid\n')
+                    log(
                         '\nYou can configure aws credentials and region using the command:')
-                    print('    froster config --aws\n')
+                    log('    froster config --aws\n')
 
                     return False
 
@@ -641,7 +649,7 @@ class ConfigManager:
             # Set aws init flag
             self.aws_init = True
 
-            print(f'*** AWS CONFIGURATION DONE ***\n')
+            log(f'*** AWS CONFIGURATION DONE ***\n')
 
             return True
 
@@ -820,14 +828,14 @@ class ConfigManager:
         '''Set the NIH configuration'''
 
         try:
-            print(f'\n*** NIH S3 CONFIGURATION ***\n')
+            log(f'\n*** NIH S3 CONFIGURATION ***\n')
 
             is_nih = inquirer.confirm(
                 message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
 
             self.__set_configuration_entry('NIH', 'is_nih', is_nih)
 
-            print(f'*** NIH S3 CONFIGURATION DONE***\n')
+            log(f'*** NIH S3 CONFIGURATION DONE***\n')
 
             # Set the nih init flag
             self.nih_init = True
@@ -842,24 +850,25 @@ class ConfigManager:
         '''Set the S3 configuration'''
 
         try:
-            print(f'\n*** S3 CONFIGURATION ***\n')
+            log(f'\n*** S3 CONFIGURATION ***\n')
 
             # Check if aws configuration is complete
             if not self.aws_init:
-                print(f'AWS configuration is missing')
-                print('You can configure aws settings using the command:')
-                print('    froster config --aws')
+                log(f'AWS configuration is missing')
+                log('You can configure aws settings using the command:')
+                log('    froster config --aws')
                 return False
 
-            print(
+            log(
                 f'Checking AWS credentials for profile "{self.aws_profile}"...')
             if aws.check_credentials(aws_profile=self.aws_profile):
-                print('    ...AWS credentials are valid\n')
+                log('    ...AWS credentials are valid\n')
             else:
-                print('    ...AWS credentials are NOT valid\n')
-                print('\nYou can configure aws credentials using the command:')
-                print('    froster config --aws')
-                print(f'\n*** S3 CONFIGURATION DONE ***\n')
+                log('    ...AWS credentials are NOT valid\n')
+                log(
+                    '\nYou can configure aws credentials using the command:')
+                log('    froster config --aws')
+                log(f'\n*** S3 CONFIGURATION DONE ***\n')
                 return False
 
             # Get list froster buckets for the given profile
@@ -885,13 +894,13 @@ class ConfigManager:
                     validate=self.__inquirer_check_bucket_name)
 
                 if new_bucket_name in s3_buckets:
-                    print(f'Bucket {new_bucket_name} already exists')
+                    log(f'Bucket {new_bucket_name} already exists')
                     return False
 
                 # Create new bucket
                 if not aws.create_bucket(bucket_name=new_bucket_name,
                                          region=self.aws_region):
-                    print(f'Could not create bucket {new_bucket_name}')
+                    log(f'Could not create bucket {new_bucket_name}')
                     return False
 
                 # Store new aws s3 bucket in the config object
@@ -908,7 +917,7 @@ class ConfigManager:
                 validate=self.__inquirer_check_required)
 
             # Print newline after this prompt
-            print()
+            log()
 
             # Store aws s3 archive dir in the config object
             self.__set_configuration_entry('S3', 'archive_dir', archive_dir)
@@ -931,7 +940,7 @@ class ConfigManager:
             # Set the s3 init flag
             self.s3_init = True
 
-            print(f'\n*** S3 CONFIGURATION DONE ***\n')
+            log(f'\n*** S3 CONFIGURATION DONE ***\n')
 
             return True
 
@@ -943,7 +952,7 @@ class ConfigManager:
         '''Set the shared configuration'''
 
         try:
-            print(f'\n*** SHARED CONFIGURATION ***\n')
+            log(f'\n*** SHARED CONFIGURATION ***\n')
 
             is_shared = inquirer.confirm(
                 message="Do you want to collaborate with other users on archive and restore?", default=False)
@@ -971,13 +980,13 @@ class ConfigManager:
                 # Ask the user if they want to move the froster-archives.json file to the shared directory
                 if os.path.isfile(os.path.join(shared_config_dir, self.archive_json_file_name)):
                     # If the froster-archives.json file is found in the shared config directory we are done here
-                    print(
+                    log(
                         f"\nNOTE: the {self.archive_json_file_name} file was found in the shared config directory\n")
                 else:
 
                     # If the froster-archives.json file is found in the local directory we ask the user if they want to move it to the shared directory
                     if os.path.isfile(os.path.join(self.data_dir, self.archive_json_file_name)):
-                        print(
+                        log(
                             f"\nNOTE: the {self.archive_json_file_name} file was found in the local directory\n")
 
                         # Ask user if they want to move the local list of files and directories that were archived to the shared directory
@@ -988,7 +997,7 @@ class ConfigManager:
                         if local_froster_archives_to_shared:
                             shutil.copy(os.path.join(
                                 self.data_dir, self.archive_json_file_name), shared_config_dir)
-                            print(
+                            log(
                                 f"\nNOTE: Local list of archived files and directories was moved to {shared_config_dir}\n")
 
             # Set the shared flag in the config file
@@ -1006,7 +1015,7 @@ class ConfigManager:
             else:
                 self.is_shared = False
 
-            print(f'*** SHARED CONFIGURATION DONE ***\n')
+            log(f'*** SHARED CONFIGURATION DONE ***\n')
 
             return True
 
@@ -1020,7 +1029,7 @@ class ConfigManager:
         try:
             # If shared configuration file exists, nothing to move
             if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
-                print(
+                log(
                     f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
                 return
 
@@ -1037,7 +1046,7 @@ class ConfigManager:
 
             if move_config_to_shared:
                 shutil.copy(self.config_file, self.shared_config_file)
-                print(
+                log(
                     "NOTE: Shared configuration file was moved to the shared directory\n")
 
                 shared_config = configparser.ConfigParser()
@@ -1074,14 +1083,14 @@ class ConfigManager:
         '''Set the user configuration'''
 
         try:
-            print(f'\n*** USER CONFIGURATION ***\n')
+            log(f'\n*** USER CONFIGURATION ***\n')
 
             # Ask the user for their full name
             fullname = inquirer.text(
                 message="Enter your full name", validate=self.__inquirer_check_required)
 
             # Print for a new line when prompting
-            print()
+            log()
 
             # Set the user's full name in the config file
             self.__set_configuration_entry('USER', 'name', fullname)
@@ -1091,7 +1100,7 @@ class ConfigManager:
                                   validate=self.__inquirer_check_email_format)
 
             # Print for a new line when prompting
-            print()
+            log()
 
             # Set the user's email in the config file
             self.__set_configuration_entry('USER', 'email', email)
@@ -1099,7 +1108,7 @@ class ConfigManager:
             # Set the user init flag
             self.user_init = True
 
-            print(f'*** USER CONFIGURATION DONE ***\n')
+            log(f'*** USER CONFIGURATION DONE ***\n')
 
             return True
 
@@ -1114,17 +1123,17 @@ class ConfigManager:
 
             if shutil.which('scontrol'):
 
-                print(f'\n*** SLURM CONFIGURATION ***\n')
+                log(f'\n*** SLURM CONFIGURATION ***\n')
 
                 # Run the sacctmgr command
                 result = subprocess.run(
                     ['sacctmgr', 'show', 'config'], capture_output=True)
 
                 if result.returncode != 0:
-                    print(
+                    log(
                         "\nError: sacctmgr command failed. Please ensure it's installed and in your PATH and you are in a head node.")
-                    print(f'\n  stdout: {result.stdout.decode("utf-8")}\n')
-                    print(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
+                    log(f'\n  stdout: {result.stdout.decode("utf-8")}\n')
+                    log(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
                     return False
 
                 slurm_walltime_days = inquirer.text(
@@ -1141,7 +1150,7 @@ class ConfigManager:
 
                 # Get the allowed partitions and QOS
                 parts = se.get_allowed_partitions_and_qos()
-                print (parts)
+                log(parts)
                 if parts is not None:
                     # Ask the user to select the Slurm partition and QOS
                     slurm_partition = inquirer.list_input(
@@ -1181,15 +1190,16 @@ class ConfigManager:
                     self.__set_configuration_entry(
                         'SLURM', 'lscratch_root', lscratch_root)
 
-                print(f'\n*** SLURM CONFIGURATION DONE ***\n')
+                log(f'\n*** SLURM CONFIGURATION DONE ***\n')
 
             else:
-                print(f'\n*** SLURM NOT FOUND: Nothing to configure ***\n')
+                log(f'\n*** SLURM NOT FOUND: Nothing to configure ***\n')
 
             return True
 
         except FileNotFoundError:
-            print("sacctmgr command not found. Please ensure it's installed and in your PATH and you are in a head node.")
+            log(
+                "sacctmgr command not found. Please ensure it's installed and in your PATH and you are in a head node.")
             return False
 
         except Exception:
@@ -1211,7 +1221,7 @@ class ConfigManager:
             # Set the update check flag in the config file
             self.__set_configuration_entry(
                 'UPDATE', 'timestamp', timestamp)
-    
+
             return True
 
         except Exception:
@@ -1277,9 +1287,9 @@ class AWSBoto:
         try:
             # Check if the session is valid
             if not self.check_session():
-                print(
+                log(
                     f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                print("run 'froster config --aws' to fix this.\n")
+                log("run 'froster config --aws' to fix this.\n")
                 sys.exit(1)
 
             # Get the bucket Access Control List (ACL)
@@ -1315,7 +1325,6 @@ class AWSBoto:
 
             elif aws_profile:
 
-
                 # Set the credentials for AWS
                 # But since aws/crendentials file is not in the default location, we need to set the environment variables
                 if not self.cfg.aws_init or not os.path.exists(self.cfg.aws_credentials_file):
@@ -1323,13 +1332,12 @@ class AWSBoto:
 
                 # Create a ConfigParser object
                 config = configparser.ConfigParser()
-                
+
                 config.read(self.cfg.aws_credentials_file)
-                
 
                 # Check if the AWS profile exists
                 if config.has_section(aws_profile):
-                
+
                     # Set the environment variables for creds
                     access_key = config.get(
                         aws_profile, 'aws_access_key_id')
@@ -1372,18 +1380,19 @@ class AWSBoto:
 
             # Check if the session is valid
             if not self.check_session():
-                print(
+                log(
                     f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                print("run 'froster config --aws' to fix this.\n")
+                log("run 'froster config --aws' to fix this.\n")
                 return False
 
-            print(f'\nCreating bucket {bucket_name}...')
+            log(f'\nCreating bucket {bucket_name}...')
 
             self.s3_client.create_bucket(Bucket=bucket_name,
                                          CreateBucketConfiguration={'LocationConstraint': region})
-            print(f'    ...bucket created\n')
+            log(f'    ...bucket created\n')
 
-            print(f'\nApplying AES256 encryption to bucket {bucket_name}...')
+            log(
+                f'\nApplying AES256 encryption to bucket {bucket_name}...')
             encryption_configuration = {
                 'Rules': [
                     {
@@ -1397,7 +1406,7 @@ class AWSBoto:
                 Bucket=bucket_name,
                 ServerSideEncryptionConfiguration=encryption_configuration
             )
-            print(f'    ...encryption applied.\n')
+            log(f'    ...encryption applied.\n')
 
             return True
 
@@ -1410,9 +1419,9 @@ class AWSBoto:
 
         # Check if the session is valid
         if not self.check_session():
-            print(
+            log(
                 f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-            print("run 'froster config --aws' to fix this.\n")
+            log("run 'froster config --aws' to fix this.\n")
             sys.exit(1)
 
         try:
@@ -1478,9 +1487,9 @@ class AWSBoto:
 
         # Check if the session is valid
         if not self.check_session():
-            print(
+            log(
                 f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-            print("run 'froster config --aws' to fix this.\n")
+            log("run 'froster config --aws' to fix this.\n")
             sys.exit(1)
 
         try:
@@ -1547,7 +1556,7 @@ class AWSBoto:
             return current_tz_str
 
         except Exception as e:
-            print(f'Error: {e}. Using default value "America/Los_Angeles"')
+            log(f'Error: {e}. Using default value "America/Los_Angeles"')
             return ('America/Los_Angeles')
 
     def glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk"):
@@ -1555,9 +1564,9 @@ class AWSBoto:
 
         # Check if the session is valid
         if not self.check_session():
-            print(
+            log(
                 f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-            print("run 'froster config --aws' to fix this.\n")
+            log("run 'froster config --aws' to fix this.\n")
             sys.exit(1)
 
         try:
@@ -1567,8 +1576,10 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(f"Access denied for bucket '{bucket}'", file=sys.stderr)
-                print('Check your permissions and/or credentials.', file=sys.stderr)
+                log(
+                    f"Access denied for bucket '{bucket}'", file=sys.stderr)
+                log(
+                    'Check your permissions and/or credentials.', file=sys.stderr)
             else:
                 print_error()
             return [], [], [], []
@@ -1627,7 +1638,7 @@ class AWSBoto:
 
                 except Exception:
                     print_error()
-                    print(f'Restore request for {object_key} failed.')
+                    log(f'Restore request for {object_key} failed.')
                     return [], [], [], []
 
         return triggered_keys, restoring_keys, restored_keys, not_glacier_keys
@@ -1647,7 +1658,7 @@ class AWSBoto:
         for fld in folders:
             buc, pre, recur, _ = self.arch.archive_get_bucket_info(fld)
             if not buc:
-                print(f'Error: No archive config found for folder {fld}')
+                log(f'Error: No archive config found for folder {fld}')
                 continue
             # returns bucket(str), prefix(str), recursive(bool), glacier(bool)
             # Use paginator to handle buckets with large number of objects
@@ -1674,17 +1685,17 @@ class AWSBoto:
             else:
                 time.sleep(5)  # Wait for 5 seconds before retrying
                 s.close()
-        print("Timeout reached without SSH server being ready.")
+        log("Timeout reached without SSH server being ready.")
         return False
 
     def ec2_deploy(self, folders, s3size=NotImplementedError):
 
         if s3size != 0:
             s3size = self._get_s3_data_size(folders)
-        print(f"Total data in all folders: {s3size:.2f} GiB")
+        log(f"Total data in all folders: {s3size:.2f} GiB")
         prof = self._ec2_create_iam_policy_roles_ec2profile()
         iid, ip = self._ec2_create_instance(s3size, prof)
-        print(' Waiting for ssh host to become ready ...')
+        log(' Waiting for ssh host to become ready ...')
         if not self.wait_for_ssh_ready(ip):
             return False
 
@@ -1715,7 +1726,7 @@ class AWSBoto:
             cmdline = f'{cmdline} "{folders}"'
         # end block
 
-        print(f" will execute '{cmdline}' on {ip} ... ")
+        log(f" will execute '{cmdline}' on {ip} ... ")
         bootstrap_restore += '\n' + cmdline
         # once retrieved from Glacier we need to restore this 5 and 12 hours from now
         bootstrap_restore += '\n' + f"echo '{cmdline}' | at now + 5 hours"
@@ -1723,24 +1734,25 @@ class AWSBoto:
         ret = self.ssh_upload('ec2-user', ip,
                               bootstrap_restore, "bootstrap.sh", is_string=True)
         if ret.stdout or ret.stderr:
-            print(ret.stdout, ret.stderr)
+            log(ret.stdout, ret.stderr)
         ret = self.ssh_execute('ec2-user', ip,
                                'nohup bash bootstrap.sh < /dev/null > bootstrap.out 2>&1 &')
         if ret.stdout or ret.stderr:
-            print(ret.stdout, ret.stderr)
-        print(' Executed bootstrap and restore script ... you may have to wait a while ...')
-        print(' but you can already login using "froster ssh"')
+            log(ret.stdout, ret.stderr)
+        log(
+            ' Executed bootstrap and restore script ... you may have to wait a while ...')
+        log(' but you can already login using "froster ssh"')
 
         os.system(f'echo "ls -l {self.args.folders[0]}" >> ~/.bash_history')
         ret = self.ssh_upload('ec2-user', ip,
                               "~/.bash_history", ".bash_history")
         if ret.stdout or ret.stderr:
-            print(ret.stdout, ret.stderr)
+            log(ret.stdout, ret.stderr)
 
         ret = self.ssh_upload(
             'ec2-user', ip, self.cfg.archive_json, "~/.config/froster/")
         if ret.stdout or ret.stderr:
-            print(ret.stdout, ret.stderr)
+            log(ret.stdout, ret.stderr)
 
         self.send_email_ses(self.cfg.email, self.cfg.email, 'Froster restore on EC2',
                             f'this command line was executed on host {ip}:\n{cmdline}')
@@ -1754,7 +1766,7 @@ class AWSBoto:
                 PolicyDocument=json.dumps(pol_doc)
             )
             policy_arn = response['Policy']['Arn']
-            print(f"Policy created with ARN: {policy_arn}")
+            log(f"Policy created with ARN: {policy_arn}")
         except self.iam_client.exceptions.EntityAlreadyExistsException as e:
             policies = self.iam_client.list_policies(Scope='Local')
             # Scope='Local' for customer-managed policies,
@@ -1763,16 +1775,16 @@ class AWSBoto:
                 if policy['PolicyName'] == pol_name:
                     policy_arn = policy['Arn']
                     break
-            print(f'Policy {pol_name} already exists')
+            log(f'Policy {pol_name} already exists')
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
                 printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
         except Exception as e:
-            print('Other Error:', e)
+            log('Other Error:', e)
         return policy_arn
 
     def _ec2_create_froster_iam_policy(self):
@@ -1798,7 +1810,7 @@ class AWSBoto:
         existing_policies = self.iam_client.list_user_policies(
             UserName=user_name)
         if policy_name in existing_policies['PolicyNames']:
-            print(f"{policy_name} already exists for user {user_name}.")
+            log(f"{policy_name} already exists for user {user_name}.")
             return
 
         # Create policy for user
@@ -1808,7 +1820,7 @@ class AWSBoto:
             PolicyDocument=json.dumps(policy_document)
         )
 
-        print(
+        log(
             f"Policy {policy_name} attached successfully to user {user_name}.")
 
     def _ec2_create_iam_policy_roles_ec2profile(self):
@@ -1870,16 +1882,16 @@ class AWSBoto:
                 Description='Froster role allows Billing, SES and Terminate'
             )
         except self.iam_client.exceptions.EntityAlreadyExistsException:
-            print(f'Role {role_name} already exists.')
+            log(f'Role {role_name} already exists.')
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
                 printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
         except Exception as e:
-            print('Other Error:', e)
+            log('Other Error:', e)
 
         # 2. Attach permissions policies to the IAM role
         cost_explorer_policy = "arn:aws:iam::aws:policy/AWSBillingReadOnlyAccess"
@@ -1902,7 +1914,7 @@ class AWSBoto:
                 PolicyArn=destruct_policy_arn
             )
         except self.iam_client.exceptions.PolicyNotAttachableException as e:
-            print(
+            log(
                 f"Policy {e.policy_arn} is not attachable. Please check your permissions.")
             return False
         except botocore.exceptions.ClientError as e:
@@ -1911,9 +1923,9 @@ class AWSBoto:
                 printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
         except Exception as e:
-            print('Other Error:', e)
+            log('Other Error:', e)
             return False
         # 3. Create an instance profile and associate it with the role
         instance_profile_name = "FrosterEC2Profile"
@@ -1926,7 +1938,7 @@ class AWSBoto:
                 RoleName=role_name
             )
         except self.iam_client.exceptions.EntityAlreadyExistsException:
-            print(f'Profile {instance_profile_name} already exists.')
+            log(f'Profile {instance_profile_name} already exists.')
             return instance_profile_name
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
@@ -1934,14 +1946,14 @@ class AWSBoto:
                 printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
             return None
         except Exception as e:
-            print('Other Error:', e)
+            log('Other Error:', e)
             return None
 
         # Give AWS a moment to propagate the changes
-        print('wait for 15 sec ...')
+        log('wait for 15 sec ...')
         time.sleep(15)  # Wait for 15 seconds
 
         return instance_profile_name
@@ -2043,9 +2055,9 @@ class AWSBoto:
             filled_length = int(length * iteration // max_value)
             bar = "█" * filled_length + '-' * (length - filled_length)
             if sys.stdin.isatty():
-                print(f'\r|{bar}| {percent}%', end='\r')
+                log(f'\r|{bar}| {percent}%', end='\r')
             if iteration == max_value:
-                print()
+                log()
 
         return show_progress_bar
 
@@ -2171,10 +2183,11 @@ class AWSBoto:
 
         if self.args.instancetype:
             chosen_instance_type = self.args.instancetype
-        print('Chosen Instance:', chosen_instance_type)
+        log('Chosen Instance:', chosen_instance_type)
 
         if not chosen_instance_type:
-            print("No suitable instance type found for the given disk space requirement.")
+            log(
+                "No suitable instance type found for the given disk space requirement.")
             return False
 
         # Create a new EC2 key pair
@@ -2202,16 +2215,16 @@ class AWSBoto:
             os.chmod(mykey_path, 0o600)  # Set file permission to 600
 
         imageid = self._ec2_get_latest_amazon_linux2_ami()
-        print(f'Using Image ID: {imageid}')
+        log(f'Using Image ID: {imageid}')
 
-        # print(f'*** userdata-script:\n{self._ec2_user_data_script()}')
+        # log(f'*** userdata-script:\n{self._ec2_user_data_script()}')
 
         iam_instance_profile = {}
         if iamprofile:
             iam_instance_profile = {
                 'Name': iamprofile  # Use the instance profile name
             }
-        print(f'IAM Instance profile: {iamprofile}.')
+        log(f'IAM Instance profile: {iamprofile}.')
 
         # iam_instance_profile = {}
 
@@ -2235,13 +2248,13 @@ class AWSBoto:
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'AccessDenied':
-                print(
+                log(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
             sys.exit(1)
         except Exception as e:
-            print('Other Error: {e}')
+            log('Other Error: {e}')
             sys.exit(1)
 
         # Use a waiter to ensure the instance is running before trying to access its properties
@@ -2257,7 +2270,7 @@ class AWSBoto:
         except Exception as e:
             printdbg('Error creating Tags: {e}')
 
-        print(f'Launching instance {instance_id} ... please wait ...')
+        log(f'Launching instance {instance_id} ... please wait ...')
 
         max_wait_time = 300  # seconds
         delay_time = 10  # check every 10 seconds, adjust as needed
@@ -2275,17 +2288,17 @@ class AWSBoto:
             except botocore.exceptions.WaiterError:
                 progress(attempt)
                 continue
-        print('')
+        log('')
         instance.reload()
 
         grpid = self._ec2_create_and_attach_security_group(
             instance_id)
         if grpid:
-            print(f'Security Group "{grpid}" attached.')
+            log(f'Security Group "{grpid}" attached.')
         else:
-            print('No Security Group ID created.')
+            log('No Security Group ID created.')
         instance.wait_until_running()
-        print(f'Instance IP: {instance.public_ip_address}')
+        log(f'Instance IP: {instance.public_ip_address}')
 
         # Save the last instance IP address
         self.cfg.set_ec2_last_instance(instance.public_ip_address)
@@ -2307,13 +2320,13 @@ class AWSBoto:
             try:
                 response = self.ec2_client.describe_instances(Filters=filters)
             except botocore.exceptions.ClientError as e:
-                print(f'Error: {e}')
+                log(f'Error: {e}')
                 return False
             # Check if any instances match the criteria
             instances = [instance for reservation in response['Reservations']
                          for instance in reservation['Instances']]
             if not instances:
-                print(f"No EC2 instance found with public IP: {ip}")
+                log(f"No EC2 instance found with public IP: {ip}")
                 return
             # Extract instance ID from the instance
             instance_id = instances[0]['InstanceId']
@@ -2322,7 +2335,7 @@ class AWSBoto:
         # Terminate the instance
         self.ec2_client.terminate_instances(InstanceIds=[instance_id])
 
-        print(f"EC2 Instance {instance_id} ({ip}) is being terminated !")
+        log(f"EC2 Instance {instance_id} ({ip}) is being terminated !")
 
     def ec2_list_instances(self, tag_name, tag_value):
         """
@@ -2353,7 +2366,7 @@ class AWSBoto:
                 printdbg(
                     f'Access denied! Please check your IAM permissions. \n   Error: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
             return []
         # An error occurred (AuthFailure) when calling the DescribeInstances operation: AWS was not able to validate the provided access credentials
         ilist = []
@@ -2372,7 +2385,7 @@ class AWSBoto:
         mykey_path = os.path.join(
             self.cfg.shared_dir, f'{self.cfg.ssh_key_name}-{self.cfg.whoami}.pem')
         if not os.path.exists(key_path):
-            print(
+            log(
                 f'{key_path} does not exist. Please create it by launching "froster restore --aws"')
             sys.exit
         if not os.path.exists(mykey_path):
@@ -2392,7 +2405,7 @@ class AWSBoto:
                     cmd, shell=True, capture_output=True, text=True)
                 return result
             except Exception:
-                print(f'Error executing "{cmd}."')
+                log(f'Error executing "{cmd}."')
         else:
             subprocess.run(cmd, shell=True, capture_output=False, text=True)
         printdbg(f'ssh command line: {cmd}')
@@ -2415,7 +2428,7 @@ class AWSBoto:
                 os.remove(local_path)
             return result
         except Exception:
-            print(f'Error executing "{cmd}."')
+            log(f'Error executing "{cmd}."')
         return None
 
     def ssh_download(self, user, host, remote_path, local_path):
@@ -2428,7 +2441,7 @@ class AWSBoto:
                 cmd, shell=True, capture_output=True, text=True)
             return result
         except Exception:
-            print(f'Error executing "{cmd}."')
+            log(f'Error executing "{cmd}."')
         return None
 
     def send_email_ses(self, sender, to, subject, body):
@@ -2456,9 +2469,9 @@ class AWSBoto:
                 printdbg(
                     f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
         except Exception as e:
-            print(f'Other Error: {e}')
+            log(f'Other Error: {e}')
 
         checks = [sender, to]
         checks = list(set(checks))  # remove duplicates
@@ -2470,9 +2483,9 @@ class AWSBoto:
                     response = self.ses_client.verify_email_identity(
                         EmailAddress=check)
                     email_list.append(check)
-                    print(
+                    log(
                         f'{check} was used for the first time, verification email sent.')
-                    print(
+                    log(
                         'Please have {check} check inbox and confirm email from AWS.\n')
 
         except botocore.exceptions.ClientError as e:
@@ -2481,9 +2494,9 @@ class AWSBoto:
                 printdbg(
                     f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
         except Exception as e:
-            print(f'Other Error: {e}')
+            log(f'Other Error: {e}')
 
         self.cfg.ses_verify_requests_sent(email_list)
 
@@ -2504,22 +2517,22 @@ class AWSBoto:
                     }
                 }
             )
-            print(f'Sent email "{subject}" to {to}!')
+            log(f'Sent email "{subject}" to {to}!')
         except botocore.exceptions.ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'MessageRejected':
-                print(f'Message was rejected, Error: {e}')
+                log(f'Message was rejected, Error: {e}')
             elif error_code == 'AccessDenied':
                 printdbg(
                     f'Access denied to SES advanced features! Please check your IAM permissions. \nError: {e}')
                 if not self.args.debug:
-                    print(
+                    log(
                         ' Cannot use SES email features to send you status messages: AccessDenied')
             else:
-                print(f'Client Error: {e}')
+                log(f'Client Error: {e}')
             return False
         except Exception as e:
-            print(f'Other Error: {e}')
+            log(f'Other Error: {e}')
             return False
         return True
 
@@ -2553,7 +2566,7 @@ class AWSBoto:
         #     PolicyArn=policy_arn
         # )
 
-        # print(f"Policy {policy_arn} attached to user {username}")
+        # log(f"Policy {policy_arn} attached to user {username}")
 
     def send_ec2_costs(self, instance_id):
         pass
@@ -2592,7 +2605,7 @@ class AWSBoto:
             InstanceIds=[instance_id])
         instance_data = response['Reservations'][0]['Instances'][0]
         if 'IamInstanceProfile' not in instance_data:
-            print(
+            log(
                 f"No IAM Instance Profile attached to the instance: {instance_id}")
             return False
 
@@ -2612,13 +2625,13 @@ class AWSBoto:
                 RoleName=role_name,
                 PolicyArn=policy_arn
             )
-            print(f"Policy {policy_arn} attached to role {role_name}")
+            log(f"Policy {policy_arn} attached to role {role_name}")
         except self.iam_client.exceptions.NoSuchEntityException:
-            print(f"Role {role_name} does not exist!")
+            log(f"Role {role_name} does not exist!")
         except self.iam_client.exceptions.InvalidInputException as e:
-            print(f"Invalid input: {e}")
+            log(f"Invalid input: {e}")
         except Exception as e:
-            print(f"Other Error: {e}")
+            log(f"Other Error: {e}")
 
     def _ec2_create_iam_self_destruct_role(self):
 
@@ -2665,7 +2678,7 @@ class AWSBoto:
                 Description='Allows EC2 instances to call AWS services on your behalf.'
             )
         except self.iam_client.exceptions.EntityAlreadyExistsException:
-            print('IAM SelfDestructRole already exists.')
+            log('IAM SelfDestructRole already exists.')
 
         self.iam_client.attach_role_policy(
             RoleName=role_name,
@@ -2688,7 +2701,7 @@ class AWSBoto:
             token_response = requests.put(
                 token_url, headers=token_headers, timeout=2)
         except Exception as e:
-            print(f'Other Error: {e}')
+            log(f'Other Error: {e}')
             return ""
         token = token_response.text
 
@@ -2698,11 +2711,11 @@ class AWSBoto:
             response = requests.get(
                 base_url + metadata_entry, headers=headers, timeout=2)
         except Exception as e:
-            print(f'Other Error: {e}')
+            log(f'Other Error: {e}')
             return ""
 
         if response.status_code != 200:
-            print(
+            log(
                 f"Error: Failed to retrieve metadata for entry: {metadata_entry}. HTTP Status Code: {response.status_code}")
             return ""
 
@@ -2712,7 +2725,7 @@ class AWSBoto:
     def monitor_ec2(self):
 
         # TODO: function pendint to review
-        print(f'TODO: function {inspect.stack()[0][3]} pending to review')
+        log(f'TODO: function {inspect.stack()[0][3]} pending to review')
         exit(1)
 
         # if system is idle self-destroy
@@ -2724,12 +2737,12 @@ class AWSBoto:
         reservation_id = self._get_ec2_metadata('reservation-id')
 
         nowstr = datetime.datetime.now().strftime('%H:%M:%S')
-        print(
+        log(
             f'froster-monitor ({nowstr}): {public_ip} ({instance_id}, {instance_type}, {ami_id}, {reservation_id}) ... ')
 
         if self._monitor_is_idle():
             # This machine was idle for a long time, destroy it
-            print(
+            log(
                 f'froster-monitor ({nowstr}): Destroying current idling machine {public_ip} ({instance_id}) ...')
             if public_ip:
                 body_text = "Instance was detected as idle and terminated"
@@ -2738,7 +2751,7 @@ class AWSBoto:
                 self.ec2_terminate_instance(public_ip)
                 return
             else:
-                print('Could not retrieve metadata (IP)')
+                log('Could not retrieve metadata (IP)')
                 return
 
         current_time = datetime.datetime.now().time()
@@ -2772,11 +2785,11 @@ class AWSBoto:
             output = subprocess.check_output(
                 ['who']).decode('utf-8', errors='ignore')
             if output:
-                print('froster-monitor: Not idle, logged in:', output)
+                log('froster-monitor: Not idle, logged in:', output)
                 return True  # Users are logged in
             return False
         except Exception as e:
-            print(f'Other Error: {e}')
+            log(f'Other Error: {e}')
             return True
 
     def _monitor_is_idle(self, interval=60, min_idle_cnt=72):
@@ -2798,7 +2811,7 @@ class AWSBoto:
 
         # Not idle if any users are logged in
         if self._monitor_users_logged_in():
-            print(f'froster-monitor: Not idle: user(s) logged in')
+            log(f'froster-monitor: Not idle: user(s) logged in')
             # return self._monitor_save_idle_state(False, min_idle_cnt)
 
         # CPU, Time I/O and Network Activity
@@ -2808,11 +2821,11 @@ class AWSBoto:
         io_end = psutil.disk_io_counters()
         net_end = psutil.net_io_counters()
 
-        print(f'froster-monitor: Current CPU% {cpu_percent}')
+        log(f'froster-monitor: Current CPU% {cpu_percent}')
 
         # Check CPU Utilization
         if cpu_percent > CPU_THRESHOLD:
-            print(f'froster-monitor: Not idle: CPU% {cpu_percent}')
+            log(f'froster-monitor: Not idle: CPU% {cpu_percent}')
             # return self._monitor_save_idle_state(False, min_idle_cnt)
 
         # Check I/O Activity
@@ -2825,7 +2838,7 @@ class AWSBoto:
                     continue
                 try:
                     if proc.io_counters().write_bytes > 0:
-                        print(
+                        log(
                             f'froster-monitor:io bytes written: {proc.io_counters().write_bytes}')
                         return self._monitor_save_idle_state(False, min_idle_cnt)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -2840,23 +2853,24 @@ class AWSBoto:
 
         if bytes_sent_per_second > NET_WRITE_THRESHOLD or \
                 bytes_recv_per_second > NET_READ_THRESHOLD:
-            print(f'froster-monitor:net bytes recv: {bytes_recv_per_second}')
+            log(
+                f'froster-monitor:net bytes recv: {bytes_recv_per_second}')
             return self._monitor_save_idle_state(False, min_idle_cnt)
 
         # Examine Running Processes for CPU and Memory Usage
         for proc in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
             if proc.info['name'] not in DISK_WRITE_EXCLUSIONS:
                 if proc.info['cpu_percent'] > PROCESS_CPU_THRESHOLD:
-                    print(
+                    log(
                         f'froster-monitor: Not idle: CPU% {proc.info["cpu_percent"]}')
                     # return False
                 # disabled this idle checker
                 # if proc.info['memory_percent'] > PROCESS_MEM_THRESHOLD:
-                #    print(f'froster-monitor: Not idle: MEM% {proc.info["memory_percent"]}')
+                #    log(f'froster-monitor: Not idle: MEM% {proc.info["memory_percent"]}')
                 #    return False
 
         # Write idle state and read consecutive idle hours
-        print(f'froster-monitor: Idle state detected')
+        log(f'froster-monitor: Idle state detected')
         return self._monitor_save_idle_state(True, min_idle_cnt)
 
     def _monitor_save_idle_state(self, is_system_idle, min_idle_cnt):
@@ -3048,10 +3062,10 @@ class Archiver:
 
             # If pwalkcopy location provided, run pwalk and copy the output to the specified location every time
             if self.args.pwalkcopy:
-                print(
+                log(
                     f'\nIndexing folder "{folder}" and copying output to {self.args.pwalkcopy}...', flush=True)
             else:
-                print(f'\nIndexing folder "{folder}"...', flush=True)
+                log(f'\nIndexing folder "{folder}"...', flush=True)
 
                 # Get the path to the hotspots CSV file
                 folder_hotspot = self.get_hotspots_path(folder)
@@ -3062,7 +3076,7 @@ class Archiver:
                         # Ignore the existing file and re-index the folder
                         pass
                     else:
-                        print(
+                        log(
                             f'    ...folder already indexed at {folder_hotspot}. Use "-f" or "--force" flag to force indexing.\n')
                         return
 
@@ -3082,7 +3096,7 @@ class Archiver:
 
                         # Check if the pwalk command was successful
                         if ret.returncode != 0:
-                            print(
+                            log(
                                 f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
                             sys.exit(1)
 
@@ -3101,7 +3115,7 @@ class Archiver:
 
                             # Check if the copy command was successful
                             if result.returncode != 0:
-                                print(
+                                log(
                                     f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
                                 sys.exit(1)
 
@@ -3113,7 +3127,7 @@ class Archiver:
 
                         # Check if the files removing command was successful
                         if result.returncode != 0:
-                            print(
+                            log(
                                 f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
                             sys.exit(1)
 
@@ -3128,7 +3142,7 @@ class Archiver:
 
                         # Check if the file conversion command was successful
                         if result.returncode != 0:
-                            print(
+                            log(
                                 f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
                             sys.exit(1)
 
@@ -3199,28 +3213,28 @@ class Archiver:
                                         f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
                                 agedbytes[i] += row[9]
 
-            print(f'    ...indexing done.')
+            log(f'    ...indexing done.')
 
-            print(textwrap.dedent(f'''
+            log(textwrap.dedent(f'''
                 Hotspots file: {mycsv}
                     with {numhotspots} hotspots >= {self.thresholdGB} GiB
                     with a total disk use of {round(totalbytes/TiB,3)} TiB
                 '''))
 
-            print(f'Total folders processed: {len(rows)}')
+            log(f'Total folders processed: {len(rows)}')
 
             lastagedbytes = 0
             for i in range(0, len(daysaged)):
                 if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
                     # dedented multi-line removing \n
-                    print(textwrap.dedent(f'''
+                    log(textwrap.dedent(f'''
                     {round(agedbytes[i]/TiB,3)} TiB have not been accessed
                     for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
                     ''').replace('\n', ''))
                 lastagedbytes = agedbytes[i]
 
             # Output decoration print
-            print()
+            log()
 
         except Exception:
             print_error()
@@ -3259,17 +3273,17 @@ class Archiver:
             folders = clean_path_list(folders)
 
             if self._is_recursive_collision(folders):
-                print(
+                log(
                     f'\nError: You cannot index folders if there is a dependency between them. Specify only the parent folder.\n')
                 sys.exit(1)
 
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive=True):
-                print(
+                log(
                     '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                print(
+                log(
                     f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                print(
+                log(
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
                 sys.exit(1)
 
@@ -3288,14 +3302,14 @@ class Archiver:
 
         # Check if the Hotspots directory exists
         if not hotspots_dir or not os.path.exists(hotspots_dir):
-            print(
+            log(
                 '\nNo folders to archive in arguments and no Hotspots CSV files found.')
 
-            print('\nFor archive a specific folder run:')
-            print('    froster archive "/your/folder/to/archive"')
+            log('\nFor archive a specific folder run:')
+            log('    froster archive "/your/folder/to/archive"')
 
-            print('\n For index a folder a find hotspots run:')
-            print('    froster index "/your/folder/to/index"\n')
+            log('\n For index a folder a find hotspots run:')
+            log('    froster index "/your/folder/to/index"\n')
 
             return
 
@@ -3305,13 +3319,14 @@ class Archiver:
 
         # Check if there are CSV files, if don't there are no folders to archive
         if not hotspots_files:
-            print('\nNo hotposts found. \n')
+            log('\nNo hotposts found. \n')
 
-            print(f'You can search for hotspot by indexing folders using command:')
-            print('    froster index "/your/folder/to/index"\n')
+            log(
+                f'You can search for hotspot by indexing folders using command:')
+            log('    froster index "/your/folder/to/index"\n')
 
-            print('For archive a specific folder run:')
-            print('    froster archive "/your/folder/to/archive"\n')
+            log('For archive a specific folder run:')
+            log('    froster archive "/your/folder/to/archive"\n')
 
             return
 
@@ -3334,7 +3349,7 @@ class Archiver:
         folders_to_archive = self.get_hotspot_folders(hotspot_selected)
 
         if not folders_to_archive:
-            print(
+            log(
                 f'\nNo hotspots to archive found in {hotspot_selected}.')
             return
 
@@ -3381,13 +3396,13 @@ class Archiver:
                     # Check if folders[j] is a subdirectory of folders[i]
                     if os.path.commonpath([folders[i], folders[j]]) == folders[i]:
                         is_collision = True
-                        print(
+                        log(
                             f'Folder {folders[j]} is a subdirectory of folder {folders[i]}.\n', file=sys.stderr)
 
                     # Check if folders[i] is a subdirectory of folders[j]
                     elif os.path.commonpath([folders[i], folders[j]]) == folders[j]:
                         is_collision = True
-                        print(
+                        log(
                             f'Folder {folders[i]} is a subdirectory of folder {folders[j]}.\n')
         except Exception as e:
             print_error()
@@ -3419,40 +3434,41 @@ class Archiver:
                 if is_force:
                     self.reset_folder(folder_to_archive)
                 else:
-                    print(
+                    log(
                         f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
-                    print(
+                    log(
                         f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
                     sys.exit(1)
 
             # Check if the folder is empty
             with os.scandir(folder_to_archive) as entries:
                 if not any(True for _ in entries):
-                    print(
+                    log(
                         f'\nFolder {folder_to_archive} is empty, skipping.\n')
                     return
 
-            print(f'\nARCHIVING {folder_to_archive}')
+            log(f'\nARCHIVING {folder_to_archive}')
 
             if is_tar:
-                print(f'\n    Generating Froster.allfiles.csv and tar small files...')
+                log(
+                    f'\n    Generating Froster.allfiles.csv and tar small files...')
             else:
-                print(f'\n    Generating Froster.allfiles.csv...')
+                log(f'\n    Generating Froster.allfiles.csv...')
 
             # Generate Froster.allfiles.csv and if is_tar tar small files
             if self._gen_allfiles_and_tar(folder_to_archive, self.thresholdKB, is_tar):
                 is_froster_allfiles_generated = True
-                print(f'        ...done')
+                log(f'        ...done')
             else:
                 # Something failed, exit
-                print(f'        ...FAILED\n')
+                log(f'        ...FAILED\n')
                 return
 
             # Generate md5 checksums for all files in the folder
-            print(f'\n    Generating checksums...')
+            log(f'\n    Generating checksums...')
             if self._gen_md5sums(folder_to_archive, self.md5sum_filename):
                 is_checksum_generated = True
-                print('        ...done')
+                log('        ...done')
             else:
                 return
 
@@ -3463,7 +3479,7 @@ class Archiver:
             rclone = Rclone(self.args, self.cfg)
 
             # Archive the folder to S3
-            print(f'\n    Uploading files...')
+            log(f'\n    Uploading files...')
             ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
                               '--exclude', self.md5sum_filename,
                               '--exclude', self.md5sum_restored_filename,
@@ -3473,17 +3489,17 @@ class Archiver:
 
             # Check if the folder was archived successfully
             if ret:
-                print('        ...done')
+                log('        ...done')
                 is_folder_archived = True
             else:
-                print('        ...FAILED\n')
+                log('        ...FAILED\n')
                 return
 
             # Get the path to the allfiles CSV file
             allfiles_source = os.path.join(
                 folder_to_archive, self.allfiles_csv_filename)
 
-            print(f'\n    Uploading Froster.allfiles.csv file...')
+            log(f'\n    Uploading Froster.allfiles.csv file...')
 
             # Change the storage class to INTELLIGENT_TIERING
             rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = 'INTELLIGENT_TIERING'
@@ -3500,21 +3516,21 @@ class Archiver:
             rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
 
             if ret:
-                print('        ...done')
+                log('        ...done')
                 is_folder_archived = True
             else:
-                print('        ...FAILED\n')
+                log('        ...FAILED\n')
                 return
 
-            print(f'\n    Verifying checksums...')
+            log(f'\n    Verifying checksums...')
             ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
 
             # Check if the checksums are correct
             if ret:
-                print('        ...done')
+                log('        ...done')
                 is_checksum_correct = True
             else:
-                print('        ...FAILED\n')
+                log('        ...FAILED\n')
                 return
 
             # Add the metadata to the archive JSON file ONLY if this is not a subfolder
@@ -3548,10 +3564,10 @@ class Archiver:
                                              value=new_entry)
 
             # Print the final message
-            print(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
-            print(f'    LOCAL SOURCE:       "{folder_to_archive}"')
-            print(f'    AWS S3 DESTINATION: "{s3_dest}"\n')
-            print(
+            log(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
+            log(f'    LOCAL SOURCE:       "{folder_to_archive}"')
+            log(f'    AWS S3 DESTINATION: "{s3_dest}"\n')
+            log(
                 f'    All files were correctly uploaded to AWS S3 bucket and double-checked with md5sum checksum.\n')
 
         except Exception:
@@ -3576,17 +3592,17 @@ class Archiver:
             # i.e. recursive flag is set and a folder is a subdirectory of another one
             if is_recursive:
                 if self._is_recursive_collision(folders):
-                    print(
+                    log(
                         f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
                     sys.exit(1)
 
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive):
-                print(
+                log(
                     '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                print(
+                log(
                     f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                print(
+                log(
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
                 sys.exit(1)
 
@@ -3662,14 +3678,14 @@ class Archiver:
         mounts = self.get_mounts()
 
         if mounts:
-            print('\nCURRENT MOUNTED FOLDERS:\n')
+            log('\nCURRENT MOUNTED FOLDERS:\n')
             for mount in mounts:
-                print(f'    {mount}')
+                log(f'    {mount}')
 
             # Decorator print
-            print()
+            log()
         else:
-            print('\nNO FOLDERS MOUNTED\n')
+            log('\nNO FOLDERS MOUNTED\n')
 
     def _mount_locally(self, folders, mountpoint):
 
@@ -3678,14 +3694,14 @@ class Archiver:
             archive_folder_info = self.froster_archives_get_entry(folder)
 
             if archive_folder_info is None:
-                print(f'\nWARNING: folder "{folder}" not in archive.\n')
-                print(f'Nothing will be restored.\n')
+                log(f'\nWARNING: folder "{folder}" not in archive.\n')
+                log(f'Nothing will be restored.\n')
                 continue
 
             if not os.path.exists(folder) and not mountpoint:
-                print(
+                log(
                     f'\nWARNING: folder "{folder}" does not exist and no mountpoint provided.\n')
-                print(f'Nothing will be restored.\n')
+                log(f'Nothing will be restored.\n')
                 continue
 
             s3_folder = archive_folder_info['archive_folder']
@@ -3693,22 +3709,23 @@ class Archiver:
 
             if folder == local_folder:
                 if mountpoint:
-                    print(f'\nMOUNTING "{local_folder}" at "{mountpoint}"...')
+                    log(
+                        f'\nMOUNTING "{local_folder}" at "{mountpoint}"...')
                 else:
-                    print(f'\nMOUNTING "{local_folder}"...')
+                    log(f'\nMOUNTING "{local_folder}"...')
             else:
                 if mountpoint:
-                    print(
+                    log(
                         f'\nMOUNTING parent folder "{local_folder}" at "{mountpoint}"...')
                 else:
-                    print(f'\nMOUNTING parent folder "{local_folder}"...')
+                    log(f'\nMOUNTING parent folder "{local_folder}"...')
 
             if not mountpoint:
                 mountpoint = local_folder
 
             # Check if the folder is already mounted
             if self._is_mounted(mountpoint):
-                print(f'    ..."{mountpoint}" already mounted\n')
+                log(f'    ..."{mountpoint}" already mounted\n')
                 sys.exit(1)
 
             # Mount the folder
@@ -3717,9 +3734,9 @@ class Archiver:
 
             # Check if the folder was mounted successfully
             if ret:
-                print('    ...MOUNTED\n')
+                log('    ...MOUNTED\n')
             else:
-                print('    ...FAILED\n')
+                log('    ...FAILED\n')
                 return
 
     def mount(self, folders, mountpoint):
@@ -3737,18 +3754,18 @@ class Archiver:
         rclone = Rclone(self.args, self.cfg)
 
         for folder in folders:
-            print(f'\nUNMOUNTING {folder}...')
+            log(f'\nUNMOUNTING {folder}...')
 
             if self._is_mounted(folder):
                 ret = rclone.unmount(folder)
 
                 # Check if the folder was unmounted successfully
                 if ret:
-                    print('    ...UNMOUNTED SUCCESS\n')
+                    log('    ...UNMOUNTED SUCCESS\n')
                 else:
-                    print('    ...UNMOUNTING FAILED\n')
+                    log('    ...UNMOUNTING FAILED\n')
             else:
-                print(f'    ...IS NOT MOUNTED\n')
+                log(f'    ...IS NOT MOUNTED\n')
 
     def unmount(self, folders):
 
@@ -3801,13 +3818,13 @@ class Archiver:
         folders_to_archive = [(item[5], item[3])
                               for item in rows]  # Include size in the tuple
 
-        print(f'Hotspots file: {hotspot_file}')
-        print(f'\nFolders to archive:\n')
+        log(f'Hotspots file: {hotspot_file}')
+        log(f'\nFolders to archive:\n')
         for folder, size in folders_to_archive:
-            print(f'  {folder} - Size: {size} GiB')
+            log(f'  {folder} - Size: {size} GiB')
 
         totalspace = sum(item[3] for item in rows)
-        print(
+        log(
             f'\nTotal space to archive: {format(round(totalspace, 3),",")} GiB\n')
 
         # Return only the folders
@@ -3826,9 +3843,9 @@ class Archiver:
 
         # Print error messages if the user does not have read or write permissions
         if not can_read:
-            print(f"Cannot read: {path}", file=sys.stderr)
+            log(f"Cannot read: {path}", file=sys.stderr)
         if not can_write:
-            print(f"Cannot write: {path}", file=sys.stderr)
+            log(f"Cannot write: {path}", file=sys.stderr)
 
         # Return True if the user has read and write permissions, otherwise return False
         return can_read and can_write
@@ -3843,8 +3860,8 @@ class Archiver:
             for folder in folders:
 
                 if not os.path.isdir(folder):
-                    print(f"Error: {folder} is not a directory.",
-                          file=sys.stderr)
+                    log(f"Error: {folder} is not a directory.",
+                              file=sys.stderr)
                     sys.exit(1)
 
                 if is_recursive:
@@ -3891,16 +3908,16 @@ class Archiver:
             filled_length = int(length * iteration // max_value)
             bar = "█" * filled_length + '-' * (length - filled_length)
             if sys.stdin.isatty():
-                print(f'\r|{bar}| {percent}%', end='\r')
+                log(f'\r|{bar}| {percent}%', end='\r')
             if iteration == max_value:
-                print()
+                log()
 
         return show_progress_bar
 
     def print_paths_rw_info(self, paths):
 
         if not paths:
-            print('\nError: No file paths provided.\n', file=sys.stderr)
+            log('\nError: No file paths provided.\n', file=sys.stderr)
             return
 
         for path in paths:
@@ -3961,17 +3978,21 @@ class Archiver:
                 is_666_or_777
 
             # Printing the file's permissions
-            print(f'\nFile: {path}')
-            print(f'\nis_owner: {is_owner}')
-            print(f'has_owner_read_permission: {has_owner_read_permission}')
-            print(f'has_owner_write_permission: {has_owner_write_permission}')
-            print(f'\nis_group_member: {is_group_member}')
-            print(f'has_group_read_permission: {has_group_read_permission}')
-            print(f'has_group_write_permission: {has_group_write_permission}')
-            print(f'\nis_444: {is_444}')
-            print(f'is_666_or_777: {is_666_or_777}')
-            print(f'\ncan_read: {can_read}')
-            print(f'can_write: {can_write}\n')
+            log(f'\nFile: {path}')
+            log(f'\nis_owner: {is_owner}')
+            log(
+                f'has_owner_read_permission: {has_owner_read_permission}')
+            log(
+                f'has_owner_write_permission: {has_owner_write_permission}')
+            log(f'\nis_group_member: {is_group_member}')
+            log(
+                f'has_group_read_permission: {has_group_read_permission}')
+            log(
+                f'has_group_write_permission: {has_group_write_permission}')
+            log(f'\nis_444: {is_444}')
+            log(f'is_666_or_777: {is_666_or_777}')
+            log(f'\ncan_read: {can_read}')
+            log(f'can_write: {can_write}\n')
 
     def _gen_md5sums(self, directory, hash_file):
         '''Generate md5sums for all files in the directory and write them to a hash file'''
@@ -4120,10 +4141,10 @@ class Archiver:
             if not recursive and root != directory:
                 break
             try:
-                print(f'\nResetting folder {root}...')
+                log(f'\nResetting folder {root}...')
 
                 if self._is_folder_archived(root.rstrip(os.path.sep)):
-                    print(
+                    log(
                         f'    ...folder {root} is archived, nothing to reset\n')
                     continue
 
@@ -4131,22 +4152,23 @@ class Archiver:
                 tar_path = os.path.join(root, self.smallfiles_tar_filename)
 
                 if os.path.exists(tar_path):
-                    print('    Untarring Froster.smallfiles.tar... ', end='')
+                    log(
+                        '    Untarring Froster.smallfiles.tar... ', end='')
                     with tarfile.open(tar_path, "r") as tar:
                         tar.extractall(path=root)
                     os.remove(tar_path)
-                    print('done.')
+                    log('done.')
 
                 for file in self.dirmetafiles:
                     delfile = os.path.join(root, file)
-                    print(f'    Removing {file}... ', end='')
+                    log(f'    Removing {file}... ', end='')
                     if os.path.exists(delfile):
                         os.remove(delfile)
-                        print('done')
+                        log('done')
                     else:
-                        print('nothing to remove')
+                        log('nothing to remove')
 
-                print(f'...folder {root} reset successfully\n')
+                log(f'...folder {root} reset successfully\n')
 
             except Exception:
                 print_error()
@@ -4155,7 +4177,7 @@ class Archiver:
         # Get all files in the specified directory
         files = [os.path.join(dir, f) for f in os.listdir(
             dir) if os.path.isfile(os.path.join(dir, f))]
-        # print("** files:",files)
+        # log("** files:",files)
         # Check if there's any file less than small
         is_there_small_file = False
         for f in files:
@@ -4166,7 +4188,7 @@ class Archiver:
                     break
             except FileNotFoundError:
                 # Handle the error (e.g., print a message or continue to the next file)
-                print(f"File not found: {f}")
+                log(f"File not found: {f}")
                 continue
         return is_there_small_file
 
@@ -4176,27 +4198,27 @@ class Archiver:
             stats = os.lstat(filepath)
             return stats.st_size, stats.st_mtime, stats.st_atime
         except FileNotFoundError:
-            print(f"{filepath} not found.")
+            log(f"{filepath} not found.")
             return None, None, None
 
     def _delete_locally(self, folder_to_delete):
         '''Delete the given folder'''
 
-        print(f'\nDELETING {folder_to_delete}...')
+        log(f'\nDELETING {folder_to_delete}...')
 
         # Check if the folder is already archived
         where_did_files_go = os.path.join(
             folder_to_delete, self.where_did_the_files_go_filename)
         if os.path.isfile(where_did_files_go):
-            print(f'    ...already deleted\n')
+            log(f'    ...already deleted\n')
             return
 
         archived_folder_info = self.froster_archives_get_entry(
             folder_to_delete)
 
         if archived_folder_info is None:
-            print(f'\nFolder {folder_to_delete} is not archived')
-            print(f'No entry found in froster-archives.json\n')
+            log(f'\nFolder {folder_to_delete} is not archived')
+            log(f'No entry found in froster-archives.json\n')
             return
 
         try:
@@ -4212,7 +4234,7 @@ class Archiver:
                     folder_to_delete, self.md5sum_restored_filename)
 
                 if not os.path.exists(hashfile):
-                    print(
+                    log(
                         f'There is no hashfile therefore cannot delete files in {folder_to_delete}')
                     return
 
@@ -4224,12 +4246,12 @@ class Archiver:
             # Risky, but os.paht.join does not work with :s3: paths
             s3_dest = archived_folder_info['archive_folder'] + subfolder_path
 
-            print(f'\n    Verifying checksums...')
+            log(f'\n    Verifying checksums...')
             rclone = Rclone(self.args, self.cfg)
             ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
             # Check if the checksums are correct
             if ret:
-                print('        ...done')
+                log('        ...done')
             else:
                 return
 
@@ -4240,7 +4262,7 @@ class Archiver:
                 if root != folder_to_delete:
                     break
 
-                print(f'\n    Deleting files...')
+                log(f'\n    Deleting files...')
                 for file in files:
                     if file == self.md5sum_filename or file == self.md5sum_restored_filename or file == self.allfiles_csv_filename or file == self.where_did_the_files_go_filename:
                         continue
@@ -4248,7 +4270,7 @@ class Archiver:
                         file_path = os.path.join(root, file)
                         os.remove(file_path)
                         deleted_files.append(file)
-                print(f'        ...done')
+                log(f'        ...done')
 
             # Write a readme file with the metadata
             email = self.cfg.email
@@ -4276,13 +4298,13 @@ class Archiver:
                 rme.write(
                     f'\n\nYou can use "visidata" or "vd" tool to help you visualize Froster.allfiles.csv file\n')
 
-            print(f'\nDELETING SUCCESSFULLY COMPLETED\n')
+            log(f'\nDELETING SUCCESSFULLY COMPLETED\n')
 
             # Print the final message
-            print(f'    LOCAL DELETED FOLDER:   {folder_to_delete}')
-            print(f'    AWS S3 DESTINATION:     {s3_dest}\n')
-            print(f'    Total files deleted:    {len(deleted_files)}\n')
-            print(f'    Manifest:               {readme}\n')
+            log(f'    LOCAL DELETED FOLDER:   {folder_to_delete}')
+            log(f'    AWS S3 DESTINATION:     {s3_dest}\n')
+            log(f'    Total files deleted:    {len(deleted_files)}\n')
+            log(f'    Manifest:               {readme}\n')
 
         except Exception:
             print_error()
@@ -4300,17 +4322,17 @@ class Archiver:
 
             if is_recursive:
                 if self._is_recursive_collision(folders):
-                    print(
+                    log(
                         f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
                     return
 
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive):
-                print(
+                log(
                     '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                print(
+                log(
                     f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                print(
+                log(
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
                 return
 
@@ -4337,7 +4359,7 @@ class Archiver:
             bucket, prefix, *_ = self.archive_get_bucket_info(folder)
 
             if not bucket:
-                print(f'\nFolder {folder} is not registered as archived')
+                log(f'\nFolder {folder} is not registered as archived')
                 return
 
             # All retrievals are done, now we can download the files
@@ -4345,12 +4367,12 @@ class Archiver:
             target = folder
 
             # Download the restored files
-            print(f'Downloading files...')
+            log(f'Downloading files...')
             rclone = Rclone(self.args, self.cfg)
             if rclone.copy(source, target, '--max-depth', '1'):
-                print('    ...done\n')
+                log('    ...done\n')
             else:
-                print('    ...FAILED\n')
+                log('    ...FAILED\n')
 
             # checksum verification
             self._restore_verify(source, target)
@@ -4362,7 +4384,7 @@ class Archiver:
         '''Restore the given folder'''
 
         try:
-            print(f'\nRestoring folder "{folder}..."\n')
+            log(f'\nRestoring folder "{folder}..."\n')
 
             # Get folder info
             bucket, prefix, is_recursive, is_glacier, profile, user = self.archive_get_bucket_info(
@@ -4372,25 +4394,26 @@ class Archiver:
                 trig, rest, done, notg = aws.glacier_restore(
                     bucket, prefix, self.args.days, self.args.retrieveopt)
 
-                print(f'    Triggered Glacier retrievals: {len(trig)}')
-                print(f'    Currently retrieving from Glacier: {len(rest)}')
-                print(f'    Retrieved from Glacier: {len(done)}')
-                print(f'    Not in Glacier: {len(notg)}\n')
+                log(f'    Triggered Glacier retrievals: {len(trig)}')
+                log(
+                    f'    Currently retrieving from Glacier: {len(rest)}')
+                log(f'    Retrieved from Glacier: {len(done)}')
+                log(f'    Not in Glacier: {len(notg)}\n')
 
                 if len(trig) > 0 or len(rest) > 0:
                     # glacier is still ongoing
-                    print(
+                    log(
                         f'\n    Glacier retrievals pending. Depending on the storage class and restore mode run this command again in:')
-                    print(f'        Expedited mode: ~ 5 minuts\n')
-                    print(f'        Standard mode: ~ 12 hours\n')
-                    print(f'        Bulk mode: ~ 48 hours\n')
-                    print(
+                    log(f'        Expedited mode: ~ 5 minuts\n')
+                    log(f'        Standard mode: ~ 12 hours\n')
+                    log(f'        Bulk mode: ~ 48 hours\n')
+                    log(
                         f'        \nNOTE: You can check more accurate times in the AWS S3 console\n')
                     return False
             else:
-                print(f'...no glacier restore needed\n')
+                log(f'...no glacier restore needed\n')
 
-            print(f'...folder restored\n')
+            log(f'...folder restored\n')
 
             return True
 
@@ -4429,17 +4452,17 @@ class Archiver:
             # i.e. recursive flag is set and a folder is a subdirectory of another one
             if is_recursive:
                 if self._is_recursive_collision(folders):
-                    print(
+                    log(
                         f'\nError: You cannot restore folders recursively if there is a dependency between them.\n')
                     return
 
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive):
-                print(
+                log(
                     '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                print(
+                log(
                     f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                print(
+                log(
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
                 return
 
@@ -4455,16 +4478,17 @@ class Archiver:
                         root)
 
                     if archived_folder_info is None:
-                        print(f'\nFolder {root} is not archived')
-                        print(f'No entry found in froster-archives.json\n')
+                        log(f'\nFolder {root} is not archived')
+                        log(f'No entry found in froster-archives.json\n')
                         continue
 
                     if not self._contains_non_froster_files(root):
-                        print(
+                        log(
                             f'\nWARNING: Folder {root} contains non-froster metadata files')
-                        print(
+                        log(
                             'Has this folder been deleted using "froster delete" command?.')
-                        print('Please empty the folder before restoring.\n')
+                        log(
+                            'Please empty the folder before restoring.\n')
                         continue
 
                     if self._restore_locally(root, aws):
@@ -4472,7 +4496,7 @@ class Archiver:
 
                         # If nodownload flag is set we are done
                         if self.args.nodownload:
-                            print(
+                            log(
                                 f'\nFolder restored but not downloaded (--no-download flag set)\n')
                             return
                         else:
@@ -4501,11 +4525,11 @@ class Archiver:
                     source = source + os.path.basename(root) + '/'
 
                 # Generate md5 checksums for all files in the folder
-                print(f'Generating checksums...')
+                log(f'Generating checksums...')
                 if self._gen_md5sums(restpath, self.md5sum_restored_filename):
-                    print('    ...done')
+                    log('    ...done')
                 else:
-                    print('    ...FAILED\n')
+                    log('    ...FAILED\n')
                     return
 
                 # Get the path to the hashfile
@@ -4515,28 +4539,28 @@ class Archiver:
                 # Create the Rclone object
                 rclone = Rclone(self.args, self.cfg)
 
-                print(f'\nVerifying checksums...')
+                log(f'\nVerifying checksums...')
                 if rclone.checksum(hashfile, source, '--max-depth', '1'):
-                    print('    ...done')
+                    log('    ...done')
                 else:
-                    print('    ...FAILED\n')
+                    log('    ...FAILED\n')
                     return
 
                 # Check if Froster.smallfiles.tar exists
                 tar_path = os.path.join(target, self.smallfiles_tar_filename)
                 if os.path.exists(tar_path):
-                    print(f'\nUntarring Froster.smallfiles.tar... ')
+                    log(f'\nUntarring Froster.smallfiles.tar... ')
                     with tarfile.open(tar_path, "r") as tar:
                         tar.extractall(path=target)
                     os.remove(tar_path)
-                    print('    ...done\n')
+                    log('    ...done\n')
 
                 where_did_file_go_full_path = os.path.join(
                     target, self.where_did_the_files_go_filename)
                 if os.path.exists(where_did_file_go_full_path):
                     os.remove(where_did_file_go_full_path)
 
-                print(f'Restoration of {root} completed successfully\n')
+                log(f'Restoration of {root} completed successfully\n')
 
         except Exception:
             print_error()
@@ -4609,8 +4633,9 @@ class Archiver:
                     try:
                         data = json.load(file)
                     except Exception:
-                        print('Error in Archiver._archive_json_add_entry():')
-                        print(
+                        log(
+                            'Error in Archiver._archive_json_add_entry():')
+                        log(
                             f'Cannot read {self.archive_json}, file corrupt?')
                         return
 
@@ -4618,7 +4643,8 @@ class Archiver:
             data[key] = value
 
             # Create the directory for the archive JSON file if it does not exist
-            os.makedirs(os.path.dirname(self.archive_json), exist_ok=True)
+            os.makedirs(os.path.dirname(self.archive_json),
+                        exist_ok=True, mode=0o775)
 
             # Write the updated data dictionary to the archive JSON file
             with open(self.archive_json, 'w') as file:
@@ -4643,7 +4669,7 @@ class Archiver:
 
             # Check the folder is archived
             if not archive_folder_info:
-                print(f'\nFolder {folder} is not registered as archived')
+                log(f'\nFolder {folder} is not registered as archived')
                 return None, None, None, None, None, None
 
             # Get the archive folder
@@ -4691,8 +4717,9 @@ class Archiver:
                 try:
                     data = json.load(file)
                 except Exception:
-                    print('Error in Archiver._archive_json_entry_exists():')
-                    print(f'Cannot read {self.archive_json}, file corrupt?')
+                    log('Error in Archiver._archive_json_entry_exists():')
+                    log(
+                        f'Cannot read {self.archive_json}, file corrupt?')
                     return None
 
             # Check if the entry exists in the data dictionary
@@ -4723,8 +4750,9 @@ class Archiver:
                     data = json.load(file)
 
                 except Exception:
-                    print('Error in Archiver._archive_json_get_csv():')
-                    print(f'Cannot read {self.archive_json}, file corrupt?')
+                    log('Error in Archiver._archive_json_get_csv():')
+                    log(
+                        f'Cannot read {self.archive_json}, file corrupt?')
                     return
 
             # Sort data by timestamp in reverse order
@@ -4757,7 +4785,7 @@ class Archiver:
 
         try:
             if not folder_path or not os.path.exists(folder_path):
-                print(f" Invalid folder path: {folder_path}")
+                log(f" Invalid folder path: {folder_path}")
                 return folder_atime
 
             last_accessed_time = None
@@ -4785,7 +4813,7 @@ class Archiver:
 
         try:
             if not folder_path or not os.path.exists(folder_path):
-                print(f" Invalid folder path: {folder_path}")
+                log(f" Invalid folder path: {folder_path}")
                 return folder_mtime
 
             last_modified_time = None
@@ -5244,19 +5272,19 @@ class Rclone:
                         9: "Operation successful, but no files transferred",
                     }
 
-                    print(
+                    log(
                         f'\n        Error: Rclone {command[1]} command failed', file=sys.stderr)
-                    print(
+                    log(
                         f'        Command: {" ".join(command)}', file=sys.stderr)
-                    print(
+                    log(
                         f'        Return code: {ret.returncode}', file=sys.stderr)
-                    print(
+                    log(
                         f'        Return code meaning: {exit_codes[ret.returncode]}\n', file=sys.stderr)
 
                     out, err = ret.stdout.strip(), ret.stderr.strip()
                     stats, ops = self._parse_log(err)
                     ret = stats[-1]  # return the stats
-                    print(
+                    log(
                         f"        Error message: {ret['stats']['lastError']}\n", file=sys.stderr)
 
                     return False
@@ -5298,7 +5326,8 @@ class Rclone:
         '''Mount files from url to on-premises using Rclone'''
 
         if not shutil.which('fusermount3'):
-            print('Could not find "fusermount3". Please install the "fuse3" OS package')
+            log(
+                'Could not find "fusermount3". Please install the "fuse3" OS package')
             sys.exit(1)
 
         try:
@@ -5322,7 +5351,7 @@ class Rclone:
         '''Unmount files from on-premises using Rclone'''
 
         if not shutil.which('fusermount3'):
-            print(
+            log(
                 'Could not find "fusermount3". Please install the "fuse3" OS package')
             sys.exit(1)
 
@@ -5604,12 +5633,12 @@ class Slurm:
             jobid = self.sbatch()
 
             # Print the Slurm job information
-            print(f'\nSLURM JOB\n')
-            print(f'  ID: {jobid}')
-            print(f'  Type: {cmd_type}')
-            print(f'  Check status: "squeue -j {jobid}"')
-            print(f'  Check output: "cat {output_dir}-{jobid}.out"')
-            print(f'  Cancel the job: "scancel {jobid}"\n')
+            log(f'\nSLURM JOB\n')
+            log(f'  ID: {jobid}')
+            log(f'  Type: {cmd_type}')
+            log(f'  Check status: "squeue -j {jobid}"')
+            log(f'  Check output: "cat {output_dir}-{jobid}.out"')
+            log(f'  Cancel the job: "scancel {jobid}"\n')
 
         except Exception:
             print_error()
@@ -5632,7 +5661,7 @@ class Slurm:
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode != 0:
                 if 'Invalid generic resource' in result.stderr:
-                    print(
+                    log(
                         'Invalid generic resource request. Please change configuration of slurm_lscratch')
                 else:
                     raise RuntimeError(
@@ -5645,7 +5674,7 @@ class Slurm:
                 oscript.seek(0)
                 with open(f'submitted-{job_id}.sh', "w", encoding="utf-8") as file:
                     file.write(oscript.read())
-                    print(f' Debug script created: submitted-{job_id}.sh')
+                    log(f' Debug script created: submitted-{job_id}.sh')
             return job_id
 
         except Exception:
@@ -5790,23 +5819,23 @@ class Slurm:
                     if p_deniedqos != ['']:
                         allowed_qos = [
                             q for q in account_qos if q not in p_deniedqos]
-                        # print(f"p_deniedqos: allowed_qos in {pname}:", allowed_qos)
+                        # log(f"p_deniedqos: allowed_qos in {pname}:", allowed_qos)
                     elif p_allowedqos == ['ALL']:
                         allowed_qos = account_qos
-                        # print(f"p_allowedqos = ALL in {pname}:", allowed_qos)
+                        # log(f"p_allowedqos = ALL in {pname}:", allowed_qos)
                     elif p_allowedqos != ['']:
                         allowed_qos = [
                             q for q in account_qos if q in p_allowedqos]
-                        # print(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos)
+                        # log(f"p_allowedqos: allowed_qos in {pname}:", allowed_qos)
                     else:
                         allowed_qos = []
-                        # print(f"p_allowedqos = [] in {pname}:", allowed_qos)
+                        # log(f"p_allowedqos = [] in {pname}:", allowed_qos)
                     allowed_partitions[pname] = allowed_qos
             return allowed_partitions
 
         except Exception:
             print_error()
-            print("Are you in a Control Node?")
+            log("Are you in a Control Node?")
             sys.exit(1)
 
 
@@ -5833,33 +5862,33 @@ class NIHReporter:
         # Search by PI
         if not self._is_number(searchstr):
 
-            print('PI search ...')
+            log('PI search ...')
             criteria = {"pi_names": [{"any_name": searchstr}]}
             self._post_request(criteria)
-            print('* # Grants:', len(self.grants))
+            log('* # Grants:', len(self.grants))
 
         if not self.grants:
             # Search by Project
-            print('Project search ...')
+            log('Project search ...')
             criteria = {'project_nums': [searchstr]}
             self._post_request(criteria)
-            print('* # Grants:', len(self.grants))
+            log('* # Grants:', len(self.grants))
 
         if not self.grants and not self._is_number(searchstr):
             # Search by Organizations
-            print('Org search ...')
+            log('Org search ...')
             criteria = {'org_names': [searchstr]}
             self._post_request(criteria)
-            print('* # Grants:', len(self.grants))
+            log('* # Grants:', len(self.grants))
 
         # Search by text in  "projecttitle", "terms", and "abstracttext"
-        print('Text search ...')
+        log('Text search ...')
         criteria = {'advanced_text_search':
                     {'operator': 'and', 'search_field': 'all',
                      'search_text': searchstr}
                     }
         self._post_request(criteria)
-        print('* # Grants:', len(self.grants))
+        log('* # Grants:', len(self.grants))
 
         return self._result_sets(True)
 
@@ -5887,7 +5916,7 @@ class NIHReporter:
         mychars = ",:?'$^%&*!`~+={}\\[]"+'"'
         for i in mychars:
             mystring = mystring.replace(i, ' ')
-            # print('mystring:', mystring)
+            # log('mystring:', mystring)
         return mystring
 
     def _post_request(self, criteria):
@@ -5908,19 +5937,19 @@ class NIHReporter:
                 params = {'offset': offset, 'limit': limit, 'criteria': criteria,
                           'exclude_fields': self.exclude_fields}
                 # make request
-                print('Params:', params)
+                log('Params:', params)
                 response = requests.post(
                     self.url, json=params, timeout=timeout)
                 # check status code - else return data
                 if response.status_code >= 400 and response.status_code < 500:
-                    print(f"Bad request: {response.text}")
+                    log(f"Bad request: {response.text}")
                     if retry_count < max_retries - 1:
-                        print(f"Retrying after {retry_delay} seconds...")
+                        log(f"Retrying after {retry_delay} seconds...")
                         time.sleep(retry_delay)
                         retry_count += 1
                     else:
                         # raise Exception(f"Failed to complete POST request after {max_retries} attempts")
-                        print(
+                        log(
                             f"Failed to complete POST request after {max_retries} attempts")
                         return False
                 else:
@@ -5928,16 +5957,17 @@ class NIHReporter:
                     total = json['meta']['total']
                     if total == 0:
                         if self.verbose:
-                            print("No records for criteria '{}'".format(criteria))
+                            log(
+                                "No records for criteria '{}'".format(criteria))
                         return
                     if total < max:
                         max = total
                     if self.verbose:
-                        print("Found {0} records for criteria '{1}'".format(
+                        log("Found {0} records for criteria '{1}'".format(
                             total, criteria))
                     self.grants += [g for g in json['results']]
                     if self.verbose:
-                        print("{0} records off {1} total returned ...".format(
+                        log("{0} records off {1} total returned ...".format(
                             offset, total), file=sys.stderr)
                     offset += limit
                     if offset == 15000:
@@ -5945,9 +5975,9 @@ class NIHReporter:
                     elif offset > 15000:
                         return
         except requests.exceptions.RequestException as e:
-            print(f"POST request failed: {e}")
+            log(f"POST request failed: {e}")
             if retry_count < max_retries - 1:
-                print(f"Retrying after {retry_delay} seconds...")
+                log(f"Retrying after {retry_delay} seconds...")
                 retry_count += 1
                 time.sleep(retry_delay)
             else:
@@ -5966,7 +5996,7 @@ class NIHReporter:
                             'org_name', 'project_detail_url', 'pi_profile_id'))
             grants = {}
             for g in self.grants:
-                # print(json.dumps(g, indent=2))
+                # log(json.dumps(g, indent=2))
                 # return
                 core_project_num = str(g.get('core_project_num', '')).strip()
                 line = (
@@ -6015,22 +6045,22 @@ class Commands:
 
     def print_version(self):
         '''Print froster version'''
-        print(
+        log(
             f'froster v{pkg_resources.get_distribution("froster").version}')
 
     def print_info(self):
         '''Print froster info'''
 
-        print(
+        log(
             f'froster v{pkg_resources.get_distribution("froster").version}\n')
-        print(f'Tools version:')
-        print(f'    python v{platform.python_version()}')
-        print('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
-                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
-        print('   ', subprocess.run([os.path.join(sys.prefix, 'bin', 'rclone'), '--version'],
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+        log(f'Tools version:')
+        log(f'    python v{platform.python_version()}')
+        log('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
+                                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+        log('   ', subprocess.run([os.path.join(sys.prefix, 'bin', 'rclone'), '--version'],
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
-        print(textwrap.dedent(f'''
+        log(textwrap.dedent(f'''
             Authors:
                 Written by Dirk Petersen and Hpc Now Consulting SL
 
@@ -6083,13 +6113,13 @@ class Commands:
             #     return cfg.add_systemd_cron_job(
             #         f'{froster_binary} restore --monitor', '30')
 
-            print(f'\n*****************************')
-            print(f'*** FROSTER CONFIGURATION ***')
-            print(f'*****************************\n')
+            log(f'\n*****************************')
+            log(f'*** FROSTER CONFIGURATION ***')
+            log(f'*****************************\n')
 
             # Check if the configuration file exists and ask for overwrite
             if os.path.exists(cfg.config_file):
-                print(
+                log(
                     f'WARNING: You are about to overwrite {cfg.config_file}\n')
                 is_overwrite = inquirer.confirm(
                     message=f"Do you want to continue?", default=False)
@@ -6107,16 +6137,16 @@ class Commands:
 
             if not cfg.set_shared():
                 return False
-            
+
             # If shared configuration and shared_config.ini file exists, then use it
             if cfg.is_shared:
                 if hasattr(cfg, 'shared_config_file') and os.path.exists(cfg.shared_config_file):
 
-                    print(f'\n**********************************')
-                    print(f'*** FROSTER CONFIGURATION DONE ***')
-                    print(f'**********************************\n')
+                    log(f'\n**********************************')
+                    log(f'*** FROSTER CONFIGURATION DONE ***')
+                    log(f'**********************************\n')
 
-                    print(textwrap.dedent(f'''
+                    log(textwrap.dedent(f'''
                         Local configuration: {cfg.config_file}
                         Shared configuration: {cfg.shared_config_file}
 
@@ -6134,12 +6164,13 @@ class Commands:
             if not cfg.set_slurm(self.args):
                 return False
 
-            print(f'\n**********************************')
-            print(f'*** FROSTER CONFIGURATION DONE ***')
-            print(f'**********************************\n')
+            log(f'\n**********************************')
+            log(f'*** FROSTER CONFIGURATION DONE ***')
+            log(f'**********************************\n')
 
-            print(f'\nYou can print the current configuration using the command:')
-            print(f'    froster config --print\n')
+            log(
+                f'\nYou can print the current configuration using the command:')
+            log(f'    froster config --print\n')
 
             return True
         except Exception:
@@ -6152,20 +6183,21 @@ class Commands:
         try:
             # Check if user provided at least one argument
             if not self.args.folders:
-                print(
+                log(
                     '\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
                 sys.exit(1)
 
             # Check if the provided pwalk copy folder exists
             if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
-                print(
+                log(
                     f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
                 sys.exit(1)
 
             # Check if all the provided folders exist
             for folder in self.args.folders:
                 if not os.path.isdir(folder):
-                    print(f'\nError: The folder {folder} does not exist.\n')
+                    log(
+                        f'\nError: The folder {folder} does not exist.\n')
                     sys.exit(1)
 
             # Index the given folders
@@ -6179,14 +6211,14 @@ class Commands:
         try:
 
             if self.args.older > 0 and self.args.newer > 0:
-                print(
+                log(
                     '\nError: Cannot use both --older and --newer flags together.\n', file=sys.stderr)
                 sys.exit(1)
 
             # Check if the user provided the permissions argument
             if self.args.permissions:
                 if not self.args.folders:
-                    print(
+                    log(
                         '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n', file=sys.stderr)
                     sys.exit(1)
 
@@ -6208,16 +6240,17 @@ class Commands:
             # Check if the user provided the hotspots argument
             if self.args.hotspots:
                 if self.args.folders:
-                    print('\nError: Incorrect "froster archive" usage. Choose between:')
-                    print('    Using --hotspots flag to select hotspots')
-                    print('    Provide folder(s) to archive\n')
+                    log(
+                        '\nError: Incorrect "froster archive" usage. Choose between:')
+                    log('    Using --hotspots flag to select hotspots')
+                    log('    Provide folder(s) to archive\n')
                     sys.exit(1)
 
                 else:
                     arch.archive_select_hotspots()
             else:
                 if not self.args.folders:
-                    print(
+                    log(
                         '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n')
                     sys.exit(1)
 
@@ -6248,7 +6281,7 @@ class Commands:
                     ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
 
                 if not files:
-                    print("No archives available.")
+                    log("No archives available.")
                     sys.exit(0)
 
                 app = TableArchive(files)
@@ -6258,7 +6291,7 @@ class Commands:
                     return
 
                 if len(retline) < 2:
-                    print(f'\nNo archived folders found\n')
+                    log(f'\nNo archived folders found\n')
                     return
 
                 self.args.folders = [retline[0]]
@@ -6287,7 +6320,7 @@ class Commands:
                     ['local_folder', 's3_storage_class', 'profile'])
 
                 if not files:
-                    print("No archives available.")
+                    log("No archives available.")
                     return
 
                 app = TableArchive(files)
@@ -6297,7 +6330,7 @@ class Commands:
                     return
 
                 if len(retline) < 2:
-                    print(f'\nNo archived folders found\n')
+                    log(f'\nNo archived folders found\n')
                     return
 
                 self.args.folders = [retline[0]]
@@ -6324,14 +6357,15 @@ class Commands:
 
             if self.args.mountpoint:
                 if not os.path.isdir(self.args.mountpoint):
-                    print(
+                    log(
                         f'\nError: Folder "{self.args.mountpoint}" does not exist.\n')
                     sys.exit(1)
 
                 if len(self.args.folders) > 1:
-                    print(
+                    log(
                         '\nError: Cannot mount multiple folders to a single mountpoint.')
-                    print('Check the mount command usage with "froster mount --help"\n')
+                    log(
+                        'Check the mount command usage with "froster mount --help"\n')
                     sys.exit(1)
 
             if not self.args.folders:
@@ -6340,7 +6374,7 @@ class Commands:
                     ['local_folder', 's3_storage_class', 'profile', 'archive_mode'])
 
                 if not files:
-                    print("\nNo archives available.\n")
+                    log("\nNo archives available.\n")
                     return
 
                 app = TableArchive(files)
@@ -6349,7 +6383,7 @@ class Commands:
                 if not retline:
                     return False
                 if len(retline) < 2:
-                    print(f'\nNo archived folders found\n')
+                    log(f'\nNo archived folders found\n')
                     sys.exit(0)
 
                 self.args.folders = [retline[0]]
@@ -6376,7 +6410,7 @@ class Commands:
             # Get current mounts
             mounts = arch.get_mounts()
             if len(mounts) == 0:
-                print("\nNOTE: No rclone mounts on this computer.\n")
+                log("\nNOTE: No rclone mounts on this computer.\n")
                 sys.exit(0)
 
             if not self.args.folders:
@@ -6401,11 +6435,11 @@ class Commands:
         ips = [sublist[0] for sublist in ilist if sublist]
         if self.args.list:
             if ips:
-                print("Running AWS EC2 Instances:")
+                log("Running AWS EC2 Instances:")
                 for row in ilist:
-                    print(' - '.join(row))
+                    log(' - '.join(row))
             else:
-                print('No running instances detected')
+                log('No running instances detected')
             return True
         if self.args.terminate:
             aws.ec2_terminate_instance(self.args.terminate)
@@ -6419,15 +6453,16 @@ class Commands:
         else:
             myhost = cfg.ec2_last_instance
         if ips and not myhost in ips:
-            print(f'{myhost} is no longer running, replacing with {ips[-1]}')
+            log(
+                f'{myhost} is no longer running, replacing with {ips[-1]}')
             myhost = ips[-1]
         if self.args.subcmd == 'ssh':
-            print(f'Connecting to {myhost} ...')
+            log(f'Connecting to {myhost} ...')
             aws.ssh_execute('ec2-user', myhost)
             return True
         elif self.args.subcmd == 'scp':
             if len(self.args.sshargs) != 2:
-                print('The "scp" sub command supports currently 2 arguments')
+                log('The "scp" sub command supports currently 2 arguments')
                 return False
             hostloc = next((i for i, item in enumerate(
                 self.args.sshargs) if ":" in item), None)
@@ -6442,20 +6477,20 @@ class Commands:
                 ret = aws.ssh_upload(
                     'ec2-user', host, self.args.sshargs[0], remote_path)
             else:
-                print('The "scp" sub command supports currently 2 arguments')
+                log('The "scp" sub command supports currently 2 arguments')
                 return False
-            print(ret.stdout, ret.stderr)
+            log(ret.stdout, ret.stderr)
 
     def subcmd_credentials(self, cfg: ConfigManager, aws: AWSBoto):
         '''Check AWS credentials'''
 
-        print("\nChecking AWS credentials...")
+        log("\nChecking AWS credentials...")
 
         if aws.check_credentials(aws_profile=cfg.aws_profile):
-            print('    ...AWS credentials are valid\n')
+            log('    ...AWS credentials are valid\n')
             return True
         else:
-            print('    ...AWS credentials are NOT valid\n')
+            log('    ...AWS credentials are NOT valid\n')
             return False
 
     def subcmd_update(self, mute_no_update):
@@ -6468,7 +6503,7 @@ class Commands:
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             if result.returncode != 0:
-                print(
+                log(
                     f"Error checking if froster update available. Command run: {cmd}: {result.stderr.strip()}")
                 return False
 
@@ -6485,22 +6520,22 @@ class Commands:
 
             releases = json.loads(result.stdout)
             if not releases:
-                print('Note: Could not check for updates')
+                log('Note: Could not check for updates')
                 return
 
             latest = releases[0]['tag_name'].replace('v', '')
             current = pkg_resources.get_distribution("froster").version
 
             if compare_versions(latest, current) > 0:
-                print(f'\nA froster update is available!')
-                print(f'  Current version: froster v{current}')
-                print(f'  Latest version: froster v{latest}')
-                print(f'\nYou can update froster using the command:')
-                print(
+                log(f'\nA froster update is available!')
+                log(f'  Current version: froster v{current}')
+                log(f'  Latest version: froster v{latest}')
+                log(f'\nYou can update froster using the command:')
+                log(
                     f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
             else:
                 if not mute_no_update:
-                    print(f'\nFroster is up to date: froster v{current}\n')
+                    log(f'\nFroster is up to date: froster v{current}\n')
 
         except Exception:
             print_error()
@@ -6806,9 +6841,10 @@ class Commands:
 
 def printdbg(*args, **kwargs):
     if os.environ.get('DEBUG') == '1':
+
         current_frame = inspect.currentframe()
         calling_function = current_frame.f_back.f_code.co_name
-        print(f' DBG {calling_function}():', args, kwargs)
+        log(f' DBG {calling_function}():', args, kwargs)
 
 
 def clean_path(path):
@@ -6904,27 +6940,42 @@ def print_error(msg: str = None):
 
     # Check if the exception is a KeyboardInterrupt
     if exc_type is KeyboardInterrupt:
-        print(f'\nKeyboard Interrupt\n')
+        log(f'\nKeyboard Interrupt\n')
 
     elif exc_type is SystemExit:
         pass
 
     else:
-        print('\nError')
-        print('  File:', file_name, file=sys.stderr)
-        print('  Function:', function_name, file=sys.stderr)
-        print('  Line:', line, file=sys.stderr)
-        print('  Error code:', error_code, file=sys.stderr)
+        log('\nError')
+        log('  File:', file_name, file=sys.stderr)
+        log('  Function:', function_name, file=sys.stderr)
+        log('  Line:', line, file=sys.stderr)
+        log('  Error code:', error_code, file=sys.stderr)
         if (msg):
-            print('  Error message:', msg, file=sys.stderr)
+            log('  Error message:', msg, file=sys.stderr)
 
-        print('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n', file=sys.stderr)
+        log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n', file=sys.stderr)
+
+
+def log(*args, **kwargs):
+
+    print(*args, **kwargs)
+    
+    global logger
+    if logger and os.environ.get('DEBUG') == '1':
+        # Create the logger directory if it does not exist
+        logger_dir = os.path.dirname(logger)
+        os.makedirs(logger_dir, exist_ok=True, mode=0o775)
+        
+        # Write entry into logger
+        with open(logger, 'a') as f:
+            print(*args, **kwargs, file=f)
 
 
 def main():
 
     if not sys.platform.startswith('linux'):
-        print('Froster currently only runs on Linux x64\n')
+        log('Froster currently only runs on Linux x64\n')
         sys.exit(1)
 
     try:
@@ -6963,12 +7014,12 @@ def main():
 
         # Do not allow other commands rather than config if the configuration is not set
         if not cfg.configuration_done and args.subcmd not in ['config', 'cnf'] and args.subcmd not in ['update', 'upd']:
-            print('\nWARNING: Froster is not full configured yet:')
-            print(f'  user: {"done" if cfg.user_init else "pending"}')
-            print(f'  aws: {"done" if cfg.aws_init else "pending"}')
-            print(f'  s3: {"done" if cfg.s3_init else "pending"}')
-            print(f'  nih: {"done" if cfg.nih_init else "pending"}')
-            print(f'\nRun "froster config --help" for more information.\n')
+            log('\nWARNING: Froster is not full configured yet:')
+            log(f'  user: {"done" if cfg.user_init else "pending"}')
+            log(f'  aws: {"done" if cfg.aws_init else "pending"}')
+            log(f'  s3: {"done" if cfg.s3_init else "pending"}')
+            log(f'  nih: {"done" if cfg.nih_init else "pending"}')
+            log(f'\nRun "froster config --help" for more information.\n')
             return
 
         # call a function for each sub command in our CLI
