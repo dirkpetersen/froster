@@ -65,4 +65,6 @@ jobs:
         run: python3 tests/test_config.py
 
       - name: Print debug log
+        env:
+          DEBUG: 1
         run: froster --log-print
