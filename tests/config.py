@@ -3,8 +3,8 @@ import os
 import tempfile
 
 
-NAME = "Bob"
-NAME_2 = "Alice"
+NAME = "Test-Bob"
+NAME_2 = "Test-Alice"
 EMAIL = "bob@bob.com"
 EMAIL_2 = "alice@alice.com"
 
