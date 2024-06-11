@@ -95,7 +95,7 @@ def helper_set_default_cli_arguments(self):
                                 subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
 
 
-
+@patch('builtins.print')
 class TestIndex(unittest.TestCase):
     '''Test the froster index command.'''
 
@@ -104,7 +104,7 @@ class TestIndex(unittest.TestCase):
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[False, False])
-    def setUpClass(self, mock_text, mock_prompt, mock_list, mock_confirm):
+    def setUpClass(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
         if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
             raise ValueError("AWS credentials are not set")
         
@@ -132,7 +132,7 @@ class TestIndex(unittest.TestCase):
         # deinit_froster(self)
 
     @patch('inquirer.text', side_effect=[NAME, EMAIL])
-    def test_subcmd_index(self, mock_text):
+    def test_subcmd_index(self, mock_print, mock_text):
         self.assertTrue(True)
 
 
