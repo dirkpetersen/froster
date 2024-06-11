@@ -1,6 +1,5 @@
 from froster import *
 from config import *
-from utils_froster_full_config import config_froster
 from argparse import Namespace
 import configparser
 import os
