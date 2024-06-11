@@ -8,11 +8,6 @@ from unittest.mock import patch
 import unittest
 import time
 
-#############
-# Variables #
-#############
-S3_BUCKET_NAME = 'froster-unittest-config'
-S3_BUCKET_NAME_2 = 'froster-unittest-config-2'
 
 ##################
 # FUNCTION UTILS #
@@ -89,10 +84,10 @@ def delete_buckets(self):
         s3_buckets = self.aws.get_buckets()
 
         # Delete the buckets if they exists
-        if S3_BUCKET_NAME in s3_buckets:
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME)
-        if S3_BUCKET_NAME_2 in s3_buckets:
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_2)
+        if S3_BUCKET_NAME_CONFIG in s3_buckets:
+            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_CONFIG)
+        if S3_BUCKET_NAME_CONFIG_2 in s3_buckets:
+            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_CONFIG_2)
 
 
 def check_ini_file(self, ini_file, section, key, value):
@@ -145,7 +140,7 @@ class TestConfig(unittest.TestCase):
         self.cmd.args = Namespace(cores=4, debug=False, info=False, memory=64, noslurm=False, aws_profile='', version=False,
                                   subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
 
-    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[False, False])
@@ -164,7 +159,7 @@ class TestConfig(unittest.TestCase):
         # Mock the "froster config" command
         self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
 
-    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[True, False])
@@ -183,7 +178,7 @@ class TestConfig(unittest.TestCase):
         # Mock the "froster config" command
         self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
 
-    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR, NAME_2, EMAIL_2])
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR, NAME_2, EMAIL_2])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}, {'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS, AWS_PROFILE, AWS_REGION])
     @patch('inquirer.confirm', side_effect=[True, False, True, True])
@@ -205,7 +200,7 @@ class TestConfig(unittest.TestCase):
         # Mock the "froster config" command again (now we have an existing shared configuration file)
         self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
 
-    @patch('inquirer.text', side_effect=[NAME_2, EMAIL_2, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_2, S3_ARCHIVE_DIR_2])
+    @patch('inquirer.text', side_effect=[NAME_2, EMAIL_2, AWS_PROFILE_2, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG_2, S3_ARCHIVE_DIR_2])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION_2, '+ Create new bucket', S3_STORAGE_CLASS_2])
     @patch('inquirer.confirm', side_effect=[True, False, False])
@@ -218,7 +213,7 @@ class TestConfig(unittest.TestCase):
         # Mock the "froster config" command
         self.assertTrue(self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws))
 
-    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}, {'shared_dir': SHARED_DIR}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[True, True, False])
@@ -317,7 +312,7 @@ class TestConfig(unittest.TestCase):
 
         # S3 config checks
         check_ini_file(self, self.cfg.config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_CONFIG)
 
         check_ini_file(self, self.cfg.config_file,
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
@@ -327,7 +322,7 @@ class TestConfig(unittest.TestCase):
 
         # Check the bucket was created
         s3_buckets = self.aws.get_buckets()
-        self.assertIn(S3_BUCKET_NAME, s3_buckets)
+        self.assertIn(S3_BUCKET_NAME_CONFIG, s3_buckets)
 
     def helper_check_subcmd_config_shared(self):
 
@@ -378,7 +373,7 @@ class TestConfig(unittest.TestCase):
 
         # S3 config checks
         check_ini_file(self, self.cfg.shared_config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_CONFIG)
 
         check_ini_file(self, self.cfg.shared_config_file,
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
@@ -388,7 +383,7 @@ class TestConfig(unittest.TestCase):
 
         # Check the bucket was created
         s3_buckets = self.aws.get_buckets()
-        self.assertIn(S3_BUCKET_NAME, s3_buckets)
+        self.assertIn(S3_BUCKET_NAME_CONFIG, s3_buckets)
 
     def helper_check_subcmd_config_shared_existing_config(self):
 
@@ -439,7 +434,7 @@ class TestConfig(unittest.TestCase):
 
         # S3 config checks
         check_ini_file(self, self.cfg.shared_config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_CONFIG)
 
         check_ini_file(self, self.cfg.shared_config_file,
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
@@ -449,7 +444,7 @@ class TestConfig(unittest.TestCase):
 
         # Check the bucket was created
         s3_buckets = self.aws.get_buckets()
-        self.assertIn(S3_BUCKET_NAME, s3_buckets)
+        self.assertIn(S3_BUCKET_NAME_CONFIG, s3_buckets)
 
     def helper_check_subcmd_config_overwrite(self):
 
@@ -496,7 +491,7 @@ class TestConfig(unittest.TestCase):
 
         # S3 config checks
         check_ini_file(self, self.cfg.config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_2)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_CONFIG_2)
 
         check_ini_file(self, self.cfg.config_file,
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR_2)
@@ -506,7 +501,7 @@ class TestConfig(unittest.TestCase):
 
         # Check the bucket was created
         s3_buckets = self.aws.get_buckets()
-        self.assertIn(S3_BUCKET_NAME_2, s3_buckets)
+        self.assertIn(S3_BUCKET_NAME_CONFIG_2, s3_buckets)
 
     def helper_check_subcmd_config_shared_move_froster_archives_json(self):
 
@@ -1070,7 +1065,7 @@ class TestConfigS3(unittest.TestCase):
         deinit_froster(self)
 
     @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
-    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     def test_set_s3(self, mock_print, mock_list, mock_text):
         '''- Set a new S3 bucket.'''
 
@@ -1082,7 +1077,7 @@ class TestConfigS3(unittest.TestCase):
 
         # Check that the configuration files were updated correctly
         check_ini_file(self, self.cfg.config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_CONFIG)
 
         check_ini_file(self, self.cfg.config_file,
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
@@ -1097,7 +1092,7 @@ class TestConfigS3(unittest.TestCase):
         s3_buckets = self.aws.get_buckets()
 
         # Check the bucket was created
-        self.assertIn(S3_BUCKET_NAME, s3_buckets)
+        self.assertIn(S3_BUCKET_NAME_CONFIG, s3_buckets)
 
     def test_set_s3_aws_not_init(self, mock_print):
         '''- set_s3 method returns False if AWS credentials are not set.'''
@@ -1142,7 +1137,7 @@ class TestConfigS3(unittest.TestCase):
         self.cfg.aws_profile = AWS_PROFILE
 
     @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS])
-    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR])
+    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     @patch('inquirer.confirm', side_effect=[True])
     @patch('inquirer.prompt', return_value={'shared_dir': SHARED_DIR})
     def test_set_s3_when_shared_config(self, mock_print, mock_list, mock_text, mock_confirm, mock_prompt):
@@ -1156,7 +1151,7 @@ class TestConfigS3(unittest.TestCase):
 
         # Check that the configuration files were updated correctly
         check_ini_file(self, self.cfg.shared_config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_CONFIG)
 
         check_ini_file(self, self.cfg.shared_config_file,
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR)
@@ -1171,10 +1166,10 @@ class TestConfigS3(unittest.TestCase):
         s3_buckets = self.aws.get_buckets()
 
         # Check the bucket was created
-        self.assertIn(S3_BUCKET_NAME, s3_buckets)
+        self.assertIn(S3_BUCKET_NAME_CONFIG, s3_buckets)
 
-    @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS, S3_BUCKET_NAME, S3_STORAGE_CLASS_2])
-    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME, S3_ARCHIVE_DIR, S3_ARCHIVE_DIR_2])
+    @patch('inquirer.list_input', side_effect=['+ Create new bucket', S3_STORAGE_CLASS, S3_BUCKET_NAME_CONFIG, S3_STORAGE_CLASS_2])
+    @patch('inquirer.text', side_effect=[S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR, S3_ARCHIVE_DIR_2])
     def test_set_s3_select_bucket(self, mock_print, mock_list, mock_text):
         '''- Select S3 bucket.'''
 
@@ -1186,7 +1181,7 @@ class TestConfigS3(unittest.TestCase):
 
         # Check that the configuration files were updated correctly
         check_ini_file(self, self.cfg.config_file,
-                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME)
+                       S3_SECTION, 'bucket_name', S3_BUCKET_NAME_CONFIG)
 
         check_ini_file(self, self.cfg.config_file,
                        S3_SECTION, 'archive_dir', S3_ARCHIVE_DIR_2)
@@ -1195,13 +1190,13 @@ class TestConfigS3(unittest.TestCase):
                        S3_SECTION, 'storage_class', S3_STORAGE_CLASS_2)
 
         # Delete the bucket
-        self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME)
+        self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_CONFIG)
 
         # Get the buckets list
         s3_buckets = self.aws.get_buckets()
 
         # Check the bucket was created
-        self.assertNotIn(S3_BUCKET_NAME, s3_buckets)
+        self.assertNotIn(S3_BUCKET_NAME_CONFIG, s3_buckets)
 
 
 if __name__ == '__main__':
