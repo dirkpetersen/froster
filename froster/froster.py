@@ -6036,8 +6036,9 @@ class Commands:
         self.parser = self.parse_arguments()
         self.args = self.parser.parse_args()
 
-        if self.args.debug:
+        if self.args.debug or self.args.log_print:
             os.environ['DEBUG'] = '1'
+
 
     def print_help(self):
         '''Print help message'''
@@ -6557,15 +6558,15 @@ class Commands:
 
         parser.add_argument('-i', '--info', dest='info', action='store_true',
                             help='print froster and packages info')
-
+        
+        parser.add_argument('-l', '--log-print', dest='log_print', action='store_true',
+                            help='Print the log file to the screen')
+        
         parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
                             help='Amount of memory to be allocated for the machine in GB. (default=64)')
 
         parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true',
                             help="do not submit a Slurm job, execute in the foreground. ")
-
-        parser.add_argument('-p', '--profile', dest='aws_profile', action='store_true', default='',
-                            help='which AWS profile in ~/.aws/ should be used. default="aws"')
 
         parser.add_argument('-v', '--version', dest='version', action='store_true',
                             help='print froster version')
@@ -6971,6 +6972,16 @@ def log(*args, **kwargs):
         with open(logger, 'a') as f:
             print(*args, **kwargs, file=f)
 
+def print_log():
+     
+    global logger
+    if logger and os.environ.get('DEBUG') == '1':
+
+        # Read and print the contents of the logger file
+        with open(logger, 'r') as f:
+            contents = f.read()
+            print(contents)
+
 
 def main():
 
@@ -7007,6 +7018,10 @@ def main():
 
         if args.info:
             cmd.print_info()
+            return
+        
+        if args.log_print:
+            print_log()
             return
 
         if cfg.is_shared and cfg.shared_dir:
