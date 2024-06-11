@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # VARIABLES
 S3_BUCKET_NAME = "froster-unittest"
-S3_BUCKET_NAME = "froster-unittest-2"
+S3_BUCKET_NAME_2 = "froster-unittest-2"
 
 class FrosterConfiguration():
 
