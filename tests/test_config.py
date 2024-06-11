@@ -6,7 +6,6 @@ import os
 import shutil
 from unittest.mock import patch
 import unittest
-import time
 
 
 ##################
@@ -120,8 +119,23 @@ class TestConfig(unittest.TestCase):
         # Initialize the froster objects
         init_froster(self)
 
+        # Make sure we have credentials to be able to delete buckets
+        self.set_credentials()
+
         # Delete any existing buckets
         delete_buckets(self)
+
+        # NOTE: This is a workaround. We needed to set the credentials to be able to delete possible buckets that
+        # were created in previous tests. However, we don't want to set the credentials for the current test.
+        # Therefore, we need to delete the credentials after deleting the buckets.
+
+        # Deinitialize the froster objects
+        deinit_froster(self)
+
+        # Initialize the froster objects
+        init_froster(self)
+
+
 
     # Method executed after every test
     def tearDown(self):
@@ -131,6 +145,18 @@ class TestConfig(unittest.TestCase):
 
         # Deinitialize the froster objects
         deinit_froster(self)
+
+    @patch('builtins.print')
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
+    @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
+    def set_credentials(self, mock_print, mock_prompt, mock_list, mock_text):
+        '''- Set a new AWS profile with valid credentials.'''
+
+        # Call set_aws method
+        self.assertTrue(self.cfg.set_aws(self.aws))
+        self.assertTrue(self.aws.check_credentials())
+
 
     # HELPER RUNS
 
@@ -1050,14 +1076,9 @@ class TestConfigS3(unittest.TestCase):
         # Delete any existing buckets
         delete_buckets(self)
 
-        # Give AWS some time to update
-        time.sleep(10)
 
     # Method executed after every test
     def tearDown(self):
-
-        # Give AWS some time to update
-        time.sleep(10)
 
         # Delete any existing buckets
         delete_buckets(self)
@@ -1219,10 +1240,10 @@ if __name__ == '__main__':
         # BASIC TEST CASE FOR EVERY TEST
         # suite.addTest(TestConfig('test_subcmd_config'))
         # suite.addTest(TestConfigUser('test_set_user'))
-        suite.addTest(TestConfigAWS('test_set_aws'))
+        # suite.addTest(TestConfigAWS('test_set_aws'))
         # suite.addTest(TestConfigShared('test_set_shared'))
         # suite.addTest(TestConfigNIH('test_set_nih'))
-        suite.addTest(TestConfigS3('test_set_s3'))
+        # suite.addTest(TestConfigS3('test_set_s3'))
 
         runner = unittest.TextTestRunner(verbosity=2)
         runner.run(suite)

@@ -40,7 +40,6 @@ jobs:
           AWS_SECRET: ${{ secrets.AWS_SECRET }}
           DEBUG: 1
         run: python3 tests/test_config.py
-        continue-on-error: true
 
       - name: Print debug log
         env:
