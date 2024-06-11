@@ -1367,7 +1367,7 @@ class AWSBoto:
             return True
 
         except Exception:
-            print_error()
+            print_error(msg="Invalid AWS credentials")
             return False
 
     def create_bucket(self, bucket_name, region):
@@ -6948,14 +6948,14 @@ def print_error(msg: str = None):
 
     else:
         log('\nError')
-        log('  File:', file_name, file=sys.stderr)
-        log('  Function:', function_name, file=sys.stderr)
-        log('  Line:', line, file=sys.stderr)
-        log('  Error code:', error_code, file=sys.stderr)
+        log('  File:', file_name)
+        log('  Function:', function_name)
+        log('  Line:', line)
+        log('  Error code:', error_code)
         if (msg):
-            log('  Error message:', msg, file=sys.stderr)
+            log('  Error message:', msg)
 
-        log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n', file=sys.stderr)
+        log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
 
 def log(*args, **kwargs):
