@@ -6977,10 +6977,13 @@ def print_log():
     global logger
     if logger and os.environ.get('DEBUG') == '1':
 
-        # Read and print the contents of the logger file
-        with open(logger, 'r') as f:
-            contents = f.read()
-            print(contents)
+        if os.path.exists(logger):
+            # Read and print the contents of the logger file
+            with open(logger, 'r') as f:
+                contents = f.read()
+                print(contents)
+        else:
+            print("\nNo log file found\n")
 
 
 def main():
