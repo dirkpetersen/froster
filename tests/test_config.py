@@ -7,6 +7,12 @@ import shutil
 from unittest.mock import patch
 import unittest
 
+#############
+# Variables #
+#############
+S3_BUCKET_NAME = 'froster-unittest-config-bob'
+S3_BUCKET_NAME_2 = 'froster-unittest-config-alice'
+
 ##################
 # FUNCTION UTILS #
 ##################

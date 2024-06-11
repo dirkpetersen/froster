@@ -23,8 +23,6 @@ SHARED_SECTION = 'SHARED'
 NIH_SECTION = 'NIH'
 S3_SECTION = 'S3'
 
-S3_BUCKET_NAME = 'froster-unittest-bob'
-S3_BUCKET_NAME_2 = 'froster-unittest-alice'
 S3_ARCHIVE_DIR = 'froster_bob'
 S3_ARCHIVE_DIR_2 = 'froster_alice'
 S3_STORAGE_CLASS = 'DEEP_ARCHIVE'

@@ -8,6 +8,11 @@ import shutil
 from unittest.mock import patch
 import unittest
 
+#############
+# Variables #
+#############
+S3_BUCKET_NAME = 'froster-unittest-index-bob'
+S3_BUCKET_NAME_2 = 'froster-unittest-index-alice'
 
 @patch('builtins.print')
 class TestIndex(unittest.TestCase):
