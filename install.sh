@@ -281,7 +281,15 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-    froster_dir=$(dirname $(readlink -f ~/.local/bin/froster))
+
+    if [ -f ~/.local/bin/froster ]; then
+        froster_dir=$(dirname $(readlink -f ~/.local/bin/froster))
+        ls -la ~/.local/bin
+    else
+        echo "Froster was not correctly installed."
+        exit 1
+    fi
+
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
@@ -327,7 +335,14 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-    froster_dir=$(dirname $(readlink -f ~/.local/bin/froster))
+
+    if [ -f ~/.local/bin/froster ]; then
+        froster_dir=$(dirname $(readlink -f ~/.local/bin/froster))
+    else
+        echo "Froster was not correctly installed."
+        exit 1
+    fi
+
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
   
 
