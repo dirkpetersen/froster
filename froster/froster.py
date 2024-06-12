@@ -91,10 +91,7 @@ class ConfigManager:
             self.home_dir = os.path.expanduser('~')
 
             # Froster's home directory
-            self.froster_dir = os.path.join(sys.prefix)
-
-            # Froster's binary directory
-            self.bin_dir = os.path.join(self.froster_dir, 'bin')
+            self.froster_dir = os.path.dirname(os.path.realpath(shutil.which('froster')))
 
             # Froster's data directory
             xdg_data_home = os.environ.get('XDG_DATA_HOME')
@@ -3080,13 +3077,14 @@ class Archiver:
                             f'    ...folder already indexed at {folder_hotspot}. Use "-f" or "--force" flag to force indexing.\n')
                         return
 
+
             # Run pwalk on given folder
             with tempfile.NamedTemporaryFile() as pwalk_output:
                 with tempfile.NamedTemporaryFile() as pwalk_output_folders:
                     with tempfile.NamedTemporaryFile() as pwalk_output_folders_converted:
 
                         # Build the pwalk command
-                        pwalk_bin = os.path.join(sys.prefix, 'bin', 'pwalk')
+                        pwalk_bin = os.path.join(self.cfg.froster_dir, 'pwalk')
                         pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
                         mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
 
@@ -4286,6 +4284,8 @@ class Archiver:
                 rme.write(f"Archiver user: {archived_folder_info['user']}\n")
                 rme.write(f'Archiver email: {self.cfg.email}\n')
                 rme.write(
+                    f'froster-archives.json: {self.archive_json}\n')
+                rme.write(
                     f'Archive tool: https://github.com/dirkpetersen/froster\n')
                 rme.write(
                     f'Restore command: froster restore "{folder_to_delete}"\n')
@@ -5187,7 +5187,7 @@ class Rclone:
             self.cfg = cfg
 
             # Set the Rclone executable path
-            self.rc = os.path.join(sys.prefix, 'bin', 'rclone')
+            self.rc = os.path.join(self.cfg.froster_dir, 'rclone')
 
             # Set the Rclone environment variables
             # Note: Keys are set in the AWS Boto __init__ function
@@ -6052,13 +6052,15 @@ class Commands:
     def print_info(self):
         '''Print froster info'''
 
+        froster_dir = os.path.dirname(os.path.realpath(shutil.which('froster')))
+
         log(
             f'froster v{pkg_resources.get_distribution("froster").version}\n')
         log(f'Tools version:')
         log(f'    python v{platform.python_version()}')
-        log('    pwalk ', 'v'+subprocess.run([os.path.join(sys.prefix, 'bin', 'pwalk'), '--version'],
+        log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
                                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
-        log('   ', subprocess.run([os.path.join(sys.prefix, 'bin', 'rclone'), '--version'],
+        log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
         log(textwrap.dedent(f'''
@@ -6108,11 +6110,6 @@ class Commands:
 
             if self.args.print:
                 return cfg.print_config()
-
-            # if self.args.monitor:
-            #     froster_binary = os.path.join(cfg.bin_dir, 'froster')
-            #     return cfg.add_systemd_cron_job(
-            #         f'{froster_binary} restore --monitor', '30')
 
             log(f'\n*****************************')
             log(f'*** FROSTER CONFIGURATION ***')
@@ -7065,7 +7062,7 @@ def main():
             cmd.print_help()
 
         # Check if there are updates on froster every X days
-        if cfg.check_update() and args.subcmd not in ['update', 'upd']:
+        if cfg.configuration_done and cfg.check_update() and args.subcmd not in ['update', 'upd']:
             cmd.subcmd_update(mute_no_update=True)
 
         # Close the AWS session
