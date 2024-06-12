@@ -1,7 +1,12 @@
 # Variables
 import os
+import random
+import string
 import tempfile
 
+
+def random_string(length=4):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 NAME = "Test-Bob"
 NAME_2 = "Test-Alice"
@@ -23,11 +28,11 @@ SHARED_SECTION = 'SHARED'
 NIH_SECTION = 'NIH'
 S3_SECTION = 'S3'
 
-S3_BUCKET_NAME_CONFIG = 'froster-unittest-config'
-S3_BUCKET_NAME_CONFIG_2 = 'froster-unittest-config-2'
+S3_BUCKET_NAME_CONFIG = 'froster-unittest-config-' + random_string(4)
+S3_BUCKET_NAME_CONFIG_2 = 'froster-unittest-config-2-' + random_string(4)
 
-S3_BUCKET_NAME_INDEX = 'froster-unittest-index'
-S3_BUCKET_NAME_INDEX_2 = 'froster-unittest-index-2'
+S3_BUCKET_NAME_INDEX = 'froster-unittest-index-' + random_string(4)
+S3_BUCKET_NAME_INDEX_2 = 'froster-unittest-index-2-' + random_string(4)
 
 S3_ARCHIVE_DIR = 'froster_bob'
 S3_ARCHIVE_DIR_2 = 'froster_alice'
