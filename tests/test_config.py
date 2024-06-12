@@ -164,7 +164,7 @@ class TestConfig(unittest.TestCase):
         '''- Set default cli arguments.'''
 
         self.cmd.args = Namespace(cores=4, debug=False, info=False, memory=64, noslurm=False, aws_profile='', version=False,
-                                  subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
+                                  subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False, pwalkcopy='')
 
     @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
