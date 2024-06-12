@@ -116,17 +116,16 @@ check_apt_dependencies() {
     fi
 
     # Check if lib32gcc-s1 is installed (pwalk compilation requirement)
-        if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
-            echo "Error: lib32gcc-s1 is not installed."
-            echo
-            echo "Please install lib32gcc-s1"
-            echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
-            echo "  sudo apt update"
-            echo "  sudo apt install -y lib32gcc-s1"
-            echo
-            exit 1
-        fi
-
+    if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
+        echo "Error: lib32gcc-s1 is not installed."
+        echo
+        echo "Please install lib32gcc-s1"
+        echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y lib32gcc-s1"
+        echo
+        exit 1
+    fi
 
     # Check if unzip is installed (rclone requirement)
     if [[ -z $(command -v unzip) ]]; then
@@ -186,15 +185,15 @@ backup_old_installation() {
         echo "Uninstalling existing froster installation..."
 
         if pip list | grep froster >/dev/null 2>&1; then
-                pip uninstall froster >/dev/null 2>&1 &
-                spinner $!
+            pip uninstall froster >/dev/null 2>&1 &
+            spinner $!
         fi
 
         if pipx list | grep froster >/dev/null 2>&1; then
-                # If froster is installed with pipx, uninstall it and ignore errors
-                # sometime pipx uninstall fails with error code 1 if PIPX_HOME is set, but froster is still uninstalled
-                pipx uninstall froster >/dev/null 2>&1 &
-                spinner $!
+            # If froster is installed with pipx, uninstall it and ignore errors
+            # sometime pipx uninstall fails with error code 1 if PIPX_HOME is set, but froster is still uninstalled
+            pipx uninstall froster >/dev/null 2>&1 &
+            spinner $!
         fi
 
         echo "...froster uninstalled"
@@ -229,7 +228,7 @@ install_froster() {
         echo "  Installing from the current directory"
         pip install . >/dev/null 2>&1 &
         spinner $!
-    else 
+    else
         echo "  Installing from PyPi package repository"
         pipx install froster >/dev/null 2>&1 &
         spinner $!
@@ -254,8 +253,6 @@ install_froster() {
     fi
 
     echo "...froster installed"
-
-    which froster
 }
 
 get_froster_dir() {
@@ -269,15 +266,21 @@ get_froster_dir() {
 
     elif [ -f "${PIPX_HOME}/venvs/froster/bin/froster" ]; then
         froster_dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/froster/bin/froster")")
-        
+
     elif [ -f "${HOME}/.local/bin/froster" ]; then
         froster_dir=$(dirname "$(readlink -f "${HOME}/.local/bin/froster")")
 
     elif [ -f "/usr/local/bin/froster" ]; then
         froster_dir=$(dirname "$(readlink -f "/usr/local/bin/froster")")
     else
-        echo "Error: pipx installation path not found." >&2
-        return 1
+        froster_path=$(which froster)
+
+        if [ -n "$froster_path" ]; then
+            froster_dir=$(dirname "$(readlink -f "$froster_path")")
+        else
+            echo "Error: pipx installation path not found."
+            exit 1
+        fi
     fi
 
     echo "$froster_dir"
@@ -356,7 +359,6 @@ install_rclone() {
     echo "    Moving rclone to froster's binaries folder"
     froster_dir=$(get_froster_dir)
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
-  
 
     # Remove the downloaded zip file
     echo "    Cleaning up rclone installation files"
