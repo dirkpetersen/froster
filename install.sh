@@ -12,7 +12,7 @@ date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD for
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 
-
+froster_dir=$(dirname $(readlink -f ~/.local/bin/froster))
 
 #####################
 ### ERROR HANDLER ###
@@ -283,8 +283,6 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-    froster_path=$(readlink -f $(which froster))
-    froster_dir=$(dirname ${froster_path})
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
@@ -330,8 +328,6 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-    froster_path=$(readlink -f $(which froster))
-    froster_dir=$(dirname ${froster_path})
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
   
 
