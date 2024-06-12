@@ -1,6 +1,6 @@
-name: Test "froster config" command
+name: Test "froster index" command
 
-run-name: Test "froster config" command
+run-name: Test "froster index" command
 
 on: [push, pull_request]
 
@@ -8,10 +8,10 @@ on: [push, pull_request]
 # There reason is to have a way to print the debug log in case of failure.
 # But also to have a way to run the tests without the debug flag set, which is the default behavior.
 
-# Avoid paralelism, because the tests are using the same resources in AWS 
+# Avoid paralelism, because the tests are using the same resources in AWS S3
 
 jobs:
-  froster-config:
+  froster-index:
     runs-on: ubuntu-latest
     steps:
 
@@ -38,4 +38,4 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET: ${{ secrets.AWS_SECRET }}
-        run: python3 tests/test_config.py
+        run: python3 tests/test_index.py

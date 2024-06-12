@@ -48,9 +48,13 @@ def generate_test_data():
         create_file('small_2_' + random_string(), 1, dir, '10 days ago')
         create_file('medium_1_' + random_string(), 1100, dir, '100 days ago')
         create_file('medium_2_' + random_string(), 1100, dir, '1000 days ago')
+        create_file('large_1_' + random_string(), 1100000, dir, '10 days ago')
+        create_file('large_2_' + random_string(), 1100000, dir, '1000 days ago')
+
+    return base_dir
 
 def main():
-    generate_test_data()
+    return generate_test_data()
 
 
 if __name__ == "__main__":
