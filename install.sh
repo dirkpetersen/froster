@@ -283,7 +283,7 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-    froster_path=$(which froster)
+    froster_path=$(readlink -f $(which froster))
     froster_dir=$(dirname ${froster_path})
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
@@ -330,7 +330,7 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-    froster_path=$(which froster)
+    froster_path=$(readlink -f $(which froster))
     froster_dir=$(dirname ${froster_path})
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
   
