@@ -44,12 +44,11 @@ def generate_test_data():
 
     # Create files in the base directory
     for dir in [base_dir, subdir1, subdir2]:
-        create_file('small_1_' + random_string(), 1, dir, '1 days ago')
-        create_file('small_2_' + random_string(), 1, dir, '10 days ago')
-        create_file('medium_1_' + random_string(), 1100, dir, '100 days ago')
-        create_file('medium_2_' + random_string(), 1100, dir, '1000 days ago')
-        create_file('large_1_' + random_string(), 1100000, dir, '10 days ago')
-        create_file('large_2_' + random_string(), 1100000, dir, '1000 days ago')
+        create_file('small_1_' + random_string(), 1, dir, '1 days ago') # 1B
+        create_file('small_2_' + random_string(), 1, dir, '10 days ago') # 1B
+        create_file('medium_1_' + random_string(), 1100, dir, '100 days ago') # 1.1KB
+        create_file('medium_2_' + random_string(), 1100, dir, '1000 days ago') # 1.1KB
+        create_file('large_' + random_string(), 1100000000, dir, '10 days ago') # 1.1GB
 
     return base_dir
 

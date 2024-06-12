@@ -29,10 +29,10 @@ NIH_SECTION = 'NIH'
 S3_SECTION = 'S3'
 
 S3_BUCKET_NAME_CONFIG = 'froster-unittest-config-' + random_string(4)
-S3_BUCKET_NAME_CONFIG_2 = 'froster-unittest-config-2-' + random_string(4)
+S3_BUCKET_NAME_CONFIG_2 = 'froster-unittest-config-' + random_string(4)
 
 S3_BUCKET_NAME_INDEX = 'froster-unittest-index-' + random_string(4)
-S3_BUCKET_NAME_INDEX_2 = 'froster-unittest-index-2-' + random_string(4)
+S3_BUCKET_NAME_INDEX_2 = 'froster-unittest-index-' + random_string(4)
 
 S3_ARCHIVE_DIR = 'froster_bob'
 S3_ARCHIVE_DIR_2 = 'froster_alice'
