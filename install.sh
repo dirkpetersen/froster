@@ -361,7 +361,7 @@ install_pwalk
 install_rclone
 
 # Get the installed froster version
-version=$(froster -v | awk '{print $2}')
+version=$(~/.local/bin/froster -v | awk '{print $2}')
 
 # Print success message
 echo
