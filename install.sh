@@ -254,6 +254,33 @@ install_froster() {
     fi
 
     echo "...froster installed"
+
+    which froster
+}
+
+get_froster_dir() {
+    local froster_dir
+
+    if [ -f "${XDG_DATA_HOME}/pipx/venvs/froster/bin/froster" ]; then
+        froster_dir=$(dirname "$(readlink -f "${XDG_DATA_HOME}/pipx/venvs/froster/bin/froster")")
+
+    elif [ -f "${HOME}/.local/pipx/venvs/froster/bin/froster" ]; then
+        froster_dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/froster/bin/froster")")
+
+    elif [ -f "${PIPX_HOME}/venvs/froster/bin/froster" ]; then
+        froster_dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/froster/bin/froster")")
+        
+    elif [ -f "${HOME}/.local/bin/froster" ]; then
+        froster_dir=$(dirname "$(readlink -f "${HOME}/.local/bin/froster")")
+
+    elif [ -f "/usr/local/bin/froster" ]; then
+        froster_dir=$(dirname "$(readlink -f "/usr/local/bin/froster")")
+    else
+        echo "Error: pipx installation path not found." >&2
+        return 1
+    fi
+
+    echo "$froster_dir"
 }
 
 install_pwalk() {
@@ -281,15 +308,7 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-
-    if [ -f ~/.local/bin/froster ]; then
-        froster_dir=$(dirname $(readlink -f ~/.local/bin/froster))
-        ls -la ~/.local/bin
-    else
-        echo "Froster was not correctly installed."
-        exit 1
-    fi
-
+    froster_dir=$(get_froster_dir)
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
@@ -335,14 +354,7 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-
-    if [ -f ~/.local/bin/froster ]; then
-        froster_dir=$(dirname $(readlink -f ~/.local/bin/froster))
-    else
-        echo "Froster was not correctly installed."
-        exit 1
-    fi
-
+    froster_dir=$(get_froster_dir)
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
   
 
@@ -376,7 +388,8 @@ install_pwalk
 install_rclone
 
 # Get the installed froster version
-version=$(~/.local/bin/froster -v | awk '{print $2}')
+froster_dir=$(get_froster_dir)
+version=$(${froster_dir}/froster -v | awk '{print $2}')
 
 # Print success message
 echo
