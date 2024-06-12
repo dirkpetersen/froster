@@ -88,31 +88,56 @@ def delete_buckets(self):
         if S3_BUCKET_NAME_INDEX_2 in s3_buckets:
             self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_INDEX_2)
 
+
 def helper_set_default_cli_arguments(self):
     '''- Set default cli arguments.'''
 
     self.cmd.args = Namespace(cores=4, debug=False, info=False, memory=64, noslurm=False, aws_profile='', version=False,
-                                subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
+                              subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
 
 
-@patch('builtins.print')
 class TestIndex(unittest.TestCase):
     '''Test the froster index command.'''
 
-    @classmethod
+    @patch('builtins.print')
+    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
+    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
+    @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
+    def set_credentials(self, mock_print, mock_prompt, mock_list, mock_text):
+        '''- Set a new AWS profile with valid credentials.'''
+
+        # Call set_aws method
+        self.assertTrue(self.cfg.set_aws(self.aws))
+        self.assertTrue(self.aws.check_credentials())
+
+    @patch('builtins.print')
     @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[False, False])
-    def setUpClass(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
+    # Method executed before every test
+    def setUp(self, mock_print, mock_text, mock_prompt, mock_list, mock_confirm):
         if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
             raise ValueError("AWS credentials are not set")
-        
+
         # Initialize the froster objects
         init_froster(self)
 
-        # Delete created S3 buckets if they exists
+        # Make sure we have credentials to be able to delete buckets
+        self.set_credentials()
+
+        # Delete any existing buckets
         delete_buckets(self)
+
+        # We needed to set the credentials to be able to delete possible buckets that
+        # were created in previous tests. However, we don't want to set the credentials for the current test.
+        # Therefore, we need to delete the credentials after deleting the buckets.
+
+        # Deinitialize the froster objects
+        deinit_froster(self)
+
+        # Initialize the froster objects
+        init_froster(self)
 
         # Mock the CLI default arguments
         helper_set_default_cli_arguments(self)
@@ -120,19 +145,20 @@ class TestIndex(unittest.TestCase):
         # Mock the "froster config" command and make sure it runs successfully
         self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws)
 
-        
-    # Method executed before every test
-    def setUp(self):
-        pass
-        # init_froster(self)
-
     # Method executed after every test
-    def tearDown(self):
-        pass
-        # deinit_froster(self)
 
+    def tearDown(self):
+        # Delete any existing buckets
+        delete_buckets(self)
+
+        # Deinitialize the froster objects
+        deinit_froster(self)
+
+    @patch('builtins.print')
     @patch('inquirer.text', side_effect=[NAME, EMAIL])
     def test_subcmd_index(self, mock_print, mock_text):
+        '''- Test the froster index command.'''
+
         self.assertTrue(True)
 
 
