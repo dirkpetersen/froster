@@ -6095,65 +6095,54 @@ class Commands:
 
     def print_help(self):
         '''Print help message'''
-        try:
-            self.parser.print_help()
-            return True
-        except Exception:
-            print_error()
-            return False
+
+        self.parser.print_help()
+
 
     def print_version(self):
         '''Print froster version'''
-        try:
-            log(f'froster v{pkg_resources.get_distribution("froster").version}')
-            return True
 
-        except Exception:
-            print_error()
-            return False
+        log(f'froster v{pkg_resources.get_distribution("froster").version}')
+ 
 
     def print_info(self):
         '''Print froster info'''
-        try:
-            froster_dir = os.path.dirname(
-                os.path.realpath(shutil.which('froster')))
 
-            log(
-                f'froster v{pkg_resources.get_distribution("froster").version}\n')
-            log(f'Tools version:')
-            log(f'    python v{platform.python_version()}')
-            log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
-                                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
-            log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+        froster_dir = os.path.dirname(
+            os.path.realpath(shutil.which('froster')))
 
-            log(textwrap.dedent(f'''
-                Authors:
-                    Written by Dirk Petersen and Hpc Now Consulting SL
+        log(
+            f'froster v{pkg_resources.get_distribution("froster").version}\n')
+        log(f'Tools version:')
+        log(f'    python v{platform.python_version()}')
+        log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
+                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+        log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
-                Repository:
-                    https://github.com/dirkpetersen/froster
+        log(textwrap.dedent(f'''
+            Authors:
+                Written by Dirk Petersen and Hpc Now Consulting SL
+
+            Repository:
+                https://github.com/dirkpetersen/froster
 
 
-                Copyright (C) 2024 Oregon Health & Science University (OSHU)
+            Copyright (C) 2024 Oregon Health & Science University (OSHU)
 
-                Licensed under the Apache License, Version 2.0 (the "License");
-                you may not use this file except in compliance with the License.
-                You may obtain a copy of the License at
+            Licensed under the Apache License, Version 2.0 (the "License");
+            you may not use this file except in compliance with the License.
+            You may obtain a copy of the License at
 
-                    http://www.apache.org/licenses/LICENSE-2.0
+                http://www.apache.org/licenses/LICENSE-2.0
 
-                Unless required by applicable law or agreed to in writing, software
-                distributed under the License is distributed on an "AS IS" BASIS,
-                WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-                See the License for the specific language governing permissions and
-                limitations under the License.
-                '''))
-            return True
+            Unless required by applicable law or agreed to in writing, software
+            distributed under the License is distributed on an "AS IS" BASIS,
+            WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            See the License for the specific language governing permissions and
+            limitations under the License.
+            '''))
 
-        except Exception:
-            print_error()
-            return False
 
     def subcmd_config(self, cfg: ConfigManager, aws: AWSBoto):
         '''Configure Froster settings.'''
@@ -7054,19 +7043,16 @@ def log(*args, **kwargs):
 
 def print_log():
 
-    try:
-        global logger
-        if logger and os.environ.get('DEBUG') == '1':
+    global logger
+    if logger and os.environ.get('DEBUG') == '1':
 
-            if os.path.exists(logger):
-                # Read and print the contents of the logger file
-                with open(logger, 'r') as f:
-                    contents = f.read()
-                    print(contents)
-            else:
-                print("\nNo log file found\n")
-    except Exception:
-        return False
+        if os.path.exists(logger):
+            # Read and print the contents of the logger file
+            with open(logger, 'r') as f:
+                contents = f.read()
+                print(contents)
+        else:
+            print("\nNo log file found\n")
 
 
 def main():
@@ -7099,16 +7085,19 @@ def main():
 
         # Print current version of froster
         if args.version:
-            return cmd.print_version()
+            cmd.print_version()
+            sys.exit(0)
 
         if args.info:
-            return cmd.print_info()
+            cmd.print_info()
+            sys.exit(0)
 
         if args.log_print:
-            return print_log()
+            print_log()
+            sys.exit(0)
 
         if cfg.is_shared and cfg.shared_dir:
-            return cfg.assure_permissions_and_group(cfg.shared_dir)
+            cfg.assure_permissions_and_group(cfg.shared_dir)
 
         # Do not allow other commands rather than config if the configuration is not set
         if not cfg.configuration_done and args.subcmd not in ['config', 'cnf'] and args.subcmd not in ['update', 'upd']:
@@ -7118,38 +7107,44 @@ def main():
             log(f'  s3: {"done" if cfg.s3_init else "pending"}')
             log(f'  nih: {"done" if cfg.nih_init else "pending"}')
             log(f'\nRun "froster config --help" for more information.\n')
-            return False
+            sys.exit(1)
 
         # call a function for each sub command in our CLI
         if args.subcmd in ['config', 'cnf']:
-            return cmd.subcmd_config(cfg, aws)
+            res = cmd.subcmd_config(cfg, aws)
         elif args.subcmd in ['index', 'ind']:
-            return cmd.subcmd_index(cfg, arch)
+            res = cmd.subcmd_index(cfg, arch)
         elif args.subcmd in ['archive', 'arc']:
-            return cmd.subcmd_archive(arch, aws)
+            res = cmd.subcmd_archive(arch, aws)
         elif args.subcmd in ['restore', 'rst']:
-            return cmd.subcmd_restore(arch, aws)
+            res = cmd.subcmd_restore(arch, aws)
         elif args.subcmd in ['delete', 'del']:
-            return cmd.subcmd_delete(arch, aws)
+            res = cmd.subcmd_delete(arch, aws)
         elif args.subcmd in ['mount', 'mnt']:
-            return cmd.subcmd_mount(arch, aws)
+            res = cmd.subcmd_mount(arch, aws)
         elif args.subcmd in ['umount']:
-            return cmd.subcmd_umount(arch, aws)
+            res = cmd.subcmd_umount(arch, aws)
         elif args.subcmd in ['ssh', 'scp']:
-            return cmd.subcmd_ssh(cfg, aws)
+            res = cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
-            return cmd.subcmd_credentials(cfg, aws)
+            res = cmd.subcmd_credentials(cfg, aws)
         elif args.subcmd in ['update', 'upd']:
-            return cmd.subcmd_update(mute_no_update=False)
+            res = cmd.subcmd_update(mute_no_update=False)
         elif cfg.check_update():
             # Check if there are updates on froster every X days
-            return cmd.subcmd_update(mute_no_update=True)
+            res = cmd.subcmd_update(mute_no_update=True)
         else:
-            return cmd.print_help()
+            cmd.print_help()
+            sys.exit(1)
+
+            if res:
+                sys.exit(0)
+            else:
+                sys.exit(1)
 
     except Exception:
         print_error()
-        return False
+        sys.exit(1)
 
 
 if __name__ == "__main__":

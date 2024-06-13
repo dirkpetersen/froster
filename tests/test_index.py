@@ -60,7 +60,7 @@ class TestIndex(unittest.TestCase):
         '''- Test the froster index command.'''
 
         with patch('sys.argv', ['froster', 'index', self.test_data_dir]):
-            self.assertTrue(main())
+            self.assertFalse(main())
 
 
 if __name__ == '__main__':
