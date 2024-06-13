@@ -12,6 +12,24 @@ import unittest
 # FUNCTION UTILS #
 ##################
 
+def get_hotspot_file_path(file_path):
+
+    # Get the data directory
+    xdg_data_home = os.environ.get('XDG_DATA_HOME')
+    if xdg_data_home:
+        data_dir = os.path.join(xdg_data_home, 'froster')
+    else:
+        data_dir = os.path.join(
+            os.path.expanduser('~'), '.local', 'share', 'froster')
+
+    # Convert the file path to a valid hotspot file name
+    file_converted = file_path.replace('/', '+') + '.csv'
+
+    # Build the path to the hotspot file
+    hotspot_path = os.path.join(data_dir, 'hotspots', file_converted)
+
+    return hotspot_path
+
 
 class TestIndex(unittest.TestCase):
     '''Test the froster index command.'''
@@ -55,13 +73,17 @@ class TestIndex(unittest.TestCase):
         if os.path.exists(self.test_data_dir):
             shutil.rmtree(self.test_data_dir)
 
-    @patch('builtins.print')
-    def test_subcmd_index(self, mock_print):
+    # @patch('builtins.print')
+    def test_subcmd_index(self):
         '''- Test the froster index command.'''
 
+        # Run the index command and check if sys.exit(0), which means no issues detected while executing the command
         with patch('sys.argv', ['froster', 'index', self.test_data_dir]):
             self.assertFalse(main())
 
+        # Check if the hotspot file was created
+        hotpost = get_hotspot_file_path(self.test_data_dir)
+        self.assertTrue(os.path.exists(hotpost))
 
 if __name__ == '__main__':
 
