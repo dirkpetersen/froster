@@ -1,1 +1,1 @@
-from .froster import ConfigManager, Archiver, AWSBoto, Commands
+from .froster import ConfigManager, Archiver, AWSBoto, Commands, main

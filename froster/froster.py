@@ -91,7 +91,8 @@ class ConfigManager:
             self.home_dir = os.path.expanduser('~')
 
             # Froster's home directory
-            self.froster_dir = os.path.dirname(os.path.realpath(shutil.which('froster')))
+            self.froster_dir = os.path.dirname(
+                os.path.realpath(shutil.which('froster')))
 
             # Froster's data directory
             xdg_data_home = os.environ.get('XDG_DATA_HOME')
@@ -382,8 +383,11 @@ class ConfigManager:
                     # Change the group ID to the same as the directory
                     os.chown(path, -1, dir_gid)
 
+            return True
+
         except Exception:
             print_error(f"Could not fix permissions of directory: {directory}")
+            return False
 
     def __inquirer_check_bucket_name(self, answers, current):
         '''Check if the bucket name is correct'''
@@ -476,7 +480,8 @@ class ConfigManager:
 
             default_aws_dir = os.path.join('~', '.aws')
             if not os.path.exists(os.path.expanduser(default_aws_dir)):
-                os.makedirs(os.path.expanduser(default_aws_dir), exist_ok=True, mode=0o775)
+                os.makedirs(os.path.expanduser(default_aws_dir),
+                            exist_ok=True, mode=0o775)
 
             aws_dir_question = [
                 inquirer.Path(
@@ -682,6 +687,7 @@ class ConfigManager:
             aws_config[aws_profile_name]['output'] = 'json'
 
             # Write the config object to the config file
+            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
             with open(self.aws_config_file, 'w') as f:
                 aws_config.write(f)
 
@@ -725,6 +731,7 @@ class ConfigManager:
             aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
 
             # Write the config object to the config file
+            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
             with open(self.aws_credentials_file, 'w') as f:
                 aws_credentials.write(f)
 
@@ -1404,6 +1411,39 @@ class AWSBoto:
                 ServerSideEncryptionConfiguration=encryption_configuration
             )
             log(f'    ...encryption applied.\n')
+
+            return True
+
+        except Exception:
+            print_error()
+            return False
+
+    def delete_bucket(self, bucket_name):
+        '''Delete the given bucket'''
+
+        if os.environ.get('DEBUG') != '1':
+            raise ValueError('Buckets cannot be deleted outside DEBUG mode.')
+
+        if not bucket_name:
+            raise ValueError('No bucket name provided')
+
+        # Check if the session is valid
+        if not self.check_session():
+            log(
+                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            log("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
+
+        try:
+
+            s3_buckets = self.get_buckets()
+
+            # Delete the buckets if they exists
+            if bucket_name in s3_buckets:
+                self.s3_client.delete_bucket(Bucket=bucket_name)
+                log(f'Bucket {bucket_name} deleted\n')
+            else:
+                log(f'Bucket {bucket_name} not found\n')
 
             return True
 
@@ -3075,8 +3115,7 @@ class Archiver:
                     else:
                         log(
                             f'    ...folder already indexed at {folder_hotspot}. Use "-f" or "--force" flag to force indexing.\n')
-                        return
-
+                        return True
 
             # Run pwalk on given folder
             with tempfile.NamedTemporaryFile() as pwalk_output:
@@ -3096,7 +3135,7 @@ class Archiver:
                         if ret.returncode != 0:
                             log(
                                 f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
-                            sys.exit(1)
+                            return False
 
                         # If pwalkcopy location provided, then copy the pwalk output file to the specified location
                         if self.args.pwalkcopy:
@@ -3115,7 +3154,7 @@ class Archiver:
                             if result.returncode != 0:
                                 log(
                                     f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                                sys.exit(1)
+                                return False
 
                         # Build the files removing command
                         mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
@@ -3127,7 +3166,7 @@ class Archiver:
                         if result.returncode != 0:
                             log(
                                 f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                            sys.exit(1)
+                            return False
 
                         # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
                         # pwalk does already output UTF-8, weird, probably duckdb error
@@ -3142,7 +3181,7 @@ class Archiver:
                         if result.returncode != 0:
                             log(
                                 f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                            sys.exit(1)
+                            return False
 
                         # Build the SQL query on the CSV file
                         sql_query = f"""SELECT UID as User,
@@ -3234,8 +3273,10 @@ class Archiver:
             # Output decoration print
             log()
 
+            return True
         except Exception:
             print_error()
+            return False
 
     def _slurm_cmd(self, folders, cmd_type, scheduled=None):
         '''Execute the current command using SLURM'''
@@ -3255,14 +3296,15 @@ class Archiver:
             cmd = " ".join(map(shlex.quote, sys.argv))
 
             # Submit the job
-            se.submit_job(cmd=cmd,
-                          cmd_type=cmd_type,
-                          label=label,
-                          shortlabel=shortlabel,
-                          scheduled=scheduled)
+            return se.submit_job(cmd=cmd,
+                                 cmd_type=cmd_type,
+                                 label=label,
+                                 shortlabel=shortlabel,
+                                 scheduled=scheduled)
 
         except Exception:
             print_error()
+            return False
 
     def index(self, folders):
         '''Index the given folders for archiving'''
@@ -3273,7 +3315,7 @@ class Archiver:
             if self._is_recursive_collision(folders):
                 log(
                     f'\nError: You cannot index folders if there is a dependency between them. Specify only the parent folder.\n')
-                sys.exit(1)
+                return False
 
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive=True):
@@ -3283,15 +3325,24 @@ class Archiver:
                     f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
                 log(
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-                sys.exit(1)
+                return False
 
             if use_slurm(self.args.noslurm):
-                self._slurm_cmd(folders=folders, cmd_type='index')
+                return self._slurm_cmd(folders=folders, cmd_type='index')
             else:
                 for folder in folders:
-                    self._index_locally(folder)
+                    res = self._index_locally(folder)
+                    if res == True:
+                        # Everything is ok. Continue with the next folder
+                        pass
+                    else:
+                        return False
+
+            return True
+
         except Exception:
             print_error()
+            return False
 
     def archive_select_hotspots(self):
 
@@ -3859,7 +3910,7 @@ class Archiver:
 
                 if not os.path.isdir(folder):
                     log(f"Error: {folder} is not a directory.",
-                              file=sys.stderr)
+                        file=sys.stderr)
                     sys.exit(1)
 
                 if is_recursive:
@@ -5640,8 +5691,11 @@ class Slurm:
             log(f'  Check output: "cat {output_dir}-{jobid}.out"')
             log(f'  Cancel the job: "scancel {jobid}"\n')
 
+            return True
+
         except Exception:
             print_error()
+            return False
 
     def sbatch(self):
         '''Submit the Slurm script'''
@@ -6039,52 +6093,67 @@ class Commands:
         if self.args.debug or self.args.log_print:
             os.environ['DEBUG'] = '1'
 
-
     def print_help(self):
         '''Print help message'''
-        self.parser.print_help()
+        try:
+            self.parser.print_help()
+            return True
+        except Exception:
+            print_error()
+            return False
 
     def print_version(self):
         '''Print froster version'''
-        log(
-            f'froster v{pkg_resources.get_distribution("froster").version}')
+        try:
+            log(f'froster v{pkg_resources.get_distribution("froster").version}')
+            return True
+
+        except Exception:
+            print_error()
+            return False
 
     def print_info(self):
         '''Print froster info'''
+        try:
+            froster_dir = os.path.dirname(
+                os.path.realpath(shutil.which('froster')))
 
-        froster_dir = os.path.dirname(os.path.realpath(shutil.which('froster')))
+            log(
+                f'froster v{pkg_resources.get_distribution("froster").version}\n')
+            log(f'Tools version:')
+            log(f'    python v{platform.python_version()}')
+            log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
+                                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+            log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
-        log(
-            f'froster v{pkg_resources.get_distribution("froster").version}\n')
-        log(f'Tools version:')
-        log(f'    python v{platform.python_version()}')
-        log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
-                                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
-        log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+            log(textwrap.dedent(f'''
+                Authors:
+                    Written by Dirk Petersen and Hpc Now Consulting SL
 
-        log(textwrap.dedent(f'''
-            Authors:
-                Written by Dirk Petersen and Hpc Now Consulting SL
-
-            Repository:
-                https://github.com/dirkpetersen/froster
+                Repository:
+                    https://github.com/dirkpetersen/froster
 
 
-            Copyright (C) 2024 Oregon Health & Science University (OSHU)
+                Copyright (C) 2024 Oregon Health & Science University (OSHU)
 
-            Licensed under the Apache License, Version 2.0 (the "License");
-            you may not use this file except in compliance with the License.
-            You may obtain a copy of the License at
+                Licensed under the Apache License, Version 2.0 (the "License");
+                you may not use this file except in compliance with the License.
+                You may obtain a copy of the License at
 
-                http://www.apache.org/licenses/LICENSE-2.0
+                    http://www.apache.org/licenses/LICENSE-2.0
 
-            Unless required by applicable law or agreed to in writing, software
-            distributed under the License is distributed on an "AS IS" BASIS,
-            WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-            See the License for the specific language governing permissions and
-            limitations under the License.
-            '''))
+                Unless required by applicable law or agreed to in writing, software
+                distributed under the License is distributed on an "AS IS" BASIS,
+                WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+                See the License for the specific language governing permissions and
+                limitations under the License.
+                '''))
+            return True
+
+        except Exception:
+            print_error()
+            return False
 
     def subcmd_config(self, cfg: ConfigManager, aws: AWSBoto):
         '''Configure Froster settings.'''
@@ -6181,27 +6250,26 @@ class Commands:
         try:
             # Check if user provided at least one argument
             if not self.args.folders:
-                log(
-                    '\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
-                sys.exit(1)
+                log('\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
+                return False
 
             # Check if the provided pwalk copy folder exists
             if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
-                log(
-                    f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
-                sys.exit(1)
+                log(f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
+                return False
 
             # Check if all the provided folders exist
             for folder in self.args.folders:
                 if not os.path.isdir(folder):
-                    log(
-                        f'\nError: The folder {folder} does not exist.\n')
-                    sys.exit(1)
+                    log(f'\nError: The folder {folder} does not exist.\n')
+                    return False
 
             # Index the given folders
-            arch.index(self.args.folders)
+            return arch.index(self.args.folders)
+
         except Exception:
             print_error()
+            return False
 
     def subcmd_archive(self, arch: Archiver, aws: AWSBoto):
         '''Check command for archiving folders for Froster.'''
@@ -6310,6 +6378,13 @@ class Commands:
                 print_error(
                     'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
+
+            if self.args.bucket:
+                if self.args.debug:
+                    return aws.delete_bucket(self.args.bucket)
+                else:
+                    log('Error: Option not available')
+                    return False
 
             if not self.args.folders:
 
@@ -6555,10 +6630,10 @@ class Commands:
 
         parser.add_argument('-i', '--info', dest='info', action='store_true',
                             help='print froster and packages info')
-        
+
         parser.add_argument('-l', '--log-print', dest='log_print', action='store_true',
                             help='Print the log file to the screen')
-        
+
         parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
                             help='Amount of memory to be allocated for the machine in GB. (default=64)')
 
@@ -6720,9 +6795,12 @@ class Commands:
                                    help='folders (separated by space) from which you would like to delete files, ' +
                                    'you can only delete files that have been archived')
 
+        # Delete given bucket. Not shown in help. Only available in debug mode
+        parser_delete.add_argument('-b', '--bucket', dest='bucket', action='store', default='',
+                                   help=argparse.SUPPRESS)
+
         parser_delete.add_argument('-r', '--recursive', dest='recursive', action='store_true',
                                    help="Delete the current archived folder and all archived sub-folders")
-
         # ***
 
         parser_mount = subparsers.add_parser('mount', aliases=['umount'],
@@ -6957,30 +7035,38 @@ def print_error(msg: str = None):
 
 def log(*args, **kwargs):
 
-    print(*args, **kwargs)
-    
-    global logger
-    if logger and os.environ.get('DEBUG') == '1':
-        # Create the logger directory if it does not exist
-        logger_dir = os.path.dirname(logger)
-        os.makedirs(logger_dir, exist_ok=True, mode=0o775)
-        
-        # Write entry into logger
-        with open(logger, 'a') as f:
-            print(*args, **kwargs, file=f)
+    try:
+        print(*args, **kwargs)
+
+        global logger
+        if logger and os.environ.get('DEBUG') == '1':
+            # Create the logger directory if it does not exist
+            logger_dir = os.path.dirname(logger)
+            os.makedirs(logger_dir, exist_ok=True, mode=0o775)
+
+            # Write entry into logger
+            with open(logger, 'a') as f:
+                print(*args, **kwargs, file=f)
+        return True
+
+    except Exception:
+        return False
 
 def print_log():
-     
-    global logger
-    if logger and os.environ.get('DEBUG') == '1':
 
-        if os.path.exists(logger):
-            # Read and print the contents of the logger file
-            with open(logger, 'r') as f:
-                contents = f.read()
-                print(contents)
-        else:
-            print("\nNo log file found\n")
+    try:
+        global logger
+        if logger and os.environ.get('DEBUG') == '1':
+
+            if os.path.exists(logger):
+                # Read and print the contents of the logger file
+                with open(logger, 'r') as f:
+                    contents = f.read()
+                    print(contents)
+            else:
+                print("\nNo log file found\n")
+    except Exception:
+        return False
 
 
 def main():
@@ -7013,19 +7099,16 @@ def main():
 
         # Print current version of froster
         if args.version:
-            cmd.print_version()
-            return
+            return cmd.print_version()
 
         if args.info:
-            cmd.print_info()
-            return
-        
+            return cmd.print_info()
+
         if args.log_print:
-            print_log()
-            return
+            return print_log()
 
         if cfg.is_shared and cfg.shared_dir:
-            cfg.assure_permissions_and_group(cfg.shared_dir)
+            return cfg.assure_permissions_and_group(cfg.shared_dir)
 
         # Do not allow other commands rather than config if the configuration is not set
         if not cfg.configuration_done and args.subcmd not in ['config', 'cnf'] and args.subcmd not in ['update', 'upd']:
@@ -7035,41 +7118,38 @@ def main():
             log(f'  s3: {"done" if cfg.s3_init else "pending"}')
             log(f'  nih: {"done" if cfg.nih_init else "pending"}')
             log(f'\nRun "froster config --help" for more information.\n')
-            return
+            return False
 
         # call a function for each sub command in our CLI
         if args.subcmd in ['config', 'cnf']:
-            cmd.subcmd_config(cfg, aws)
+            return cmd.subcmd_config(cfg, aws)
         elif args.subcmd in ['index', 'ind']:
-            cmd.subcmd_index(cfg, arch)
+            return cmd.subcmd_index(cfg, arch)
         elif args.subcmd in ['archive', 'arc']:
-            cmd.subcmd_archive(arch, aws)
+            return cmd.subcmd_archive(arch, aws)
         elif args.subcmd in ['restore', 'rst']:
-            cmd.subcmd_restore(arch, aws)
+            return cmd.subcmd_restore(arch, aws)
         elif args.subcmd in ['delete', 'del']:
-            cmd.subcmd_delete(arch, aws)
+            return cmd.subcmd_delete(arch, aws)
         elif args.subcmd in ['mount', 'mnt']:
-            cmd.subcmd_mount(arch, aws)
+            return cmd.subcmd_mount(arch, aws)
         elif args.subcmd in ['umount']:
-            cmd.subcmd_umount(arch, aws)
+            return cmd.subcmd_umount(arch, aws)
         elif args.subcmd in ['ssh', 'scp']:
-            cmd.subcmd_ssh(cfg, aws)
+            return cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
-            cmd.subcmd_credentials(cfg, aws)
+            return cmd.subcmd_credentials(cfg, aws)
         elif args.subcmd in ['update', 'upd']:
-            cmd.subcmd_update(mute_no_update=False)
+            return cmd.subcmd_update(mute_no_update=False)
+        elif cfg.check_update():
+            # Check if there are updates on froster every X days
+            return cmd.subcmd_update(mute_no_update=True)
         else:
-            cmd.print_help()
-
-        # Check if there are updates on froster every X days
-        if cfg.configuration_done and cfg.check_update() and args.subcmd not in ['update', 'upd']:
-            cmd.subcmd_update(mute_no_update=True)
-
-        # Close the AWS session
-        aws.close_session()
+            return cmd.print_help()
 
     except Exception:
         print_error()
+        return False
 
 
 if __name__ == "__main__":
