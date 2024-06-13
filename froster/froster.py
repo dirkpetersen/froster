@@ -3237,7 +3237,7 @@ class Archiver:
         except Exception:
             print_error()
 
-    def _slurm_cmd(self, folders, cmd_type, scheduled):
+    def _slurm_cmd(self, folders, cmd_type, scheduled=None):
         '''Execute the current command using SLURM'''
 
         try:
