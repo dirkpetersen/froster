@@ -6229,6 +6229,7 @@ class Commands:
             log(f'    froster config --print\n')
 
             return True
+
         except Exception:
             print_error()
             return False
@@ -7003,23 +7004,15 @@ def print_error(msg: str = None):
         # Get the error code
         error_code = exc_value
 
-    # Check if the exception is a KeyboardInterrupt
-    if exc_type is KeyboardInterrupt:
-        log(f'\nKeyboard Interrupt\n')
+    log('\nError')
+    log('  File:', file_name)
+    log('  Function:', function_name)
+    log('  Line:', line)
+    log('  Error code:', error_code)
+    if (msg):
+        log('  Error message:', msg)
 
-    elif exc_type is SystemExit:
-        pass
-
-    else:
-        log('\nError')
-        log('  File:', file_name)
-        log('  Function:', function_name)
-        log('  Line:', line)
-        log('  Error code:', error_code)
-        if (msg):
-            log('  Error message:', msg)
-
-        log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
+    log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
 
 def log(*args, **kwargs):
@@ -7137,10 +7130,14 @@ def main():
             cmd.print_help()
             sys.exit(1)
 
-            if res:
-                sys.exit(0)
-            else:
-                sys.exit(1)
+        if res:
+            sys.exit(0)
+        else:
+            sys.exit(1)
+
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user. Exiting...\n")
+        sys.exit(1)
 
     except Exception:
         print_error()
