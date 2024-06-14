@@ -91,7 +91,8 @@ class ConfigManager:
             self.home_dir = os.path.expanduser('~')
 
             # Froster's home directory
-            self.froster_dir = os.path.dirname(os.path.realpath(shutil.which('froster')))
+            self.froster_dir = os.path.dirname(
+                os.path.realpath(shutil.which('froster')))
 
             # Froster's data directory
             xdg_data_home = os.environ.get('XDG_DATA_HOME')
@@ -382,8 +383,11 @@ class ConfigManager:
                     # Change the group ID to the same as the directory
                     os.chown(path, -1, dir_gid)
 
+            return True
+
         except Exception:
             print_error(f"Could not fix permissions of directory: {directory}")
+            return False
 
     def __inquirer_check_bucket_name(self, answers, current):
         '''Check if the bucket name is correct'''
@@ -474,14 +478,17 @@ class ConfigManager:
 
             # Ask user to enter the path to a aws credentials directory
 
-            default_aws_dir = os.path.join('~', '.aws')
-            if not os.path.exists(os.path.expanduser(default_aws_dir)):
-                os.makedirs(os.path.expanduser(default_aws_dir), exist_ok=True, mode=0o775)
+            default_aws_dir = self.__get_configuration_entry('AWS', 'aws_dir')
+            if default_aws_dir is None:
+                default_aws_dir = os.path.join('~', '.aws')
+                if not os.path.exists(os.path.expanduser(default_aws_dir)):
+                    os.makedirs(os.path.expanduser(default_aws_dir),
+                                exist_ok=True, mode=0o775)
 
             aws_dir_question = [
                 inquirer.Path(
                     'aws_dir',
-                    message=f'Enter the path to aws credentials directory (default: ~/.aws)',
+                    message=f'Enter the path to aws credentials directory',
                     default=default_aws_dir,
                     validate=self.__inquirer_check_path_exists)
             ]
@@ -513,8 +520,10 @@ class ConfigManager:
             aws_profiles.append('+ Create new profile')
 
             # Ask user to choose an existing aws profile or create a new one
-            aws_profile = inquirer.list_input("Choose your aws profile",
-                                              choices=aws_profiles)
+            aws_profile = inquirer.list_input(
+                "Choose your aws profile",
+                default=self.__get_configuration_entry('AWS', 'aws_profile'),
+                choices=aws_profiles)
 
             # Check if user wants to create a new aws profile
             if aws_profile == '+ Create new profile':
@@ -596,16 +605,21 @@ class ConfigManager:
                     log('    froster config --aws\n')
                     return False
 
-                # Check the seletected profile region
-                aws_profile_region = self.__set_aws_get_config_region(
-                    aws_profile=aws_profile)
+                # Get default region from config.ini file
+                default_region = self.__get_configuration_entry(
+                    'AWS', 'aws_region')
+
+                # If None, then try to get it from the aws config file
+                if default_region is None:
+                    default_region = self.__get_region_from_aws_config_file(
+                        aws_profile=aws_profile)
 
                 # Get list of AWS regions
                 aws_regions = aws.get_regions()
 
                 # Ask user to choose a region
                 region = inquirer.list_input("Choose your region",
-                                             default=aws_profile_region,
+                                             default=default_region,
                                              choices=aws_regions)
 
                 log("\nChecking region...")
@@ -620,7 +634,7 @@ class ConfigManager:
 
                     return False
 
-                if region != aws_profile_region:
+                if region != default_region:
                     # Update region in the config file
                     self.__set_aws_config(aws_profile_name=aws_profile,
                                           region=region)
@@ -682,6 +696,7 @@ class ConfigManager:
             aws_config[aws_profile_name]['output'] = 'json'
 
             # Write the config object to the config file
+            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
             with open(self.aws_config_file, 'w') as f:
                 aws_config.write(f)
 
@@ -725,6 +740,7 @@ class ConfigManager:
             aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
 
             # Write the config object to the config file
+            os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
             with open(self.aws_credentials_file, 'w') as f:
                 aws_credentials.write(f)
 
@@ -734,7 +750,7 @@ class ConfigManager:
         except Exception:
             print_error()
 
-    def __set_aws_get_config_region(self, aws_profile):
+    def __get_region_from_aws_config_file(self, aws_profile):
         '''Set the AWS region for the given profile'''
 
         try:
@@ -807,6 +823,35 @@ class ConfigManager:
         except Exception:
             print_error()
 
+    def __get_configuration_entry(self, section, key, is_bool=False, is_int=False, fallback=None):
+        '''Get a configuration entry in the config file'''
+
+        try:
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # Check which config file to use
+            if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
+                config_file = self.shared_config_file
+            else:
+                config_file = self.config_file
+
+            # if exists, read the config file and return the value
+            if os.path.exists(config_file):
+                config.read(config_file)
+                if is_bool:
+                    return config.getboolean(section, key, fallback=fallback)
+                elif is_int:
+                    return config.getint(section, key, fallback=fallback)
+                else:
+                    return config.get(section, key, fallback=fallback)
+
+            # Return None otherwise
+            return None
+
+        except Exception:
+            print_error()
+
     def set_ec2_last_instance(self, instance):
         '''Set the last ec2 instance in configuration file'''
 
@@ -827,8 +872,18 @@ class ConfigManager:
         try:
             log(f'\n*** NIH S3 CONFIGURATION ***\n')
 
+            # Get the default NIH setting from config file
+            default_is_nih = self.__get_configuration_entry(
+                'NIH', 'is_nih', is_bool=True)
+
+            # Get the user answer
             is_nih = inquirer.confirm(
-                message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
+                message=f"Do you want to search and link NIH life sciences grants with your archives? (Default: {default_is_nih})",
+                default=default_is_nih)
+
+            # Aesthetic print
+            if is_nih and default_is_nih:
+                log()
 
             self.__set_configuration_entry('NIH', 'is_nih', is_nih)
 
@@ -874,13 +929,11 @@ class ConfigManager:
             # Add an option to create a new bucket
             s3_buckets.append('+ Create new bucket')
 
-            default_bucket = self.bucket_name if hasattr(
-                self, 'bucket_name') else None
-
             # Ask user to choose an existing aws s3 bucket or create a new one
-            s3_bucket = inquirer.list_input("Choose your aws s3 bucket",
-                                            default=default_bucket,
-                                            choices=s3_buckets)
+            s3_bucket = inquirer.list_input(
+                "Choose your aws s3 bucket",
+                default=self.__get_configuration_entry('S3', 'bucket_name'),
+                choices=s3_buckets)
 
             # Check if user wants to create a new aws s3 bucket
             if s3_bucket == '+ Create new bucket':
@@ -907,10 +960,14 @@ class ConfigManager:
                 # Store aws s3 bucket in the config object
                 self.__set_configuration_entry('S3', 'bucket_name', s3_bucket)
 
-            # Get the archive directory in the selected bucket
+            # Get the archive directory from the config file
+            default_archive_dir = self.__get_configuration_entry(
+                'S3', 'archive_dir', fallback='froster')
+
+            # Get user answer
             archive_dir = inquirer.text(
-                message='Enter the directory name inside S3 bucket (default= "froster")',
-                default='froster',
+                message='Enter the directory name inside S3 bucket',
+                default=default_archive_dir,
                 validate=self.__inquirer_check_required)
 
             # Print newline after this prompt
@@ -920,15 +977,11 @@ class ConfigManager:
             self.__set_configuration_entry('S3', 'archive_dir', archive_dir)
 
             # Get the storage class for the selected bucket
-            if hasattr(self, 'storage_class') and self.storage_class is not None:
-                default_storage_class = self.storage_class
-            else:
-                default_storage_class = 'DEEP_ARCHIVE'
-
-            # Get the storage class for the selected bucket
-            storage_class = inquirer.list_input("Choose the AWS S3 storage class",
-                                                default=default_storage_class,
-                                                choices={'DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING'})
+            storage_class = inquirer.list_input(
+                "Choose the AWS S3 storage class",
+                default=self.__get_configuration_entry(
+                    'S3', 'storage_class', fallback='DEEP_ARCHIVE'),
+                choices={'DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING'})
 
             # Store aws s3 storage class in the config object
             self.__set_configuration_entry(
@@ -951,18 +1004,30 @@ class ConfigManager:
         try:
             log(f'\n*** SHARED CONFIGURATION ***\n')
 
+            # Get default shared configuration from the config file
+            default_is_shared = self.__get_configuration_entry(
+                'SHARED', 'is_shared', is_bool=True)
+
             is_shared = inquirer.confirm(
-                message="Do you want to collaborate with other users on archive and restore?", default=False)
+                message=f"Do you want to collaborate with other users on archive and restore? (Default:{default_is_shared})",
+                default=default_is_shared)
 
             # If it is a shared configuration we need to ask the user for the path to the shared config directory
             # and check if we need to move cfg.archive_json_file_name and configuration to the shared directory
             if is_shared:
 
+                # Aesthetic print
+                if default_is_shared:
+                    log()
+
                 # Ask user to enter the path to a shared config directory
                 # TODO: make this inquiring in shortchut mode once this PR is merged: https://github.com/magmax/python-inquirer/pull/543
                 shared_config_dir_question = [
                     inquirer.Path(
-                        'shared_dir', message='Enter the path to a shared config directory', validate=self.__inquirer_check_path_exists)
+                        'shared_dir', message='Enter the path to a shared config directory',
+                        default=self.__get_configuration_entry(
+                            'SHARED', 'shared_dir'),
+                        validate=self.__inquirer_check_path_exists)
                 ]
 
                 # Get the answer from the user
@@ -978,7 +1043,7 @@ class ConfigManager:
                 if os.path.isfile(os.path.join(shared_config_dir, self.archive_json_file_name)):
                     # If the froster-archives.json file is found in the shared config directory we are done here
                     log(
-                        f"\nNOTE: the {self.archive_json_file_name} file was found in the shared config directory\n")
+                        f"\nNOTE: the Froster Archive DataBase ({self.archive_json_file_name}) was found in the shared config directory\n")
                 else:
 
                     # If the froster-archives.json file is found in the local directory we ask the user if they want to move it to the shared directory
@@ -1084,7 +1149,9 @@ class ConfigManager:
 
             # Ask the user for their full name
             fullname = inquirer.text(
-                message="Enter your full name", validate=self.__inquirer_check_required)
+                message="Enter your full name",
+                default=self.__get_configuration_entry('USER', 'name'),
+                validate=self.__inquirer_check_required)
 
             # Print for a new line when prompting
             log()
@@ -1093,8 +1160,10 @@ class ConfigManager:
             self.__set_configuration_entry('USER', 'name', fullname)
 
             # Ask the user for their email
-            email = inquirer.text(message="Enter your email",
-                                  validate=self.__inquirer_check_email_format)
+            email = inquirer.text(
+                message="Enter your email",
+                default=self.__get_configuration_entry('USER', 'email'),
+                validate=self.__inquirer_check_email_format)
 
             # Print for a new line when prompting
             log()
@@ -1133,30 +1202,39 @@ class ConfigManager:
                     log(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
                     return False
 
+                # Get user answer
                 slurm_walltime_days = inquirer.text(
-                    message="Set the Slurm --time (days) for froster jobs (default = 7)",
-                    default=7,
+                    message=f"Set the Slurm --time (days) for froster jobs",
+                    default=self.__get_configuration_entry(
+                        'SLURM', 'slurm_walltime_days', fallback='7'),
                     validate=self.__inquirer_check_is_number)
 
+                # Get user answer
                 slurm_walltime_hours = inquirer.text(
-                    message="Set the Slurm --time (hours) for froster jobs (default = 0)",
-                    default=0,
+                    message=f"Set the Slurm --time (hours) for froster jobs",
+                    default=self.__get_configuration_entry(
+                        'SLURM', 'slurm_walltime_days', fallback='0'),
                     validate=self.__inquirer_check_is_number)
 
                 se = Slurm(args, self)
 
                 # Get the allowed partitions and QOS
                 parts = se.get_allowed_partitions_and_qos()
-                log(parts)
+
                 if parts is not None:
-                    # Ask the user to select the Slurm partition and QOS
+
+                    # Get user answer
                     slurm_partition = inquirer.list_input(
                         message=f'Select the Slurm partition for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'slurm_partition'),
                         choices=list(parts.keys()))
 
                     # Ask the user to select the Slurm QOS
                     slurm_qos = inquirer.list_input(
                         message=f'Select the Slurm QOS for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'slurm_qos'),
                         choices=list(parts[slurm_partition]))
 
                 # Set the Slurm configuration in the config file
@@ -1169,14 +1247,30 @@ class ConfigManager:
                 self.__set_configuration_entry('SLURM', 'slurm_qos', slurm_qos)
 
                 if shutil.which('sbatch'):
+
                     slurm_lscratch = inquirer.text(
-                        message="How do you request local scratch from Slurm? (Optional: press enter to skip)")
+                        message="How do you request local scratch from Slurm? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'slurm_lscratch')
+                    )
+
                     lscratch_mkdir = inquirer.text(
-                        message="Is there a user script that provisions local scratch? (Optional: press enter to skip)")
+                        message="Is there a user script that provisions local scratch? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'lscratch_mkdir')
+                    )
+
                     lscratch_rmdir = inquirer.text(
-                        message="Is there a user script that tears down local scratch at the end? (Optional: press enter to skip)")
+                        message="Is there a user script that tears down local scratch at the end? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'lscratch_rmdir')
+                    )
+
                     lscratch_root = inquirer.text(
-                        message="What is the local scratch root? (Optional: press enter to skip)")
+                        message="What is the local scratch root? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'lscratch_root')
+                    )
 
                     self.__set_configuration_entry(
                         'SLURM', 'slurm_lscratch', slurm_lscratch)
@@ -1404,6 +1498,39 @@ class AWSBoto:
                 ServerSideEncryptionConfiguration=encryption_configuration
             )
             log(f'    ...encryption applied.\n')
+
+            return True
+
+        except Exception:
+            print_error()
+            return False
+
+    def delete_bucket(self, bucket_name):
+        '''Delete the given bucket'''
+
+        if os.environ.get('DEBUG') != '1':
+            raise ValueError('Buckets cannot be deleted outside DEBUG mode.')
+
+        if not bucket_name:
+            raise ValueError('No bucket name provided')
+
+        # Check if the session is valid
+        if not self.check_session():
+            log(
+                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
+            log("run 'froster config --aws' to fix this.\n")
+            sys.exit(1)
+
+        try:
+
+            s3_buckets = self.get_buckets()
+
+            # Delete the buckets if they exists
+            if bucket_name in s3_buckets:
+                self.s3_client.delete_bucket(Bucket=bucket_name)
+                log(f'Bucket {bucket_name} deleted\n')
+            else:
+                log(f'Bucket {bucket_name} not found\n')
 
             return True
 
@@ -3075,8 +3202,7 @@ class Archiver:
                     else:
                         log(
                             f'    ...folder already indexed at {folder_hotspot}. Use "-f" or "--force" flag to force indexing.\n')
-                        return
-
+                        return True
 
             # Run pwalk on given folder
             with tempfile.NamedTemporaryFile() as pwalk_output:
@@ -3096,7 +3222,7 @@ class Archiver:
                         if ret.returncode != 0:
                             log(
                                 f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
-                            sys.exit(1)
+                            return False
 
                         # If pwalkcopy location provided, then copy the pwalk output file to the specified location
                         if self.args.pwalkcopy:
@@ -3115,7 +3241,7 @@ class Archiver:
                             if result.returncode != 0:
                                 log(
                                     f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                                sys.exit(1)
+                                return False
 
                         # Build the files removing command
                         mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
@@ -3127,7 +3253,7 @@ class Archiver:
                         if result.returncode != 0:
                             log(
                                 f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                            sys.exit(1)
+                            return False
 
                         # WORKAROUND: Converting file from ISO-8859-1 to utf-8 to avoid DuckDB import error
                         # pwalk does already output UTF-8, weird, probably duckdb error
@@ -3142,7 +3268,7 @@ class Archiver:
                         if result.returncode != 0:
                             log(
                                 f"\nError: command {mycmd} failed with returncode {result.returncode}\n", file=sys.stderr)
-                            sys.exit(1)
+                            return False
 
                         # Build the SQL query on the CSV file
                         sql_query = f"""SELECT UID as User,
@@ -3234,8 +3360,10 @@ class Archiver:
             # Output decoration print
             log()
 
+            return True
         except Exception:
             print_error()
+            return False
 
     def _slurm_cmd(self, folders, cmd_type, scheduled=None):
         '''Execute the current command using SLURM'''
@@ -3255,14 +3383,15 @@ class Archiver:
             cmd = " ".join(map(shlex.quote, sys.argv))
 
             # Submit the job
-            se.submit_job(cmd=cmd,
-                          cmd_type=cmd_type,
-                          label=label,
-                          shortlabel=shortlabel,
-                          scheduled=scheduled)
+            return se.submit_job(cmd=cmd,
+                                 cmd_type=cmd_type,
+                                 label=label,
+                                 shortlabel=shortlabel,
+                                 scheduled=scheduled)
 
         except Exception:
             print_error()
+            return False
 
     def index(self, folders):
         '''Index the given folders for archiving'''
@@ -3273,7 +3402,7 @@ class Archiver:
             if self._is_recursive_collision(folders):
                 log(
                     f'\nError: You cannot index folders if there is a dependency between them. Specify only the parent folder.\n')
-                sys.exit(1)
+                return False
 
             # Check if we can read & write all files and folders
             if not self._is_correct_files_folders_permissions(folders, is_recursive=True):
@@ -3283,15 +3412,24 @@ class Archiver:
                     f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
                 log(
                     f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-                sys.exit(1)
+                return False
 
             if use_slurm(self.args.noslurm):
-                self._slurm_cmd(folders=folders, cmd_type='index')
+                return self._slurm_cmd(folders=folders, cmd_type='index')
             else:
                 for folder in folders:
-                    self._index_locally(folder)
+                    res = self._index_locally(folder)
+                    if res == True:
+                        # Everything is ok. Continue with the next folder
+                        pass
+                    else:
+                        return False
+
+            return True
+
         except Exception:
             print_error()
+            return False
 
     def archive_select_hotspots(self):
 
@@ -3859,7 +3997,7 @@ class Archiver:
 
                 if not os.path.isdir(folder):
                     log(f"Error: {folder} is not a directory.",
-                              file=sys.stderr)
+                        file=sys.stderr)
                     sys.exit(1)
 
                 if is_recursive:
@@ -5640,8 +5778,11 @@ class Slurm:
             log(f'  Check output: "cat {output_dir}-{jobid}.out"')
             log(f'  Cancel the job: "scancel {jobid}"\n')
 
+            return True
+
         except Exception:
             print_error()
+            return False
 
     def sbatch(self):
         '''Submit the Slurm script'''
@@ -6039,29 +6180,30 @@ class Commands:
         if self.args.debug or self.args.log_print:
             os.environ['DEBUG'] = '1'
 
-
     def print_help(self):
         '''Print help message'''
+
         self.parser.print_help()
 
     def print_version(self):
         '''Print froster version'''
-        log(
-            f'froster v{pkg_resources.get_distribution("froster").version}')
+
+        log(f'froster v{pkg_resources.get_distribution("froster").version}')
 
     def print_info(self):
         '''Print froster info'''
 
-        froster_dir = os.path.dirname(os.path.realpath(shutil.which('froster')))
+        froster_dir = os.path.dirname(
+            os.path.realpath(shutil.which('froster')))
 
         log(
             f'froster v{pkg_resources.get_distribution("froster").version}\n')
         log(f'Tools version:')
         log(f'    python v{platform.python_version()}')
         log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
-                                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
         log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
         log(textwrap.dedent(f'''
             Authors:
@@ -6115,18 +6257,6 @@ class Commands:
             log(f'*** FROSTER CONFIGURATION ***')
             log(f'*****************************\n')
 
-            # Check if the configuration file exists and ask for overwrite
-            if os.path.exists(cfg.config_file):
-                log(
-                    f'WARNING: You are about to overwrite {cfg.config_file}\n')
-                is_overwrite = inquirer.confirm(
-                    message=f"Do you want to continue?", default=False)
-
-                if is_overwrite:
-                    os.remove(cfg.config_file)
-                else:
-                    return True
-
             if not cfg.set_user():
                 return False
 
@@ -6135,23 +6265,6 @@ class Commands:
 
             if not cfg.set_shared():
                 return False
-
-            # If shared configuration and shared_config.ini file exists, then use it
-            if cfg.is_shared:
-                if hasattr(cfg, 'shared_config_file') and os.path.exists(cfg.shared_config_file):
-
-                    log(f'\n**********************************')
-                    log(f'*** FROSTER CONFIGURATION DONE ***')
-                    log(f'**********************************\n')
-
-                    log(textwrap.dedent(f'''
-                        Local configuration: {cfg.config_file}
-                        Shared configuration: {cfg.shared_config_file}
-
-                        You can overwrite specific configuration sections. Check options using the command:
-                            froster config --help
-                        '''))
-                    return True
 
             if not cfg.set_nih():
                 return False
@@ -6171,6 +6284,7 @@ class Commands:
             log(f'    froster config --print\n')
 
             return True
+
         except Exception:
             print_error()
             return False
@@ -6181,27 +6295,26 @@ class Commands:
         try:
             # Check if user provided at least one argument
             if not self.args.folders:
-                log(
-                    '\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
-                sys.exit(1)
+                log('\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
+                return False
 
             # Check if the provided pwalk copy folder exists
             if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
-                log(
-                    f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
-                sys.exit(1)
+                log(f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
+                return False
 
             # Check if all the provided folders exist
             for folder in self.args.folders:
                 if not os.path.isdir(folder):
-                    log(
-                        f'\nError: The folder {folder} does not exist.\n')
-                    sys.exit(1)
+                    log(f'\nError: The folder {folder} does not exist.\n')
+                    return False
 
             # Index the given folders
-            arch.index(self.args.folders)
+            return arch.index(self.args.folders)
+
         except Exception:
             print_error()
+            return False
 
     def subcmd_archive(self, arch: Archiver, aws: AWSBoto):
         '''Check command for archiving folders for Froster.'''
@@ -6310,6 +6423,13 @@ class Commands:
                 print_error(
                     'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
                 sys.exit(1)
+
+            if self.args.bucket:
+                if self.args.debug:
+                    return aws.delete_bucket(self.args.bucket)
+                else:
+                    log('Error: Option not available')
+                    return False
 
             if not self.args.folders:
 
@@ -6555,10 +6675,10 @@ class Commands:
 
         parser.add_argument('-i', '--info', dest='info', action='store_true',
                             help='print froster and packages info')
-        
+
         parser.add_argument('-l', '--log-print', dest='log_print', action='store_true',
                             help='Print the log file to the screen')
-        
+
         parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
                             help='Amount of memory to be allocated for the machine in GB. (default=64)')
 
@@ -6720,9 +6840,12 @@ class Commands:
                                    help='folders (separated by space) from which you would like to delete files, ' +
                                    'you can only delete files that have been archived')
 
+        # Delete given bucket. Not shown in help. Only available in debug mode
+        parser_delete.add_argument('-b', '--bucket', dest='bucket', action='store', default='',
+                                   help=argparse.SUPPRESS)
+
         parser_delete.add_argument('-r', '--recursive', dest='recursive', action='store_true',
                                    help="Delete the current archived folder and all archived sub-folders")
-
         # ***
 
         parser_mount = subparsers.add_parser('mount', aliases=['umount'],
@@ -6936,41 +7059,39 @@ def print_error(msg: str = None):
         # Get the error code
         error_code = exc_value
 
-    # Check if the exception is a KeyboardInterrupt
-    if exc_type is KeyboardInterrupt:
-        log(f'\nKeyboard Interrupt\n')
+    log('\nError')
+    log('  File:', file_name)
+    log('  Function:', function_name)
+    log('  Line:', line)
+    log('  Error code:', error_code)
+    if (msg):
+        log('  Error message:', msg)
 
-    elif exc_type is SystemExit:
-        pass
-
-    else:
-        log('\nError')
-        log('  File:', file_name)
-        log('  Function:', function_name)
-        log('  Line:', line)
-        log('  Error code:', error_code)
-        if (msg):
-            log('  Error message:', msg)
-
-        log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
+    log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
 
 def log(*args, **kwargs):
 
-    print(*args, **kwargs)
-    
-    global logger
-    if logger and os.environ.get('DEBUG') == '1':
-        # Create the logger directory if it does not exist
-        logger_dir = os.path.dirname(logger)
-        os.makedirs(logger_dir, exist_ok=True, mode=0o775)
-        
-        # Write entry into logger
-        with open(logger, 'a') as f:
-            print(*args, **kwargs, file=f)
+    try:
+        print(*args, **kwargs)
+
+        global logger
+        if logger and os.environ.get('DEBUG') == '1':
+            # Create the logger directory if it does not exist
+            logger_dir = os.path.dirname(logger)
+            os.makedirs(logger_dir, exist_ok=True, mode=0o775)
+
+            # Write entry into logger
+            with open(logger, 'a') as f:
+                print(*args, **kwargs, file=f)
+        return True
+
+    except Exception:
+        return False
+
 
 def print_log():
-     
+
     global logger
     if logger and os.environ.get('DEBUG') == '1':
 
@@ -7014,15 +7135,15 @@ def main():
         # Print current version of froster
         if args.version:
             cmd.print_version()
-            return
+            sys.exit(0)
 
         if args.info:
             cmd.print_info()
-            return
-        
+            sys.exit(0)
+
         if args.log_print:
             print_log()
-            return
+            sys.exit(0)
 
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
@@ -7035,41 +7156,48 @@ def main():
             log(f'  s3: {"done" if cfg.s3_init else "pending"}')
             log(f'  nih: {"done" if cfg.nih_init else "pending"}')
             log(f'\nRun "froster config --help" for more information.\n')
-            return
+            sys.exit(1)
 
         # call a function for each sub command in our CLI
         if args.subcmd in ['config', 'cnf']:
-            cmd.subcmd_config(cfg, aws)
+            res = cmd.subcmd_config(cfg, aws)
         elif args.subcmd in ['index', 'ind']:
-            cmd.subcmd_index(cfg, arch)
+            res = cmd.subcmd_index(cfg, arch)
         elif args.subcmd in ['archive', 'arc']:
-            cmd.subcmd_archive(arch, aws)
+            res = cmd.subcmd_archive(arch, aws)
         elif args.subcmd in ['restore', 'rst']:
-            cmd.subcmd_restore(arch, aws)
+            res = cmd.subcmd_restore(arch, aws)
         elif args.subcmd in ['delete', 'del']:
-            cmd.subcmd_delete(arch, aws)
+            res = cmd.subcmd_delete(arch, aws)
         elif args.subcmd in ['mount', 'mnt']:
-            cmd.subcmd_mount(arch, aws)
+            res = cmd.subcmd_mount(arch, aws)
         elif args.subcmd in ['umount']:
-            cmd.subcmd_umount(arch, aws)
+            res = cmd.subcmd_umount(arch, aws)
         elif args.subcmd in ['ssh', 'scp']:
-            cmd.subcmd_ssh(cfg, aws)
+            res = cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
-            cmd.subcmd_credentials(cfg, aws)
+            res = cmd.subcmd_credentials(cfg, aws)
         elif args.subcmd in ['update', 'upd']:
-            cmd.subcmd_update(mute_no_update=False)
+            res = cmd.subcmd_update(mute_no_update=False)
+        elif cfg.check_update():
+            # Check if there are updates on froster every X days
+            res = cmd.subcmd_update(mute_no_update=True)
         else:
             cmd.print_help()
+            sys.exit(1)
 
-        # Check if there are updates on froster every X days
-        if cfg.configuration_done and cfg.check_update() and args.subcmd not in ['update', 'upd']:
-            cmd.subcmd_update(mute_no_update=True)
+        if res:
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
-        # Close the AWS session
-        aws.close_session()
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user. Exiting...\n")
+        sys.exit(1)
 
     except Exception:
         print_error()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

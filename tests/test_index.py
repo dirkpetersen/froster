@@ -12,169 +12,78 @@ import unittest
 # FUNCTION UTILS #
 ##################
 
-def init_froster(self):
-    '''Initialize the froster objects.'''
+def get_hotspot_file_path(file_path):
 
-    self.cmd = Commands()
-    self.parser = self.cmd.parse_arguments()
-    self.args = self.parser.parse_args()
-    self.cfg = ConfigManager()
-    self.arch = Archiver(self.args, self.cfg)
-    self.aws = AWSBoto(self.args, self.cfg, self.arch)
-
-    # Create a fresh data directory
-    if hasattr(self.cfg, 'data_dir') and os.path.exists(self.cfg.data_dir):
-        shutil.rmtree(self.cfg.data_dir)
-    os.makedirs(self.cfg.data_dir, exist_ok=True, mode=0o775)
-
-    # Create a fresh config directory
-    if hasattr(self.cfg, 'config_dir') and os.path.exists(self.cfg.config_dir):
-        shutil.rmtree(self.cfg.config_dir)
-    os.makedirs(self.cfg.config_dir, exist_ok=True, mode=0o775)
-
-    # Create a fresh shared directory
-    if os.path.exists(SHARED_DIR):
-        shutil.rmtree(SHARED_DIR)
-    os.makedirs(SHARED_DIR, exist_ok=True, mode=0o775)
-
-    # Create a fresh aws directory
-    if os.path.exists(AWS_DEFAULT_PATH):
-        shutil.rmtree(AWS_DEFAULT_PATH)
-    os.makedirs(AWS_DEFAULT_PATH, exist_ok=True, mode=0o775)
-
-
-def deinit_froster(self):
-    '''Deinitialize the froster objects.'''
-
-    if hasattr(self, 'cfg'):
-        if hasattr(self.cfg, 'aws_dir') and os.path.exists(self.cfg.aws_dir):
-            shutil.rmtree(self.cfg.aws_dir)
-
-        if hasattr(self.cfg, 'config_dir') and os.path.exists(self.cfg.config_dir):
-            shutil.rmtree(self.cfg.config_dir)
-
-        if hasattr(self.cfg, 'data_dir') and os.path.exists(self.cfg.data_dir):
-            shutil.rmtree(self.cfg.data_dir)
-
-    if os.path.exists(SHARED_DIR):
-        shutil.rmtree(SHARED_DIR)
-
-    if os.path.exists(AWS_DEFAULT_PATH):
-        shutil.rmtree(AWS_DEFAULT_PATH)
-
-    # Delete initizalized objects
-    if hasattr(self, 'parser'):
-        del self.parser
-    if hasattr(self, 'args'):
-        del self.args
-    if hasattr(self, 'cfg'):
-        del self.cfg
-    if hasattr(self, 'arch'):
-        del self.arch
-    if hasattr(self, 'aws'):
-        del self.aws
-
-
-def delete_buckets(self):
-    '''Delete created S3 buckets if they exists.'''
-
-    if self.aws.check_credentials():
-        print("CREDENTIALS")
-        # Get the buckets list
-        s3_buckets = self.aws.get_buckets()
-
-        # Delete the buckets if they exists
-        if S3_BUCKET_NAME_INDEX in s3_buckets:
-            print("Delete bucket ", S3_BUCKET_NAME_INDEX)
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_INDEX)
-        if S3_BUCKET_NAME_INDEX_2 in s3_buckets:
-            print("Delete bucket ", S3_BUCKET_NAME_INDEX_2)
-            self.aws.s3_client.delete_bucket(Bucket=S3_BUCKET_NAME_INDEX_2)
+    # Get the data directory
+    xdg_data_home = os.environ.get('XDG_DATA_HOME')
+    if xdg_data_home:
+        data_dir = os.path.join(xdg_data_home, 'froster')
     else:
-        print("NO CREDENTIALS")
+        data_dir = os.path.join(
+            os.path.expanduser('~'), '.local', 'share', 'froster')
+
+    # Convert the file path to a valid hotspot file name
+    file_converted = file_path.replace('/', '+') + '.csv'
+
+    # Build the path to the hotspot file
+    hotspot_path = os.path.join(data_dir, 'hotspots', file_converted)
+
+    return hotspot_path
+
 
 class TestIndex(unittest.TestCase):
     '''Test the froster index command.'''
 
-    @patch('builtins.print')
-    @patch('inquirer.prompt', return_value={'aws_dir': AWS_DEFAULT_PATH})
-    @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION])
-    @patch('inquirer.text', side_effect=[AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET])
-    def set_credentials(self, mock_print, mock_prompt, mock_list, mock_text):
-        '''- Set a new AWS profile with valid credentials.'''
-
-        # Call set_aws method
-        self.assertTrue(self.cfg.set_aws(self.aws))
-        self.assertTrue(self.aws.check_credentials())
-
-    # @patch('builtins.print')
+    # Method executed once before all tests
+    @classmethod
+    @patch('sys.argv', ['froster', 'config'])
     @patch('inquirer.text', side_effect=[NAME, EMAIL, AWS_PROFILE, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CONFIG, S3_ARCHIVE_DIR])
     @patch('inquirer.prompt', side_effect=[{'aws_dir': AWS_DEFAULT_PATH}])
     @patch('inquirer.list_input', side_effect=['+ Create new profile', AWS_REGION, '+ Create new bucket', S3_STORAGE_CLASS])
     @patch('inquirer.confirm', side_effect=[False, False])
+    @patch('builtins.print')
+    def setUpClass(cls, mock_text, mock_prompt, mock_list, mock_confirm, mock_print):
+
+        main()
+
+    # Method executed once after all tests
+    @classmethod
+    @patch('builtins.print')
+    def tearDownClass(cls, mock_print):
+
+        with patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CONFIG]):
+            main()
+
+        with patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CONFIG_2]):
+            main()
+
     # Method executed before every test
-    def setUp(self, mock_text, mock_prompt, mock_list, mock_confirm):
-        if AWS_ACCESS_KEY_ID is None or AWS_SECRET is None:
-            raise ValueError("AWS credentials are not set")
-
-        # Initialize the froster objects
-        init_froster(self)
-
-        # Make sure we have credentials to be able to delete buckets
-        self.set_credentials()
-
-        # Delete any existing buckets
-        delete_buckets(self)
-
-        # We needed to set the credentials to be able to delete possible buckets that
-        # were created in previous tests. However, we don't want to set the credentials for the current test.
-        # Therefore, we need to delete the credentials after deleting the buckets.
-
-        # Deinitialize the froster objects
-        deinit_froster(self)
-
-        # Initialize the froster objects
-        init_froster(self)
-
-        # Mock the CLI default arguments
-
-        # Default arguments for "froster config" command
-        self.cmd.args = Namespace(cores=4, debug=False, info=False, log_print=False, memory=64, noslurm=False, version=False,
-                                  subcmd='config', aws=False, monitor=False, nih=False, print=False, s3=False, shared=False, slurm=False, user=False)
-        
-        # Mock the "froster config" command and make sure it runs successfully
-        self.cmd.subcmd_config(cfg=self.cfg, aws=self.aws)
+    @patch('builtins.print')
+    def setUp(self, mock_print):
 
         # Generate test data
         self.test_data_dir = generate_test_data()
 
     # Method executed after every test
+    @patch('builtins.print')
+    def tearDown(self, mock_print):
+        '''- Clean up test data and S3 buckets.'''
 
-    def tearDown(self):
-        # Delete any existing buckets
-        delete_buckets(self)
-
-        # Deinitialize the froster objects
-        deinit_froster(self)
-
-        # Delete the test data directory
+        # Delete the test data directory if exist
         if os.path.exists(self.test_data_dir):
             shutil.rmtree(self.test_data_dir)
 
-    @patch('inquirer.text', side_effect=[NAME, EMAIL])
-    def test_subcmd_index(self, mock_text):
+    # @patch('builtins.print')
+    def test_subcmd_index(self):
         '''- Test the froster index command.'''
 
-        print("Test data folder: ", self.test_data_dir)
+        # Run the index command and check if sys.exit(0), which means no issues detected while executing the command
+        with patch('sys.argv', ['froster', 'index', self.test_data_dir]):
+            self.assertFalse(main())
 
-        # Default arguments for "froster index" command
-        self.cmd.args = Namespace(cores=4, debug=False, info=False, log_print=False, memory=64, noslurm=False,
-                                  version=False, subcmd='index', folders=[self.test_data_dir], force=False, pwalkcopy='')
-
-    #     # Run the index command
-    #    self.cmd.subcmd_index(self.cfg, self.arch)
-        self.assertTrue(True)
-
+        # Check if the hotspot file was created
+        hotpost = get_hotspot_file_path(self.test_data_dir)
+        self.assertTrue(os.path.exists(hotpost))
 
 if __name__ == '__main__':
 
