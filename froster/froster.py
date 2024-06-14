@@ -478,15 +478,17 @@ class ConfigManager:
 
             # Ask user to enter the path to a aws credentials directory
 
-            default_aws_dir = os.path.join('~', '.aws')
-            if not os.path.exists(os.path.expanduser(default_aws_dir)):
-                os.makedirs(os.path.expanduser(default_aws_dir),
-                            exist_ok=True, mode=0o775)
+            default_aws_dir = self.__get_configuration_entry('AWS', 'aws_dir')
+            if default_aws_dir is None:
+                default_aws_dir = os.path.join('~', '.aws')
+                if not os.path.exists(os.path.expanduser(default_aws_dir)):
+                    os.makedirs(os.path.expanduser(default_aws_dir),
+                                exist_ok=True, mode=0o775)
 
             aws_dir_question = [
                 inquirer.Path(
                     'aws_dir',
-                    message=f'Enter the path to aws credentials directory (default: ~/.aws)',
+                    message=f'Enter the path to aws credentials directory',
                     default=default_aws_dir,
                     validate=self.__inquirer_check_path_exists)
             ]
@@ -518,8 +520,10 @@ class ConfigManager:
             aws_profiles.append('+ Create new profile')
 
             # Ask user to choose an existing aws profile or create a new one
-            aws_profile = inquirer.list_input("Choose your aws profile",
-                                              choices=aws_profiles)
+            aws_profile = inquirer.list_input(
+                "Choose your aws profile",
+                default=self.__get_configuration_entry('AWS', 'aws_profile'),
+                choices=aws_profiles)
 
             # Check if user wants to create a new aws profile
             if aws_profile == '+ Create new profile':
@@ -601,16 +605,21 @@ class ConfigManager:
                     log('    froster config --aws\n')
                     return False
 
-                # Check the seletected profile region
-                aws_profile_region = self.__set_aws_get_config_region(
-                    aws_profile=aws_profile)
+                # Get default region from config.ini file
+                default_region = self.__get_configuration_entry(
+                    'AWS', 'aws_region')
+
+                # If None, then try to get it from the aws config file
+                if default_region is None:
+                    default_region = self.__get_region_from_aws_config_file(
+                        aws_profile=aws_profile)
 
                 # Get list of AWS regions
                 aws_regions = aws.get_regions()
 
                 # Ask user to choose a region
                 region = inquirer.list_input("Choose your region",
-                                             default=aws_profile_region,
+                                             default=default_region,
                                              choices=aws_regions)
 
                 log("\nChecking region...")
@@ -625,7 +634,7 @@ class ConfigManager:
 
                     return False
 
-                if region != aws_profile_region:
+                if region != default_region:
                     # Update region in the config file
                     self.__set_aws_config(aws_profile_name=aws_profile,
                                           region=region)
@@ -741,7 +750,7 @@ class ConfigManager:
         except Exception:
             print_error()
 
-    def __set_aws_get_config_region(self, aws_profile):
+    def __get_region_from_aws_config_file(self, aws_profile):
         '''Set the AWS region for the given profile'''
 
         try:
@@ -814,6 +823,35 @@ class ConfigManager:
         except Exception:
             print_error()
 
+    def __get_configuration_entry(self, section, key, is_bool=False, is_int=False, fallback=None):
+        '''Get a configuration entry in the config file'''
+
+        try:
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # Check which config file to use
+            if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
+                config_file = self.shared_config_file
+            else:
+                config_file = self.config_file
+
+            # if exists, read the config file and return the value
+            if os.path.exists(config_file):
+                config.read(config_file)
+                if is_bool:
+                    return config.getboolean(section, key, fallback=fallback)
+                elif is_int:
+                    return config.getint(section, key, fallback=fallback)
+                else:
+                    return config.get(section, key, fallback=fallback)
+
+            # Return None otherwise
+            return None
+
+        except Exception:
+            print_error()
+
     def set_ec2_last_instance(self, instance):
         '''Set the last ec2 instance in configuration file'''
 
@@ -834,8 +872,18 @@ class ConfigManager:
         try:
             log(f'\n*** NIH S3 CONFIGURATION ***\n')
 
+            # Get the default NIH setting from config file
+            default_is_nih = self.__get_configuration_entry(
+                'NIH', 'is_nih', is_bool=True)
+
+            # Get the user answer
             is_nih = inquirer.confirm(
-                message="Do you want to search and link NIH life sciences grants with your archives?", default=False)
+                message=f"Do you want to search and link NIH life sciences grants with your archives? (Default: {default_is_nih})",
+                default=default_is_nih)
+
+            # Aesthetic print
+            if is_nih and default_is_nih:
+                log()
 
             self.__set_configuration_entry('NIH', 'is_nih', is_nih)
 
@@ -881,13 +929,11 @@ class ConfigManager:
             # Add an option to create a new bucket
             s3_buckets.append('+ Create new bucket')
 
-            default_bucket = self.bucket_name if hasattr(
-                self, 'bucket_name') else None
-
             # Ask user to choose an existing aws s3 bucket or create a new one
-            s3_bucket = inquirer.list_input("Choose your aws s3 bucket",
-                                            default=default_bucket,
-                                            choices=s3_buckets)
+            s3_bucket = inquirer.list_input(
+                "Choose your aws s3 bucket",
+                default=self.__get_configuration_entry('S3', 'bucket_name'),
+                choices=s3_buckets)
 
             # Check if user wants to create a new aws s3 bucket
             if s3_bucket == '+ Create new bucket':
@@ -914,10 +960,14 @@ class ConfigManager:
                 # Store aws s3 bucket in the config object
                 self.__set_configuration_entry('S3', 'bucket_name', s3_bucket)
 
-            # Get the archive directory in the selected bucket
+            # Get the archive directory from the config file
+            default_archive_dir = self.__get_configuration_entry(
+                'S3', 'archive_dir', fallback='froster')
+
+            # Get user answer
             archive_dir = inquirer.text(
-                message='Enter the directory name inside S3 bucket (default= "froster")',
-                default='froster',
+                message='Enter the directory name inside S3 bucket',
+                default=default_archive_dir,
                 validate=self.__inquirer_check_required)
 
             # Print newline after this prompt
@@ -927,15 +977,11 @@ class ConfigManager:
             self.__set_configuration_entry('S3', 'archive_dir', archive_dir)
 
             # Get the storage class for the selected bucket
-            if hasattr(self, 'storage_class') and self.storage_class is not None:
-                default_storage_class = self.storage_class
-            else:
-                default_storage_class = 'DEEP_ARCHIVE'
-
-            # Get the storage class for the selected bucket
-            storage_class = inquirer.list_input("Choose the AWS S3 storage class",
-                                                default=default_storage_class,
-                                                choices={'DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING'})
+            storage_class = inquirer.list_input(
+                "Choose the AWS S3 storage class",
+                default=self.__get_configuration_entry(
+                    'S3', 'storage_class', fallback='DEEP_ARCHIVE'),
+                choices={'DEEP_ARCHIVE', 'GLACIER', 'INTELLIGENT_TIERING'})
 
             # Store aws s3 storage class in the config object
             self.__set_configuration_entry(
@@ -958,18 +1004,30 @@ class ConfigManager:
         try:
             log(f'\n*** SHARED CONFIGURATION ***\n')
 
+            # Get default shared configuration from the config file
+            default_is_shared = self.__get_configuration_entry(
+                'SHARED', 'is_shared', is_bool=True)
+
             is_shared = inquirer.confirm(
-                message="Do you want to collaborate with other users on archive and restore?", default=False)
+                message=f"Do you want to collaborate with other users on archive and restore? (Default:{default_is_shared})",
+                default=default_is_shared)
 
             # If it is a shared configuration we need to ask the user for the path to the shared config directory
             # and check if we need to move cfg.archive_json_file_name and configuration to the shared directory
             if is_shared:
 
+                # Aesthetic print
+                if default_is_shared:
+                    log()
+
                 # Ask user to enter the path to a shared config directory
                 # TODO: make this inquiring in shortchut mode once this PR is merged: https://github.com/magmax/python-inquirer/pull/543
                 shared_config_dir_question = [
                     inquirer.Path(
-                        'shared_dir', message='Enter the path to a shared config directory', validate=self.__inquirer_check_path_exists)
+                        'shared_dir', message='Enter the path to a shared config directory',
+                        default=self.__get_configuration_entry(
+                            'SHARED', 'shared_dir'),
+                        validate=self.__inquirer_check_path_exists)
                 ]
 
                 # Get the answer from the user
@@ -985,7 +1043,7 @@ class ConfigManager:
                 if os.path.isfile(os.path.join(shared_config_dir, self.archive_json_file_name)):
                     # If the froster-archives.json file is found in the shared config directory we are done here
                     log(
-                        f"\nNOTE: the {self.archive_json_file_name} file was found in the shared config directory\n")
+                        f"\nNOTE: the Froster Archive DataBase ({self.archive_json_file_name}) was found in the shared config directory\n")
                 else:
 
                     # If the froster-archives.json file is found in the local directory we ask the user if they want to move it to the shared directory
@@ -1091,7 +1149,9 @@ class ConfigManager:
 
             # Ask the user for their full name
             fullname = inquirer.text(
-                message="Enter your full name", validate=self.__inquirer_check_required)
+                message="Enter your full name",
+                default=self.__get_configuration_entry('USER', 'name'),
+                validate=self.__inquirer_check_required)
 
             # Print for a new line when prompting
             log()
@@ -1100,8 +1160,10 @@ class ConfigManager:
             self.__set_configuration_entry('USER', 'name', fullname)
 
             # Ask the user for their email
-            email = inquirer.text(message="Enter your email",
-                                  validate=self.__inquirer_check_email_format)
+            email = inquirer.text(
+                message="Enter your email",
+                default=self.__get_configuration_entry('USER', 'email'),
+                validate=self.__inquirer_check_email_format)
 
             # Print for a new line when prompting
             log()
@@ -1140,30 +1202,39 @@ class ConfigManager:
                     log(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
                     return False
 
+                # Get user answer
                 slurm_walltime_days = inquirer.text(
-                    message="Set the Slurm --time (days) for froster jobs (default = 7)",
-                    default=7,
+                    message=f"Set the Slurm --time (days) for froster jobs",
+                    default=self.__get_configuration_entry(
+                        'SLURM', 'slurm_walltime_days', fallback='7'),
                     validate=self.__inquirer_check_is_number)
 
+                # Get user answer
                 slurm_walltime_hours = inquirer.text(
-                    message="Set the Slurm --time (hours) for froster jobs (default = 0)",
-                    default=0,
+                    message=f"Set the Slurm --time (hours) for froster jobs",
+                    default=self.__get_configuration_entry(
+                        'SLURM', 'slurm_walltime_days', fallback='0'),
                     validate=self.__inquirer_check_is_number)
 
                 se = Slurm(args, self)
 
                 # Get the allowed partitions and QOS
                 parts = se.get_allowed_partitions_and_qos()
-                log(parts)
+
                 if parts is not None:
-                    # Ask the user to select the Slurm partition and QOS
+
+                    # Get user answer
                     slurm_partition = inquirer.list_input(
                         message=f'Select the Slurm partition for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'slurm_partition'),
                         choices=list(parts.keys()))
 
                     # Ask the user to select the Slurm QOS
                     slurm_qos = inquirer.list_input(
                         message=f'Select the Slurm QOS for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'slurm_qos'),
                         choices=list(parts[slurm_partition]))
 
                 # Set the Slurm configuration in the config file
@@ -1176,14 +1247,30 @@ class ConfigManager:
                 self.__set_configuration_entry('SLURM', 'slurm_qos', slurm_qos)
 
                 if shutil.which('sbatch'):
+
                     slurm_lscratch = inquirer.text(
-                        message="How do you request local scratch from Slurm? (Optional: press enter to skip)")
+                        message="How do you request local scratch from Slurm? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'slurm_lscratch')
+                    )
+
                     lscratch_mkdir = inquirer.text(
-                        message="Is there a user script that provisions local scratch? (Optional: press enter to skip)")
+                        message="Is there a user script that provisions local scratch? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'lscratch_mkdir')
+                    )
+
                     lscratch_rmdir = inquirer.text(
-                        message="Is there a user script that tears down local scratch at the end? (Optional: press enter to skip)")
+                        message="Is there a user script that tears down local scratch at the end? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'lscratch_rmdir')
+                    )
+
                     lscratch_root = inquirer.text(
-                        message="What is the local scratch root? (Optional: press enter to skip)")
+                        message="What is the local scratch root? (Optional: press enter to skip)",
+                        default=self.__get_configuration_entry(
+                            'SLURM', 'lscratch_root')
+                    )
 
                     self.__set_configuration_entry(
                         'SLURM', 'slurm_lscratch', slurm_lscratch)
@@ -6098,12 +6185,10 @@ class Commands:
 
         self.parser.print_help()
 
-
     def print_version(self):
         '''Print froster version'''
 
         log(f'froster v{pkg_resources.get_distribution("froster").version}')
- 
 
     def print_info(self):
         '''Print froster info'''
@@ -6116,9 +6201,9 @@ class Commands:
         log(f'Tools version:')
         log(f'    python v{platform.python_version()}')
         log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
-                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
         log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
 
         log(textwrap.dedent(f'''
             Authors:
@@ -6142,7 +6227,6 @@ class Commands:
             See the License for the specific language governing permissions and
             limitations under the License.
             '''))
-
 
     def subcmd_config(self, cfg: ConfigManager, aws: AWSBoto):
         '''Configure Froster settings.'''
@@ -6173,18 +6257,6 @@ class Commands:
             log(f'*** FROSTER CONFIGURATION ***')
             log(f'*****************************\n')
 
-            # Check if the configuration file exists and ask for overwrite
-            if os.path.exists(cfg.config_file):
-                log(
-                    f'WARNING: You are about to overwrite {cfg.config_file}\n')
-                is_overwrite = inquirer.confirm(
-                    message=f"Do you want to continue?", default=False)
-
-                if is_overwrite:
-                    os.remove(cfg.config_file)
-                else:
-                    return True
-
             if not cfg.set_user():
                 return False
 
@@ -6193,23 +6265,6 @@ class Commands:
 
             if not cfg.set_shared():
                 return False
-
-            # If shared configuration and shared_config.ini file exists, then use it
-            if cfg.is_shared:
-                if hasattr(cfg, 'shared_config_file') and os.path.exists(cfg.shared_config_file):
-
-                    log(f'\n**********************************')
-                    log(f'*** FROSTER CONFIGURATION DONE ***')
-                    log(f'**********************************\n')
-
-                    log(textwrap.dedent(f'''
-                        Local configuration: {cfg.config_file}
-                        Shared configuration: {cfg.shared_config_file}
-
-                        You can overwrite specific configuration sections. Check options using the command:
-                            froster config --help
-                        '''))
-                    return True
 
             if not cfg.set_nih():
                 return False
@@ -7033,6 +7088,7 @@ def log(*args, **kwargs):
 
     except Exception:
         return False
+
 
 def print_log():
 
