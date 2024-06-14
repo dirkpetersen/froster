@@ -550,7 +550,7 @@ class ConfigManager:
                     message="AWS Secret Access Key", validate=self.__inquirer_check_required)
 
                 # Check if the provided aws credentials are valid
-                log("\nChecking AWS credentials...")
+                log("\nChecking AWS raw credentials...")
 
                 if aws.check_credentials(aws_access_key_id=aws_access_key_id,
                                          aws_secret_access_key=aws_secret_access_key):
@@ -569,7 +569,7 @@ class ConfigManager:
                 region = inquirer.list_input("Choose your region",
                                              choices=aws_regions)
 
-                log("\nChecking region...")
+                log("\nChecking region for raw credentials...")
                 if aws.check_credentials(aws_access_key_id=aws_access_key_id,
                                          aws_secret_access_key=aws_secret_access_key,
                                          aws_region_name=region):
@@ -594,7 +594,7 @@ class ConfigManager:
                 # EXISTING PROFILE CONFIGURATION
 
                 # Check if the provided aws credentials are valid
-                log("\nChecking AWS credentials...")
+                log(f"\nChecking AWS credentials for profile {aws_profile}...")
 
                 if aws.check_credentials(aws_profile=aws_profile):
                     log('    ...AWS credentials are valid\n')
@@ -622,7 +622,7 @@ class ConfigManager:
                                              default=default_region,
                                              choices=aws_regions)
 
-                log("\nChecking region...")
+                log(f"\nChecking region for profile {aws_profile}...")
                 if aws.check_credentials(aws_profile=aws_profile,
                                          aws_region_name=region):
                     log('    ...region is valid\n')
@@ -686,14 +686,14 @@ class ConfigManager:
                 aws_config.read(self.aws_config_file)
 
             # If it does not exist, create a new profile in the aws config file
-            if not aws_config.has_section(aws_profile_name):
-                aws_config.add_section(aws_profile_name)
+            if not aws_config.has_section(f'profile {aws_profile_name}'):
+                aws_config.add_section(f'profile {aws_profile_name}')
 
             # Write the profile with the new region
-            aws_config[aws_profile_name]['region'] = region
+            aws_config[f'profile {aws_profile_name}']['region'] = region
 
             # Write the profile with the new output format
-            aws_config[aws_profile_name]['output'] = 'json'
+            aws_config[f'profile {aws_profile_name}']['output'] = 'json'
 
             # Write the config object to the config file
             os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
@@ -739,7 +739,7 @@ class ConfigManager:
             # Write the profile with the new secret access key
             aws_credentials[aws_profile_name]['aws_secret_access_key'] = aws_secret_access_key
 
-            # Write the config object to the config file
+            # Write the credentials in the credentials file
             os.makedirs(self.aws_dir, exist_ok=True, mode=0o775)
             with open(self.aws_credentials_file, 'w') as f:
                 aws_credentials.write(f)
@@ -766,14 +766,19 @@ class ConfigManager:
 
             # Read the aws config file
             if hasattr(self, 'aws_config_file') and os.path.exists(self.aws_config_file):
+                # Read the config file
                 config.read(self.aws_config_file)
+                
+                # Get the region from the config file
+                if aws_profile == 'default':
+                    region = config.get('default', 'region', fallback=None)
+                else:
+                    region = config.get(f'profile {aws_profile}', 'region', fallback=None)
+            else:
+                # AWS config file does not exists
+                region =  None
 
-            # Return the region if it exists
-            if config.has_section(aws_profile) and config.has_option(aws_profile, 'region'):
-                return config.get(aws_profile, 'region')
-
-            # Return None otherwise
-            return None
+            return region
 
         except Exception:
             print_error()
@@ -1456,6 +1461,35 @@ class AWSBoto:
 
             # Credentials are valid
             return True
+
+        except botocore.exceptions.NoCredentialsError:
+            log(f"Error: No AWS credentials found.")
+            return False
+
+        except botocore.exceptions.EndpointConnectionError:
+            log(f"Error: Unable to connect to the AWS S3 endpoint.")
+            return False
+        
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code')
+
+            if error_code == 'RequestTimeTooSkewed':
+                log(f"Error: The time difference between S3 storage and your computer is too high:\n{e}")
+            elif error_code == 'InvalidAccessKeyId':                
+                log(f"Error: Invalid AWS Access Key ID\n{e}")
+
+            elif error_code == 'SignatureDoesNotMatch':                
+                if "Signature expired" in str(e): 
+                    log(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
+                else:
+                    log(f"Error: Invalid AWS Secret Access Key:\n{e}")         
+            elif error_code == 'InvalidClientTokenId':
+                log(f"Error: Invalid AWS Access Key ID or Secret Access Key !")   
+            elif error_code == 'ExpiredToken':  
+                log(f"Error: Your session token has expired")       
+            else:
+                log(f"Error: validating credentials")
+            return False
 
         except Exception:
             print_error(msg="Invalid AWS credentials")
@@ -6602,7 +6636,7 @@ class Commands:
     def subcmd_credentials(self, cfg: ConfigManager, aws: AWSBoto):
         '''Check AWS credentials'''
 
-        log("\nChecking AWS credentials...")
+        log(f"\nChecking AWS credentials for profile {cfg.aws_profile}...")
 
         if aws.check_credentials(aws_profile=cfg.aws_profile):
             log('    ...AWS credentials are valid\n')
