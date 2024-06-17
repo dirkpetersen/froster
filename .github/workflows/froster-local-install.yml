@@ -1,5 +1,5 @@
 name: Install Froster locally
-run-name: Froster local install succeeded on Ubuntu-latest.
+run-name: Froster local install on Ubuntu-latest.
 on: [push, pull_request]
 
 jobs:

@@ -1,5 +1,5 @@
 name: Install Froster remotely
-run-name: Froster remote install succeeded on Ubuntu-latest.
+run-name: Froster PyPi install on Ubuntu-latest.
 on: [push, pull_request]
 
 jobs:
