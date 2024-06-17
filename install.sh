@@ -156,11 +156,13 @@ check_apt_dependencies() {
 # Backup older installations (if any) but keep the froster-archive.json and config.ini files
 backup_old_installation() {
 
-    echo
-    echo "Backing up older froster installation (if any)..."
-
     # Back up (if any) older froster data files
     if [[ -d ${XDG_DATA_HOME}/froster ]]; then
+
+        backup=true
+
+        echo
+        echo "Backing up older froster installation..."
 
         # Copy the froster directory to froster_YYYYMMDD.bak
         cp -rf ${XDG_DATA_HOME}/froster ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak
@@ -171,27 +173,29 @@ backup_old_installation() {
     # Back up (if any) older froster configurations
     if [[ -d ${XDG_CONFIG_HOME}/froster ]]; then
 
+        if [ "$backup" != "true" ]; then
+            echo
+            echo "Backing up older froster installation..."
+        fi
+
+        backup=true
+
         # Move the froster config directory to froster.bak
         cp -rf ${XDG_CONFIG_HOME}/froster ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak
 
         echo "    Config back up at ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak"
     fi
 
-    echo "...older froster installation backed up"
+    if [ "$backup" = "true" ]; then
+        echo "...older froster installation backed up"
+    fi
 
     # Check if froster is already installed, if so uninstall it
     if which froster >/dev/null 2>&1; then
         echo
         echo "Uninstalling existing froster installation..."
 
-        if pip list | grep froster >/dev/null 2>&1; then
-            pip uninstall froster >/dev/null 2>&1 &
-            spinner $!
-        fi
-
         if pipx list | grep froster >/dev/null 2>&1; then
-            # If froster is installed with pipx, uninstall it and ignore errors
-            # sometime pipx uninstall fails with error code 1 if PIPX_HOME is set, but froster is still uninstalled
             pipx uninstall froster >/dev/null 2>&1 &
             spinner $!
         fi
@@ -201,11 +205,16 @@ backup_old_installation() {
 
     # Keep the froster-archives.json file (if any)
     if [[ -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+        echo
+        echo "Restoring Froster archives json data from backup..."
+        
         # Create the froster directory if it does not exist
         mkdir -p ${XDG_DATA_HOME}/froster
 
         # Copy the froster-archives.json file to the data directory
         cp -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
+
+        echo "...restored"
     fi
 
     # Remove old files
@@ -226,7 +235,7 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pip install . >/dev/null 2>&1 &
+        pipx install . >/dev/null 2>&1 &
         spinner $!
     else
         echo "  Installing from PyPi package repository"
