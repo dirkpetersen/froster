@@ -937,6 +937,7 @@ class ConfigManager:
                 # Get new bucket name
                 new_bucket_name = inquirer.text(
                     message='Enter new bucket name (it must start with "froster-")',
+                    default='froster-',
                     validate=self.__inquirer_check_bucket_name)
 
                 if new_bucket_name in s3_buckets:
@@ -962,7 +963,7 @@ class ConfigManager:
 
             # Get user answer
             archive_dir = inquirer.text(
-                message='Enter the directory name inside S3 bucket',
+                message=f'Enter the directory name inside S3 bucket (default={default_archive_dir})',
                 default=default_archive_dir,
                 validate=self.__inquirer_check_required)
 
@@ -3642,32 +3643,15 @@ class Archiver:
             # Create an Rclone object
             rclone = Rclone(self.args, self.cfg)
 
-            # Archive the folder to S3
-            log(f'\n    Uploading files...')
-            ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
-                              '--exclude', self.md5sum_filename,
-                              '--exclude', self.md5sum_restored_filename,
-                              '--exclude', self.allfiles_csv_filename,
-                              '--exclude', self.where_did_the_files_go_filename
-                              )
-
-            # Check if the folder was archived successfully
-            if ret:
-                log('        ...done')
-                is_folder_archived = True
-            else:
-                log('        ...FAILED\n')
-                return
-
-            # Get the path to the allfiles CSV file
-            allfiles_source = os.path.join(
-                folder_to_archive, self.allfiles_csv_filename)
-
             log(f'\n    Uploading Froster.allfiles.csv file...')
 
             # Change the storage class to INTELLIGENT_TIERING
             rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = 'INTELLIGENT_TIERING'
 
+            # Get the path to the allfiles CSV file
+            allfiles_source = os.path.join(
+                folder_to_archive, self.allfiles_csv_filename)
+            
             # Archive the allfiles CSV file to S3 INTELLIGENT_TIERING
             ret = rclone.copy(allfiles_source, s3_dest, '--max-depth', '1', '--links',
                               '--exclude', self.md5sum_filename,
@@ -3679,6 +3663,23 @@ class Archiver:
             # Change the storage class back to the user preference
             rclone.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
 
+            if ret:
+                log('        ...done')
+                is_folder_archived = True
+            else:
+                log('        ...FAILED\n')
+                return
+
+            # Archive the folder to S3
+            log(f'\n    Uploading files...')
+            ret = rclone.copy(folder_to_archive, s3_dest, '--max-depth', '1', '--links',
+                              '--exclude', self.md5sum_filename,
+                              '--exclude', self.md5sum_restored_filename,
+                              '--exclude', self.allfiles_csv_filename,
+                              '--exclude', self.where_did_the_files_go_filename
+                              )
+
+            # Check if the folder was archived successfully
             if ret:
                 log('        ...done')
                 is_folder_archived = True
@@ -5364,8 +5365,6 @@ class Rclone:
                 self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
                 self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
                 self.envrn['RCLONE_S3_REGION'] = cfg.get_region_from_aws_config_file(cfg.aws_profile)
-                self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = cfg.get_region_from_aws_config_file(
-                    cfg.aws_profile)
                 self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
 
                 # Create a ConfigParser object
@@ -5385,7 +5384,6 @@ class Rclone:
             else:
                 log('Error: AWS config missing. Set new AWS credentials by running "froster config --aws"\n')
                 sys.exit(1)
-
 
         except Exception:
             print_error()
