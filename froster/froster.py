@@ -171,12 +171,8 @@ class ConfigManager:
                 self.aws_profile = config.get(
                     'AWS', 'aws_profile', fallback=None)
 
-                # AWS region
-                self.aws_region = config.get(
-                    'AWS', 'aws_region', fallback=None)
-
                 # Check if aws configuration is complete
-                if self.aws_profile and self.aws_region:
+                if self.aws_profile:
                     self.aws_init = True
 
                 # Last timestamp we checked for an updated
@@ -572,7 +568,7 @@ class ConfigManager:
                 log("\nChecking region for raw credentials...")
                 if aws.check_credentials(aws_access_key_id=aws_access_key_id,
                                          aws_secret_access_key=aws_secret_access_key,
-                                         aws_region_name=region):
+                                         aws_region=region):
                     log('    ...region is valid\n')
                 else:
                     log('    ...region is NOT valid\n')
@@ -605,14 +601,9 @@ class ConfigManager:
                     log('    froster config --aws\n')
                     return False
 
-                # Get default region from config.ini file
-                default_region = self.__get_configuration_entry(
-                    'AWS', 'aws_region')
-
-                # If None, then try to get it from the aws config file
-                if default_region is None:
-                    default_region = self.__get_region_from_aws_config_file(
-                        aws_profile=aws_profile)
+                # Get the default region for the profile
+                default_region = self.get_region_from_aws_config_file(
+                    aws_profile=aws_profile)
 
                 # Get list of AWS regions
                 aws_regions = aws.get_regions()
@@ -624,7 +615,7 @@ class ConfigManager:
 
                 log(f"\nChecking region for profile {aws_profile}...")
                 if aws.check_credentials(aws_profile=aws_profile,
-                                         aws_region_name=region):
+                                         aws_region=region):
                     log('    ...region is valid\n')
                 else:
                     log('    ...region is NOT valid\n')
@@ -650,9 +641,6 @@ class ConfigManager:
 
             # Store aws profile in the config file
             self.__set_configuration_entry('AWS', 'aws_profile', profile_name)
-
-            # Store aws region in the config file
-            self.__set_configuration_entry('AWS', 'aws_region', region)
 
             # Set the AWS profile in the boto3 session
             aws.set_session(profile_name, region)
@@ -750,7 +738,7 @@ class ConfigManager:
         except Exception:
             print_error()
 
-    def __get_region_from_aws_config_file(self, aws_profile):
+    def get_region_from_aws_config_file(self, aws_profile):
         '''Set the AWS region for the given profile'''
 
         try:
@@ -881,6 +869,9 @@ class ConfigManager:
             default_is_nih = self.__get_configuration_entry(
                 'NIH', 'is_nih', is_bool=True)
 
+            if default_is_nih is None:
+                default_is_nih = False
+
             # Get the user answer
             is_nih = inquirer.confirm(
                 message=f"Do you want to search and link NIH life sciences grants with your archives? (Default: {default_is_nih})",
@@ -954,7 +945,7 @@ class ConfigManager:
 
                 # Create new bucket
                 if not aws.create_bucket(bucket_name=new_bucket_name,
-                                         region=self.aws_region):
+                                         region=self.get_region_from_aws_config_file(self.aws_profile)):
                     log(f'Could not create bucket {new_bucket_name}')
                     return False
 
@@ -1012,6 +1003,9 @@ class ConfigManager:
             # Get default shared configuration from the config file
             default_is_shared = self.__get_configuration_entry(
                 'SHARED', 'is_shared', is_bool=True)
+
+            if default_is_shared is None:
+                default_is_shared = False
 
             is_shared = inquirer.confirm(
                 message=f"Do you want to collaborate with other users on archive and restore? (Default:{default_is_shared})",
@@ -1364,8 +1358,8 @@ class AWSBoto:
                 return False
 
             if self.check_credentials(aws_profile=self.cfg.aws_profile):
-                self.set_session(profile_name=self.cfg.aws_profile,
-                                 region=self.cfg.aws_region)
+                self.set_session(profile_name=self.cfg.aws_profile, 
+                                 region=self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile))
                 return True
             else:
                 return False
@@ -1406,7 +1400,7 @@ class AWSBoto:
                           aws_profile=None,
                           aws_access_key_id=None,
                           aws_secret_access_key=None,
-                          aws_region_name=None):
+                          aws_region=None):
         ''' AWS credential checker
 
         Check if the provided AWS credentials or provide AWS profile are valid.
@@ -1417,7 +1411,7 @@ class AWSBoto:
                 # Build a new STS client with the provided credentials
                 sts = boto3.Session(aws_access_key_id=aws_access_key_id,
                                     aws_secret_access_key=aws_secret_access_key,
-                                    region_name=aws_region_name).client('sts')
+                                    region_name=aws_region).client('sts')
 
             elif aws_profile:
 
@@ -1442,7 +1436,7 @@ class AWSBoto:
 
                     sts = boto3.Session(aws_access_key_id=access_key,
                                         aws_secret_access_key=secret_key,
-                                        region_name=aws_region_name).client('sts')
+                                        region_name=aws_region).client('sts')
                 else:
                     return False
 
@@ -2267,7 +2261,7 @@ class AWSBoto:
         sleep 3 # give us some time to upload json to ~/.froster/config
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo '#export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
-        echo '#export AWS_DEFAULT_REGION={self.cfg.aws_region}' >> ~/.bashrc
+        echo '#export AWS_DEFAULT_REGION={self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile)}' >> ~/.bashrc
         echo '#export TZ={long_timezone}' >> ~/.bashrc
         echo '#alias singularity="apptainer"' >> ~/.bashrc
         cd /tmp
@@ -2275,10 +2269,10 @@ class AWSBoto:
         froster config --monitor
         aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        aws configure set region {self.cfg.aws_region}
+        aws configure set region {self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile)}
         aws configure --profile {self.cfg.aws_profile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure --profile {self.cfg.aws_profile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        aws configure --profile {self.cfg.aws_profile} set region {self.cfg.aws_region}
+        aws configure --profile {self.cfg.aws_profile} set region {self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile)}
         python3 -m pip install boto3
         sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
@@ -5361,17 +5355,18 @@ class Rclone:
             # Set the Rclone executable path
             self.rc = os.path.join(self.cfg.froster_dir, 'rclone')
 
-            # Set the Rclone environment variables
-            # Note: Keys are set in the AWS Boto __init__ function
-            self.envrn = {}
-            self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
-            self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
-            self.envrn['RCLONE_S3_REGION'] = self.cfg.aws_region
-            self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = self.cfg.aws_region
-            self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
-
             # Set the credentials for AWS
             if self.cfg.aws_init:
+
+                # Set the Rclone environment variables
+                # Note: Keys are set in the AWS Boto __init__ function
+                self.envrn = {}
+                self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
+                self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
+                self.envrn['RCLONE_S3_REGION'] = cfg.get_region_from_aws_config_file(cfg.aws_profile)
+                self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = cfg.get_region_from_aws_config_file(
+                    cfg.aws_profile)
+                self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
 
                 # Create a ConfigParser object
                 config = configparser.ConfigParser()
@@ -5387,6 +5382,11 @@ class Rclone:
                             self.cfg.aws_profile, 'aws_access_key_id')
                         self.envrn['AWS_SECRET_ACCESS_KEY'] = config.get(
                             self.cfg.aws_profile, 'aws_secret_access_key')
+            else:
+                log('Error: AWS config missing. Set new AWS credentials by running "froster config --aws"\n')
+                sys.exit(1)
+
+
         except Exception:
             print_error()
             sys.exit(1)
