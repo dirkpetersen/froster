@@ -77,9 +77,13 @@ class ConfigManager:
             self.archive_json_file_name = 'froster-archives.json'
             self.shared_config_file_name = 'shared_config.ini'
 
+            self.providers_list = (
+                'AWS', 'GCS', 'Wasabi', 'IDrive', 'Ceph', 'MinIO', 'Other')
+
             # Initialize the variables that check if specific configuration sections have been initialized
             self.user_init = False
-            self.aws_init = False
+            self.provider_init = False
+            self.credentials_init = False
             self.nih_init = False
             self.s3_init = False
             self.configuration_done = False
@@ -171,9 +175,9 @@ class ConfigManager:
                 self.aws_profile = config.get(
                     'AWS', 'aws_profile', fallback=None)
 
-                # Check if aws configuration is complete
+                # Check if credentials configuration is complete
                 if self.aws_profile:
-                    self.aws_init = True
+                    self.credentials_init = True
 
                 # Last timestamp we checked for an updated
                 self.last_timestamp = config.getint(
@@ -205,6 +209,20 @@ class ConfigManager:
 
                 # Set nih init flag
                 self.nih_init = True if self.is_nih is not None else False
+
+                # Get the S3 provider
+                self.provider = config.get('S3', 'provider', fallback=None)
+
+                # Get the S3 endpoint
+                self.endpoint = config.get('S3', 'endpoint', fallback=None)
+
+                # Enforce the NoneType, otherwise it will be a string
+                if self.endpoint == 'None' or self.endpoint == '':
+                    self.endpoint = None
+
+                # Check if provider configuration is complete
+                if self.provider:
+                    self.provider_init = True
 
                 # Current S3 Bucket name
                 self.bucket_name = config.get(
@@ -254,7 +272,7 @@ class ConfigManager:
                 self.ec2_last_instance = config.get(
                     'CLOUD', 'ec2_last_instance', fallback=None)
 
-            if self.user_init and self.aws_init and self.s3_init and self.nih_init:
+            if self.user_init and self.provider_init and self.credentials_init and self.s3_init and self.nih_init:
                 self.configuration_done = True
 
         except Exception:
@@ -466,14 +484,18 @@ class ConfigManager:
         except Exception:
             print_error()
 
-    def set_aws(self, aws: 'AWSBoto'):
-        '''Set the AWS configuration'''
+    def set_credentials(self, aws: 'AWSBoto'):
+        '''Set the Credentials'''
 
         try:
-            log(f'\n*** AWS CONFIGURATION ***\n')
+            log(f'\n*** CREDENTIALS CONFIGURATION ***\n')
 
-            # Ask user to enter the path to a aws credentials directory
+            if not self.provider_init:
+                log(f'S3 provider configuration is missing. Configure it using the command:')
+                log('    froster config --provider')
+                return False
 
+            # Get the default credentials directory from the config file
             default_aws_dir = self.__get_configuration_entry('AWS', 'aws_dir')
             if default_aws_dir is None:
                 default_aws_dir = os.path.join('~', '.aws')
@@ -481,10 +503,11 @@ class ConfigManager:
                     os.makedirs(os.path.expanduser(default_aws_dir),
                                 exist_ok=True, mode=0o775)
 
+            # Ask user to enter the path to a aws credentials directory
             aws_dir_question = [
                 inquirer.Path(
                     'aws_dir',
-                    message=f'Enter the path to aws credentials directory',
+                    message=f'Enter the path to credentials directory',
                     default=default_aws_dir,
                     validate=self.__inquirer_check_path_exists)
             ]
@@ -496,11 +519,11 @@ class ConfigManager:
             # Get the AWS directory
             aws_dir = os.path.expanduser(aws_dir_answer['aws_dir'])
 
-            # Set the new AWS directory at AWS Boto3
-            aws.set_aws_directory(aws_dir)
-
             # Set the new AWS Directory
             self.aws_dir = aws_dir
+
+            # Store aws dir in the config file
+            self.__set_configuration_entry('AWS', 'aws_dir', aws_dir)
 
             # Set the new AWS config file
             self.aws_config_file = os.path.join(self.aws_dir, 'config')
@@ -510,14 +533,16 @@ class ConfigManager:
                 self.aws_dir, 'credentials')
 
             # Get list of current AWS profiles under {$AWS_DIR}/credentials
-            aws_profiles = aws.get_profiles()
+            config = configparser.ConfigParser()
+            config.read(self.aws_credentials_file)
+            aws_profiles = config.sections()
 
             # Add an option to create a new profile
             aws_profiles.append('+ Create new profile')
 
             # Ask user to choose an existing aws profile or create a new one
             aws_profile = inquirer.list_input(
-                "Choose your aws profile",
+                "Choose your profile",
                 default=self.__get_configuration_entry('AWS', 'aws_profile'),
                 choices=aws_profiles)
 
@@ -537,44 +562,29 @@ class ConfigManager:
                         # If user does not want to overwrite the profile, then return
                         return False
 
-                # Get aws access key id
+                # Get access key id
                 aws_access_key_id = inquirer.text(
-                    message="AWS Access Key ID", validate=self.__inquirer_check_required)
+                    message="Access Key ID (user)", validate=self.__inquirer_check_required)
 
-                # Get aws secret access key
+                # Get secret access key
                 aws_secret_access_key = inquirer.text(
-                    message="AWS Secret Access Key", validate=self.__inquirer_check_required)
+                    message="Secret Access Key (password)", validate=self.__inquirer_check_required)
 
                 # Check if the provided aws credentials are valid
-                log("\nChecking AWS raw credentials...")
+                log(f'\nChecking credentials...\n')
+                log(f'  Profile: {aws_new_profile_name}')
+                log(f'  Provider: {self.provider}')
+                log(f'  Endpoint: {self.endpoint}\n')
 
-                if aws.check_credentials(aws_access_key_id=aws_access_key_id,
-                                         aws_secret_access_key=aws_secret_access_key):
-                    log('    ...AWS credentials are valid\n')
-                else:
-                    log('    ...AWS credentials are NOT valid\n')
-                    log(
-                        '\nYou can configure aws credentials using the command:')
-                    log('    froster config --aws\n')
-                    return False
-
-                # Get list of AWS regions
-                aws_regions = aws.get_regions()
-
-                # Ask user to choose a region
-                region = inquirer.list_input("Choose your region",
-                                             choices=aws_regions)
-
-                log("\nChecking region for raw credentials...")
                 if aws.check_credentials(aws_access_key_id=aws_access_key_id,
                                          aws_secret_access_key=aws_secret_access_key,
-                                         aws_region=region):
-                    log('    ...region is valid\n')
+                                         endpoint=self.endpoint):
+                    log('    ...credentials are valid\n')
                 else:
-                    log('    ...region is NOT valid\n')
+                    log('    ...credentials are NOT valid\n')
                     log(
-                        '\nYou can configure aws credentials and region using the command:')
-                    log('    froster config --aws\n')
+                        '\nYou can configure aws credentials using the command:')
+                    log('    froster config --credentials\n')
                     return False
 
                 # Create new profile in ~/.aws/credentials
@@ -582,53 +592,25 @@ class ConfigManager:
                                            aws_access_key_id=aws_access_key_id,
                                            aws_secret_access_key=aws_secret_access_key)
 
-                # Create new profile in ~/.aws/config
-                self.__set_aws_config(aws_profile_name=aws_new_profile_name,
-                                      region=region)
-
             else:
                 # EXISTING PROFILE CONFIGURATION
 
                 # Check if the provided aws credentials are valid
-                log(f"\nChecking AWS credentials for profile {aws_profile}...")
+                log(f'\nChecking credentials...\n')
+                log(f'  Profile: {aws_profile}')
+                log(f'  Provider: {self.provider}')
+                # if self.provider == 'AWS':
+                #     self.endpoint = f"https://s3.eu-west-2.amazonaws.com"
+                log(f'  Endpoint: {self.endpoint}\n')
 
-                if aws.check_credentials(aws_profile=aws_profile):
-                    log('    ...AWS credentials are valid\n')
-                else:
-                    log('    ...AWS credentials are NOT valid\n')
-                    log(
-                        '\nConfigure new aws credentials using the command:')
-                    log('    froster config --aws\n')
-                    return False
-
-                # Get the default region for the profile
-                default_region = self.get_region_from_aws_config_file(
-                    aws_profile=aws_profile)
-
-                # Get list of AWS regions
-                aws_regions = aws.get_regions()
-
-                # Ask user to choose a region
-                region = inquirer.list_input("Choose your region",
-                                             default=default_region,
-                                             choices=aws_regions)
-
-                log(f"\nChecking region for profile {aws_profile}...")
                 if aws.check_credentials(aws_profile=aws_profile,
-                                         aws_region=region):
-                    log('    ...region is valid\n')
+                                         endpoint=self.endpoint):
+                    log('...credentials are valid\n')
                 else:
-                    log('    ...region is NOT valid\n')
-                    log(
-                        '\nYou can configure aws credentials and region using the command:')
-                    log('    froster config --aws\n')
-
+                    log('...credentials are NOT valid\n')
+                    log('\nConfigure new aws credentials using the command:')
+                    log('    froster config --credentials\n')
                     return False
-
-                if region != default_region:
-                    # Update region in the config file
-                    self.__set_aws_config(aws_profile_name=aws_profile,
-                                          region=region)
 
             # Get the profile name
             if aws_profile == '+ Create new profile':
@@ -636,26 +618,53 @@ class ConfigManager:
             else:
                 profile_name = aws_profile
 
-            # Store aws dir in the config file
-            self.__set_configuration_entry('AWS', 'aws_dir', aws_dir)
-
             # Store aws profile in the config file
             self.__set_configuration_entry('AWS', 'aws_profile', profile_name)
 
-            # Set the AWS profile in the boto3 session
-            aws.set_session(profile_name, region)
+            # Set the region
+            if not self.set_region(aws_profile=profile_name, aws=aws):
+                return False
 
-            # Set aws init flag
-            self.aws_init = True
+            # Set the credentials init flag
+            self.credentials_init = True
 
-            log(f'*** AWS CONFIGURATION DONE ***\n')
+            # Once credentials are set we need to set up the session in the AWS object
+            aws.set_session(profile_name=self.aws_profile,
+                region=self.get_region(self.aws_profile),
+                endopoint_url=self.endpoint)
 
             return True
 
         except Exception:
             print_error()
             return False
+        
+    def set_region(self, aws_profile, aws: 'AWSBoto'):
+        # Get list of AWS regions
+        try:
+            # Get the default region for the profile
+            default_region = self.get_region(
+                aws_profile=aws_profile)
 
+            # Get list of AWS regions
+            aws_regions = aws.get_regions()
+
+            # Ask user to choose a region
+            region = inquirer.list_input("Choose your region",
+                                            default=default_region,
+                                            choices=aws_regions)
+
+            if region != default_region:
+                # Update region in the config file
+                self.__set_aws_config(aws_profile_name=aws_profile,
+                                        region=region)
+
+            return True
+
+        except Exception:
+            print_error()
+            return False
+    
     def __set_aws_config(self, aws_profile_name, region):
         ''' Update the AWS config of the given profile'''
 
@@ -738,16 +747,13 @@ class ConfigManager:
         except Exception:
             print_error()
 
-    def get_region_from_aws_config_file(self, aws_profile):
-        '''Set the AWS region for the given profile'''
+    def get_region(self, aws_profile):
+        '''Get the AWS region for the given profile'''
 
         try:
+            # If no profile, then return None
             if not aws_profile:
-                raise ValueError('No AWS profile provided')
-
-            # Check if aws credentials file exists
-            if not os.path.exists(self.aws_config_file):
-                raise ValueError('AWS config file does not exist')
+                return None
 
             # Create a ConfigParser object
             config = configparser.ConfigParser()
@@ -756,17 +762,48 @@ class ConfigManager:
             if hasattr(self, 'aws_config_file') and os.path.exists(self.aws_config_file):
                 # Read the config file
                 config.read(self.aws_config_file)
-                
+
                 # Get the region from the config file
                 if aws_profile == 'default':
                     region = config.get('default', 'region', fallback=None)
                 else:
-                    region = config.get(f'profile {aws_profile}', 'region', fallback=None)
+                    region = config.get(
+                        f'profile {aws_profile}', 'region', fallback=None)
             else:
                 # AWS config file does not exists
-                region =  None
+                region = None
 
             return region
+
+        except Exception:
+            print_error()
+            return None
+
+    def get_credential(self, aws_profile, key_name):
+        '''Get the key the given profile'''
+
+        try:
+            # If no profile, then return None
+            if not aws_profile:
+                return None
+
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # Read the aws credentials file
+            if hasattr(self, 'aws_credentials_file') and os.path.exists(self.aws_credentials_file):
+                # Read the credentials file
+                config.read(self.aws_credentials_file)
+
+                # Get the access key from the config file
+                key = config.get(
+                    aws_profile, key_name, fallback=None)
+
+            else:
+                # AWS credentials file does not exists
+                key = None
+
+            return key
 
         except Exception:
             print_error()
@@ -894,29 +931,84 @@ class ConfigManager:
             print_error()
             return False
 
+    def set_provider(self):
+        '''Set the S3 provider configuration'''
+
+        try:
+            log(f'\n*** S3 PROVIDER CONFIGURATION ***\n')
+
+            # Get the default provider setting from config file
+            default_provider = self.__get_configuration_entry(
+                'S3', 'provider', fallback='AWS')
+
+            # If default provider is MinIo then get the default endpoint before potentially changing the provider
+            if default_provider == 'MinIO':
+                default_endpoint = self.__get_configuration_entry(
+                    'S3', 'endpoint', fallback=None)
+            else:
+                default_endpoint = None
+
+            # Get the user answer
+            provider = inquirer.list_input(
+                "Choose your s3 provider",
+                default=default_provider,
+                choices=self.providers_list)
+
+            self.__set_configuration_entry('S3', 'provider', provider)
+
+            # Set the endpoint
+            if provider == 'MinIO':
+
+                # Get the user answer
+                endpoint = inquirer.text(
+                    message='Enter the MinIO endpoint',
+                    default=default_endpoint,
+                    validate=self.__inquirer_check_required)
+            else:
+                endpoint = ''
+
+            # Store the endpoint in the config object
+            self.__set_configuration_entry('S3', 'endpoint', endpoint)
+
+            # We need to ensure that is NoneType and not a string
+            if endpoint == '' or endpoint == 'None':
+                self.endpoint = None
+
+            # Set the provider init flag
+            self.provider_init = True
+
+            return True
+
+        except Exception:
+            print_error()
+            return False
+
     def set_s3(self, aws: "AWSBoto"):
         '''Set the S3 configuration'''
 
         try:
             log(f'\n*** S3 CONFIGURATION ***\n')
 
-            # Check if aws configuration is complete
-            if not self.aws_init:
-                log(f'AWS configuration is missing')
-                log('You can configure aws settings using the command:')
-                log('    froster config --aws')
+            # Check if configuration is complete
+            if not self.provider_init:
+                log(f'S3 provider configuration is missing. Configure it using the command:')
+                log('    froster config --provider')
+                return False
+
+            if not self.credentials_init:
+                log(f'Credentials configuration is missing. Configure it using the command:')
+                log('    froster config --credentials')
                 return False
 
             log(
                 f'Checking AWS credentials for profile "{self.aws_profile}"...')
-            if aws.check_credentials(aws_profile=self.aws_profile):
+            if aws.check_credentials(aws_profile=self.aws_profile, endpoint=self.endpoint):
                 log('    ...AWS credentials are valid\n')
             else:
                 log('    ...AWS credentials are NOT valid\n')
                 log(
                     '\nYou can configure aws credentials using the command:')
-                log('    froster config --aws')
-                log(f'\n*** S3 CONFIGURATION DONE ***\n')
+                log('    froster config --credentials')
                 return False
 
             # Get list froster buckets for the given profile
@@ -946,7 +1038,7 @@ class ConfigManager:
 
                 # Create new bucket
                 if not aws.create_bucket(bucket_name=new_bucket_name,
-                                         region=self.get_region_from_aws_config_file(self.aws_profile)):
+                                         region=self.get_region(self.aws_profile)):
                     log(f'Could not create bucket {new_bucket_name}')
                     return False
 
@@ -963,7 +1055,7 @@ class ConfigManager:
 
             # Get user answer
             archive_dir = inquirer.text(
-                message=f'Enter the directory name inside S3 bucket (default={default_archive_dir})',
+                message='Enter the directory name inside S3 bucket',
                 default=default_archive_dir,
                 validate=self.__inquirer_check_required)
 
@@ -986,8 +1078,6 @@ class ConfigManager:
 
             # Set the s3 init flag
             self.s3_init = True
-
-            log(f'\n*** S3 CONFIGURATION DONE ***\n')
 
             return True
 
@@ -1076,8 +1166,6 @@ class ConfigManager:
                 self.is_shared = True
             else:
                 self.is_shared = False
-
-            log(f'*** SHARED CONFIGURATION DONE ***\n')
 
             return True
 
@@ -1173,8 +1261,6 @@ class ConfigManager:
 
             # Set the user init flag
             self.user_init = True
-
-            log(f'*** USER CONFIGURATION DONE ***\n')
 
             return True
 
@@ -1281,8 +1367,6 @@ class ConfigManager:
                     self.__set_configuration_entry(
                         'SLURM', 'lscratch_root', lscratch_root)
 
-                log(f'\n*** SLURM CONFIGURATION DONE ***\n')
-
             else:
                 log(f'\n*** SLURM NOT FOUND: Nothing to configure ***\n')
 
@@ -1333,41 +1417,13 @@ class AWSBoto:
             self.cfg = cfg
             self.arch = arch
 
-            # Set the AWS directory
-            if hasattr(self.cfg, 'aws_dir'):
-                self.set_aws_directory(self.cfg.aws_dir)
+            if hasattr(cfg, 'aws_profile') and hasattr(cfg, 'endpoint'):
+                self.set_session(profile_name=cfg.aws_profile,
+                                 region=cfg.get_region(cfg.aws_profile),
+                                 endopoint_url=cfg.endpoint)
 
         except Exception:
             print_error()
-
-    def set_aws_directory(self, aws_dir):
-        '''Set the AWS directory'''
-
-        try:
-            # Specify the paths to the config and credentials files
-            os.environ['AWS_CONFIG_FILE'] = os.path.join(aws_dir, 'config')
-            os.environ['AWS_SHARED_CREDENTIALS_FILE'] = os.path.join(
-                aws_dir, 'credentials')
-        except Exception:
-            print_error()
-
-    def check_session(self):
-        '''Check if the current AWS session is valid'''
-
-        try:
-            if not self.cfg.aws_init:
-                return False
-
-            if self.check_credentials(aws_profile=self.cfg.aws_profile):
-                self.set_session(profile_name=self.cfg.aws_profile, 
-                                 region=self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile))
-                return True
-            else:
-                return False
-
-        except Exception:
-            print_error()
-            return False
 
     def check_bucket_access(self, bucket_name, readwrite=False):
         '''Check if the user has access to the given bucket'''
@@ -1376,12 +1432,6 @@ class AWSBoto:
             raise ValueError('No bucket name provided')
 
         try:
-            # Check if the session is valid
-            if not self.check_session():
-                log(
-                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                log("run 'froster config --aws' to fix this.\n")
-                sys.exit(1)
 
             # Get the bucket Access Control List (ACL)
             bucket_info = self.s3_client.get_bucket_acl(Bucket=bucket_name)
@@ -1401,60 +1451,39 @@ class AWSBoto:
                           aws_profile=None,
                           aws_access_key_id=None,
                           aws_secret_access_key=None,
-                          aws_region=None):
-        ''' AWS credential checker
-
-        Check if the provided AWS credentials or provide AWS profile are valid.
-        If nothing is provided, the current session is checked.'''
+                          endpoint=None):
+        '''S3 credential checker'''
 
         try:
-            if aws_access_key_id and aws_secret_access_key:
-                # Build a new STS client with the provided credentials
-                sts = boto3.Session(aws_access_key_id=aws_access_key_id,
-                                    aws_secret_access_key=aws_secret_access_key,
-                                    region_name=aws_region).client('sts')
 
-            elif aws_profile:
+            if aws_profile:
+                aws_access_key_id = self.cfg.get_credential(
+                    aws_profile, 'aws_access_key_id')
+                aws_secret_access_key = self.cfg.get_credential(
+                    aws_profile, 'aws_secret_access_key')
 
-                # Set the credentials for AWS
-                # But since aws/crendentials file is not in the default location, we need to set the environment variables
-                if not self.cfg.aws_init or not os.path.exists(self.cfg.aws_credentials_file):
-                    return False
+            # Create a session
+            session = boto3.session.Session()
 
-                # Create a ConfigParser object
-                config = configparser.ConfigParser()
+            # Create an S3 client
+            s3_client = session.client(
+                service_name='s3',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                endpoint_url=endpoint)
 
-                config.read(self.cfg.aws_credentials_file)
+            # Command that needs credentials to be successfull
+            buckets = s3_client.list_buckets()
 
-                # Check if the AWS profile exists
-                if config.has_section(aws_profile):
+            # bucket_names = [bucket['Name'] for bucket in buckets['Buckets']]
+            # for bucket in bucket_names:
 
-                    # Set the environment variables for creds
-                    access_key = config.get(
-                        aws_profile, 'aws_access_key_id')
-                    secret_key = config.get(
-                        aws_profile, 'aws_secret_access_key')
+            #     print("Bucket:", bucket)
+            #     encryption = s3_client.get_bucket_encryption(Bucket=bucket)
+            #     # encryption_rules = encryption['ServerSideEncryptionConfiguration']['Rules']
+            #     # print("Encryption rules:", encryption_rules)
+            
 
-                    sts = boto3.Session(aws_access_key_id=access_key,
-                                        aws_secret_access_key=secret_key,
-                                        region_name=aws_region).client('sts')
-                else:
-                    return False
-
-            elif hasattr(self, 's3_client'):
-                # Get the current sts_client
-                sts = self.sts_client
-
-            else:
-                return False
-
-            # Check that we can get the caller identity
-            sts.get_caller_identity()
-
-            # Close the session
-            sts.close()
-
-            # Credentials are valid
             return True
 
         except botocore.exceptions.NoCredentialsError:
@@ -1464,30 +1493,32 @@ class AWSBoto:
         except botocore.exceptions.EndpointConnectionError:
             log(f"Error: Unable to connect to the AWS S3 endpoint.")
             return False
-        
+
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get('Error', {}).get('Code')
 
             if error_code == 'RequestTimeTooSkewed':
-                log(f"Error: The time difference between S3 storage and your computer is too high:\n{e}")
-            elif error_code == 'InvalidAccessKeyId':                
+                log(
+                    f"Error: The time difference between S3 storage and your computer is too high:\n{e}")
+            elif error_code == 'InvalidAccessKeyId':
                 log(f"Error: Invalid AWS Access Key ID\n{e}")
 
-            elif error_code == 'SignatureDoesNotMatch':                
-                if "Signature expired" in str(e): 
-                    log(f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
+            elif error_code == 'SignatureDoesNotMatch':
+                if "Signature expired" in str(e):
+                    log(
+                        f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
                 else:
-                    log(f"Error: Invalid AWS Secret Access Key:\n{e}")         
+                    log(f"Error: Invalid AWS Secret Access Key:\n{e}")
             elif error_code == 'InvalidClientTokenId':
-                log(f"Error: Invalid AWS Access Key ID or Secret Access Key !")   
-            elif error_code == 'ExpiredToken':  
-                log(f"Error: Your session token has expired")       
+                log(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
+            elif error_code == 'ExpiredToken':
+                log(f"Error: Your session token has expired")
             else:
-                log(f"Error: validating credentials")
+                print_error()
             return False
 
-        except Exception:
-            print_error(msg="Invalid AWS credentials")
+        except Exception as e:
+            print_error()
             return False
 
     def create_bucket(self, bucket_name, region):
@@ -1497,14 +1528,6 @@ class AWSBoto:
             raise ValueError("Bucket name not provided")
 
         try:
-
-            # Check if the session is valid
-            if not self.check_session():
-                log(
-                    f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-                log("run 'froster config --aws' to fix this.\n")
-                return False
-
             log(f'\nCreating bucket {bucket_name}...')
 
             self.s3_client.create_bucket(Bucket=bucket_name,
@@ -1543,13 +1566,6 @@ class AWSBoto:
         if not bucket_name:
             raise ValueError('No bucket name provided')
 
-        # Check if the session is valid
-        if not self.check_session():
-            log(
-                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-            log("run 'froster config --aws' to fix this.\n")
-            sys.exit(1)
-
         try:
 
             s3_buckets = self.get_buckets()
@@ -1570,13 +1586,6 @@ class AWSBoto:
     def get_buckets(self):
         ''' Get a list of all the froster buckets in the current session'''
 
-        # Check if the session is valid
-        if not self.check_session():
-            log(
-                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-            log("run 'froster config --aws' to fix this.\n")
-            sys.exit(1)
-
         try:
             # Get all the buckets
             existing_buckets = self.s3_client.list_buckets()
@@ -1596,27 +1605,10 @@ class AWSBoto:
             print_error()
             sys.exit(1)
 
-    def get_profiles(self):
-        ''' Get a list of available AWS profiles'''
-
-        try:
-            config = configparser.ConfigParser()
-            config.read(os.getenv('AWS_SHARED_CREDENTIALS_FILE'))
-            profiles = config.sections()
-
-            return profiles
-
-        except Exception:
-            print_error()
-            return None
-
     def get_regions(self):
         '''Get the regions for the current session or get default regions.'''
 
         try:
-            # Check if the session is valid
-            self.check_session()
-
             regions = self.ec2_client.describe_regions()
             region_names = [region['RegionName']
                             for region in regions['Regions']]
@@ -1638,13 +1630,6 @@ class AWSBoto:
         if not bucket_name:
             raise ValueError('No bucket name provided')
 
-        # Check if the session is valid
-        if not self.check_session():
-            log(
-                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-            log("run 'froster config --aws' to fix this.\n")
-            sys.exit(1)
-
         try:
             response = self.s3_client.list_objects_v2(Bucket=bucket_name)
 
@@ -1653,7 +1638,7 @@ class AWSBoto:
             print_error()
             return []
 
-    def set_session(self, profile_name, region):
+    def set_session(self, profile_name, region, endopoint_url=None):
         ''' Set the AWS profile for the current session'''
 
         try:
@@ -1665,15 +1650,28 @@ class AWSBoto:
             self.ce_client = session.client('ce')
             self.ec2_client = session.client('ec2')
             self.iam_client = session.client('iam')
-            self.s3_client = session.client('s3')
             self.ses_client = session.client('ses')
-            self.sts_client = session.client('sts')
 
-            # TODO: This is for _ec2_create_instance function. Review if we really needed
-            self.session = session
+            self.s3_client = session.client(
+                service_name='sts',
+                aws_access_key_id=self.cfg.get_credential(
+                    aws_profile=profile_name, key_name='aws_access_key_id'),
+                aws_secret_access_key=self.cfg.get_credential(
+                    aws_profile=profile_name, key_name='aws_secret_access_key'),
+                endpoint_url=endopoint_url
+            )
+            self.s3_client = session.client(
+                service_name='s3',
+                aws_access_key_id=self.cfg.get_credential(
+                    aws_profile=profile_name, key_name='aws_access_key_id'),
+                aws_secret_access_key=self.cfg.get_credential(
+                    aws_profile=profile_name, key_name='aws_secret_access_key'),
+                endpoint_url=endopoint_url
+            )
 
         except Exception as e:
-            pass
+            print_error()
+            sys.exit(1)
 
     def close_session(self):
         if hasattr(self, 'ce_client'):
@@ -1714,13 +1712,6 @@ class AWSBoto:
 
     def glacier_restore(self, bucket, prefix, keep_days=30, ret_opt="Bulk"):
         '''Restore the objects in the given bucket with the given prefix'''
-
-        # Check if the session is valid
-        if not self.check_session():
-            log(
-                f"\nError: AWS credentials are not valid for profile {self.cfg.aws_profile}")
-            log("run 'froster config --aws' to fix this.\n")
-            sys.exit(1)
 
         try:
             paginator = self.s3_client.get_paginator('list_objects_v2')
@@ -2262,7 +2253,7 @@ class AWSBoto:
         sleep 3 # give us some time to upload json to ~/.froster/config
         echo 'PS1="\\u@froster:\\w$ "' >> ~/.bashrc
         echo '#export EC2_INSTANCE_ID={instance_id}' >> ~/.bashrc
-        echo '#export AWS_DEFAULT_REGION={self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile)}' >> ~/.bashrc
+        echo '#export AWS_DEFAULT_REGION={self.cfg.get_region(self.cfg.aws_profile)}' >> ~/.bashrc
         echo '#export TZ={long_timezone}' >> ~/.bashrc
         echo '#alias singularity="apptainer"' >> ~/.bashrc
         cd /tmp
@@ -2270,10 +2261,10 @@ class AWSBoto:
         froster config --monitor
         aws configure set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        aws configure set region {self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile)}
+        aws configure set region {self.cfg.get_region(self.cfg.aws_profile)}
         aws configure --profile {self.cfg.aws_profile} set aws_access_key_id {os.environ['AWS_ACCESS_KEY_ID']}
         aws configure --profile {self.cfg.aws_profile} set aws_secret_access_key {os.environ['AWS_SECRET_ACCESS_KEY']}
-        aws configure --profile {self.cfg.aws_profile} set region {self.cfg.get_region_from_aws_config_file(self.cfg.aws_profile)}
+        aws configure --profile {self.cfg.aws_profile} set region {self.cfg.get_region(self.cfg.aws_profile)}
         python3 -m pip install boto3
         sed -i 's/aws_access_key_id [^ ]*/aws_access_key_id /' {bscript}
         sed -i 's/aws_secret_access_key [^ ]*/aws_secret_access_key /' {bscript}
@@ -3651,7 +3642,7 @@ class Archiver:
             # Get the path to the allfiles CSV file
             allfiles_source = os.path.join(
                 folder_to_archive, self.allfiles_csv_filename)
-            
+
             # Archive the allfiles CSV file to S3 INTELLIGENT_TIERING
             ret = rclone.copy(allfiles_source, s3_dest, '--max-depth', '1', '--links',
                               '--exclude', self.md5sum_filename,
@@ -5357,32 +5348,24 @@ class Rclone:
             self.rc = os.path.join(self.cfg.froster_dir, 'rclone')
 
             # Set the credentials for AWS
-            if self.cfg.aws_init:
+            if self.cfg.provider_init and self.cfg.credentials_init and self.cfg.s3_init:
 
                 # Set the Rclone environment variables
                 # Note: Keys are set in the AWS Boto __init__ function
                 self.envrn = {}
                 self.envrn['RCLONE_S3_ENV_AUTH'] = 'true'
-                self.envrn['RCLONE_S3_PROVIDER'] = 'AWS'
-                self.envrn['RCLONE_S3_REGION'] = cfg.get_region_from_aws_config_file(cfg.aws_profile)
-                self.envrn['RCLONE_S3_STORAGE_CLASS'] = self.cfg.storage_class
+                self.envrn['RCLONE_S3_PROVIDER'] = cfg.provider
+                self.envrn['RCLONE_S3_REGION'] = cfg.get_region(
+                    cfg.aws_profile)
+                self.envrn['RCLONE_S3_STORAGE_CLASS'] = cfg.storage_class
 
-                # Create a ConfigParser object
-                config = configparser.ConfigParser()
+                self.envrn['AWS_ACCESS_KEY_ID'] = cfg.get_credential(
+                    aws_profile=cfg.aws_profile, key_name='aws_access_key_id')
+                self.envrn['AWS_SECRET_ACCESS_KEY'] = cfg.get_credential(
+                    aws_profile=cfg.aws_profile, key_name='aws_secret_access_key')
 
-                # Read AWS Credentials file
-                if os.path.exists(self.cfg.aws_credentials_file):
-                    config.read(self.cfg.aws_credentials_file)
-
-                    # Check if the AWS profile exists
-                    if config.has_section(self.cfg.aws_profile):
-                        # Set the environment variables for creds
-                        self.envrn['AWS_ACCESS_KEY_ID'] = config.get(
-                            self.cfg.aws_profile, 'aws_access_key_id')
-                        self.envrn['AWS_SECRET_ACCESS_KEY'] = config.get(
-                            self.cfg.aws_profile, 'aws_secret_access_key')
             else:
-                log('Error: AWS config missing. Set new AWS credentials by running "froster config --aws"\n')
+                log('Error: AWS config missing. Set new AWS credentials by running "froster config --credentials"\n')
                 sys.exit(1)
 
         except Exception:
@@ -6264,11 +6247,19 @@ class Commands:
         '''Configure Froster settings.'''
 
         try:
+
+            # Check if the user provided any argument for setting the configuration
             if self.args.user:
                 return cfg.set_user()
 
-            if self.args.aws:
-                return cfg.set_aws(aws)
+            if self.args.provider:
+                # If you change the provider, you would probably need to change the credentials and the S3 bucket
+                if cfg.set_provider() and cfg.set_credentials(aws) and cfg.set_s3(aws):
+                    return True
+                return False
+
+            if self.args.credentials:
+                return cfg.set_credentials(aws)
 
             if self.args.shared:
                 return cfg.set_shared()
@@ -6285,6 +6276,8 @@ class Commands:
             if self.args.print:
                 return cfg.print_config()
 
+            # Full Froster configuration
+
             log(f'\n*****************************')
             log(f'*** FROSTER CONFIGURATION ***')
             log(f'*****************************\n')
@@ -6292,7 +6285,10 @@ class Commands:
             if not cfg.set_user():
                 return False
 
-            if not cfg.set_aws(aws):
+            if not cfg.set_provider():
+                return False
+
+            if not cfg.set_credentials(aws):
                 return False
 
             if not cfg.set_shared():
@@ -6375,11 +6371,6 @@ class Commands:
                     arch.reset_folder(folder, self.args.recursive)
                 return
 
-            if not aws.check_session():
-                print_error(
-                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
-                sys.exit(1)
-
             # Check if the user provided the hotspots argument
             if self.args.hotspots:
                 if self.args.folders:
@@ -6407,16 +6398,6 @@ class Commands:
         '''Check command for restoring folders for Froster.'''
 
         try:
-            if not aws.check_session():
-                print_error(
-                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
-                sys.exit(1)
-
-            # if self.args.monitor:
-            #     # aws inactivity and cost monitoring
-            #     aws.monitor_ec2()
-            #     return
-
             if not self.args.folders:
 
                 # Get the list of folders from the archive
@@ -6451,11 +6432,6 @@ class Commands:
         '''Check command for deleting folders for Froster.'''
 
         try:
-            if not aws.check_session():
-                print_error(
-                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
-                sys.exit(1)
-
             if self.args.bucket:
                 if self.args.debug:
                     return aws.delete_bucket(self.args.bucket)
@@ -6496,11 +6472,6 @@ class Commands:
     def subcmd_mount(self, arch: Archiver, aws: AWSBoto):
 
         try:
-            if not aws.check_session():
-                print_error(
-                    'Invalid credentials. Set new AWS credentials by running "froster config --aws"')
-                sys.exit(1)
-
             if self.args.list:
                 arch.print_current_mounts()
                 return
@@ -6537,11 +6508,6 @@ class Commands:
                     sys.exit(0)
 
                 self.args.folders = [retline[0]]
-
-            # TODO: Mount in AWS EC2 instance
-            # if self.args.aws:
-            #     cfg.create_ec2_instance()
-            #     return True
 
             arch.mount(folders=self.args.folders,
                        mountpoint=self.args.mountpoint)
@@ -6634,20 +6600,23 @@ class Commands:
     def subcmd_credentials(self, cfg: ConfigManager, aws: AWSBoto):
         '''Check AWS credentials'''
 
-        log(f"\nChecking AWS credentials for profile {cfg.aws_profile}...")
+        log(f'\nChecking credentials...\n')
+        log(f'  Profile: {cfg.aws_profile}')
+        log(f'  Provider: {cfg.provider}')
+        log(f'  Endpoint: {cfg.endpoint}\n')
 
-        if aws.check_credentials(aws_profile=cfg.aws_profile):
-            log('    ...AWS credentials are valid\n')
+        if aws.check_credentials(aws_profile=cfg.aws_profile, endpoint=cfg.endpoint):
+            log('...credentials are valid\n')
             return True
         else:
-            log('    ...AWS credentials are NOT valid\n')
+            log('...credentials are NOT valid\n')
             return False
 
     def subcmd_update(self, mute_no_update):
         '''Check if an update is available'''
         try:
 
-            cmd = "curl -s https://api.github.com/repos/hpcnow/froster/releases"
+            cmd = "curl -s https://api.github.com/repos/dirkpetersen/froster/releases"
 
             result = subprocess.run(cmd, shell=True, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -6729,8 +6698,6 @@ class Commands:
                                                    help=textwrap.dedent(f'''
                 Credential manager
             '''), formatter_class=argparse.RawTextHelpFormatter)
-        parser_credentials.add_argument('-c', '--check', dest='crd-check', action='store_true',
-                                        help="Check if there are valid credentials on default routes.")
 
         # ***
 
@@ -6740,8 +6707,8 @@ class Commands:
                 You will need to answer a few questions about your cloud and hpc setup.
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
-        parser_config.add_argument('-a', '--aws', dest='aws', action='store_true',
-                                   help="Setup AWS profile")
+        parser_config.add_argument('-c', '--credentials', dest='credentials', action='store_true',
+                                   help="Setup S3 credentials")
 
         parser_config.add_argument('-m', '--monitor', dest='monitor', action='store_true',
                                    help='Setup froster as a monitoring cronjob ' +
@@ -6753,11 +6720,14 @@ class Commands:
         parser_config.add_argument('-p', '--print', dest='print', action='store_true',
                                    help="Print the current configuration")
 
-        parser_config.add_argument('-3', '--s3', dest='s3', action='store_true',
-                                   help="Setup s3 bucket configuration")
+        parser_config.add_argument('-P', '--provider', dest='provider', action='store_true',
+                                   help="Setup s3 provider configuration")
 
         parser_config.add_argument('-s', '--shared', dest='shared', action='store_true',
                                    help="Setup shared configuration")
+
+        parser_config.add_argument('-S', '--s3', dest='s3', action='store_true',
+                                   help="Setup s3 bucket configuration")
 
         parser_config.add_argument('-l', '--slurm', dest='slurm', action='store_true',
                                    help="Setup slurm configuration")
@@ -6964,20 +6934,20 @@ class Commands:
 
         # ***
 
-        parser_ssh = subparsers.add_parser('ssh', aliases=['scp'],
-                                           help=textwrap.dedent(f'''
-                Login to an AWS EC2 instance to which data was restored with the --aws option
-            '''), formatter_class=argparse.RawTextHelpFormatter)
+        # parser_ssh = subparsers.add_parser('ssh', aliases=['scp'],
+        #                                    help=textwrap.dedent(f'''
+        #         Login to an AWS EC2 instance to which data was restored with the --aws option
+        #     '''), formatter_class=argparse.RawTextHelpFormatter)
 
-        parser_ssh.add_argument('--list', '-l', dest='list', action='store_true', default=False,
-                                help="List running Froster AWS EC2 instances")
+        # parser_ssh.add_argument('--list', '-l', dest='list', action='store_true', default=False,
+        #                         help="List running Froster AWS EC2 instances")
 
-        parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='',
-                                metavar='<hostname>', help='Terminate AWS EC2 instance with this public IP Address.')
+        # parser_ssh.add_argument('--terminate', '-t', dest='terminate', action='store', default='',
+        #                         metavar='<hostname>', help='Terminate AWS EC2 instance with this public IP Address.')
 
-        parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
-                                help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
-                                '')
+        # parser_ssh.add_argument('sshargs', action='store', default=[], nargs='*',
+        #                         help='multiple arguments to ssh/scp such as hostname or user@hostname oder folder' +
+        #                         '')
 
         # ***
 
@@ -7164,59 +7134,81 @@ def main():
         # Init AWS Boto class
         aws = AWSBoto(args, cfg, arch)
 
+        # If no arguments, then print help
+        if len(sys.argv) == 1:
+            cmd.print_help()
+            sys.exit(1)
+        
         # Print current version of froster
         if args.version:
             cmd.print_version()
             sys.exit(0)
 
+        # Print information regarding froster and tools used
         if args.info:
             cmd.print_info()
             sys.exit(0)
 
+        # print the log
         if args.log_print:
             print_log()
             sys.exit(0)
 
+        # Restore folder and files permissions
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
 
-        # Do not allow other commands rather than config if the configuration is not set
-        if not cfg.configuration_done and args.subcmd not in ['config', 'cnf'] and args.subcmd not in ['update', 'upd']:
-            log('\nWARNING: Froster is not full configured yet:')
-            log(f'  user: {"done" if cfg.user_init else "pending"}')
-            log(f'  aws: {"done" if cfg.aws_init else "pending"}')
-            log(f'  s3: {"done" if cfg.s3_init else "pending"}')
-            log(f'  nih: {"done" if cfg.nih_init else "pending"}')
-            log(f'\nRun "froster config --help" for more information.\n')
-            sys.exit(1)
 
-        # call a function for each sub command in our CLI
+        # CLI commands that do NOT need credentials or configuration
         if args.subcmd in ['config', 'cnf']:
             res = cmd.subcmd_config(cfg, aws)
         elif args.subcmd in ['index', 'ind']:
             res = cmd.subcmd_index(cfg, arch)
-        elif args.subcmd in ['archive', 'arc']:
-            res = cmd.subcmd_archive(arch, aws)
-        elif args.subcmd in ['restore', 'rst']:
-            res = cmd.subcmd_restore(arch, aws)
-        elif args.subcmd in ['delete', 'del']:
-            res = cmd.subcmd_delete(arch, aws)
-        elif args.subcmd in ['mount', 'mnt']:
-            res = cmd.subcmd_mount(arch, aws)
         elif args.subcmd in ['umount']:
             res = cmd.subcmd_umount(arch, aws)
-        elif args.subcmd in ['ssh', 'scp']:
-            res = cmd.subcmd_ssh(cfg, aws)
         elif args.subcmd in ['credentials', 'crd']:
             res = cmd.subcmd_credentials(cfg, aws)
         elif args.subcmd in ['update', 'upd']:
             res = cmd.subcmd_update(mute_no_update=False)
-        elif cfg.check_update():
-            # Check if there are updates on froster every X days
-            res = cmd.subcmd_update(mute_no_update=True)
         else:
-            cmd.print_help()
-            sys.exit(1)
+
+            # Check configuration
+            if not cfg.configuration_done:
+                log('\nWARNING: Froster is not full configured yet:')
+                log(f'  user: {"done" if cfg.user_init else "pending"}')
+                log(f'  provider: {"done" if cfg.provider_init else "pending"}')
+                log(f'  credentials: {"done" if cfg.credentials_init else "pending"}')
+                log(f'  s3: {"done" if cfg.s3_init else "pending"}')
+                log(f'  nih: {"done" if cfg.nih_init else "pending"}')
+                log(f'\nRun "froster config --help" for more information.\n')
+                sys.exit(1)
+
+            # Check credentials
+            if not aws.check_credentials(aws_profile=cfg.aws_profile, endpoint=cfg.endpoint):
+                log('Error: Invalid credentials.')
+                log(f'  Profile: {cfg.aws_profile}')
+                log(f'  Provider: {cfg.provider}')
+                log(f'  Endpoint: {cfg.endpoint}\n')
+                sys.exit(1)
+
+            # CLI commands that need credentials and configuration.
+            if args.subcmd in ['archive', 'arc']:
+                res = cmd.subcmd_archive(arch, aws)
+            elif args.subcmd in ['restore', 'rst']:
+                res = cmd.subcmd_restore(arch, aws)
+            elif args.subcmd in ['delete', 'del']:
+                res = cmd.subcmd_delete(arch, aws)
+            elif args.subcmd in ['mount', 'mnt']:
+                res = cmd.subcmd_mount(arch, aws)
+            # elif args.subcmd in ['ssh', 'scp']:
+            #     res = cmd.subcmd_ssh(cfg, aws)
+            else:
+                cmd.print_help()
+                sys.exit(1)
+
+   # Check if there are updates on froster every X days
+        if cfg.check_update():
+            cmd.subcmd_update(mute_no_update=True)
 
         if res:
             sys.exit(0)
@@ -7236,5 +7228,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        print_error()
         sys.exit(1)
