@@ -6304,19 +6304,30 @@ class Commands:
         froster_dir = os.path.dirname(
             os.path.realpath(shutil.which('froster')))
 
-        log(
-            f'froster v{pkg_resources.get_distribution("froster").version}\n')
-        log(f'Tools version:')
-        log(f'    python v{platform.python_version()}')
-        log('    pwalk ', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
-                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
-        log('   ', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
-                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0])
+        log(f'froster')
+        log(f'    version: v{pkg_resources.get_distribution("froster").version}')
+        log(f'    path: {os.path.join(froster_dir, "froster")}')
+    
+        log(f'\npython')
+        log(f'    version: v{platform.python_version()}')
+        log(f'    path: {sys.executable}')
 
-        log(textwrap.dedent(f'''
+        log('\npwalk')
+        log(f'    version:', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
+                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+        log(f'    path: {os.path.join(froster_dir, "pwalk")}')
+
+        log('\nrclone')
+        # Adjusted to split by space and take the second element
+        log(f'    version:', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
+                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0].split('\n')[0].split()[1])
+        log(f'    path: {os.path.join(froster_dir, "rclone")}')
+
+        log(textwrap.dedent(f'''\n
             Authors:
                 Written by Dirk Petersen and Hpc Now Consulting SL
 
+                            
             Repository:
                 https://github.com/dirkpetersen/froster
 
