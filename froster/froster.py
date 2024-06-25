@@ -437,7 +437,7 @@ class ConfigManager:
             os.chmod(directory, 0o2775)
 
             # Iterate over all files and directories in the directory and its subdirectories
-            for root, dirs, files in os.walk(directory):
+            for root, dirs, files in os.walk(directory, topdown=True, onerror=_walkerr):
                 for dir in dirs:
                     dir_path = os.path.join(root, dir)
                     # Change the permissions of the subdirectory to 0o2775
@@ -3519,16 +3519,6 @@ class Archiver:
                     f'\nError: You cannot index folders if there is a dependency between them. Specify only the parent folder.\n')
                 return False
 
-            # Check if we can read & write all files and folders
-            if not self._is_correct_files_folders_permissions(folders, is_recursive=True):
-                log(
-                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                log(
-                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                log(
-                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-                return False
-
             if use_slurm(self.args.noslurm):
                 return self._slurm_cmd(folders=folders, cmd_type='index')
             else:
@@ -3849,16 +3839,6 @@ class Archiver:
                         f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
                     sys.exit(1)
 
-            # Check if we can read & write all files and folders
-            if not self._is_correct_files_folders_permissions(folders, is_recursive):
-                log(
-                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                log(
-                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                log(
-                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-                sys.exit(1)
-
             nih = ''
 
             if is_nih:
@@ -4121,7 +4101,7 @@ class Archiver:
 
                     # Recursive flag set, using os.walk to get all files and folders
 
-                    for root, dirs, files in os.walk(folder, topdown=True):
+                    for root, dirs, files in os.walk(folder, topdown=True, onerror=_walkerr):
 
                         # Check if the user has read and write permissions to the root folder
                         if not self._check_path_permissions(root):
@@ -4581,16 +4561,6 @@ class Archiver:
                         f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
                     return
 
-            # Check if we can read & write all files and folders
-            if not self._is_correct_files_folders_permissions(folders, is_recursive):
-                log(
-                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                log(
-                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                log(
-                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-                return
-
             if use_slurm(self.args.noslurm):
                 self._slurm_cmd(folders=folders, cmd_type='delete')
             else:
@@ -4710,16 +4680,6 @@ class Archiver:
                     log(
                         f'\nError: You cannot restore folders recursively if there is a dependency between them.\n')
                     return
-
-            # Check if we can read & write all files and folders
-            if not self._is_correct_files_folders_permissions(folders, is_recursive):
-                log(
-                    '\nError: Cannot read or write to all files and folders.\n', file=sys.stderr)
-                log(
-                    f'You can check the permissions of the files and folders using the command:', file=sys.stderr)
-                log(
-                    f'    froster archive --permissions "/your/folder/to/archive"\n', file=sys.stderr)
-                return
 
             # Archive locally all folders. If recursive flag set, archive all subfolders too.
             for folder in folders:
@@ -5130,25 +5090,6 @@ class Archiver:
 
             return hsfile
 
-        except Exception:
-            print_error()
-
-    def _walker(self, top, skipdirs=['.snapshot',]):
-        """ returns subset of os.walk  """
-        try:
-            for root, dirs, files in os.walk(top, topdown=True, onerror=self._walkerr):
-                for skipdir in skipdirs:
-                    if skipdir in dirs:
-                        dirs.remove(skipdir)  # don't visit this directory
-                yield root, dirs, files
-        except Exception:
-            print_error()
-
-    def _walkerr(self, oserr):
-        """ error handler for os.walk """
-        try:
-            sys.stderr.write(str(oserr))
-            sys.stderr.write('\n')
         except Exception:
             print_error()
 
@@ -7041,6 +6982,9 @@ class Commands:
 
         return parser
 
+def _walkerr(oserr):
+    """ error handler for os.walk """
+    print_error(str(oserr))
 
 def printdbg(*args, **kwargs):
     if os.environ.get('DEBUG') == '1':
@@ -7146,8 +7090,14 @@ def print_error(msg: str = None):
     log('  Function:', function_name)
     log('  Line:', line)
     log('  Error code:', error_code)
+    log('  Exception type:', exc_type.__name__)
+
     if (msg):
         log('  Error message:', msg)
+
+    if exc_type is PermissionError:
+        log(f'\nYou can check the permissions of the files and folders using the command:')
+        log(f'    froster archive --permissions "/your/folder"')
 
     log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
