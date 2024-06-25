@@ -543,7 +543,7 @@ class ConfigManager:
             # Get the default credentials directory from the config file
             default_credentials_dir = self.__get_configuration_entry(
                 'CREDENTIALS', 'credentials_dir')
-            
+
             if not os.path.exists(default_credentials_dir):
                 default_credentials_dir = None
 
@@ -953,7 +953,7 @@ class ConfigManager:
             else:
                 default_endpoint = self.__get_configuration_entry(
                     'S3', 'endpoint', fallback=None)
-                
+
                 if default_endpoint == '':
                     default_endpoint = None
 
@@ -962,7 +962,7 @@ class ConfigManager:
                     message=f'Enter the {self.provider} endpoint',
                     default=default_endpoint,
                     validate=self.__inquirer_check_required)
-                
+
             # Ensure the endpoint starts with "https://" for IDrive
             if self.provider == "IDrive":
                 if not endpoint.startswith('https://') and not endpoint.startswith('http://'):
@@ -1009,7 +1009,7 @@ class ConfigManager:
             list_of_providers.append('+ Create new provider')
 
             default_provider = self.__get_configuration_entry(
-                    'S3', 'provider', fallback='AWS')
+                'S3', 'provider', fallback='AWS')
 
             if default_provider == '':
                 default_provider = None
@@ -1076,8 +1076,9 @@ class ConfigManager:
             else:
                 # Store aws s3 bucket in the config object
                 self.__set_configuration_entry('S3', 'bucket_name', s3_bucket)
-        
-            default_archive_dir = self.__get_configuration_entry('S3', 'archive_dir', fallback='froster')
+
+            default_archive_dir = self.__get_configuration_entry(
+                'S3', 'archive_dir', fallback='froster')
 
             if default_archive_dir == '':
                 default_archive_dir = 'froster'
@@ -1171,8 +1172,8 @@ class ConfigManager:
             if is_shared:
 
                 default_shared_dir = self.__get_configuration_entry(
-                            'SHARED', 'shared_dir', fallback=None)
-                
+                    'SHARED', 'shared_dir', fallback=None)
+
                 if default_shared_dir == '':
                     default_shared_dir = None
 
@@ -1283,7 +1284,8 @@ class ConfigManager:
             if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
                 # Remove sections from config file in case there is a shared config file
                 self.__remove_sections_from_config_file()
-                log(f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
+                log(
+                    f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
                 return
 
             # Clean up both configuration files
@@ -1666,7 +1668,6 @@ class AWSBoto:
             except Exception:
                 print_error()
                 sys.exit(1)
-
 
     def get_regions(self):
         '''Get the regions for the current session or get default regions.'''
@@ -3673,7 +3674,8 @@ class Archiver:
 
             if froster_md5sum_exists:
                 if is_force:
-                    self.reset_folder(folder_to_archive)
+                    if not self.reset_folder(folder_to_archive):
+                        return
                 else:
                     log(
                         f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
@@ -3701,8 +3703,6 @@ class Archiver:
                 is_froster_allfiles_generated = True
                 log(f'        ...done')
             else:
-                # Something failed, exit
-                log(f'        ...FAILED\n')
                 return
 
             # Generate md5 checksums for all files in the folder
@@ -4370,11 +4370,11 @@ class Archiver:
     def reset_folder(self, directory, recursive=False):
         '''Remove all froster artifacts from a folder and untar small files'''
 
-        for root, dirs, files in self._walker(directory):
-            if not recursive and root != directory:
-                break
-            try:
-                log(f'\nResetting folder {root}...')
+        try:
+            for root, dirs, files in self._walker(directory):
+                if not recursive and root != directory:
+                    break
+                log(f'\nResetting folder "{root}"...')
 
                 if self._is_folder_archived(root.rstrip(os.path.sep)):
                     log(
@@ -4403,8 +4403,11 @@ class Archiver:
 
                 log(f'...folder {root} reset successfully\n')
 
-            except Exception:
-                print_error()
+                return True
+
+        except Exception:
+            print_error()
+            return False
 
     def _is_small_file_in_dir(self, dir, small=1024):
         # Get all files in the specified directory
@@ -4744,7 +4747,6 @@ class Archiver:
                 if self._gen_md5sums(restpath, self.md5sum_restored_filename):
                     log('    ...done')
                 else:
-                    log('    ...FAILED\n')
                     return
 
                 # Get the path to the hashfile
@@ -5005,7 +5007,7 @@ class Archiver:
                 yield root, dirs, files
         except Exception:
             print_error()
-        
+
     def _walkerr(oserr):
         """ error handler for os.walk """
         print_error(str(oserr))
@@ -6268,20 +6270,20 @@ class Commands:
         log(f'\n  froster')
         log(f'    version: v{pkg_resources.get_distribution("froster").version}')
         log(f'    path: {os.path.join(froster_dir, "froster")}')
-    
+
         log(f'\n  python')
         log(f'    version: v{platform.python_version()}')
         log(f'    path: {sys.executable}')
 
         log(f'\n  pwalk')
         log(f'    version:', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
-                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
+                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
         log(f'    path: {os.path.join(froster_dir, "pwalk")}')
 
         log('\n  rclone')
         # Adjusted to split by space and take the second element
         log(f'    version:', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
-                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0].split('\n')[0].split()[1])
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0].split('\n')[0].split()[1])
         log(f'    path: {os.path.join(froster_dir, "rclone")}')
 
         log(textwrap.dedent(f'''\n
@@ -6426,7 +6428,7 @@ class Commands:
                     sys.exit(1)
 
                 # Print the permissions of the provided folders
-                arch.print_paths_rw_info(self.args.folder)
+                arch.print_paths_rw_info(self.args.folders)
                 return
 
             # Check if the user provided the reset argument
@@ -6997,6 +6999,7 @@ class Commands:
 
         return parser
 
+
 def printdbg(*args, **kwargs):
     if os.environ.get('DEBUG') == '1':
 
@@ -7080,6 +7083,7 @@ def print_error(msg: str = None):
         line = get_caller_line()
         file_name = os.path.split(__file__)[1]
         error_code = 1
+
     else:
         # Get the traceback details
         traceback_details = traceback.extract_tb(exc_tb)
@@ -7094,7 +7098,10 @@ def print_error(msg: str = None):
         line = exc_tb.tb_lineno
 
         # Get the error code
-        error_code = exc_value
+        if hasattr(exc_value, 'errno'):
+            error_code = exc_value.errno
+        else:
+            error_code = ''
 
     log('\nError')
     log('  File:', file_name)
@@ -7106,7 +7113,7 @@ def print_error(msg: str = None):
     if (msg):
         log('  Error message:', msg)
 
-    if exc_type is PermissionError:
+    if exc_type is PermissionError or exc_type.__name__ == 'ReadError' or exc_type.__name__ == 'WriteError':
         log(f'\nYou can check the permissions of the files and folders using the command:')
         log(f'    froster archive --permissions "/your/folder"')
 
