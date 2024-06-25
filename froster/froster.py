@@ -6298,40 +6298,48 @@ class Commands:
 
         log(f'froster v{pkg_resources.get_distribution("froster").version}')
 
-    def print_info(self):
+    def print_info(self, cfg: ConfigManager):
         '''Print froster info'''
 
         froster_dir = os.path.dirname(
             os.path.realpath(shutil.which('froster')))
 
-        log(f'froster')
+        log(f'\nFILES')
+        log(f'\n    Configuration: {cfg.config_file}')
+        log(f'    DataBase: {cfg.archive_json}')
+
+        log(f'\nTOOLS')
+        log(f'\n  froster')
         log(f'    version: v{pkg_resources.get_distribution("froster").version}')
         log(f'    path: {os.path.join(froster_dir, "froster")}')
     
-        log(f'\npython')
+        log(f'\n  python')
         log(f'    version: v{platform.python_version()}')
         log(f'    path: {sys.executable}')
 
-        log('\npwalk')
+        log(f'\n  pwalk')
         log(f'    version:', 'v'+subprocess.run([os.path.join(froster_dir, 'pwalk'), '--version'],
                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stderr.split('\n')[0].split()[2])
         log(f'    path: {os.path.join(froster_dir, "pwalk")}')
 
-        log('\nrclone')
+        log('\n  rclone')
         # Adjusted to split by space and take the second element
         log(f'    version:', subprocess.run([os.path.join(froster_dir, 'rclone'), '--version'],
                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.split('\n')[0].split('\n')[0].split()[1])
         log(f'    path: {os.path.join(froster_dir, "rclone")}')
 
         log(textwrap.dedent(f'''\n
-            Authors:
-                Written by Dirk Petersen and Hpc Now Consulting SL
+            AUTHORS
+
+              Written by Dirk Petersen and Hpc Now Consulting SL
 
                             
-            Repository:
-                https://github.com/dirkpetersen/froster
+            REPOSITORY:
 
+              https://github.com/dirkpetersen/froster
 
+            ----------------------------------------------------------------
+ 
             Copyright (C) 2024 Oregon Health & Science University (OSHU)
 
             Licensed under the Apache License, Version 2.0 (the "License");
@@ -7218,7 +7226,7 @@ def main():
 
         # Print information regarding froster and tools used
         if args.info:
-            cmd.print_info()
+            cmd.print_info(cfg)
             sys.exit(0)
 
         # print the log
