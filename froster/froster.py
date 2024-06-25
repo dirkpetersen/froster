@@ -437,7 +437,7 @@ class ConfigManager:
             os.chmod(directory, 0o2775)
 
             # Iterate over all files and directories in the directory and its subdirectories
-            for root, dirs, files in os.walk(directory, topdown=True, onerror=_walkerr):
+            for root, dirs, files in os.walk(directory, topdown=True):
                 for dir in dirs:
                     dir_path = os.path.join(root, dir)
                     # Change the permissions of the subdirectory to 0o2775
@@ -4101,7 +4101,7 @@ class Archiver:
 
                     # Recursive flag set, using os.walk to get all files and folders
 
-                    for root, dirs, files in os.walk(folder, topdown=True, onerror=_walkerr):
+                    for root, dirs, files in os.walk(folder, topdown=True, onerror=self._walkerr):
 
                         # Check if the user has read and write permissions to the root folder
                         if not self._check_path_permissions(root):
@@ -4994,6 +4994,21 @@ class Archiver:
 
         except Exception:
             print_error()
+
+    def _walker(self, top, skipdirs=['.snapshot',]):
+        """ returns subset of os.walk  """
+        try:
+            for root, dirs, files in os.walk(top, topdown=True, onerror=self._walkerr):
+                for skipdir in skipdirs:
+                    if skipdir in dirs:
+                        dirs.remove(skipdir)  # don't visit this directory
+                yield root, dirs, files
+        except Exception:
+            print_error()
+        
+    def _walkerr(oserr):
+        """ error handler for os.walk """
+        print_error(str(oserr))
 
     def _get_newest_file_atime(self, folder_path, folder_atime=None):
         '''Get the atime of the newest file in the folder'''
@@ -6981,10 +6996,6 @@ class Commands:
                                    help="Update rclone to latests version")
 
         return parser
-
-def _walkerr(oserr):
-    """ error handler for os.walk """
-    print_error(str(oserr))
 
 def printdbg(*args, **kwargs):
     if os.environ.get('DEBUG') == '1':
