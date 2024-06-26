@@ -1151,7 +1151,8 @@ class ConfigManager:
                 shared_config_dir_question = [
                     inquirer.Path(
                         'shared_dir', message='Enter the path to a shared config directory',
-                        default=self.__get_configuration_entry('SHARED', 'shared_dir'),
+                        default=self.__get_configuration_entry(
+                            'SHARED', 'shared_dir'),
                         validate=self.__inquirer_check_path_exists)
                 ]
 
@@ -3264,6 +3265,8 @@ class Archiver:
     def _index_locally(self, folder):
         '''Index the given folder for archiving'''
         try:
+            permission_denied_found = False
+
             # move down to class
             daysaged = [5475, 3650, 1825, 1095, 730, 365, 90, 30]
             TiB = 1099511627776
@@ -3287,8 +3290,10 @@ class Archiver:
                         pass
                     else:
                         log(
-                            f'    ...folder already indexed at {folder_hotspot}. Use "-f" or "--force" flag to force indexing.\n')
+                            f'    ...folder already indexed at "{folder_hotspot}". Use "-f" or "--force" flag to force indexing again.\n')
                         return True
+
+            locked_dirs = ''
 
             # Run pwalk on given folder
             with tempfile.NamedTemporaryFile() as pwalk_output:
@@ -3309,6 +3314,48 @@ class Archiver:
                             log(
                                 f"\nError: command {mycmd} failed with returncode {ret.returncode}\n", file=sys.stderr)
                             return False
+
+                        # Get pwalk errors
+                        lines = ret.stderr.decode(
+                            'utf-8', errors='ignore').splitlines()
+
+                        # Get the locked folders
+                        locked_dirs = '\n'.join(
+                            [l for l in lines if "Locked Dir:" in l])
+
+                        # Get the permission denied errors
+                        for item in lines:
+                            if "Permission denied" in item:
+                                log(textwrap.dedent(f'''
+                                WARNING:
+                                    You don't have enough permissions in one or more files or folders.
+                                    First error message with permission denied:
+
+                                        "{item}"
+
+                                    You can check the permissions of the folders using the command:
+                                        froster index --permissions "/your/folder"
+                                '''))
+                                permission_denied_found = True
+                                break
+
+                        if locked_dirs:
+                            log('\n'+locked_dirs)
+                            log(textwrap.dedent(f'''
+                            WARNING:
+                                You cannot access the locked folder(s) 
+                                above, because you don't have permissions to see
+                                their content. You will not be able to archive these
+                                folders until you have the permissions granted.
+                                
+                                You can check the permissions of the folders using the command:
+                                  froster index --permissions "/your/folder"
+                                                
+                            '''))
+
+                            return False
+                        
+                        
 
                         # If pwalkcopy location provided, then copy the pwalk output file to the specified location
                         if self.args.pwalkcopy:
@@ -3446,7 +3493,11 @@ class Archiver:
             # Output decoration print
             log()
 
-            return True
+            if permission_denied_found:
+                return False
+            else:
+                return True
+
         except Exception:
             print_error()
             return False
@@ -3493,13 +3544,14 @@ class Archiver:
             if use_slurm(self.args.noslurm):
                 return self._slurm_cmd(folders=folders, cmd_type='index')
             else:
+                res = True
                 for folder in folders:
-                    res = self._index_locally(folder)
-                    if res == True:
-                        # Everything is ok. Continue with the next folder
-                        pass
-                    else:
-                        return False
+                    if not self._index_locally(folder):
+                        res = False
+                
+                if not res:
+                    log(f'\nWARNING: Some folders may have permission issues or are locked. Check the output above.\n')
+                    return False
 
             return True
 
@@ -6340,6 +6392,12 @@ class Commands:
                 log('\nError: Folder not provided. Check the index command usage with "froster index --help"\n')
                 return False
 
+            # Check if the user provided the permissions argument
+            if self.args.permissions:
+                # Print the permissions of the provided folders
+                arch.print_paths_rw_info(self.args.folders)
+                return
+
             # Check if the provided pwalk copy folder exists
             if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
                 log(f'\nError: Folder "{self.args.pwalkcopy}" does not exist.\n')
@@ -6368,17 +6426,6 @@ class Commands:
                     '\nError: Cannot use both --older and --newer flags together.\n', file=sys.stderr)
                 sys.exit(1)
 
-            # Check if the user provided the permissions argument
-            if self.args.permissions:
-                if not self.args.folders:
-                    log(
-                        '\nError: Folder not provided. Check the archive command usage with "froster archive --help"\n', file=sys.stderr)
-                    sys.exit(1)
-
-                # Print the permissions of the provided folders
-                arch.print_paths_rw_info(self.args.folders)
-                return
-
             # Check if the user provided the reset argument
             if self.args.reset:
                 for folder in self.args.folders:
@@ -6390,7 +6437,7 @@ class Commands:
             else:
                 # Archive the given folders
                 arch.archive(self.args.folders)
-                
+
         except Exception:
             print_error()
 
@@ -6651,7 +6698,7 @@ class Commands:
                     log(f'\nFroster is up to date: froster v{current}\n')
 
             return True
-        
+
         except Exception:
             print_error()
             return False
@@ -6727,6 +6774,9 @@ class Commands:
         parser_index.add_argument('-f', '--force', dest='force', action='store_true',
                                   help="Force indexing")
 
+        parser_index.add_argument('-p', '--permissions', dest='permissions', action='store_true',
+                                  help="Print read and write permissions for the provided folder(s)")
+
         parser_index.add_argument('-y', '--pwalk-copy', dest='pwalkcopy', action='store', default='',
                                   help='Directory where the pwalk CSV file should be copied to.')
 
@@ -6746,9 +6796,6 @@ class Commands:
 
         parser_archive.add_argument('-f', '--force', dest='force', action='store_true',
                                     help="Force archiving of a folder that contains the .froster.md5sum file")
-
-        parser_archive.add_argument('-p', '--permissions', dest='permissions', action='store_true',
-                                    help="Print read and write permissions for the provided folder(s)")
 
         parser_archive.add_argument('-l', '--larger', dest='larger', type=int, action='store', default=0,
                                     help=textwrap.dedent(f'''
@@ -7049,7 +7096,7 @@ def print_error(msg: str = None):
 
     if exc_type is PermissionError or exc_type.__name__ == 'ReadError' or exc_type.__name__ == 'WriteError':
         log(f'\nYou can check the permissions of the files and folders using the command:')
-        log(f'    froster archive --permissions "/your/folder"')
+        log(f'    froster index --permissions "/your/folder"')
 
     log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
