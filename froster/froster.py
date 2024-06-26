@@ -540,12 +540,13 @@ class ConfigManager:
         try:
             log(f'\n*** SET CREDENTIALS ***\n')
 
+            # AWS DIR is the default credentials directory
+            aws_dir = os.path.join(self.home_dir, '.aws')
+            os.makedirs(aws_dir, exist_ok=True, mode=0o775)
+
             # Get the default credentials directory from the config file
             default_credentials_dir = self.__get_configuration_entry(
-                'CREDENTIALS', 'credentials_dir')
-
-            if not os.path.exists(default_credentials_dir):
-                default_credentials_dir = None
+                'CREDENTIALS', 'credentials_dir', fallback=aws_dir)
 
             # Ask user to enter the path to a aws credentials directory
             credentials_dir_question = [
@@ -910,12 +911,10 @@ class ConfigManager:
         try:
             log(f'\n*** SET EMAIL ***\n')
 
-            default_email = self.__get_configuration_entry('USER', 'email')
-
             # Ask the user for their email
             email = inquirer.text(
                 message="Enter your email",
-                default=default_email,
+                default=self.__get_configuration_entry('USER', 'email'),
                 validate=self.__inquirer_check_email_format)
 
             # Print for a new line when prompting
@@ -946,16 +945,10 @@ class ConfigManager:
             elif self.provider == 'GCS':
                 endpoint = 'https://storage.googleapis.com'
             else:
-                default_endpoint = self.__get_configuration_entry(
-                    'S3', 'endpoint', fallback=None)
-
-                if default_endpoint == '':
-                    default_endpoint = None
-
                 # Get the user answer
                 endpoint = inquirer.text(
                     message=f'Enter the {self.provider} endpoint',
-                    default=default_endpoint,
+                    default=self.__get_configuration_entry('S3', 'endpoint'),
                     validate=self.__inquirer_check_required)
 
             # Ensure the endpoint starts with "https://" for IDrive
@@ -1003,16 +996,11 @@ class ConfigManager:
             list_of_providers = PROVIDERS_LIST
             list_of_providers.append('+ Create new provider')
 
-            default_provider = self.__get_configuration_entry(
-                'S3', 'provider', fallback='AWS')
-
-            if default_provider == '':
-                default_provider = None
-
             # Get the user answer
             provider = inquirer.list_input(
                 "Choose your s3 provider",
-                default=default_provider,
+                default=self.__get_configuration_entry(
+                    'S3', 'provider', fallback='AWS'),
                 choices=list_of_providers)
 
             if provider == '+ Create new provider':
@@ -1072,16 +1060,11 @@ class ConfigManager:
                 # Store aws s3 bucket in the config object
                 self.__set_configuration_entry('S3', 'bucket_name', s3_bucket)
 
-            default_archive_dir = self.__get_configuration_entry(
-                'S3', 'archive_dir', fallback='froster')
-
-            if default_archive_dir == '':
-                default_archive_dir = 'froster'
-
             # Get user answer
             archive_dir = inquirer.text(
                 message='Enter the directory name inside S3 bucket',
-                default=default_archive_dir,
+                default=self.__get_configuration_entry(
+                    'S3', 'archive_dir', fallback='froster'),
                 validate=self.__inquirer_check_required)
 
             # Print newline after this prompt
@@ -1092,9 +1075,6 @@ class ConfigManager:
 
             default_storage_class = self.__get_configuration_entry(
                 'S3', 'storage_class', fallback='DEEP_ARCHIVE')
-
-            if default_storage_class == '':
-                default_storage_class = None
 
             if self.provider == 'AWS':
                 storage_class = inquirer.list_input(
@@ -1166,18 +1146,12 @@ class ConfigManager:
             # and check if we need to move cfg.archive_json_file_name and configuration to the shared directory
             if is_shared:
 
-                default_shared_dir = self.__get_configuration_entry(
-                    'SHARED', 'shared_dir', fallback=None)
-
-                if default_shared_dir == '':
-                    default_shared_dir = None
-
                 # Ask user to enter the path to a shared config directory
                 # TODO: make this inquiring in shortchut mode once this PR is merged: https://github.com/magmax/python-inquirer/pull/543
                 shared_config_dir_question = [
                     inquirer.Path(
                         'shared_dir', message='Enter the path to a shared config directory',
-                        default=default_shared_dir,
+                        default=self.__get_configuration_entry('SHARED', 'shared_dir'),
                         validate=self.__inquirer_check_path_exists)
                 ]
 
@@ -1352,14 +1326,14 @@ class ConfigManager:
                 slurm_walltime_days = inquirer.text(
                     message=f"Set the Slurm --time (days) for froster jobs",
                     default=self.__get_configuration_entry(
-                        'SLURM', 'slurm_walltime_days', fallback='7'),
+                        'SLURM', 'slurm_walltime_days', is_int=True, fallback=7),
                     validate=self.__inquirer_check_is_number)
 
                 # Get user answer
                 slurm_walltime_hours = inquirer.text(
                     message=f"Set the Slurm --time (hours) for froster jobs",
                     default=self.__get_configuration_entry(
-                        'SLURM', 'slurm_walltime_days', fallback='0'),
+                        'SLURM', 'slurm_walltime_days', is_int=True, fallback=0),
                     validate=self.__inquirer_check_is_number)
 
                 se = Slurm(args, self)
@@ -1479,8 +1453,8 @@ class AWSBoto:
 
             if hasattr(cfg, 'profile') and hasattr(cfg, 'endpoint'):
                 self.set_session(profile_name=cfg.profile,
-                                region=cfg.get_region(cfg.profile),
-                                endopoint_url=cfg.endpoint)
+                                 region=cfg.get_region(cfg.profile),
+                                 endopoint_url=cfg.endpoint)
 
         except Exception:
             print_error()
