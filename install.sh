@@ -292,6 +292,9 @@ install_pipx() {
     python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
 
     # Ensure  ~/.local/bin is in the PATH
+    export PATH="$HOME/.local/bin:$PATH"
+
+    # Ensure  ~/.local/bin is in the PATH
     pipx ensurepath >/dev/null 2>&1
 
     echo "...pipx installed"
