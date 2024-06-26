@@ -72,33 +72,83 @@ spinner() {
     fi
 }
 
+
 #################
 ### FUNCTIONS ###
 #################
 
 # Check all needed apt dependencies to install froster
-check_apt_dependencies() {
+check_dependencies() {
 
     # Check if curl is installed
     if [[ -z $(command -v curl) ]]; then
         echo "Error: curl is not installed."
         echo
-        echo "In most linux distros you can install the latest version of curl by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y curl"
+        echo "Please install curl by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y curl"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y curl"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
 
-    # Check if pipx is installed
-    if [[ -z $(command -v pipx) ]]; then
-        echo "Error: pipx is not installed."
+    # Check if python3 is installed
+    if [[ -z $(command -v python3) ]]; then
+        echo "Error: python3 is not installed."
         echo
-        echo "Please install pipx"
-        echo "In most linux distros you can install the latest version of pipx by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y pipx"
-        echo "  pipx ensurepath"
+        echo "Please install python3 by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y python3"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y python3"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
+        echo
+        exit 1
+    fi
+
+    # Check python3 version is 3.8 or higher
+    python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+    if [[ $(echo "$python_version >= 3.8" | bc) -eq 0 ]]; then
+        echo "Error: python3 version is $python_version, but froster requires Python 3.8 or higher."
+        echo
+        echo "Please install Python 3.8 or higher by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y python3"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y python3"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
+        echo
+        exit 1
+    fi
+
+    # Check if pip3 is installed
+    if [[ -z $(command -v pip3) ]]; then
+        echo "Error: pip3 is not installed."
+        echo
+        echo "Please install pip3 by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y python3-pip"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y python3-pip"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -108,21 +158,15 @@ check_apt_dependencies() {
         echo "Error: gcc is not installed."
         echo
         echo "Please install gcc"
-        echo "In most linux distros you can install the latest version of gcc by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y gcc"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y gcc"
         echo
-        exit 1
-    fi
-
-    # Check if lib32gcc-s1 is installed (pwalk compilation requirement)
-    if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
-        echo "Error: lib32gcc-s1 is not installed."
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y gcc"
         echo
-        echo "Please install lib32gcc-s1"
-        echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y lib32gcc-s1"
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -132,9 +176,15 @@ check_apt_dependencies() {
         echo "Error: unzip is not installed."
         echo
         echo "Please install unzip"
-        echo "In most linux distros you can install the latest version of unzip by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y unzip"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y unzip"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y unzip"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -144,9 +194,15 @@ check_apt_dependencies() {
         echo "Error: fusermount3 is not installed."
         echo
         echo "Please install fuse3"
-        echo "In most linux distros you can install the latest version of fuse3 by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y fuse3"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y fuse3"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y fuse3"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -225,10 +281,18 @@ backup_old_installation() {
     rm -f ${HOME}/.local/bin/s3-restore.py
 }
 
-install_froster() {
+install_pipx() {
 
-    # Ensure  ~/.local/bin is in the PATH
-    pipx ensurepath >/dev/null 2>&1
+    echo
+    echo "Installing pipx..."
+
+    # Install or upgrade pipx
+    python3 -m pip install --user --upgrade pipx
+
+    echo "...pipx installed"
+}
+
+install_froster() {
 
     echo
     echo "Installing latest version of froster..."
@@ -381,13 +445,19 @@ install_rclone() {
 ############
 
 # Check linux package dependencies
-check_apt_dependencies
+check_dependencies
 
 # Set rw permissions on anyone in file's group
 umask 0002
 
 # Backup old installation (if any)
 backup_old_installation
+
+# Install pipx
+install_pipx
+
+# Ensure  ~/.local/bin is in the PATH
+export PATH="$HOME/.local/bin:$PATH"
 
 # Install froster
 install_froster
@@ -405,9 +475,4 @@ version=$(${froster_dir}/froster -v | awk '{print $2}')
 # Print success message
 echo
 echo "froster $version has been successfully installed!"
-
-# Print post-installation instructions
-echo
-echo "You will need to open a new terminal or refresh your current terminal session by running command:"
-echo "  source ~/.bashrc"
 echo
