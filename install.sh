@@ -25,9 +25,12 @@ catch() {
 
         echo
         echo "Rolling back installation..."
+        
+        pipx_path=$(get_dir "pipx")
+        ${pipx_path}/pipx ensurepath
 
-        if pipx list >/dev/null 2>&1 | grep 'froster'; then
-            pipx uninstall froster
+        if ${pipx_path}/pipx list | grep 'froster' >/dev/null 2>&1; then
+            ${pipx_path}/pipx uninstall froster
         fi
 
         # Restore (if any) backed up froster config files
@@ -351,6 +354,9 @@ get_dir() {
 
     elif [ -f "${HOME}/.local/pipx/venvs/$1/bin/$1" ]; then
         dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/$1/bin/$1")")
+
+    elif [ -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1")")
 
     elif [ -f "${PIPX_HOME}/venvs/$1/bin/$1" ]; then
         dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/$1/bin/$1")")
