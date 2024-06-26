@@ -6686,8 +6686,11 @@ class Commands:
                 if not mute_no_update:
                     log(f'\nFroster is up to date: froster v{current}\n')
 
+            return True
+        
         except Exception:
             print_error()
+            return False
 
     def parse_arguments(self):
         '''Gather and parse command-line arguments'''
@@ -7186,6 +7189,8 @@ def main():
         elif args.subcmd in ['credentials', 'crd']:
             res = cmd.subcmd_credentials(cfg, aws)
         elif args.subcmd in ['update', 'upd']:
+            # Calling check_update as we are checking for udpates (used to store the last timestamp check)
+            cfg.check_update()
             res = cmd.subcmd_update(mute_no_update=False)
         else:
 
