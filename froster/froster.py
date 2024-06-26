@@ -912,11 +912,6 @@ class ConfigManager:
 
             default_email = self.__get_configuration_entry('USER', 'email')
 
-            # Email pattern
-            pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-            if re.match(pattern, default_email) is None:
-                default_email = None
-
             # Ask the user for their email
             email = inquirer.text(
                 message="Enter your email",
