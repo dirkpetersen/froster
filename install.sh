@@ -309,7 +309,7 @@ install_pipx() {
         echo
         echo "Upgrading pipx..."
         
-        pipx upgrade pipx &
+        pipx upgrade pipx >/dev/null 2>&1 &
         spinner $!
 
         echo "...pipx upgraded"
