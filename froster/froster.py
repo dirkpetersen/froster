@@ -1482,9 +1482,10 @@ class AWSBoto:
             self.cfg = cfg
             self.arch = arch
 
-            self.set_session(profile_name=cfg.profile,
-                             region=cfg.get_region(cfg.profile),
-                             endopoint_url=cfg.endpoint)
+            if hasattr(cfg, 'profile') and hasattr(cfg, 'endpoint'):
+                self.set_session(profile_name=cfg.profile,
+                                region=cfg.get_region(cfg.profile),
+                                endopoint_url=cfg.endpoint)
 
         except Exception:
             print_error()

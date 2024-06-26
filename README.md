@@ -16,8 +16,9 @@ sudo apt-get install -y curl pipx gcc lib32gcc-s1 unzip fuse3
 ### On RHEL 
 
 ```
-sudo yum update
-sudo yum install -y curl pipx gcc lib32gcc-s1 unzip fuse3 python3-devel
+sudo dnf update
+sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl pipx unzip fuse3 python3-devel
 ```
 
 ### On HPC machine
