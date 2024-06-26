@@ -27,10 +27,10 @@ catch() {
         echo "Rolling back installation..."
         
         pipx_path=$(get_dir "pipx")
-        ${pipx_path}/pipx ensurepath
+        ${pipx_path}/pipx ensurepath >/dev/null 2>&1
 
         if ${pipx_path}/pipx list | grep 'froster' >/dev/null 2>&1; then
-            ${pipx_path}/pipx uninstall froster
+            ${pipx_path}/pipx uninstall froster >/dev/null 2>&1
         fi
 
         # Restore (if any) backed up froster config files
@@ -316,11 +316,11 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pipx install . 
+        pipx install . &
         spinner $!
     else
         echo "  Installing from PyPi package repository"
-        pipx install froster
+        pipx install froster &
         spinner $!
     fi
 
@@ -355,14 +355,14 @@ get_dir() {
     elif [ -f "${HOME}/.local/pipx/venvs/$1/bin/$1" ]; then
         dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/$1/bin/$1")")
 
-    elif [ -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1" ]; then
-        dir=$(dirname "$(readlink -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1")")
-
     elif [ -f "${PIPX_HOME}/venvs/$1/bin/$1" ]; then
         dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/$1/bin/$1")")
 
     elif [ -f "${HOME}/.local/bin/$1" ]; then
         dir=$(dirname "$(readlink -f "${HOME}/.local/bin/$1")")
+
+    elif [ -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1")")
 
     elif [ -f "/usr/local/bin/$1" ]; then
         dir=$(dirname "$(readlink -f "/usr/local/bin/$1")")
