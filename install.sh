@@ -22,7 +22,6 @@ trap 'catch $? $BASH_COMMAND' EXIT
 catch() {
     if [ "$1" != "0" ]; then
         # error handling goes here
-        echo "Error: $2: exit code $1"
 
         echo
         echo "Rolling back installation..."
@@ -72,33 +71,85 @@ spinner() {
     fi
 }
 
+
 #################
 ### FUNCTIONS ###
 #################
 
 # Check all needed apt dependencies to install froster
-check_apt_dependencies() {
+check_dependencies() {
 
     # Check if curl is installed
     if [[ -z $(command -v curl) ]]; then
         echo "Error: curl is not installed."
         echo
-        echo "In most linux distros you can install the latest version of curl by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y curl"
+        echo "Please install curl by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y curl"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y curl"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
 
-    # Check if pipx is installed
-    if [[ -z $(command -v pipx) ]]; then
-        echo "Error: pipx is not installed."
+    # Check if python3 is installed
+    if [[ -z $(command -v python3) ]]; then
+        echo "Error: python3 is not installed."
         echo
-        echo "Please install pipx"
-        echo "In most linux distros you can install the latest version of pipx by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y pipx"
-        echo "  pipx ensurepath"
+        echo "Please install python3 by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y python3"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y python3"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
+        echo
+        exit 1
+    fi
+
+    # Check python3 version is 3.8 or higher
+    python3_version=$(python3 --version | awk '{print $2}')
+    required_version="3.8"
+
+    if [[ $(printf '%s\n' "$required_version" "$python3_version" | sort -V | head -n1) != "$required_version" ]]; then 
+        echo "Error: python3 version is $python3_version, but froster requires Python 3.8 or higher."
+        echo
+        echo "Please install Python 3.8 or higher by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y python3"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y python3"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
+        echo
+        exit 1
+    fi
+
+    # Check if pip3 is installed
+    if [[ -z $(command -v pip3) ]]; then
+        echo "Error: pip3 is not installed."
+        echo
+        echo "Please install pip3 by running the following commands:"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y python3-pip"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y python3-pip"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -108,21 +159,15 @@ check_apt_dependencies() {
         echo "Error: gcc is not installed."
         echo
         echo "Please install gcc"
-        echo "In most linux distros you can install the latest version of gcc by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y gcc"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y gcc"
         echo
-        exit 1
-    fi
-
-    # Check if lib32gcc-s1 is installed (pwalk compilation requirement)
-    if [[ $(dpkg -l lib32gcc-s1 >/dev/null 2>&1) ]]; then
-        echo "Error: lib32gcc-s1 is not installed."
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y gcc"
         echo
-        echo "Please install lib32gcc-s1"
-        echo "In most linux distros you can install the latest version of lib32gcc-s1 by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y lib32gcc-s1"
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -132,9 +177,15 @@ check_apt_dependencies() {
         echo "Error: unzip is not installed."
         echo
         echo "Please install unzip"
-        echo "In most linux distros you can install the latest version of unzip by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y unzip"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y unzip"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y unzip"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -144,9 +195,15 @@ check_apt_dependencies() {
         echo "Error: fusermount3 is not installed."
         echo
         echo "Please install fuse3"
-        echo "In most linux distros you can install the latest version of fuse3 by running the following commands:"
-        echo "  sudo apt update"
-        echo "  sudo apt install -y fuse3"
+        echo "  On Debian / Ubuntu based systems:"
+        echo "    apt update"
+        echo "    apt install -y fuse3"
+        echo
+        echo "  On Fedora / CentOS / RHEL based systems:"
+        echo "    dnf update"
+        echo "    dnf install -y fuse3"
+        echo
+        echo "  Other HPC based systems: Contact your administrator to install this package."
         echo
         exit 1
     fi
@@ -225,10 +282,25 @@ backup_old_installation() {
     rm -f ${HOME}/.local/bin/s3-restore.py
 }
 
-install_froster() {
+install_pipx() {
 
-    # Ensure  ~/.local/bin is in the PATH
-    pipx ensurepath >/dev/null 2>&1
+    echo
+    echo "Installing pipx..."
+
+    # Install or upgrade pipx
+    python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
+
+    # Ensure path for pipx
+    pipx_path=$(get_dir "pipx")
+    ${pipx_path}/pipx ensurepath >/dev/null 2>&1
+
+    # Ensure  ~/.local/bin is in the PATH for this session
+    export PATH="$HOME/.local/bin:$PATH"
+
+    echo "...pipx installed"
+}
+
+install_froster() {
 
     echo
     echo "Installing latest version of froster..."
@@ -264,35 +336,37 @@ install_froster() {
     echo "...froster installed"
 }
 
-get_froster_dir() {
-    local froster_dir
 
-    if [ -f "${XDG_DATA_HOME}/pipx/venvs/froster/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${XDG_DATA_HOME}/pipx/venvs/froster/bin/froster")")
+get_dir() {
+    local dir
 
-    elif [ -f "${HOME}/.local/pipx/venvs/froster/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/froster/bin/froster")")
+    if [ -f "${XDG_DATA_HOME}/pipx/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${XDG_DATA_HOME}/pipx/venvs/$1/bin/$1")")
 
-    elif [ -f "${PIPX_HOME}/venvs/froster/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/froster/bin/froster")")
+    elif [ -f "${HOME}/.local/pipx/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/$1/bin/$1")")
 
-    elif [ -f "${HOME}/.local/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${HOME}/.local/bin/froster")")
+    elif [ -f "${PIPX_HOME}/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/$1/bin/$1")")
 
-    elif [ -f "/usr/local/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "/usr/local/bin/froster")")
+    elif [ -f "${HOME}/.local/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${HOME}/.local/bin/$1")")
+
+    elif [ -f "/usr/local/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "/usr/local/bin/$1")")
+
     else
-        froster_path=$(which froster)
+        $dir_path=$(which $1)
 
-        if [ -n "$froster_path" ]; then
-            froster_dir=$(dirname "$(readlink -f "$froster_path")")
+        if [ -n "$dir_path" ]; then
+            dir=$(dirname "$(readlink -f "$dir_path")")
         else
-            echo "Error: pipx installation path not found."
+            echo "Error: $1 directory path not found."
             exit 1
         fi
     fi
 
-    echo "$froster_dir"
+    echo "$dir"
 }
 
 install_pwalk() {
@@ -320,7 +394,7 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-    froster_dir=$(get_froster_dir)
+    froster_dir=$(get_dir "froster")
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
@@ -366,7 +440,7 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-    froster_dir=$(get_froster_dir)
+    froster_dir=$(get_dir "froster")
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
 
     # Remove the downloaded zip file
@@ -381,13 +455,16 @@ install_rclone() {
 ############
 
 # Check linux package dependencies
-check_apt_dependencies
+check_dependencies
 
 # Set rw permissions on anyone in file's group
 umask 0002
 
 # Backup old installation (if any)
 backup_old_installation
+
+# Install pipx
+install_pipx
 
 # Install froster
 install_froster
@@ -399,12 +476,13 @@ install_pwalk
 install_rclone
 
 # Get the installed froster version
-froster_dir=$(get_froster_dir)
+froster_dir=$(get_dir "froster")
 version=$(${froster_dir}/froster -v | awk '{print $2}')
 
 # Print success message
 echo
 echo "froster $version has been successfully installed!"
+echo
 
 # Print post-installation instructions
 echo
