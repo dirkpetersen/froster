@@ -22,7 +22,6 @@ trap 'catch $? $BASH_COMMAND' EXIT
 catch() {
     if [ "$1" != "0" ]; then
         # error handling goes here
-        echo "Error: $2: exit code $1"
 
         echo
         echo "Rolling back installation..."
@@ -291,11 +290,12 @@ install_pipx() {
     # Install or upgrade pipx
     python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
 
-    # Ensure  ~/.local/bin is in the PATH
-    export PATH="$HOME/.local/bin:$PATH"
+    # Ensure path for pipx
+    pipx_path=$(get_dir "pipx")
+    ${pipx_path}/pipx ensurepath >/dev/null 2>&1
 
-    # Ensure  ~/.local/bin is in the PATH
-    pipx ensurepath >/dev/null 2>&1
+    # Ensure  ~/.local/bin is in the PATH for this session
+    export PATH="$HOME/.local/bin:$PATH"
 
     echo "...pipx installed"
 }
@@ -336,35 +336,37 @@ install_froster() {
     echo "...froster installed"
 }
 
-get_froster_dir() {
-    local froster_dir
 
-    if [ -f "${XDG_DATA_HOME}/pipx/venvs/froster/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${XDG_DATA_HOME}/pipx/venvs/froster/bin/froster")")
+get_dir() {
+    local dir
 
-    elif [ -f "${HOME}/.local/pipx/venvs/froster/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/froster/bin/froster")")
+    if [ -f "${XDG_DATA_HOME}/pipx/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${XDG_DATA_HOME}/pipx/venvs/$1/bin/$1")")
 
-    elif [ -f "${PIPX_HOME}/venvs/froster/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/froster/bin/froster")")
+    elif [ -f "${HOME}/.local/pipx/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/$1/bin/$1")")
 
-    elif [ -f "${HOME}/.local/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "${HOME}/.local/bin/froster")")
+    elif [ -f "${PIPX_HOME}/venvs/$1/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/$1/bin/$1")")
 
-    elif [ -f "/usr/local/bin/froster" ]; then
-        froster_dir=$(dirname "$(readlink -f "/usr/local/bin/froster")")
+    elif [ -f "${HOME}/.local/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "${HOME}/.local/bin/$1")")
+
+    elif [ -f "/usr/local/bin/$1" ]; then
+        dir=$(dirname "$(readlink -f "/usr/local/bin/$1")")
+
     else
-        froster_path=$(which froster)
+        $dir_path=$(which $1)
 
-        if [ -n "$froster_path" ]; then
-            froster_dir=$(dirname "$(readlink -f "$froster_path")")
+        if [ -n "$dir_path" ]; then
+            dir=$(dirname "$(readlink -f "$dir_path")")
         else
-            echo "Error: pipx installation path not found."
+            echo "Error: $1 directory path not found."
             exit 1
         fi
     fi
 
-    echo "$froster_dir"
+    echo "$dir"
 }
 
 install_pwalk() {
@@ -392,7 +394,7 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
-    froster_dir=$(get_froster_dir)
+    froster_dir=$(get_dir "froster")
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
@@ -438,7 +440,7 @@ install_rclone() {
 
     # Move rclone to froster's binaries folder
     echo "    Moving rclone to froster's binaries folder"
-    froster_dir=$(get_froster_dir)
+    froster_dir=$(get_dir "froster")
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
 
     # Remove the downloaded zip file
@@ -474,7 +476,7 @@ install_pwalk
 install_rclone
 
 # Get the installed froster version
-froster_dir=$(get_froster_dir)
+froster_dir=$(get_dir "froster")
 version=$(${froster_dir}/froster -v | awk '{print $2}')
 
 # Print success message

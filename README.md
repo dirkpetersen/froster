@@ -10,7 +10,7 @@ Froster is a user-friendly archiving tool for teams that move data between highe
 
 ```
 sudo apt update
-sudo apt install -y curl python3 python3-pip python3-dev gcc lib32gcc-s1 unzip fuse3
+sudo apt install -y curl python3 python3-pip python3-venv python3-dev gcc lib32gcc-s1 unzip fuse3
 ```
 
 ### On Fedora / CentOS / RHEL
@@ -18,14 +18,14 @@ sudo apt install -y curl python3 python3-pip python3-dev gcc lib32gcc-s1 unzip f
 ```
 sudo dnf update
 sudo dnf groupinstall -y "Development Tools"
-sudo dnf install -y curl python3 python3-pip python3-devel unzip fuse3
+sudo dnf install -y curl python3 python3-pip python3-venv python3-devel unzip fuse3
 ```
 
 ### On HPC machine
 
 Please contact your administrator to install these packages:
 ```
-curl python3 python3-pip python3.xx-devel gcc lib32gcc-s1 unzip fuse3
+curl python3 python3-pip python3-venv python3.xx-devel gcc lib32gcc-s1 unzip fuse3
 ```
 
 </br>
