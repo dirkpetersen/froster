@@ -291,6 +291,9 @@ install_pipx() {
     # Install or upgrade pipx
     python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
 
+    # Ensure  ~/.local/bin is in the PATH
+    pipx ensurepath >/dev/null 2>&1
+
     echo "...pipx installed"
 }
 
@@ -457,9 +460,6 @@ backup_old_installation
 
 # Install pipx
 install_pipx
-
-# Ensure  ~/.local/bin is in the PATH
-export PATH="$HOME/.local/bin:$PATH"
 
 # Install froster
 install_froster
