@@ -16,9 +16,9 @@ sudo apt install -y curl python3 python3-pip python3-venv python3-dev gcc lib32g
 ### On Fedora / CentOS / RHEL
 
 ```
-sudo dnf update
+sudo dnf update -y
 sudo dnf groupinstall -y "Development Tools"
-sudo dnf install -y curl python3 python3-pip python3-venv python3-devel unzip fuse3
+sudo dnf install -y curl python3 python3-pip python3-devel unzip fuse3
 ```
 
 ### On HPC machine

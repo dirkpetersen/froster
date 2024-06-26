@@ -294,11 +294,11 @@ install_pipx() {
     if [[ -z $(command -v pipx) ]]; then
 
         # Install or upgrade pipx
-        python3 -m pip install --user --upgrade pipx
+        python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
 
         # Ensure path for pipx
         pipx_path=$(get_dir "pipx")
-        ${pipx_path}/pipx ensurepath
+        ${pipx_path}/pipx ensurepath >/dev/null 2>&1
 
         # Ensure  ~/.local/bin is in the PATH for this session
         export PATH="$HOME/.local/bin:$PATH"
@@ -306,6 +306,13 @@ install_pipx() {
         echo "...pipx installed"
     else
         echo "...pipx already installed"
+        echo
+        echo "Upgrading pipx..."
+        
+        pipx upgrade pipx &
+        spinner $!
+
+        echo "...pipx upgraded"
     fi
 }
 
@@ -316,11 +323,11 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pipx install . &
+        pipx install . >/dev/null 2>&1 &
         spinner $!
     else
         echo "  Installing from PyPi package repository"
-        pipx install froster &
+        pipx install froster >/dev/null 2>&1 &
         spinner $!
     fi
 
