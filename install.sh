@@ -27,7 +27,7 @@ catch() {
         echo "Rolling back installation..."
 
         if pipx list >/dev/null 2>&1 | grep 'froster'; then
-            pipx uninstall froster >/dev/null 2>&1
+            pipx uninstall froster
         fi
 
         # Restore (if any) backed up froster config files
@@ -291,11 +291,11 @@ install_pipx() {
     if [[ -z $(command -v pipx) ]]; then
 
         # Install or upgrade pipx
-        python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
+        python3 -m pip install --user --upgrade pipx
 
         # Ensure path for pipx
         pipx_path=$(get_dir "pipx")
-        ${pipx_path}/pipx ensurepath >/dev/null 2>&1
+        ${pipx_path}/pipx ensurepath
 
         # Ensure  ~/.local/bin is in the PATH for this session
         export PATH="$HOME/.local/bin:$PATH"
@@ -313,11 +313,11 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pipx install . >/dev/null 2>&1 &
+        pipx install . 
         spinner $!
     else
         echo "  Installing from PyPi package repository"
-        pipx install froster >/dev/null 2>&1 &
+        pipx install froster
         spinner $!
     fi
 
