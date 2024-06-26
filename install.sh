@@ -483,3 +483,9 @@ version=$(${froster_dir}/froster -v | awk '{print $2}')
 echo
 echo "froster $version has been successfully installed!"
 echo
+
+# Print post-installation instructions
+echo
+echo "You will need to open a new terminal or refresh your current terminal session by running command:"
+echo "  source ~/.bashrc"
+echo
