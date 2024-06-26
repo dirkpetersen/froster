@@ -1026,11 +1026,11 @@ class ConfigManager:
             s3_buckets = aws.get_buckets()
 
             # Add an option to create a new bucket
-            s3_buckets.append('+ Create new bucket')
+            s3_buckets.insert(0, '+ Create new bucket')
 
             # Ask user to choose an existing aws s3 bucket or create a new one
             s3_bucket = inquirer.list_input(
-                "Choose your aws s3 bucket",
+                "Choose your s3 bucket",
                 default=self.__get_configuration_entry('S3', 'bucket_name'),
                 choices=s3_buckets)
 
@@ -1039,7 +1039,7 @@ class ConfigManager:
 
                 # Get new bucket name
                 new_bucket_name = inquirer.text(
-                    message='Enter new bucket name (default: froster-...)',
+                    message='Enter new bucket name',
                     default='froster-',
                     validate=self.__inquirer_check_required)
 
