@@ -540,14 +540,13 @@ class ConfigManager:
         try:
             log(f'\n*** SET CREDENTIALS ***\n')
 
+            # AWS DIR is the default credentials directory
+            aws_dir = os.path.join(self.home_dir, '.aws')
+            os.makedirs(aws_dir, exist_ok=True, mode=0o775)
+
             # Get the default credentials directory from the config file
             default_credentials_dir = self.__get_configuration_entry(
-                'CREDENTIALS', 'credentials_dir')
-
-            # Check if the default credentials directory exists. If not, create ~/.aws as default
-            if default_credentials_dir and not os.path.exists(default_credentials_dir):
-                default_credentials_dir = os.path.join(self.home_dir, '.aws')
-                os.makedirs(default_credentials_dir, exist_ok=True, mode=0o775) 
+                'CREDENTIALS', 'credentials_dir', fallback=aws_dir)
 
             # Ask user to enter the path to a aws credentials directory
             credentials_dir_question = [
