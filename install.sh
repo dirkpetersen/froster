@@ -289,7 +289,7 @@ install_pipx() {
     echo "Installing pipx..."
 
     # Install or upgrade pipx
-    python3 -m pip install --user --upgrade pipx
+    python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
 
     echo "...pipx installed"
 }
