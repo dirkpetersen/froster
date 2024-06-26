@@ -323,7 +323,7 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pipx install . >/dev/null 2>&1 &
+        pip install -e . >/dev/null 2>&1 &
         spinner $!
     else
         echo "  Installing from PyPi package repository"
@@ -375,7 +375,7 @@ get_dir() {
         dir=$(dirname "$(readlink -f "/usr/local/bin/$1")")
 
     else
-        $dir_path=$(which $1)
+        dir_path=$(which $1)
 
         if [ -n "$dir_path" ]; then
             dir=$(dirname "$(readlink -f "$dir_path")")
