@@ -327,8 +327,6 @@ install_froster() {
     echo
     echo "Installing latest version of froster..."
 
-    echo $PATH
-
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
         pip install -e . >/dev/null 2>&1 &
@@ -338,6 +336,8 @@ install_froster() {
         pipx install froster >/dev/null 2>&1 &
         spinner $!
     fi
+
+    echo "  Installation path: $(which froster)"
 
     # Keep the config.ini file (if any)
     if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
