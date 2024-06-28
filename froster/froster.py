@@ -5776,7 +5776,7 @@ class Slurm:
             log(f'  ID: {jobid}')
             log(f'  Type: {cmd_type}')
             log(f'  Check status: "squeue -j {jobid}"')
-            log(f'  Check output: "cat {output_dir}-{jobid}.out"')
+            log(f'  Check output: "tail -n 100 -f {output_dir}-{jobid}.out"')
             log(f'  Cancel the job: "scancel {jobid}"\n')
 
             return True
