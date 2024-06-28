@@ -354,35 +354,16 @@ install_froster() {
 
 
 get_dir() {
-    local dir
+   
+    echo "Looking for $1 directory"
 
-    if [ -f "${XDG_DATA_HOME}/pipx/venvs/$1/bin/$1" ]; then
-        dir=$(dirname "$(readlink -f "${XDG_DATA_HOME}/pipx/venvs/$1/bin/$1")")
+    dir_path=$(which $1)
 
-    elif [ -f "${HOME}/.local/pipx/venvs/$1/bin/$1" ]; then
-        dir=$(dirname "$(readlink -f "${HOME}/.local/pipx/venvs/$1/bin/$1")")
-
-    elif [ -f "${PIPX_HOME}/venvs/$1/bin/$1" ]; then
-        dir=$(dirname "$(readlink -f "${PIPX_HOME}/venvs/$1/bin/$1")")
-
-    elif [ -f "${HOME}/.local/bin/$1" ]; then
-        dir=$(dirname "$(readlink -f "${HOME}/.local/bin/$1")")
-
-    elif [ -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1" ]; then
-        dir=$(dirname "$(readlink -f "${HOME}/.local/share/pipx/venvs/$1/bin/$1")")
-
-    elif [ -f "/usr/local/bin/$1" ]; then
-        dir=$(dirname "$(readlink -f "/usr/local/bin/$1")")
-
+    if [ -n "$dir_path" ]; then
+        dir=$(dirname "$(readlink -f "$dir_path")")
     else
-        dir_path=$(which $1)
-
-        if [ -n "$dir_path" ]; then
-            dir=$(dirname "$(readlink -f "$dir_path")")
-        else
-            echo "Error: $1 directory path not found."
-            exit 1
-        fi
+        echo "Error: $1 directory path not found."
+        exit 1
     fi
 
     echo "$dir"
