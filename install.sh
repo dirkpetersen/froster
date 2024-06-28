@@ -299,12 +299,7 @@ install_pipx() {
 
         # Ensure path for pipx
         echo "  Ensuring path for pipx"
-        pipx_path=$(get_dir "pipx")
-        ${pipx_path}/pipx ensurepath >/dev/null 2>&1
-
-        # Ensure  ~/.local/bin is in the PATH for this session
-        echo "  Adding ~/.local/bin to PATH"
-        export PATH="$HOME/.local/bin:$PATH"
+        ~/.local/bin/pipx ensurepath >/dev/null 2>&1
 
         echo "...pipx installed"
     else
