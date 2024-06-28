@@ -395,6 +395,8 @@ install_pwalk() {
 
     # Move pwalk to froster's binaries folder
     echo "    Moving pwalk to froster's binaries folder"
+    pipx list
+    which froster || { echo "Error: froster is not installed."; exit 1; }
     froster_dir=$(get_dir "froster")
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
