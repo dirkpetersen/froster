@@ -170,7 +170,6 @@ class ConfigManager:
 
             # Initialize the filename variables that are needed elsewhere
             self.archive_json_file_name = 'froster-archives.json'
-            self.shared_config_file_name = 'shared_config.ini'
 
             # Whoami
             self.whoami = getpass.getuser()
@@ -259,6 +258,19 @@ class ConfigManager:
                 self.is_shared = config.getboolean(
                     'SHARED', 'is_shared', fallback=False)
                 
+                # If shared configuration is enabled, then change the froster-archives.json and hotspots directory
+                if self.is_shared:
+
+                    self.shared_dir = config.get(
+                        'SHARED', 'shared_dir', fallback=None)
+
+                    self.archive_json = os.path.join(
+                        self.shared_dir, self.archive_json_file_name)
+                    
+                    self.hotspots_dir = os.path.join(
+                        self.shared_dir, 'hotspots')
+
+                
                 # Get the S3 default_provider
                 self.provider = config.get(
                     'S3', 'provider', fallback='AWS')
@@ -267,23 +279,6 @@ class ConfigManager:
                 self.profile = config.get(
                     self.provider, 'profile', fallback=None)
     
-                if self.is_shared:
-
-                    self.shared_dir = config.get(
-                        'SHARED', 'shared_dir', fallback=None)
-
-                    self.shared_config_file = os.path.join(
-                        self.shared_dir,  self.shared_config_file_name)
-
-                    self.archive_json = os.path.join(
-                        self.shared_dir, self.archive_json_file_name)
-
-                    self.shared_hotspots_dir = os.path.join(
-                        self.shared_dir, 'hotspots')
-
-                    # Change config file if this is a shared configuration
-                    config.read(self.shared_config_file)
-
                 # NIH configuration
                 self.is_nih = config.getboolean(
                     'NIH', 'is_nih', fallback=False)
@@ -332,12 +327,12 @@ class ConfigManager:
                 self.lscratch_root = config.get(
                     'SLURM', 'lscratch_root', fallback=None)
 
-                # Cloud configuration
-                self.ses_verify_requests_sent = config.get(
-                    'CLOUD', 'ses_verify_requests_sent', fallback=[])
+                # # Cloud configuration
+                # self.ses_verify_requests_sent = config.get(
+                #     'CLOUD', 'ses_verify_requests_sent', fallback=[])
 
-                self.ec2_last_instance = config.get(
-                    'CLOUD', 'ec2_last_instance', fallback=None)
+                # self.ec2_last_instance = config.get(
+                #     'CLOUD', 'ec2_last_instance', fallback=None)
 
         except Exception:
             print_error()
@@ -505,20 +500,12 @@ class ConfigManager:
 
         try:
             if os.path.exists(self.config_file):
-                log(
-                    f'\n*** LOCAL CONFIGURATION AT: {self.config_file}\n')
                 with open(self.config_file, 'r') as f:
                     log(f.read())
-
-                if self.is_shared and os.path.exists(self.shared_config_file):
-                    log(
-                        f'*** SHARED CONFIGURATION AT: {self.shared_config_file}\n')
-                    with open(self.shared_config_file, 'r') as f:
-                        log(f.read())
             else:
                 log(f'\n*** NO CONFIGURATION FOUND ***')
                 log('\nYou can configure froster using the command:')
-                log('    froster config')
+                log('    froster config\n')
         except Exception:
             print_error()
 
@@ -777,28 +764,15 @@ class ConfigManager:
         '''Set a configuration entry in the config file'''
 
         try:
+            # Create config directory in case it does not exist
+            os.makedirs(self.config_dir, exist_ok=True, mode=0o775)
+
             # Create a ConfigParser object
             config = configparser.ConfigParser()
 
-            # Check which config file to use
-            if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
-
-                # Create shared config directory in case it does not exist
-                os.makedirs(self.shared_dir, exist_ok=True, mode=0o775)
-
-                # Get the shared config file
-                file = self.shared_config_file
-            else:
-
-                # Create config directory in case it does not exist
-                os.makedirs(self.config_dir, exist_ok=True, mode=0o775)
-
-                # Get the config file
-                file = self.config_file
-
             # if exists, read the config file
-            if os.path.exists(file):
-                config.read(file)
+            if os.path.exists(self.config_file):
+                config.read(self.config_file)
 
             # Create the section if it does not exist
             if not config.has_section(section):
@@ -808,7 +782,7 @@ class ConfigManager:
             config[section][key] = str(value)
 
             # Write the config object to the config file
-            with open(file, 'w') as f:
+            with open(self.config_file, 'w') as f:
                 config.write(f)
 
             # Set the value in the config object
@@ -821,18 +795,12 @@ class ConfigManager:
         '''Get a configuration entry in the config file'''
 
         try:
-            # Create a ConfigParser object
-            config = configparser.ConfigParser()
-
-            # Check which config file to use
-            if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
-                config_file = self.shared_config_file
-            else:
-                config_file = self.config_file
-
             # if exists, read the config file and return the value
-            if os.path.exists(config_file):
-                config.read(config_file)
+            if os.path.exists(self.config_file):
+
+                config = configparser.ConfigParser()
+                config.read(self.config_file)
+
                 if is_bool:
                     res = config.getboolean(section, key, fallback=fallback)
                 elif is_int:
@@ -983,6 +951,9 @@ class ConfigManager:
             elif len(configured_providers) == 1:
                 default_provider = configured_providers[0]
             else:
+                # Aesthetic log
+                log()
+
                 # Get the user answer
                 default_provider = inquirer.list_input(
                     "Set your default s3 provider",
@@ -1143,7 +1114,7 @@ class ConfigManager:
             log(f'\n*** SET SHARED ***\n')
 
             is_shared = inquirer.confirm(
-                message=f"Do you want to collaborate with other users on archive and restore? (Default:{self.is_shared})",
+                message=f"Do you want to share your hotspots and archived database with other users? (Default:{self.is_shared})",
                 default=self.is_shared)
 
             # Set the shared flag in the config file
@@ -1154,25 +1125,16 @@ class ConfigManager:
             if is_shared:
 
                 # Ask user to enter the path to a shared config directory
-                # TODO: make this inquiring in shortchut mode once this PR is merged: https://github.com/magmax/python-inquirer/pull/543
-                shared_config_dir_question = [
-                    inquirer.Path(
-                        'shared_dir', message='Enter the path to a shared config directory',
-                        default=self.__get_configuration_entry(
-                            'SHARED', 'shared_dir'),
-                        validate=self.__inquirer_check_path_exists)
-                ]
+                shared_config_dir = inquirer.path(
+                    message='Enter the path to a shared config directory',
+                    default=self.__get_configuration_entry(
+                        'SHARED', 'shared_dir'),
+                    validate=self.__inquirer_check_path_exists)
 
-                # Get the answer from the user
-                shared_config_dir_answer = inquirer.prompt(
-                    shared_config_dir_question)
-                shared_config_dir = shared_config_dir_answer['shared_dir']
+                # Expand the path
                 shared_config_dir = os.path.expanduser(shared_config_dir)
 
-                # Create the directory in case it does not exist
-                os.makedirs(shared_config_dir, exist_ok=True, mode=0o775)
-
-                # Ask the user if they want to move the froster-archives.json file to the shared directory
+                # Check for froster-archives.json file in the shared directory
                 if os.path.isfile(os.path.join(shared_config_dir, self.archive_json_file_name)):
                     # If the froster-archives.json file is found in the shared config directory we are done here
                     log(
@@ -1181,144 +1143,41 @@ class ConfigManager:
 
                     # If the froster-archives.json file is found in the local directory we ask the user if they want to move it to the shared directory
                     if os.path.isfile(os.path.join(self.data_dir, self.archive_json_file_name)):
-                        log(
-                            f"\nNOTE: the {self.archive_json_file_name} file was found in the local directory\n")
 
                         # Ask user if they want to move the local list of files and directories that were archived to the shared directory
                         local_froster_archives_to_shared = inquirer.confirm(
-                            message="Do you want to copy the local froster database to the shared directory?", default=True)
+                            message="Do you want to copy the local Froster database to the shared directory?", default=True)
 
                         # Move the local froster archives to shared directory
                         if local_froster_archives_to_shared:
                             shutil.copy(os.path.join(
                                 self.data_dir, self.archive_json_file_name), shared_config_dir)
                             log(
-                                f"\nNOTE: Local list of archived files and directories was moved to {shared_config_dir}\n")
+                                f"\nNOTE: Froster database of archived files and directories was moved to {shared_config_dir}\n")
+                            
+                # create hotspots directory if it does not exist
+                shared_hotspots_dir = os.path.join(shared_config_dir, 'hotspots')
+                os.makedirs(shared_hotspots_dir, exist_ok=True, mode=0o775)
 
-            # Set the shared directory in the config file and move the config file shared sections to the shared config file
-            if is_shared:
-                self.__set_configuration_entry(
-                    'SHARED', 'shared_dir', shared_config_dir)
-                self.__set_configuration_entry('SHARED', 'shared_config_file', os.path.join(
-                    shared_config_dir, self.shared_config_file_name))
-                self.__set_shared_move_config()
+                # Copy the local hotspots to the shared hotspots directory (only if they do not already exist)
+                for root, dirs, files in os.walk(self.hotspots_dir):
+                    for file in files:
+                        if not os.path.exists(os.path.join(shared_hotspots_dir, file)):
+                            shutil.copy(os.path.join(root, file), shared_hotspots_dir)
+
             else:
-                self.__set_configuration_entry('SHARED', 'shared_dir', '')
-                self.__set_configuration_entry(
-                    'SHARED', 'shared_config_file', '')
+                # Not shared
+                shared_config_dir = ''
+
+
+            self.__set_configuration_entry(
+                    'SHARED', 'shared_dir', shared_config_dir)
 
             return True
 
         except Exception:
             print_error()
             return False
-
-    def __remove_sections_from_config_file(self):
-        '''Remove the NIH, S3, and SLURM sections from the local configuration file'''
-        try:
-            # Clean up configuration file
-            local_config = configparser.ConfigParser()
-            local_config.read(self.config_file)
-
-            # Remove NIH section from local config
-            if 'NIH' in local_config:
-                local_config.remove_section('NIH')
-
-            # Remove SLURM section from local config
-            if 'SLURM' in local_config:
-                local_config.remove_section('SLURM')
-
-            # Remove all keys from providers sections except for profile
-            for provider in PROVIDERS_LIST:
-                if provider in local_config:
-                    keys_to_remove = [
-                        key for key in local_config[provider] if key != 'profile']
-                    
-                    for key in keys_to_remove:
-                        local_config.remove_option(provider, key)
-
-            # Write the source INI file
-            with open(self.config_file, 'w') as f:
-                local_config.write(f)
-        except:
-            print_error()
-
-    def __remove_sections_from_shared_config_file(self):
-        try:
-            shared_config = configparser.ConfigParser()
-            shared_config.read(self.shared_config_file)
-
-            # Remove USER section from shared config
-            if 'USER' in shared_config:
-                shared_config.remove_section('USER')
-
-            # Remove SHARED section from shared config
-            if 'SHARED' in shared_config:
-                shared_config.remove_section('SHARED')
-
-            # Remove S3 section from shared config
-            if 'S3' in shared_config:
-                shared_config.remove_section('S3')
-
-            if 'UPDATE' in shared_config:
-                shared_config.remove_section('UPDATE')
-
-            # Remove profile option from all providers sections
-            for provider in PROVIDERS_LIST:
-                if provider in shared_config:
-                    if shared_config.has_option(provider, 'profile'):
-                        shared_config.remove_option(provider, 'profile')
-    
-            # Write the source INI file
-            with open(self.shared_config_file, 'w') as f:
-                shared_config.write(f)
-        except:
-            print_error()
-
-    def __set_shared_move_config(self):
-        '''Move the local configuration sections to the shared configuration file'''
-
-        try:
-            # If shared configuration file exists, nothing to move
-            if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
-                # Remove sections from config file in case there is a shared config file
-                self.__remove_sections_from_config_file()
-                log(
-                    f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
-                return
-
-            # Clean up both configuration files
-            local_config = configparser.ConfigParser()
-            local_config.read(self.config_file)
-
-            is_something_to_move = False
-
-            if 'NIH' in local_config:
-                is_something_to_move = True
-
-            if 'SLURM' in local_config:
-                is_something_to_move = True
-
-            if any(provider in local_config for provider in PROVIDERS_LIST):
-                is_something_to_move = True
-
-            # Check if we have something to move to shared config
-            if not is_something_to_move:
-                return
-
-            move_config_to_shared = inquirer.confirm(
-                message="Do you want to move your current configuration to the shared directory?", default=True)
-
-            if move_config_to_shared:
-                shutil.copy(self.config_file, self.shared_config_file)
-                log(
-                    "NOTE: Shared configuration file was moved to the shared directory\n")
-
-            self.__remove_sections_from_config_file()
-            self.__remove_sections_from_shared_config_file()
-
-        except Exception:
-            print_error()
 
     def set_user(self):
         '''Set the user configuration'''
@@ -3599,11 +3458,8 @@ class Archiver:
 
     def archive_select_hotspots(self):
 
-        # Get the hotspots directory
-        hotspots_dir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
-
         # Check if the Hotspots directory exists
-        if not hotspots_dir or not os.path.exists(hotspots_dir):
+        if not self.cfg.hotspots_dir or not os.path.exists(self.cfg.hotspots_dir):
             log(
                 '\nNo folders to archive in arguments and no Hotspots CSV files found.')
 
@@ -3617,7 +3473,7 @@ class Archiver:
 
         # Get all the hotspot CSV files in the hotspots directory
         hotspots_files = [f for f in os.listdir(
-            hotspots_dir) if fnmatch.fnmatch(f, '*.csv')]
+            self.cfg.hotspots_dir) if fnmatch.fnmatch(f, '*.csv')]
 
         # Check if there are CSV files, if don't there are no folders to archive
         if not hotspots_files:
@@ -3634,7 +3490,7 @@ class Archiver:
 
         # Sort the CSV files by their modification time in descending order (newest first)
         hotspots_files.sort(key=lambda x: os.path.getmtime(
-            os.path.join(hotspots_dir, x)), reverse=True)
+            os.path.join(self.cfg.hotspots_dir, x)), reverse=True)
 
         # Ask the user to select a Hotspot file
         ret = TextualStringListSelector(
@@ -3645,7 +3501,7 @@ class Archiver:
             return
 
         # Get the selected CSV file
-        hotspot_selected = os.path.join(hotspots_dir, ret[0])
+        hotspot_selected = os.path.join(self.cfg.hotspots_dir, ret[0])
 
         # Get the folders to archive from the selected Hotspot file
         folders_to_archive = self.get_hotspot_folders(hotspot_selected)
@@ -5096,14 +4952,11 @@ class Archiver:
     def get_hotspots_path(self, folder):
         ''' Get a full path name of a new hotspots file'''
         try:
-            # Take the correct hotspots directory
-            hotspotdir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
-
             # create hotspots directory if it does not exist
-            os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
+            os.makedirs(self.cfg.hotspots_dir, exist_ok=True, mode=0o775)
 
             # Get the full path name of the new hotspots file
-            return os.path.join(hotspotdir, self._get_hotspots_filename(folder))
+            return os.path.join(self.cfg.hotspots_dir, self._get_hotspots_filename(folder))
         except Exception:
             print_error()
             return None
@@ -6346,8 +6199,6 @@ class Commands:
             if self.args.reset:
                 if os.path.exists(cfg.config_file):
                     os.remove(cfg.config_file)
-                if cfg.is_shared and os.path.exists(cfg.shared_config_file):
-                    os.remove(cfg.shared_config_file)
 
             log(f'\n*****************************')
             log(f'*** FROSTER CONFIGURATION ***')
@@ -6365,7 +6216,17 @@ class Commands:
             if not cfg.set_nih():
                 return False
 
+            provider_configured = False
+
             while True:
+
+                # Aesthetic line
+                log()
+                
+                if not inquirer.confirm(message=f'Do you want to configure S3 providers?', default=False):
+                    if provider_configured:
+                        cfg.set_default_provider()
+                    break
 
                 if not cfg.set_provider():
                     return False
@@ -6390,14 +6251,9 @@ class Commands:
 
                 if not cfg.set_s3(aws):
                     return False
-
-                # Aesthetic line
-                log()
                 
-                if not inquirer.confirm(message=f'Do you want to configure another S3 provider?', default=False):
-                    break
+                provider_configured = True
 
-            cfg.set_default_provider()
 
             if not cfg.set_slurm(self.args):
                 return False
