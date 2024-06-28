@@ -294,13 +294,16 @@ install_pipx() {
     if [[ -z $(command -v pipx) ]]; then
 
         # Install or upgrade pipx
+        echo "  Installing pipx via pip"
         python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
 
         # Ensure path for pipx
+        echo "  Ensuring path for pipx"
         pipx_path=$(get_dir "pipx")
         ${pipx_path}/pipx ensurepath >/dev/null 2>&1
 
         # Ensure  ~/.local/bin is in the PATH for this session
+        echo "  Adding ~/.local/bin to PATH"
         export PATH="$HOME/.local/bin:$PATH"
 
         echo "...pipx installed"
