@@ -63,7 +63,8 @@ PROVIDERS_LIST = [
     'Wasabi',
     'IDrive',
     'Ceph',
-    'Minio'
+    'Minio',
+    'Other'
 ]
 
 
@@ -169,7 +170,6 @@ class ConfigManager:
 
             # Initialize the filename variables that are needed elsewhere
             self.archive_json_file_name = 'froster-archives.json'
-            self.shared_config_file_name = 'shared_config.ini'
 
             # Whoami
             self.whoami = getpass.getuser()
@@ -210,6 +210,17 @@ class ConfigManager:
             # Froster's archive json file
             self.archive_json = os.path.join(
                 self.data_dir, self.archive_json_file_name)
+            
+            # AWS directory
+            self.credentials_dir = os.path.join(self.home_dir, '.aws')
+
+            # AWS config file
+            self.aws_config_file = os.path.join(
+                self.credentials_dir, 'config')
+
+            # AWS credentials file
+            self.aws_credentials_file = os.path.join(
+                self.credentials_dir, 'credentials')
 
             # Froster's default shared configuration
             self.is_shared = False
@@ -239,22 +250,6 @@ class ConfigManager:
                 self.name = config.get('USER', 'name', fallback=None)
                 self.email = config.get('USER', 'email', fallback=None)
 
-                # AWS directory
-                self.credentials_dir = config.get(
-                    'CREDENTIALS', 'credentials_dir', fallback=os.path.join(self.home_dir, '.aws'))
-
-                # AWS config file
-                self.aws_config_file = os.path.join(
-                    self.credentials_dir, 'config')
-
-                # AWS credentials file
-                self.aws_credentials_file = os.path.join(
-                    self.credentials_dir, 'credentials')
-
-                # AWS profile
-                self.profile = config.get(
-                    'CREDENTIALS', 'profile', fallback=None)
-
                 # Last timestamp we checked for an updated
                 self.last_timestamp = config.getint(
                     'UPDATE', 'timestamp', fallback=None)
@@ -262,33 +257,37 @@ class ConfigManager:
                 # Shared configuration
                 self.is_shared = config.getboolean(
                     'SHARED', 'is_shared', fallback=False)
-
+                
+                # If shared configuration is enabled, then change the froster-archives.json and hotspots directory
                 if self.is_shared:
 
                     self.shared_dir = config.get(
                         'SHARED', 'shared_dir', fallback=None)
 
-                    self.shared_config_file = os.path.join(
-                        self.shared_dir,  self.shared_config_file_name)
-
                     self.archive_json = os.path.join(
                         self.shared_dir, self.archive_json_file_name)
-
-                    self.shared_hotspots_dir = os.path.join(
+                    
+                    self.hotspots_dir = os.path.join(
                         self.shared_dir, 'hotspots')
 
-                    # Change config file if this is a shared configuration
-                    config.read(self.shared_config_file)
+                
+                # Get the S3 default_provider
+                self.provider = config.get(
+                    'S3', 'provider', fallback='AWS')
 
+                # Provider profile
+                self.profile = config.get(
+                    self.provider, 'profile', fallback=None)
+    
                 # NIH configuration
                 self.is_nih = config.getboolean(
                     'NIH', 'is_nih', fallback=False)
 
-                # Get the S3 provider
-                self.provider = config.get('S3', 'provider', fallback='AWS')
-
                 # Get the S3 endpoint
-                self.endpoint = config.get('S3', 'endpoint', fallback=None)
+                # TODO: If we set endpoint this way we should do the same for the region.
+                # Unify behaviour and make it consistent
+                self.endpoint = self.get_endpoint(self.profile)
+
 
                 # Enforce the NoneType, otherwise it will be a string
                 if self.endpoint == 'None' or self.endpoint == '':
@@ -296,15 +295,15 @@ class ConfigManager:
 
                 # Current S3 Bucket name
                 self.bucket_name = config.get(
-                    'S3', 'bucket_name', fallback=None)
+                    self.provider, 'bucket_name', fallback=None)
 
                 # Archive directoy inside AWS S3 bucket
                 self.archive_dir = config.get(
-                    'S3', 'archive_dir', fallback=None)
+                    self.provider, 'archive_dir', fallback=None)
 
                 # Store aws s3 storage class in the config object
                 self.storage_class = config.get(
-                    'S3', 'storage_class', fallback=None)
+                    self.provider, 'storage_class', fallback=None)
 
                 # Slurm configuration
                 self.slurm_walltime_days = config.get(
@@ -331,12 +330,12 @@ class ConfigManager:
                 self.lscratch_root = config.get(
                     'SLURM', 'lscratch_root', fallback=None)
 
-                # Cloud configuration
-                self.ses_verify_requests_sent = config.get(
-                    'CLOUD', 'ses_verify_requests_sent', fallback=[])
+                # # Cloud configuration
+                # self.ses_verify_requests_sent = config.get(
+                #     'CLOUD', 'ses_verify_requests_sent', fallback=[])
 
-                self.ec2_last_instance = config.get(
-                    'CLOUD', 'ec2_last_instance', fallback=None)
+                # self.ec2_last_instance = config.get(
+                #     'CLOUD', 'ec2_last_instance', fallback=None)
 
         except Exception:
             print_error()
@@ -504,20 +503,12 @@ class ConfigManager:
 
         try:
             if os.path.exists(self.config_file):
-                log(
-                    f'\n*** LOCAL CONFIGURATION AT: {self.config_file}\n')
                 with open(self.config_file, 'r') as f:
                     log(f.read())
-
-                if self.is_shared and os.path.exists(self.shared_config_file):
-                    log(
-                        f'*** SHARED CONFIGURATION AT: {self.shared_config_file}\n')
-                    with open(self.shared_config_file, 'r') as f:
-                        log(f.read())
             else:
                 log(f'\n*** NO CONFIGURATION FOUND ***')
                 log('\nYou can configure froster using the command:')
-                log('    froster config')
+                log('    froster config\n')
         except Exception:
             print_error()
 
@@ -540,48 +531,6 @@ class ConfigManager:
         try:
             log(f'\n*** SET CREDENTIALS ***\n')
 
-            # AWS DIR is the default credentials directory
-            aws_dir = os.path.join(self.home_dir, '.aws')
-            os.makedirs(aws_dir, exist_ok=True, mode=0o775)
-
-            # Get the default credentials directory from the config file
-            default_credentials_dir = self.__get_configuration_entry(
-                'CREDENTIALS', 'credentials_dir', fallback=aws_dir)
-
-            # Ask user to enter the path to a aws credentials directory
-            credentials_dir_question = [
-                inquirer.Path(
-                    'credentials_dir',
-                    message=f'Enter the path to credentials directory',
-                    default=default_credentials_dir,
-                    validate=self.__inquirer_check_path_exists)
-            ]
-
-            # Aesthetic newline
-            log()
-
-            # Get the answer from the user
-            credentials_dir_answer = inquirer.prompt(
-                credentials_dir_question)
-
-            # Get the AWS directory
-            credentials_dir = os.path.expanduser(
-                credentials_dir_answer['credentials_dir'])
-
-            # Set the new AWS Directory
-            self.credentials_dir = credentials_dir
-
-            # Store aws dir in the config file
-            self.__set_configuration_entry(
-                'CREDENTIALS', 'credentials_dir', credentials_dir)
-
-            # Set the new AWS config file
-            self.aws_config_file = os.path.join(self.credentials_dir, 'config')
-
-            # Set the new AWS credentials file
-            self.aws_credentials_file = os.path.join(
-                self.credentials_dir, 'credentials')
-
             # Get list of current AWS profiles under {$AWS_DIR}/credentials
             config = configparser.ConfigParser()
             config.read(self.aws_credentials_file)
@@ -592,9 +541,9 @@ class ConfigManager:
 
             # Ask user to choose an existing aws profile or create a new one
             profile = inquirer.list_input(
-                "Choose your profile",
+                f"Choose credentials profile for provider {self.provider}",
                 default=self.__get_configuration_entry(
-                    'CREDENTIALS', 'profile'),
+                    self.provider, 'profile'),
                 choices=profiles)
 
             # Check if user wants to create a new aws profile
@@ -634,7 +583,7 @@ class ConfigManager:
 
             # Store aws profile in the config file
             self.__set_configuration_entry(
-                'CREDENTIALS', 'profile', profile_name)
+                self.provider, 'profile', profile_name)
 
             return True
 
@@ -654,7 +603,7 @@ class ConfigManager:
             aws_regions.insert(0, '-- no region --')
 
             # Ask user to choose a region
-            region = inquirer.list_input("Choose your region",
+            region = inquirer.list_input(f"Choose region for provider {self.provider}",
                                          default=self.get_region(self.profile),
                                          choices=aws_regions)
             if region == '+ Create new region':
@@ -673,7 +622,7 @@ class ConfigManager:
             print_error()
             return False
 
-    def __set_aws_config(self, profile_name, region):
+    def __set_aws_config(self, profile_name, region=None, endpoint=None):
         ''' Update the AWS config of the given profile'''
 
         try:
@@ -691,8 +640,13 @@ class ConfigManager:
             if not aws_config.has_section(f'profile {profile_name}'):
                 aws_config.add_section(f'profile {profile_name}')
 
-            # Write the profile with the new region
-            aws_config[f'profile {profile_name}']['region'] = region
+            if region:
+                # Write the profile with the new region
+                aws_config[f'profile {profile_name}']['region'] = region
+
+            if endpoint:
+                # Write the profile with the new endpoint
+                aws_config[f'profile {profile_name}']['s3'] = f'\n  endpoint_url = {endpoint}'
 
             # Write the profile with the new output format
             aws_config[f'profile {profile_name}']['output'] = 'json'
@@ -752,8 +706,9 @@ class ConfigManager:
         except Exception:
             print_error()
 
-    def get_region(self, profile):
-        '''Get the AWS region for the given profile'''
+
+    def get_aws_config_option(self, profile, option):
+        '''Get the AWS config option for the given profile'''
 
         try:
             # If no profile, then return None
@@ -768,21 +723,59 @@ class ConfigManager:
                 # Read the config file
                 config.read(self.aws_config_file)
 
-                # Get the region from the config file
-                if profile == 'default':
-                    region = config.get('default', 'region', fallback=None)
+                # Get the correct profile name
+                if profile != 'default':
+                    profile = f'profile {profile}'
+
+                if config.has_section(profile):
+
+                    # Retrieve the entire section as a dictionary
+                    section_dict = dict(config.items(profile))
+
+                    # Parse the section's content for the nested option
+                    # Assuming the option is structured as 's3.endpoint_url'
+                    nested_option = option.split('.')
+                    if len(nested_option) == 2 and nested_option[0] in section_dict:
+                        # Parse the nested configuration as a new dictionary
+                        nested_config = dict(item.replace(' ', '').split(
+                            '=') for item in section_dict[nested_option[0]].split('\n') if item)
+                        value = nested_config.get(nested_option[1], None)
+                    else:
+                        # Fallback to direct retrieval if not a nested option
+                        value = config.get(profile, option, fallback=None)
                 else:
-                    region = config.get(
-                        f'profile {profile}', 'region', fallback=None)
+                    value = None
             else:
                 # AWS config file does not exists
-                region = None
+                value = None
 
-            return region
+            return value
 
         except Exception:
             print_error()
             return None
+        
+    def get_region(self, profile):
+        '''Get the AWS region for the given profile'''
+
+        try:
+            return self.get_aws_config_option(profile, 'region')
+
+        except Exception:
+            print_error()
+            return None
+
+
+    def get_endpoint(self, profile):
+        '''Get the endpoint_url for the given profile'''
+
+        try:
+            return self.get_aws_config_option(profile, 's3.endpoint_url')
+
+        except Exception:
+            print_error()
+            return None
+
 
     def get_credential(self, profile, key_name):
         '''Get the key the given profile'''
@@ -818,28 +811,15 @@ class ConfigManager:
         '''Set a configuration entry in the config file'''
 
         try:
+            # Create config directory in case it does not exist
+            os.makedirs(self.config_dir, exist_ok=True, mode=0o775)
+
             # Create a ConfigParser object
             config = configparser.ConfigParser()
 
-            # Check which config file to use
-            if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
-
-                # Create shared config directory in case it does not exist
-                os.makedirs(self.shared_dir, exist_ok=True, mode=0o775)
-
-                # Get the shared config file
-                file = self.shared_config_file
-            else:
-
-                # Create config directory in case it does not exist
-                os.makedirs(self.config_dir, exist_ok=True, mode=0o775)
-
-                # Get the config file
-                file = self.config_file
-
             # if exists, read the config file
-            if os.path.exists(file):
-                config.read(file)
+            if os.path.exists(self.config_file):
+                config.read(self.config_file)
 
             # Create the section if it does not exist
             if not config.has_section(section):
@@ -849,7 +829,7 @@ class ConfigManager:
             config[section][key] = str(value)
 
             # Write the config object to the config file
-            with open(file, 'w') as f:
+            with open(self.config_file, 'w') as f:
                 config.write(f)
 
             # Set the value in the config object
@@ -862,18 +842,12 @@ class ConfigManager:
         '''Get a configuration entry in the config file'''
 
         try:
-            # Create a ConfigParser object
-            config = configparser.ConfigParser()
-
-            # Check which config file to use
-            if self.is_shared and section in ['NIH', 'S3', 'SLURM', 'CLOUD']:
-                config_file = self.shared_config_file
-            else:
-                config_file = self.config_file
-
             # if exists, read the config file and return the value
-            if os.path.exists(config_file):
-                config.read(config_file)
+            if os.path.exists(self.config_file):
+
+                config = configparser.ConfigParser()
+                config.read(self.config_file)
+
                 if is_bool:
                     res = config.getboolean(section, key, fallback=fallback)
                 elif is_int:
@@ -948,7 +922,7 @@ class ConfigManager:
                 # Get the user answer
                 endpoint = inquirer.text(
                     message=f'Enter the {self.provider} endpoint',
-                    default=self.__get_configuration_entry('S3', 'endpoint'),
+                    default=self.__get_configuration_entry(self.provider, 'endpoint'),
                     validate=self.__inquirer_check_required)
 
             # Ensure the endpoint starts with "https://" for IDrive
@@ -956,8 +930,11 @@ class ConfigManager:
                 if not endpoint.startswith('https://') and not endpoint.startswith('http://'):
                     endpoint = 'https://' + endpoint
 
-            # Store the endpoint in the config object
-            self.__set_configuration_entry('S3', 'endpoint', endpoint)
+            # Update endpoint in the config file
+            self.__set_aws_config(profile_name=self.profile, endpoint=endpoint)
+            
+            # Manually setting the endpoint
+            self.endpoint = endpoint
 
             return True
 
@@ -987,6 +964,62 @@ class ConfigManager:
             print_error()
             return False
 
+    def set_default_provider(self, provider=None):
+            
+        try:
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            config_file = self.config_file
+
+            # if exists, read the config file and return the value
+            if not os.path.exists(config_file):
+                print_error(f'Error: Config file {config_file} does not exist')
+                return False
+            
+            # Read the config file
+            config.read(config_file)
+
+            # Get all sections
+            all_sections = config.sections()
+
+            # Filter sections to only include those in PROVIDERS_LIST
+            configured_providers = [section for section in all_sections if section in PROVIDERS_LIST]
+
+            # If provider is provided, check if it is in the list of configured providers. Exit otherwise
+            if provider:
+                if provider in configured_providers:
+                    self.__set_configuration_entry('S3', 'provider', provider)
+                    log(f'\nProvider {provider} set as default\n')
+                    return True
+                else:
+                    log(f'\nError: Provider {provider} is not configured. List of configured providers (case sensitive): {configured_providers}\n')
+                    return False
+
+            if not configured_providers:
+                default_provider = 'AWS'
+            elif len(configured_providers) == 1:
+                default_provider = configured_providers[0]
+            else:
+                # Aesthetic log
+                log()
+
+                # Get the user answer
+                default_provider = inquirer.list_input(
+                    "Set your default s3 provider",
+                    default=self.__get_configuration_entry(
+                    'S3', 'provider'),
+                    choices=configured_providers)
+
+            self.__set_configuration_entry(
+                'S3', 'provider', default_provider)
+
+            return True
+
+        except Exception:
+            print_error()
+            return False
+
     def set_provider(self):
         '''Set the S3 provider configuration'''
 
@@ -994,19 +1027,13 @@ class ConfigManager:
             log(f'\n*** SET PROVIDER ***\n')
 
             list_of_providers = PROVIDERS_LIST
-            list_of_providers.append('+ Create new provider')
 
             # Get the user answer
             provider = inquirer.list_input(
-                "Choose your s3 provider",
+                "Choose s3 provider",
                 default=self.__get_configuration_entry(
                     'S3', 'provider', fallback='AWS'),
                 choices=list_of_providers)
-
-            if provider == '+ Create new provider':
-                provider = inquirer.text(
-                    message='Enter the new provider',
-                    validate=self.__inquirer_check_required)
 
             self.__set_configuration_entry('S3', 'provider', provider)
 
@@ -1031,7 +1058,7 @@ class ConfigManager:
             # Ask user to choose an existing aws s3 bucket or create a new one
             s3_bucket = inquirer.list_input(
                 "Choose your s3 bucket",
-                default=self.__get_configuration_entry('S3', 'bucket_name'),
+                default=self.__get_configuration_entry(self.provider, 'bucket_name'),
                 choices=s3_buckets)
 
             # Check if user wants to create a new aws s3 bucket
@@ -1055,26 +1082,27 @@ class ConfigManager:
 
                 # Store new aws s3 bucket in the config object
                 self.__set_configuration_entry(
-                    'S3', 'bucket_name', new_bucket_name)
+                    self.provider, 'bucket_name', new_bucket_name)
             else:
                 # Store aws s3 bucket in the config object
-                self.__set_configuration_entry('S3', 'bucket_name', s3_bucket)
+                self.__set_configuration_entry(
+                    self.provider, 'bucket_name', s3_bucket)
 
             # Get user answer
             archive_dir = inquirer.text(
                 message='Enter the directory name inside S3 bucket',
                 default=self.__get_configuration_entry(
-                    'S3', 'archive_dir', fallback='froster'),
+                    self.provider, 'archive_dir', fallback='froster'),
                 validate=self.__inquirer_check_required)
 
             # Print newline after this prompt
             log()
 
             # Store aws s3 archive dir in the config object
-            self.__set_configuration_entry('S3', 'archive_dir', archive_dir)
+            self.__set_configuration_entry(self.provider, 'archive_dir', archive_dir)
 
             default_storage_class = self.__get_configuration_entry(
-                'S3', 'storage_class', fallback='DEEP_ARCHIVE')
+                self.provider, 'storage_class', fallback='DEEP_ARCHIVE')
 
             if self.provider == 'AWS':
                 storage_class = inquirer.list_input(
@@ -1121,7 +1149,7 @@ class ConfigManager:
 
             # Store aws s3 storage class in the config object
             self.__set_configuration_entry(
-                'S3', 'storage_class', storage_class)
+                self.provider, 'storage_class', storage_class)
 
             return True
 
@@ -1136,7 +1164,7 @@ class ConfigManager:
             log(f'\n*** SET SHARED ***\n')
 
             is_shared = inquirer.confirm(
-                message=f"Do you want to collaborate with other users on archive and restore? (Default:{self.is_shared})",
+                message=f"Do you want to share your hotspots and archived database with other users? (Default:{self.is_shared})",
                 default=self.is_shared)
 
             # Set the shared flag in the config file
@@ -1147,25 +1175,16 @@ class ConfigManager:
             if is_shared:
 
                 # Ask user to enter the path to a shared config directory
-                # TODO: make this inquiring in shortchut mode once this PR is merged: https://github.com/magmax/python-inquirer/pull/543
-                shared_config_dir_question = [
-                    inquirer.Path(
-                        'shared_dir', message='Enter the path to a shared config directory',
-                        default=self.__get_configuration_entry(
-                            'SHARED', 'shared_dir'),
-                        validate=self.__inquirer_check_path_exists)
-                ]
+                shared_config_dir = inquirer.path(
+                    message='Enter the path to a shared config directory',
+                    default=self.__get_configuration_entry(
+                        'SHARED', 'shared_dir'),
+                    validate=self.__inquirer_check_path_exists)
 
-                # Get the answer from the user
-                shared_config_dir_answer = inquirer.prompt(
-                    shared_config_dir_question)
-                shared_config_dir = shared_config_dir_answer['shared_dir']
+                # Expand the path
                 shared_config_dir = os.path.expanduser(shared_config_dir)
 
-                # Create the directory in case it does not exist
-                os.makedirs(shared_config_dir, exist_ok=True, mode=0o775)
-
-                # Ask the user if they want to move the froster-archives.json file to the shared directory
+                # Check for froster-archives.json file in the shared directory
                 if os.path.isfile(os.path.join(shared_config_dir, self.archive_json_file_name)):
                     # If the froster-archives.json file is found in the shared config directory we are done here
                     log(
@@ -1174,111 +1193,41 @@ class ConfigManager:
 
                     # If the froster-archives.json file is found in the local directory we ask the user if they want to move it to the shared directory
                     if os.path.isfile(os.path.join(self.data_dir, self.archive_json_file_name)):
-                        log(
-                            f"\nNOTE: the {self.archive_json_file_name} file was found in the local directory\n")
 
                         # Ask user if they want to move the local list of files and directories that were archived to the shared directory
                         local_froster_archives_to_shared = inquirer.confirm(
-                            message="Do you want to copy the local froster database to the shared directory?", default=True)
+                            message="Do you want to copy the local Froster database to the shared directory?", default=True)
 
                         # Move the local froster archives to shared directory
                         if local_froster_archives_to_shared:
                             shutil.copy(os.path.join(
                                 self.data_dir, self.archive_json_file_name), shared_config_dir)
                             log(
-                                f"\nNOTE: Local list of archived files and directories was moved to {shared_config_dir}\n")
+                                f"\nNOTE: Froster database of archived files and directories was moved to {shared_config_dir}\n")
+                            
+                # create hotspots directory if it does not exist
+                shared_hotspots_dir = os.path.join(shared_config_dir, 'hotspots')
+                os.makedirs(shared_hotspots_dir, exist_ok=True, mode=0o775)
 
-            # Set the shared directory in the config file and move the config file shared sections to the shared config file
-            if is_shared:
-                self.__set_configuration_entry(
-                    'SHARED', 'shared_dir', shared_config_dir)
-                self.__set_configuration_entry('SHARED', 'shared_config_file', os.path.join(
-                    shared_config_dir, self.shared_config_file_name))
-                self.__set_shared_move_config()
+                # Copy the local hotspots to the shared hotspots directory (only if they do not already exist)
+                for root, dirs, files in os.walk(self.hotspots_dir):
+                    for file in files:
+                        if not os.path.exists(os.path.join(shared_hotspots_dir, file)):
+                            shutil.copy(os.path.join(root, file), shared_hotspots_dir)
+
             else:
-                self.__set_configuration_entry('SHARED', 'shared_dir', '')
-                self.__set_configuration_entry(
-                    'SHARED', 'shared_config_file', '')
+                # Not shared
+                shared_config_dir = ''
+
+
+            self.__set_configuration_entry(
+                    'SHARED', 'shared_dir', shared_config_dir)
 
             return True
 
         except Exception:
             print_error()
             return False
-
-    def __remove_sections_from_config_file(self):
-        '''Remove the NIH, S3, and SLURM sections from the local configuration file'''
-        try:
-            # Clean up configuration file
-            local_config = configparser.ConfigParser()
-            local_config.read(self.config_file)
-
-            # Remove sections from local_config
-            if 'NIH' in local_config:
-                local_config.remove_section('NIH')
-            if 'S3' in local_config:
-                local_config.remove_section('S3')
-            if 'SLURM' in local_config:
-                local_config.remove_section('SLURM')
-
-            # Write the source INI file
-            with open(self.config_file, 'w') as f:
-                local_config.write(f)
-        except:
-            print_error()
-
-    def __remove_sections_from_shared_config_file(self):
-        try:
-            shared_config = configparser.ConfigParser()
-            shared_config.read(self.shared_config_file)
-
-            # Remove sections from shared_config
-            if 'USER' in shared_config:
-                shared_config.remove_section('USER')
-            if 'CREDENTIALS' in shared_config:
-                shared_config.remove_section('CREDENTIALS')
-            if 'SHARED' in shared_config:
-                shared_config.remove_section('SHARED')
-
-            # Write the source INI file
-            with open(self.shared_config_file, 'w') as f:
-                shared_config.write(f)
-        except:
-            print_error()
-
-    def __set_shared_move_config(self):
-        '''Move the local configuration sections to the shared configuration file'''
-
-        try:
-            # If shared configuration file exists, nothing to move
-            if hasattr(self, 'shared_config_file') and os.path.isfile(self.shared_config_file):
-                # Remove sections from config file in case there is a shared config file
-                self.__remove_sections_from_config_file()
-                log(
-                    f"NOTE: Using shared configuration file found in {self.shared_config_file}\n")
-                return
-
-            # Clean up both configuration files
-            local_config = configparser.ConfigParser()
-            local_config.read(self.config_file)
-
-            if not 'NIH' in local_config and not 'S3' in local_config and not 'SLURM' in local_config:
-                # Nothing to copy from local configuration to shared configuration
-                return
-
-            move_config_to_shared = inquirer.confirm(
-                message="Do you want to move your current configuration to the shared directory?", default=True)
-
-            if move_config_to_shared:
-                shutil.copy(self.config_file, self.shared_config_file)
-                log(
-                    "NOTE: Shared configuration file was moved to the shared directory\n")
-
-            self.__remove_sections_from_config_file()
-            self.__remove_sections_from_shared_config_file()
-
-        except Exception:
-            print_error()
 
     def set_user(self):
         '''Set the user configuration'''
@@ -1452,6 +1401,8 @@ class AWSBoto:
             self.cfg = cfg
             self.arch = arch
 
+            self.is_session_set = False
+
             if hasattr(cfg, 'profile') and hasattr(cfg, 'endpoint'):
                 self.set_session(profile_name=cfg.profile,
                                  region=cfg.get_region(cfg.profile),
@@ -1493,20 +1444,24 @@ class AWSBoto:
                 log(f'  Provider: {self.cfg.provider}')
                 log(f'  Endpoint: {self.cfg.endpoint}\n')
 
-            # Command that needs credentials to be successfull
-            self.s3_client.list_buckets()
+            if self.is_session_set:
+                # Command that needs credentials to be successfull
+                self.s3_client.list_buckets()
 
-            if prints:
-                log('...credentials are valid\n')
-
-            return True
-
+                if prints:
+                    log('...credentials are valid\n')
+                return True
+            else:
+                if prints:
+                    log('...credentials are NOT valid\n')
+                return False
+            
         except botocore.exceptions.NoCredentialsError:
-            log(f"Error: No AWS credentials found.")
+            log(f"Error: No credentials found.")
             return False
 
         except botocore.exceptions.EndpointConnectionError:
-            log(f"Error: Unable to connect to the AWS S3 endpoint.")
+            log(f"Error: Unable to connect to the S3 endpoint.")
             return False
 
         except botocore.exceptions.ClientError as e:
@@ -1516,16 +1471,16 @@ class AWSBoto:
                 log(
                     f"Error: The time difference between S3 storage and your computer is too high:\n{e}")
             elif error_code == 'InvalidAccessKeyId':
-                log(f"Error: Invalid AWS Access Key ID\n{e}")
+                log(f"Error: Invalid Access Key ID\n{e}")
 
             elif error_code == 'SignatureDoesNotMatch':
                 if "Signature expired" in str(e):
                     log(
                         f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
                 else:
-                    log(f"Error: Invalid AWS Secret Access Key:\n{e}")
+                    log(f"Error: Invalid Secret Access Key:\n{e}")
             elif error_code == 'InvalidClientTokenId':
-                log(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
+                log(f"Error: Invalid Access Key ID or Secret Access Key !")
             elif error_code == 'ExpiredToken':
                 log(f"Error: Your session token has expired")
             else:
@@ -1677,7 +1632,7 @@ class AWSBoto:
         ''' Set the AWS profile for the current session'''
 
         try:
-            if not profile_name or not region or not endopoint_url:
+            if not profile_name:
                 return
 
             # Initialize a Boto3 session using the configured profile
@@ -1736,6 +1691,9 @@ class AWSBoto:
                 endpoint_url=endopoint_url,
                 region_name=region
             )
+
+            self.is_session_set = True
+
 
         except Exception as e:
             print_error()
@@ -3354,8 +3312,6 @@ class Archiver:
                             '''))
 
                             return False
-                        
-                        
 
                         # If pwalkcopy location provided, then copy the pwalk output file to the specified location
                         if self.args.pwalkcopy:
@@ -3548,7 +3504,7 @@ class Archiver:
                 for folder in folders:
                     if not self._index_locally(folder):
                         res = False
-                
+
                 if not res:
                     log(f'\nWARNING: Some folders may have permission issues or are locked. Check the output above.\n')
                     return False
@@ -3561,11 +3517,8 @@ class Archiver:
 
     def archive_select_hotspots(self):
 
-        # Get the hotspots directory
-        hotspots_dir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
-
         # Check if the Hotspots directory exists
-        if not hotspots_dir or not os.path.exists(hotspots_dir):
+        if not self.cfg.hotspots_dir or not os.path.exists(self.cfg.hotspots_dir):
             log(
                 '\nNo folders to archive in arguments and no Hotspots CSV files found.')
 
@@ -3579,7 +3532,7 @@ class Archiver:
 
         # Get all the hotspot CSV files in the hotspots directory
         hotspots_files = [f for f in os.listdir(
-            hotspots_dir) if fnmatch.fnmatch(f, '*.csv')]
+            self.cfg.hotspots_dir) if fnmatch.fnmatch(f, '*.csv')]
 
         # Check if there are CSV files, if don't there are no folders to archive
         if not hotspots_files:
@@ -3596,7 +3549,7 @@ class Archiver:
 
         # Sort the CSV files by their modification time in descending order (newest first)
         hotspots_files.sort(key=lambda x: os.path.getmtime(
-            os.path.join(hotspots_dir, x)), reverse=True)
+            os.path.join(self.cfg.hotspots_dir, x)), reverse=True)
 
         # Ask the user to select a Hotspot file
         ret = TextualStringListSelector(
@@ -3607,7 +3560,7 @@ class Archiver:
             return
 
         # Get the selected CSV file
-        hotspot_selected = os.path.join(hotspots_dir, ret[0])
+        hotspot_selected = os.path.join(self.cfg.hotspots_dir, ret[0])
 
         # Get the folders to archive from the selected Hotspot file
         folders_to_archive = self.get_hotspot_folders(hotspot_selected)
@@ -3655,13 +3608,6 @@ class Archiver:
     def _archive_locally(self, folder_to_archive, is_recursive, is_subfolder, is_tar, is_force):
         '''Archive the given folder'''
 
-        # Set workflow execution flags
-        is_folder_tarred = False
-        is_folder_archived = False
-        is_froster_allfiles_generated = False
-        is_checksum_generated = False
-        is_checksum_correct = False
-
         try:
             s3_dest = os.path.join(
                 f':s3:{self.cfg.bucket_name}',
@@ -3700,7 +3646,6 @@ class Archiver:
 
             # Generate Froster.allfiles.csv and if is_tar tar small files
             if self._gen_allfiles_and_tar(folder_to_archive, self.thresholdKB, is_tar):
-                is_froster_allfiles_generated = True
                 log(f'        ...done')
             else:
                 return
@@ -3708,7 +3653,6 @@ class Archiver:
             # Generate md5 checksums for all files in the folder
             log(f'\n    Generating checksums...')
             if self._gen_md5sums(folder_to_archive, self.md5sum_filename):
-                is_checksum_generated = True
                 log('        ...done')
             else:
                 return
@@ -3742,7 +3686,6 @@ class Archiver:
 
             if ret:
                 log('        ...done')
-                is_folder_archived = True
             else:
                 log('        ...FAILED\n')
                 return
@@ -3759,7 +3702,6 @@ class Archiver:
             # Check if the folder was archived successfully
             if ret:
                 log('        ...done')
-                is_folder_archived = True
             else:
                 log('        ...FAILED\n')
                 return
@@ -3770,7 +3712,6 @@ class Archiver:
             # Check if the checksums are correct
             if ret:
                 log('        ...done')
-                is_checksum_correct = True
             else:
                 log('        ...FAILED\n')
                 return
@@ -3791,6 +3732,8 @@ class Archiver:
                              'archive_folder': s3_dest,
                              's3_storage_class': self.cfg.storage_class,
                              'profile': self.cfg.profile,
+                             'provider': self.cfg.provider,
+                             'endpoint': self.cfg.endpoint,
                              'archive_mode': archive_mode,
                              'timestamp': timestamp,
                              'timestamp_archive': timestamp,
@@ -3807,11 +3750,11 @@ class Archiver:
 
             # Print the final message
             log(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
+            log(f'    PROVIDER:           "{self.cfg.provider}"')
+            log(f'    PROFILE:            "{self.cfg.profile}"')
             log(f'    ENDPOINT:           "{self.cfg.endpoint}"')
             log(f'    LOCAL SOURCE:       "{folder_to_archive}"')
             log(f'    S3 DESTINATION:     "{s3_dest}"\n')
-            log(
-                f'    All files were correctly uploaded and double-checked with md5sum checksum.\n')
 
         except Exception:
             print_error()
@@ -4375,11 +4318,6 @@ class Archiver:
                 if not recursive and root != directory:
                     break
                 log(f'\nResetting folder "{root}"...')
-
-                if self._is_folder_archived(root.rstrip(os.path.sep)):
-                    log(
-                        f'    ...folder {root} is archived, nothing to reset\n')
-                    continue
 
                 # Get the path to the tar file
                 tar_path = os.path.join(root, self.smallfiles_tar_filename)
@@ -5073,14 +5011,11 @@ class Archiver:
     def get_hotspots_path(self, folder):
         ''' Get a full path name of a new hotspots file'''
         try:
-            # Take the correct hotspots directory
-            hotspotdir = self.cfg.shared_hotspots_dir if self.cfg.is_shared else self.cfg.hotspots_dir
-
             # create hotspots directory if it does not exist
-            os.makedirs(hotspotdir, exist_ok=True, mode=0o775)
+            os.makedirs(self.cfg.hotspots_dir, exist_ok=True, mode=0o775)
 
             # Get the full path name of the new hotspots file
-            return os.path.join(hotspotdir, self._get_hotspots_filename(folder))
+            return os.path.join(self.cfg.hotspots_dir, self._get_hotspots_filename(folder))
         except Exception:
             print_error()
             return None
@@ -6323,8 +6258,6 @@ class Commands:
             if self.args.reset:
                 if os.path.exists(cfg.config_file):
                     os.remove(cfg.config_file)
-                if cfg.is_shared and os.path.exists(cfg.shared_config_file):
-                    os.remove(cfg.shared_config_file)
 
             log(f'\n*****************************')
             log(f'*** FROSTER CONFIGURATION ***')
@@ -6342,29 +6275,41 @@ class Commands:
             if not cfg.set_nih():
                 return False
 
-            if not cfg.set_provider():
-                return False
+            while True:
 
-            if not cfg.set_credentials(aws):
-                return False
+                # Aesthetic line
+                log()
+                
+                if not inquirer.confirm(message=f'Do you want to configure S3 providers?', default=False):
+                    break
 
-            if not cfg.set_region(aws):
-                return False
+                if not cfg.set_provider():
+                    return False
 
-            if not cfg.set_endpoint():
-                return False
+                if not cfg.set_credentials(aws):
+                    return False
 
-            # Once credentials are set we need to set up the session in the AWS object
-            aws.set_session(profile_name=cfg.profile,
-                            region=cfg.get_region(cfg.profile),
-                            endopoint_url=cfg.endpoint)
+                if not cfg.set_region(aws):
+                    return False
 
-            # Check credentials are valid
-            if not aws.check_credentials(prints=True):
-                return False
+                if not cfg.set_endpoint():
+                    return False
 
-            if not cfg.set_s3(aws):
-                return False
+                # Once credentials are set we need to set up the session in the AWS object
+                aws.set_session(profile_name=cfg.profile,
+                                region=cfg.get_region(cfg.profile),
+                                endopoint_url=cfg.endpoint)
+
+                # Check credentials are valid
+                if not aws.check_credentials(prints=True):
+                    return False
+
+                if not cfg.set_s3(aws):
+                    return False
+                
+                # Set last configured provider as default provider
+                cfg.set_default_provider(provider=cfg.provider)
+
 
             if not cfg.set_slurm(self.args):
                 return False
@@ -6430,7 +6375,6 @@ class Commands:
             if self.args.reset:
                 for folder in self.args.folders:
                     arch.reset_folder(folder, self.args.recursive)
-                return
 
             if not self.args.folders:
                 arch.archive_select_hotspots()
@@ -6729,6 +6673,9 @@ class Commands:
 
         parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true',
                             help="do not submit a Slurm job, execute in the foreground. ")
+        
+        parser.add_argument('-p', '--provider', dest='provider', action='store', default='',
+                            help='Set given provider as default')
 
         parser.add_argument('-v', '--version', dest='version', action='store_true',
                             help='print froster version')
@@ -7182,6 +7129,11 @@ def main():
         if args.log_print:
             print_log()
             sys.exit(0)
+
+        if args.provider:
+            cfg.set_default_provider(args.provider)
+            sys.exit(0)
+
 
         # Restore folder and files permissions
         if cfg.is_shared and cfg.shared_dir:
