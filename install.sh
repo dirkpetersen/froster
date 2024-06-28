@@ -26,11 +26,10 @@ catch() {
         echo
         echo "Rolling back installation..."
         
-        pipx_path=$(get_dir "pipx")
-        ${pipx_path}/pipx ensurepath >/dev/null 2>&1
+        pipx ensurepath >/dev/null 2>&1
 
-        if ${pipx_path}/pipx list | grep 'froster' >/dev/null 2>&1; then
-            ${pipx_path}/pipx uninstall froster >/dev/null 2>&1
+        if pipx list | grep 'froster' >/dev/null 2>&1; then
+            pipx uninstall froster >/dev/null 2>&1
         fi
 
         # Restore (if any) backed up froster config files
@@ -300,6 +299,10 @@ install_pipx() {
         # Ensure path for pipx
         echo "  Ensuring path for pipx"
         ~/.local/bin/pipx ensurepath >/dev/null 2>&1
+
+        # Adding ~/.local/bin to PATH for this session
+        echo "  Adding ~/.local/bin to PATH for this installation session"
+        export PATH=$PATH:~/.local/bin
 
         echo "...pipx installed"
     else
