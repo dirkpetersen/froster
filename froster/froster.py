@@ -284,7 +284,10 @@ class ConfigManager:
                     'NIH', 'is_nih', fallback=False)
 
                 # Get the S3 endpoint
-                self.endpoint = config.get(self.provider, 'endpoint', fallback=None)
+                # TODO: If we set endpoint this way we should do the same for the region.
+                # Unify behaviour and make it consistent
+                self.endpoint = self.get_endpoint(self.profile)
+
 
                 # Enforce the NoneType, otherwise it will be a string
                 if self.endpoint == 'None' or self.endpoint == '':
@@ -619,7 +622,7 @@ class ConfigManager:
             print_error()
             return False
 
-    def __set_aws_config(self, profile_name, region):
+    def __set_aws_config(self, profile_name, region=None, endpoint=None):
         ''' Update the AWS config of the given profile'''
 
         try:
@@ -637,8 +640,13 @@ class ConfigManager:
             if not aws_config.has_section(f'profile {profile_name}'):
                 aws_config.add_section(f'profile {profile_name}')
 
-            # Write the profile with the new region
-            aws_config[f'profile {profile_name}']['region'] = region
+            if region:
+                # Write the profile with the new region
+                aws_config[f'profile {profile_name}']['region'] = region
+
+            if endpoint:
+                # Write the profile with the new endpoint
+                aws_config[f'profile {profile_name}']['s3'] = f'\n  endpoint_url = {endpoint}'
 
             # Write the profile with the new output format
             aws_config[f'profile {profile_name}']['output'] = 'json'
@@ -698,8 +706,9 @@ class ConfigManager:
         except Exception:
             print_error()
 
-    def get_region(self, profile):
-        '''Get the AWS region for the given profile'''
+
+    def get_aws_config_option(self, profile, option):
+        '''Get the AWS config option for the given profile'''
 
         try:
             # If no profile, then return None
@@ -714,21 +723,59 @@ class ConfigManager:
                 # Read the config file
                 config.read(self.aws_config_file)
 
-                # Get the region from the config file
-                if profile == 'default':
-                    region = config.get('default', 'region', fallback=None)
+                # Get the correct profile name
+                if profile != 'default':
+                    profile = f'profile {profile}'
+
+                if config.has_section(profile):
+
+                    # Retrieve the entire section as a dictionary
+                    section_dict = dict(config.items(profile))
+
+                    # Parse the section's content for the nested option
+                    # Assuming the option is structured as 's3.endpoint_url'
+                    nested_option = option.split('.')
+                    if len(nested_option) == 2 and nested_option[0] in section_dict:
+                        # Parse the nested configuration as a new dictionary
+                        nested_config = dict(item.replace(' ', '').split(
+                            '=') for item in section_dict[nested_option[0]].split('\n') if item)
+                        value = nested_config.get(nested_option[1], None)
+                    else:
+                        # Fallback to direct retrieval if not a nested option
+                        value = config.get(profile, option, fallback=None)
                 else:
-                    region = config.get(
-                        f'profile {profile}', 'region', fallback=None)
+                    value = None
             else:
                 # AWS config file does not exists
-                region = None
+                value = None
 
-            return region
+            return value
 
         except Exception:
             print_error()
             return None
+        
+    def get_region(self, profile):
+        '''Get the AWS region for the given profile'''
+
+        try:
+            return self.get_aws_config_option(profile, 'region')
+
+        except Exception:
+            print_error()
+            return None
+
+
+    def get_endpoint(self, profile):
+        '''Get the endpoint_url for the given profile'''
+
+        try:
+            return self.get_aws_config_option(profile, 's3.endpoint_url')
+
+        except Exception:
+            print_error()
+            return None
+
 
     def get_credential(self, profile, key_name):
         '''Get the key the given profile'''
@@ -883,8 +930,11 @@ class ConfigManager:
                 if not endpoint.startswith('https://') and not endpoint.startswith('http://'):
                     endpoint = 'https://' + endpoint
 
-            # Store the endpoint in the config object
-            self.__set_configuration_entry(self.provider, 'endpoint', endpoint)
+            # Update endpoint in the config file
+            self.__set_aws_config(profile_name=self.profile, endpoint=endpoint)
+            
+            # Manually setting the endpoint
+            self.endpoint = endpoint
 
             return True
 
@@ -1351,6 +1401,8 @@ class AWSBoto:
             self.cfg = cfg
             self.arch = arch
 
+            self.is_session_set = False
+
             if hasattr(cfg, 'profile') and hasattr(cfg, 'endpoint'):
                 self.set_session(profile_name=cfg.profile,
                                  region=cfg.get_region(cfg.profile),
@@ -1392,20 +1444,24 @@ class AWSBoto:
                 log(f'  Provider: {self.cfg.provider}')
                 log(f'  Endpoint: {self.cfg.endpoint}\n')
 
-            # Command that needs credentials to be successfull
-            self.s3_client.list_buckets()
+            if self.is_session_set:
+                # Command that needs credentials to be successfull
+                self.s3_client.list_buckets()
 
-            if prints:
-                log('...credentials are valid\n')
-
-            return True
-
+                if prints:
+                    log('...credentials are valid\n')
+                return True
+            else:
+                if prints:
+                    log('...credentials are NOT valid\n')
+                return False
+            
         except botocore.exceptions.NoCredentialsError:
-            log(f"Error: No AWS credentials found.")
+            log(f"Error: No credentials found.")
             return False
 
         except botocore.exceptions.EndpointConnectionError:
-            log(f"Error: Unable to connect to the AWS S3 endpoint.")
+            log(f"Error: Unable to connect to the S3 endpoint.")
             return False
 
         except botocore.exceptions.ClientError as e:
@@ -1415,16 +1471,16 @@ class AWSBoto:
                 log(
                     f"Error: The time difference between S3 storage and your computer is too high:\n{e}")
             elif error_code == 'InvalidAccessKeyId':
-                log(f"Error: Invalid AWS Access Key ID\n{e}")
+                log(f"Error: Invalid Access Key ID\n{e}")
 
             elif error_code == 'SignatureDoesNotMatch':
                 if "Signature expired" in str(e):
                     log(
                         f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
                 else:
-                    log(f"Error: Invalid AWS Secret Access Key:\n{e}")
+                    log(f"Error: Invalid Secret Access Key:\n{e}")
             elif error_code == 'InvalidClientTokenId':
-                log(f"Error: Invalid AWS Access Key ID or Secret Access Key !")
+                log(f"Error: Invalid Access Key ID or Secret Access Key !")
             elif error_code == 'ExpiredToken':
                 log(f"Error: Your session token has expired")
             else:
@@ -1576,7 +1632,7 @@ class AWSBoto:
         ''' Set the AWS profile for the current session'''
 
         try:
-            if not profile_name or not region or not endopoint_url:
+            if not profile_name:
                 return
 
             # Initialize a Boto3 session using the configured profile
@@ -1635,6 +1691,9 @@ class AWSBoto:
                 endpoint_url=endopoint_url,
                 region_name=region
             )
+
+            self.is_session_set = True
+
 
         except Exception as e:
             print_error()
@@ -6216,16 +6275,12 @@ class Commands:
             if not cfg.set_nih():
                 return False
 
-            provider_configured = False
-
             while True:
 
                 # Aesthetic line
                 log()
                 
                 if not inquirer.confirm(message=f'Do you want to configure S3 providers?', default=False):
-                    if provider_configured:
-                        cfg.set_default_provider()
                     break
 
                 if not cfg.set_provider():
@@ -6252,7 +6307,8 @@ class Commands:
                 if not cfg.set_s3(aws):
                     return False
                 
-                provider_configured = True
+                # Set last configured provider as default provider
+                cfg.set_default_provider(provider=cfg.provider)
 
 
             if not cfg.set_slurm(self.args):
