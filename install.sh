@@ -1,7 +1,7 @@
 #! /bin/bash
 
 # Make sure script ends as soon as an error arises
-set -e
+# set -e
 
 #################
 ### VARIABLES ###
@@ -25,11 +25,11 @@ catch() {
 
         echo
         echo "Rolling back installation..."
-        
-        pipx ensurepath >/dev/null 2>&1
 
         if pipx list | grep 'froster' >/dev/null 2>&1; then
+            echo "  Uninstalling froster..."
             pipx uninstall froster >/dev/null 2>&1
+            echo "  ...uninstalled"
         fi
 
         # Restore (if any) backed up froster config files
