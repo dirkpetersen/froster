@@ -497,6 +497,59 @@ class ConfigManager:
             raise inquirer.errors.ValidationError(
                 "", reason="Path does not exist")
         return True
+    
+    def export_config(self, export_dir):
+        '''Export the configuration files'''
+
+        try:
+            #patata
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # if exists, read the config file
+            if os.path.exists(self.config_file):
+                config.read(self.config_file)
+
+
+                if config.has_section('USER'):
+                    config.remove_section('USER')
+
+                if config.has_section('UPDATE'):
+                    config.remove_section('UPDATE')
+
+                for provider in PROVIDERS_LIST:
+                    if config.has_section(provider):
+                        # Get the profile before being deleted
+                        profile = config.get(provider, 'profile')
+                        # Remove the profile as this per-user information
+                        config.remove_option(provider, 'profile')
+
+                        # Get and set the region 
+                        exported_region = self.get_region(profile)
+                        config.set(provider, 'region', exported_region)
+
+                        # Get and set the endpoint
+                        export_endpoint = self.get_endpoint(profile)
+                        config.set(provider, 'endpoint', export_endpoint)
+
+
+                os.makedirs(export_dir, exist_ok=True, mode=0o775)
+
+                export_config_file = os.path.join(export_dir, 'froster_config_template.ini')
+
+                with open(export_config_file, 'w') as f:
+                    config.write(f)
+
+                log(f'\nConfiguration file exported to {export_config_file}\n')
+
+                return True
+            else:
+                log(f'Error: Config file {self.config_file} does not exist')
+                return False
+        
+        except Exception:
+            print_error()
+            return False
 
     def print_config(self):
         '''Print the configuration files'''
@@ -6254,10 +6307,18 @@ class Commands:
         try:
             if self.args.print:
                 return cfg.print_config()
+            
+            if self.args.import_config:
+                print("import config")
+                return True
+
+            if self.args.export_config:
+                return cfg.export_config(export_dir=self.args.export_config)
 
             if self.args.reset:
                 if os.path.exists(cfg.config_file):
                     os.remove(cfg.config_file)
+
 
             log(f'\n*****************************')
             log(f'*** FROSTER CONFIGURATION ***')
@@ -6703,6 +6764,12 @@ class Commands:
 
         parser_config.add_argument('-r', '--reset', dest='reset', action='store_true',
                                    help="Delete the current configuration and start over")
+        
+        parser_config.add_argument('-i', '--import', dest='import_config', action='store', default='',
+                                   help="Import a given configuration file")
+        
+        parser_config.add_argument('-e', '--export', dest='export_config', action='store', default='',
+                                   help="Export the current configuration to the given directory")
 
         # ***
 
