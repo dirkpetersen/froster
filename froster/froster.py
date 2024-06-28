@@ -497,6 +497,74 @@ class ConfigManager:
             raise inquirer.errors.ValidationError(
                 "", reason="Path does not exist")
         return True
+    
+    def export_config(self, export_dir):
+        '''Export the configuration files'''
+
+        try:
+            #patata
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # if exists, read the config file
+            if os.path.exists(self.config_file):
+                config.read(self.config_file)
+
+
+                if config.has_section('USER'):
+                    config.remove_section('USER')
+
+                if config.has_section('UPDATE'):
+                    config.remove_section('UPDATE')
+
+                for provider in PROVIDERS_LIST:
+                    if config.has_section(provider):
+                        # Get the profile before being deleted
+                        profile = config.get(provider, 'profile')
+                        # Remove the profile as this per-user information
+                        config.remove_option(provider, 'profile')
+
+                        # Get and set the region 
+                        exported_region = self.get_region(profile)
+                        config.set(provider, 'exported_region', exported_region)
+
+                        # Get and set the endpoint
+                        export_endpoint = self.get_endpoint(profile)
+                        config.set(provider, 'exported_endpoint', export_endpoint)
+
+
+                os.makedirs(export_dir, exist_ok=True, mode=0o775)
+
+                export_config_file = os.path.join(export_dir, 'froster_config_template.ini')
+
+                with open(export_config_file, 'w') as f:
+                    config.write(f)
+
+                log(f'\nConfiguration file exported successfully to {export_config_file}\n')
+
+                return True
+            else:
+                log(f'Error: Config file {self.config_file} does not exist')
+                return False
+        
+        except Exception:
+            print_error()
+            return False
+        
+    def import_config(self, import_file):
+        try:
+            if os.path.exists(import_file):
+                shutil.copy(import_file, self.config_file)
+                log(f'\nConfiguration file imported successfully.\n')
+                return True
+            else:
+                log(f'Error: Config file {import_file} does not exist')
+                return False
+
+        except Exception:
+            print_error()
+            return False
+
 
     def print_config(self):
         '''Print the configuration files'''
@@ -615,6 +683,9 @@ class ConfigManager:
 
             # Update region in the config file
             self.__set_aws_config(profile_name=self.profile, region=region)
+
+            # Remove the exported_region from the config object if it exists
+            self.__remove_config_option(self.provider, 'exported_region')
 
             return True
 
@@ -759,7 +830,12 @@ class ConfigManager:
         '''Get the AWS region for the given profile'''
 
         try:
-            return self.get_aws_config_option(profile, 'region')
+            # Check if there is an exported region
+            exported_region = self.__get_configuration_entry(self.provider, 'exported_region', None)
+            if exported_region:
+                return exported_region
+            else:
+                return self.get_aws_config_option(profile, 'region')
 
         except Exception:
             print_error()
@@ -770,7 +846,14 @@ class ConfigManager:
         '''Get the endpoint_url for the given profile'''
 
         try:
-            return self.get_aws_config_option(profile, 's3.endpoint_url')
+            # Check if there is an exported endpoint
+            exported_endpoint = self.__get_configuration_entry(
+                            self.provider, 'exported_endpoint', None)
+            
+            if exported_endpoint:
+                return exported_endpoint
+            else:
+                return self.get_aws_config_option(profile, 's3.endpoint_url')
 
         except Exception:
             print_error()
@@ -807,6 +890,27 @@ class ConfigManager:
             print_error()
             return None
 
+    def __remove_config_option(self, section, option):
+        '''Remove a configuration option in the config file'''
+
+        try:
+            # Create a ConfigParser object
+            config = configparser.ConfigParser()
+
+            # if exists, read the config file
+            if os.path.exists(self.config_file):
+                config.read(self.config_file)
+
+                # Remove the option
+                if config.has_option(self.provider, option):
+                    config.remove_option(section, option)
+
+                    # Write the config object to the config file
+                    with open(self.config_file, 'w') as f:
+                        config.write(f)
+
+        except Exception:
+            print_error()
     def __set_configuration_entry(self, section, key, value):
         '''Set a configuration entry in the config file'''
 
@@ -922,7 +1026,7 @@ class ConfigManager:
                 # Get the user answer
                 endpoint = inquirer.text(
                     message=f'Enter the {self.provider} endpoint',
-                    default=self.__get_configuration_entry(self.provider, 'endpoint'),
+                    default=self.get_endpoint(self.profile),
                     validate=self.__inquirer_check_required)
 
             # Ensure the endpoint starts with "https://" for IDrive
@@ -935,6 +1039,9 @@ class ConfigManager:
             
             # Manually setting the endpoint
             self.endpoint = endpoint
+
+            # Remove the exported_region from the config object if it exists
+            self.__remove_config_option(self.provider, 'exported_endpoint')
 
             return True
 
@@ -6254,10 +6361,19 @@ class Commands:
         try:
             if self.args.print:
                 return cfg.print_config()
+            
+            if self.args.import_config:
+                return cfg.import_config(import_file=self.args.import_config)
+
+            if self.args.export_config:
+                return cfg.export_config(export_dir=self.args.export_config)
 
             if self.args.reset:
                 if os.path.exists(cfg.config_file):
                     os.remove(cfg.config_file)
+                    log(f'\nConfiguration file removed: {cfg.config_file}\n')
+                return True
+
 
             log(f'\n*****************************')
             log(f'*** FROSTER CONFIGURATION ***')
@@ -6703,6 +6819,12 @@ class Commands:
 
         parser_config.add_argument('-r', '--reset', dest='reset', action='store_true',
                                    help="Delete the current configuration and start over")
+        
+        parser_config.add_argument('-i', '--import', dest='import_config', action='store', default='',
+                                   help="Import a given configuration file")
+        
+        parser_config.add_argument('-e', '--export', dest='export_config', action='store', default='',
+                                   help="Export the current configuration to the given directory")
 
         # ***
 
