@@ -298,29 +298,36 @@ install_pipx() {
 
         # Ensure path for pipx
         echo "  Ensuring path for pipx"
-        ~/.local/bin/pipx ensurepath >/dev/null 2>&1
-
-        # Adding ~/.local/bin to PATH for this session
-        echo "  Adding ~/.local/bin to PATH for this installation session"
-        export PATH=$PATH:~/.local/bin
-
+        $HOME/.local/bin/pipx ensurepath >/dev/null 2>&1
         echo "...pipx installed"
     else
         echo "...pipx already installed"
+
         echo
         echo "Upgrading pipx..."
-        
         pipx upgrade pipx >/dev/null 2>&1 &
         spinner $!
-
         echo "...pipx upgraded"
+
+        echo
+        echo "Ensuring path for pipx..."
+        pipx ensurepath >/dev/null 2>&1
+        echo "...path ensured"
     fi
+
+    # Check if PIPX_BIN_DIR is set and not empty, otherwise default to ~/.local/bin
+    PIPX_BIN_DIR="${PIPX_BIN_DIR:-$HOME/.local/bin}"
+    echo
+    echo "Adding $PIPX_BIN_DIR to PATH for this installation session"
+    export PATH="$PATH:$PIPX_BIN_DIR"
 }
 
 install_froster() {
 
     echo
     echo "Installing latest version of froster..."
+
+    echo $PATH
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
@@ -353,23 +360,6 @@ install_froster() {
     echo "...froster installed"
 }
 
-
-get_dir() {
-   
-    echo "Looking for $1 directory"
-
-    dir_path=$(which $1)
-
-    if [ -n "$dir_path" ]; then
-        dir=$(dirname "$(readlink -f "$dir_path")")
-    else
-        echo "Error: $1 directory path not found."
-        exit 1
-    fi
-
-    echo "$dir"
-}
-
 install_pwalk() {
 
     echo
@@ -394,10 +384,8 @@ install_pwalk() {
     spinner $!
 
     # Move pwalk to froster's binaries folder
-    echo "    Moving pwalk to froster's binaries folder"
-    pipx list
-    which froster || { echo "Error: froster is not installed."; exit 1; }
-    froster_dir=$(get_dir "froster")
+    froster_dir=$(dirname "$(readlink -f $(which froster))")
+    echo "    Moving pwalk to froster's binaries folder: $froster_dir"
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
 
     # Delete downloaded pwalk files
@@ -442,8 +430,8 @@ install_rclone() {
     spinner $!
 
     # Move rclone to froster's binaries folder
-    echo "    Moving rclone to froster's binaries folder"
-    froster_dir=$(get_dir "froster")
+    froster_dir=$(dirname "$(readlink -f $(which froster))")
+    echo "    Moving rclone to froster's binaries folder: $froster_dir"
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
 
     # Remove the downloaded zip file
@@ -479,8 +467,7 @@ install_pwalk
 install_rclone
 
 # Get the installed froster version
-froster_dir=$(get_dir "froster")
-version=$(${froster_dir}/froster -v | awk '{print $2}')
+version=$(froster -v | awk '{print $2}')
 
 # Print success message
 echo
