@@ -1270,6 +1270,9 @@ class ConfigManager:
             # Add an option to create a new bucket
             s3_buckets.insert(0, '+ Create new bucket')
 
+            if self.provider == 'Ceph':
+                s3_buckets.insert(0, '+ Enter bucket name')
+
             # Ask user to choose an existing aws s3 bucket or create a new one
             s3_bucket = inquirer.list_input(
                 "Choose your s3 bucket",
@@ -1299,6 +1302,16 @@ class ConfigManager:
                 # Store new aws s3 bucket in the config object
                 self.__set_configuration_entry(
                     self.profile, 'bucket_name', new_bucket_name)
+
+            elif s3_bucket == '+ Enter bucket name':
+                # Get bucket name
+                bucket_name = inquirer.text(
+                    message='Enter bucket name',
+                    validate=self.__inquirer_check_required)
+                
+                # Store the s3 bucket in the config object
+                self.__set_configuration_entry(
+                    self.profile, 'bucket_name', bucket_name)
             else:
                 # Store aws s3 bucket in the config object
                 self.__set_configuration_entry(
