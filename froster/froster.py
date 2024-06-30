@@ -595,6 +595,7 @@ class ConfigManager:
             if os.path.exists(import_file):
                 shutil.copy(import_file, self.config_file)
                 log(f'\nConfiguration file imported successfully.\n')
+                log(f'Remember you still need to run "froster config" to set the credentials\n')
                 return True
             else:
                 log(f'Error: Config file {import_file} does not exist')
@@ -616,8 +617,12 @@ class ConfigManager:
                 log(f'\n*** NO CONFIGURATION FOUND ***')
                 log('\nYou can configure froster using the command:')
                 log('    froster config\n')
+            
+            return True
+
         except Exception:
             print_error()
+            return False
 
     def ses_verify_requests_sent(self, email_list):
         '''Set the ses verify requests sent email list in configuration file'''
@@ -920,12 +925,12 @@ class ConfigManager:
             print_error()
             return None
 
-    def get_credential(self, profile, key_name):
+    def get_credential(self, credentials_profile, key_name):
         '''Get the key the given profile'''
 
         try:
             # If no profile, then return None
-            if not profile:
+            if not credentials_profile:
                 return None
 
             # Create a ConfigParser object
@@ -938,7 +943,7 @@ class ConfigManager:
 
                 # Get the access key from the config file
                 key = config.get(
-                    profile, key_name, fallback=None)
+                    credentials_profile, key_name, fallback=None)
 
             else:
                 # AWS credentials file does not exists
@@ -1856,9 +1861,9 @@ class AWSBoto:
 
             # Get the AWS credentials
             aws_access_key_id = self.cfg.get_credential(
-                profile=credentials_profile, key_name='aws_access_key_id')
+                credentials_profile=credentials_profile, key_name='aws_access_key_id')
             aws_secret_access_key = self.cfg.get_credential(
-                profile=credentials_profile, key_name='aws_secret_access_key')
+                credentials_profile=credentials_profile, key_name='aws_secret_access_key')
 
             if not aws_access_key_id or not aws_secret_access_key:
                 return
@@ -3750,7 +3755,7 @@ class Archiver:
             log('\n For index a folder a find hotspots run:')
             log('    froster index "/your/folder/to/index"\n')
 
-            return
+            return True
 
         # Get all the hotspot CSV files in the hotspots directory
         hotspots_files = [f for f in os.listdir(
@@ -3767,7 +3772,7 @@ class Archiver:
             log('For archive a specific folder run:')
             log('    froster archive "/your/folder/to/archive"\n')
 
-            return
+            return True
 
         # Sort the CSV files by their modification time in descending order (newest first)
         hotspots_files.sort(key=lambda x: os.path.getmtime(
@@ -3779,7 +3784,7 @@ class Archiver:
 
         # No file selected
         if not ret:
-            return
+            return False
 
         # Get the selected CSV file
         hotspot_selected = os.path.join(self.cfg.hotspots_dir, ret[0])
@@ -3790,18 +3795,18 @@ class Archiver:
         if not folders_to_archive:
             log(
                 f'\nNo hotspots to archive found in {hotspot_selected}.')
-            return
+            return True
 
         ret = TextualStringListSelector(
             title="Select hotspot to archive ", items=folders_to_archive).run()
         if not ret:
             # No file selected
-            return
+            return False
         else:
             folders_to_archive = [ret[0]]
 
         # Archive the selected folders
-        self.archive(folders_to_archive)
+        return self.archive(folders_to_archive)
 
     def _is_recursive_collision(self, folders):
         '''Check if there is a collision between folders and recursive flag'''
@@ -3835,28 +3840,56 @@ class Archiver:
                 f':s3:{self.cfg.bucket_name}',
                 self.cfg.archive_dir,
                 folder_to_archive.lstrip(os.path.sep))
+            
+            hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
 
-            # TODO: vmachado: review this code
-            froster_md5sum_exists = os.path.isfile(
-                os.path.join(folder_to_archive, ".froster.md5sum"))
 
-            if froster_md5sum_exists:
-                if is_force:
-                    if not self.reset_folder(folder_to_archive):
-                        return
+            # Force flag provided, reset the folder and continue the archive process
+            if is_force:
+                if self.reset_folder(folder_to_archive):
+                    # Reset folder successful. Continue the archive process
+                    pass
                 else:
-                    log(
-                        f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process.')
-                    log(
-                        f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
-                    sys.exit(1)
+                    # Reset folder failed. Exiting...
+                    return False
+            else:
+                # If hash file exists, check if the folder is already archived
+                if os.path.exists(hashfile):
+                    # Check if folder is archived according to our database
+                    archived_folder_info = self.froster_archives_get_entry(folder_to_archive)
+                    
+                    # Check if folder is already archived in S3
+                    rclone = Rclone(self.args, self.cfg)
+                    checksum = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+
+                    if archived_folder_info and checksum:
+                        # Folder is already archived. Print error message
+                        log(
+                            f'\nThe folder {folder_to_archive} is already archived in S3 bucket.\n')
+                        log(f'{archived_folder_info}\n')
+            
+                    elif archived_folder_info and not checksum:
+                        # Folder is archived in our database but checksums do not match in the S3 bucket. Print error message
+                        log(
+                            f'\nThe folder {folder_to_archive} is already archived in our database but checksums do not match in the S3 bucket.\n')
+                        log(f'{archived_folder_info}\n')
+                        log(f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
+                
+                    else:
+                        # Folder has a hasfile and is not archived. Print error message
+                        log(
+                            f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process attempt.')
+
+                        log(f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
+                
+                    return False
 
             # Check if the folder is empty
             with os.scandir(folder_to_archive) as entries:
                 if not any(True for _ in entries):
                     log(
                         f'\nFolder {folder_to_archive} is empty, skipping.\n')
-                    return
+                    return True
 
             log(f'\nARCHIVING {folder_to_archive}')
 
@@ -3870,17 +3903,14 @@ class Archiver:
             if self._gen_allfiles_and_tar(folder_to_archive, self.thresholdKB, is_tar):
                 log(f'        ...done')
             else:
-                return
+                return False
 
             # Generate md5 checksums for all files in the folder
             log(f'\n    Generating checksums...')
             if self._gen_md5sums(folder_to_archive, self.md5sum_filename):
                 log('        ...done')
             else:
-                return
-
-            # Get the path to the hashfile
-            hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
+                return False
 
             # Create an Rclone object
             rclone = Rclone(self.args, self.cfg)
@@ -3910,7 +3940,7 @@ class Archiver:
                 log('        ...done')
             else:
                 log('        ...FAILED\n')
-                return
+                return False
 
             # Archive the folder to S3
             log(f'\n    Uploading files...')
@@ -3926,7 +3956,7 @@ class Archiver:
                 log('        ...done')
             else:
                 log('        ...FAILED\n')
-                return
+                return False
 
             log(f'\n    Verifying checksums...')
             ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
@@ -3936,7 +3966,7 @@ class Archiver:
                 log('        ...done')
             else:
                 log('        ...FAILED\n')
-                return
+                return False
 
             # Add the metadata to the archive JSON file ONLY if this is not a subfolder
             if not is_subfolder:
@@ -3978,8 +4008,11 @@ class Archiver:
             log(f'    LOCAL SOURCE:       "{folder_to_archive}"')
             log(f'    S3 DESTINATION:     "{s3_dest}"\n')
 
+            return True
+
         except Exception:
             print_error()
+            return False
 
     def archive(self, folders):
         '''Archive the given folders'''
@@ -4002,7 +4035,7 @@ class Archiver:
                 if self._is_recursive_collision(folders):
                     log(
                         f'\nError: You cannot archive folders recursively if there is a dependency between them.\n')
-                    sys.exit(1)
+                    return False
 
             nih = ''
 
@@ -4049,8 +4082,12 @@ class Archiver:
                         is_subfolder = False
                         self._archive_locally(
                             folder, is_recursive, is_subfolder, is_tar, is_force)
+                        
+            return True
+        
         except Exception:
             print_error()
+            return False
 
     def get_mounts(self):
         try:
@@ -4167,10 +4204,17 @@ class Archiver:
 
     def unmount(self, folders):
 
-        # Clean the provided paths
-        folders = clean_path_list(folders)
+        try:
+            # Clean the provided paths
+            folders = clean_path_list(folders)
 
-        self._unmount_locally(folders)
+            self._unmount_locally(folders)
+        
+            return True
+        
+        except Exception:
+            print_error()
+            return False
 
     def get_hotspot_folders(self, hotspot_file):
 
@@ -4602,7 +4646,7 @@ class Archiver:
 
         log(f'\nDELETING {folder_to_delete}...')
 
-        # Check if the folder is already archived
+        # Check if the folder is already deleted
         where_did_files_go = os.path.join(
             folder_to_delete, self.where_did_the_files_go_filename)
         if os.path.isfile(where_did_files_go):
@@ -4639,7 +4683,6 @@ class Archiver:
                 archived_folder_info['local_folder'], '')
 
             # Get the path to the S3 destination
-            # Risky, but os.paht.join does not work with :s3: paths
             s3_dest = archived_folder_info['archive_folder'] + subfolder_path
 
             log(f'\n    Verifying checksums...')
@@ -4722,7 +4765,7 @@ class Archiver:
                 if self._is_recursive_collision(folders):
                     log(
                         f'\nError: You cannot delete folders recursively if there is a dependency between them.\n')
-                    return
+                    return False
 
             if use_slurm(self.args.noslurm):
                 self._slurm_cmd(folders=folders, cmd_type='delete')
@@ -4733,8 +4776,12 @@ class Archiver:
                             self._delete_locally(root)
                     else:
                         self._delete_locally(folder)
+
+            return True
+    
         except Exception:
             print_error()
+            return False
 
     def _download(self, folder):
         '''Download the restored files'''
@@ -4842,7 +4889,7 @@ class Archiver:
                 if self._is_recursive_collision(folders):
                     log(
                         f'\nError: You cannot restore folders recursively if there is a dependency between them.\n')
-                    return
+                    return False
 
             # Archive locally all folders. If recursive flag set, archive all subfolders too.
             for folder in folders:
@@ -4886,9 +4933,11 @@ class Archiver:
                             # schedule execution in 12 hours
                             self._slurm_cmd(
                                 folders=folders, cmd_type='restore', scheduled=12)
+            return True
 
         except Exception:
             print_error()
+            return False
 
     def _restore_verify(self, source, target):
         '''Verify the restored files'''
@@ -5001,7 +5050,7 @@ class Archiver:
         '''Add a new entry to the archive JSON file'''
         try:
 
-            # Initialize the data dictionary in case archive_json does not exist
+            # Initialize the data to empty dictionary in case archive_json does not exist
             data = {}
 
             # Read the archive JSON file
@@ -5026,6 +5075,7 @@ class Archiver:
             # Write the updated data dictionary to the archive JSON file
             with open(self.archive_json, 'w') as file:
                 json.dump(data, file, indent=4)
+
         except Exception:
             print_error()
 
@@ -5567,10 +5617,20 @@ class Rclone:
             self.envrn['RCLONE_S3_REGION'] = cfg.region
             self.envrn['RCLONE_S3_STORAGE_CLASS'] = cfg.storage_class
 
-            self.envrn['AWS_ACCESS_KEY_ID'] = cfg.get_credential(
-                profile=cfg.profile, key_name='aws_access_key_id')
-            self.envrn['AWS_SECRET_ACCESS_KEY'] = cfg.get_credential(
-                profile=cfg.profile, key_name='aws_secret_access_key')
+            # Get the AWS credentials
+            aws_access_key_id = self.cfg.get_credential(
+                credentials_profile=cfg.credentials, key_name='aws_access_key_id')
+            aws_secret_access_key = self.cfg.get_credential(
+                credentials_profile=cfg.credentials, key_name='aws_secret_access_key')
+
+            if not aws_access_key_id or not aws_secret_access_key:
+                log('\nError: No credentials found for Rclone to use.')
+                log('Please configure the credentials by using command:')
+                log('    froster config\n')
+                sys.exit(1)
+            else:
+                self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
+                self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
 
         except Exception:
             print_error()
@@ -6404,8 +6464,14 @@ class Commands:
 
     def print_help(self):
         '''Print help message'''
+        try:
 
-        self.parser.print_help()
+            self.parser.print_help()
+            return True
+
+        except Exception:
+            print_error()
+            return False
 
     def print_version(self):
         '''Print froster version'''
@@ -6569,7 +6635,7 @@ class Commands:
             if self.args.permissions:
                 # Print the permissions of the provided folders
                 arch.print_paths_rw_info(self.args.folders)
-                return
+                return True
 
             # Check if the provided pwalk copy folder exists
             if self.args.pwalkcopy and not os.path.isdir(self.args.pwalkcopy):
@@ -6597,7 +6663,7 @@ class Commands:
             if self.args.older > 0 and self.args.newer > 0:
                 log(
                     '\nError: Cannot use both --older and --newer flags together.\n', file=sys.stderr)
-                sys.exit(1)
+                return False
 
             # Check if the user provided the reset argument
             if self.args.reset:
@@ -6605,13 +6671,14 @@ class Commands:
                     arch.reset_folder(folder, self.args.recursive)
 
             if not self.args.folders:
-                arch.archive_select_hotspots()
+                return arch.archive_select_hotspots()
             else:
                 # Archive the given folders
-                arch.archive(self.args.folders)
+                return arch.archive(self.args.folders)
 
         except Exception:
             print_error()
+            return False
 
     def subcmd_restore(self, arch: Archiver, aws: AWSBoto):
         '''Check command for restoring folders for Froster.'''
@@ -6625,27 +6692,28 @@ class Commands:
 
                 if not files:
                     log("No archives available.")
-                    sys.exit(0)
+                    return True
 
                 app = TableArchive(files)
                 retline = app.run()
 
                 if not retline:
-                    return
+                    return False
 
                 if len(retline) < 2:
                     log(f'\nNo archived folders found\n')
-                    return
+                    return False
 
                 self.args.folders = [retline[0]]
 
                 # Append the folder for restoring to the arguments
                 sys.argv.append(self.args.folders[0])
 
-            arch.restore(self.args.folders, aws)
+            return arch.restore(self.args.folders, aws)
 
         except Exception:
             print_error()
+            return False
 
     def subcmd_delete(self, arch: Archiver, aws: AWSBoto):
         '''Check command for deleting folders for Froster.'''
@@ -6666,47 +6734,48 @@ class Commands:
 
                 if not files:
                     log("No archives available.")
-                    return
+                    return True
 
                 app = TableArchive(files)
                 retline = app.run()
 
                 if not retline:
-                    return
+                    return False
 
                 if len(retline) < 2:
                     log(f'\nNo archived folders found\n')
-                    return
+                    return True
 
                 self.args.folders = [retline[0]]
 
                 # Append the folder to delete to the arguments
                 sys.argv.append(self.args.folders[0])
 
-            arch.delete(self.args.folders)
+            return arch.delete(self.args.folders)
 
         except Exception:
             print_error()
+            return False
 
     def subcmd_mount(self, arch: Archiver, aws: AWSBoto):
 
         try:
             if self.args.list:
                 arch.print_current_mounts()
-                return
+                return True
 
             if self.args.mountpoint:
                 if not os.path.isdir(self.args.mountpoint):
                     log(
                         f'\nError: Folder "{self.args.mountpoint}" does not exist.\n')
-                    sys.exit(1)
+                    return False
 
                 if len(self.args.folders) > 1:
                     log(
                         '\nError: Cannot mount multiple folders to a single mountpoint.')
                     log(
                         'Check the mount command usage with "froster mount --help"\n')
-                    sys.exit(1)
+                    return False
 
             if not self.args.folders:
                 # Get the list of folders from the archive
@@ -6715,7 +6784,7 @@ class Commands:
 
                 if not files:
                     log("\nNo archives available.\n")
-                    return
+                    return True
 
                 app = TableArchive(files)
                 retline = app.run()
@@ -6724,15 +6793,18 @@ class Commands:
                     return False
                 if len(retline) < 2:
                     log(f'\nNo archived folders found\n')
-                    sys.exit(0)
+                    return True
 
                 self.args.folders = [retline[0]]
 
             arch.mount(folders=self.args.folders,
                        mountpoint=self.args.mountpoint)
+            
+            return True
 
         except Exception:
             print_error()
+            return False
 
     def subcmd_umount(self, arch: Archiver):
         '''Unmount a folder from the system.'''
@@ -6740,13 +6812,13 @@ class Commands:
         try:
             if self.args.list:
                 arch.print_current_mounts()
-                sys.exit(0)
+                return True
 
             # Get current mounts
             mounts = arch.get_mounts()
             if len(mounts) == 0:
                 log("\nNOTE: No rclone mounts on this computer.\n")
-                sys.exit(0)
+                return True
 
             if not self.args.folders:
                 # No folders provided, manually select folder to unmount
@@ -6758,10 +6830,11 @@ class Commands:
 
                 self.args.folders = [retline[0]]
 
-            arch.unmount(self.args.folders)
+            return arch.unmount(self.args.folders)
 
         except Exception:
             print_error()
+            return False
 
     def subcmd_ssh(self, cfg: ConfigManager, aws: AWSBoto):
         '''SSH into an AWS EC2 instance'''
@@ -6819,7 +6892,12 @@ class Commands:
     def subcmd_credentials(self, cfg: ConfigManager, aws: AWSBoto):
         '''Check AWS credentials'''
         try:
-            return aws.check_credentials(prints=True)
+            if aws.check_credentials(prints=True):
+                return True
+            else:
+                log(f'\nYou can configure the credentials using the command:')
+                log(f'    froster config\n')
+                return False
 
         except Exception:
             print_error()
@@ -6853,7 +6931,7 @@ class Commands:
             releases = json.loads(result.stdout)
             if not releases:
                 log('Note: Could not check for updates')
-                return
+                return False
 
             latest = releases[0]['tag_name'].replace('v', '')
             current = pkg_resources.get_distribution("froster").version
@@ -7273,7 +7351,8 @@ def print_error(msg: str = None):
     log('  Function:', function_name)
     log('  Line:', line)
     log('  Error code:', error_code)
-    log('  Exception type:', exc_type.__name__)
+    log('  Exception type:', exc_type)
+    log('  Exception value:', exc_value)
 
     if (msg):
         log('  Error message:', msg)
@@ -7397,11 +7476,14 @@ def main():
             if not aws.check_credentials():
                 # Print message only if profile is set
                 if cfg.profile:
-                    log('Error: Invalid credentials.')
+                    log(f'\nError: Invalid credentials.')
                     log(f'  Profile: {cfg.profile}')
                     log(f'  Provider: {cfg.provider}')
                     log(f'  Credentials: {cfg.credentials}')
                     log(f'  Endpoint: {cfg.endpoint}\n')
+
+                log(f'\nYou can configure the credentials using the command:')
+                log(f'    froster config\n')
                 sys.exit(1)
 
             # CLI commands that need credentials and configuration.
@@ -7416,10 +7498,9 @@ def main():
             # elif args.subcmd in ['ssh', 'scp']:
             #     res = cmd.subcmd_ssh(cfg, aws)
             else:
-                cmd.print_help()
-                sys.exit(1)
+                res = cmd.print_help()
 
-   # Check if there are updates on froster every X days
+        # Check if there are updates on froster every X days
         if cfg.check_update():
             cmd.subcmd_update(mute_no_update=True)
 
