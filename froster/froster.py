@@ -1307,6 +1307,8 @@ class ConfigManager:
                 # Get bucket name
                 bucket_name = inquirer.text(
                     message='Enter bucket name',
+                    default=self.__get_configuration_entry(
+                        self.profile, 'bucket_name'),
                     validate=self.__inquirer_check_required)
                 
                 # Store the s3 bucket in the config object
