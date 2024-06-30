@@ -279,7 +279,7 @@ class ConfigManager:
                     self.profile = use_profile
 
                 if not config.has_section(self.profile):
-                    log(f'\nError: "{self.profile}" does not exist in the configuration file\n')
+                    log(f'\nError: "{self.profile}" does not exist in the configuration file (remember case sensitive)\n')
                     sys.exit(1)
             else:
                 # Get default profile
@@ -294,12 +294,6 @@ class ConfigManager:
             self.credentials = config.get(
                 self.profile, 'credentials', fallback=None)
             
-            # Get the region
-            self.region = self.get_region(credentials_profile=self.credentials)
-
-            # Get the S3 endpoint
-            self.endpoint = self.get_endpoint(credentials_profile=self.credentials)
-
             # Current S3 Bucket name
             self.bucket_name = config.get(
                 self.profile, 'bucket_name', fallback=None)
@@ -311,6 +305,12 @@ class ConfigManager:
             # Store aws s3 storage class in the config object
             self.storage_class = config.get(
                 self.profile, 'storage_class', fallback=None)
+
+            # Get the region
+            self.region = self.get_region(credentials_profile=self.credentials)
+
+            # Get the S3 endpoint
+            self.endpoint = self.get_endpoint(credentials_profile=self.credentials)
 
             # Slurm configuration
             self.slurm_walltime_days = config.get(
@@ -522,35 +522,52 @@ class ConfigManager:
         '''Export the configuration files'''
 
         try:
-            # patata
             # Create a ConfigParser object
             config = configparser.ConfigParser()
 
-            # if exists, read the config file
+            # if exists, export the config file
             if os.path.exists(self.config_file):
                 config.read(self.config_file)
 
+                # Remove the USER section
                 if config.has_section('USER'):
                     config.remove_section('USER')
 
+                # Remove the UPDATE section
                 if config.has_section('UPDATE'):
                     config.remove_section('UPDATE')
 
-                for provider in PROVIDERS_LIST:
-                    if config.has_section(provider):
-                        # Get the profile before being deleted
-                        profile = config.get(provider, 'profile')
-                        # Remove the profile as this per-user information
-                        config.remove_option(provider, 'profile')
 
-                        # Get and set the region
-                        exported_region = self.get_region(profile)
-                        config.set(provider, 'exported_region',
+                # Get all sections
+                all_sections = config.sections()
+
+                # Filter sections to only include those that start with "Profile "
+                profiles = [
+                    section for section in all_sections if section.startswith('profile ')]
+
+
+                for profile in profiles:
+
+                        # Get the profile before being deleted
+                        credentials = config.get(profile, 'credentials')
+
+                        # Remove the credentials as this per-user information
+                        config.remove_option(profile, 'credentials')
+
+                        # Get the region for these credentials
+                        exported_region = self.get_region(credentials_profile=credentials)
+
+                        # Set the exported region
+                        config.set(profile,
+                                   'exported_region',
                                    exported_region)
 
-                        # Get and set the endpoint
-                        export_endpoint = self.get_endpoint(profile)
-                        config.set(provider, 'exported_endpoint',
+                        # Get the endpoint for these credentials
+                        export_endpoint = self.get_endpoint(credentials_profile=credentials)
+                        
+                        # Set the exported endpoint
+                        config.set(profile,
+                                   'exported_endpoint',
                                    export_endpoint)
 
                 os.makedirs(export_dir, exist_ok=True, mode=0o775)
@@ -704,7 +721,7 @@ class ConfigManager:
                 default_region = self.get_region(credentials_profile=self.credentials)
 
             # Ask user to choose a region
-            region = inquirer.list_input(f"Choose region for profile {self.profile}",
+            region = inquirer.list_input(f"Choose region for {self.profile}",
                                          default=default_region,
                                          choices=aws_regions)
     
@@ -1075,7 +1092,7 @@ class ConfigManager:
 
                 # Get the user answer
                 endpoint = inquirer.text(
-                    message=f'Enter the endpoint for profile "{self.profile}" and provider "{self.provider}"',
+                    message=f'Enter the endpoint for "{self.profile}" and provider "{self.provider}"',
                     default=default_endpoint,
                     validate=self.__inquirer_check_required)
 
@@ -1634,6 +1651,11 @@ class AWSBoto:
         '''S3 credential checker'''
 
         try:
+            if not self.cfg.profile:
+                log('\nError: No profile found. Please configure a profile using the command:')
+                log('    froster config\n')
+                return False
+
             if prints:
                 log(f'\nChecking credentials...\n')
                 log(f'  Profile: {self.cfg.profile}')
@@ -7372,12 +7394,14 @@ def main():
         else:
 
             # Check credentials
-            if not aws.check_credentials(prints=False):
-                log('Error: Invalid credentials.')
-                log(f'  Profile: {cfg.profile}')
-                log(f'  Provider: {cfg.provider}')
-                log(f'  Credentials: {cfg.credentials}')
-                log(f'  Endpoint: {cfg.endpoint}\n')
+            if not aws.check_credentials():
+                # Print message only if profile is set
+                if cfg.profile:
+                    log('Error: Invalid credentials.')
+                    log(f'  Profile: {cfg.profile}')
+                    log(f'  Provider: {cfg.provider}')
+                    log(f'  Credentials: {cfg.credentials}')
+                    log(f'  Endpoint: {cfg.endpoint}\n')
                 sys.exit(1)
 
             # CLI commands that need credentials and configuration.
