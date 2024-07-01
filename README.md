@@ -69,7 +69,31 @@ If you have any doubts while configuring Froster, check the [Configuration secti
 
 </br>
 
+### Import and Export Configuration
+
+If several users of the same team wants to use Froster, they will have to configure the same profiles to work with same configuration, same buckets, same endpoints, etc. To ease this configuration accross teams a user that has already configured Froster can export its configuration. This will export all configuration except for sensitive information: username, email and credentials. To export a configuration run the command:
+```
+froster config --export /folder/path
+```
+
+To import a configuration, run the command:
+```
+froster config --import /path/to/exported/config
+```
+
+Please note that `froster config` command still needs to be executed, as username, email and credentials still need to be configured.
+
+</br>
+
 ## Basic usage of Froster
+
+### Credentials
+
+The credentials commands checks that the current selected profile is correctly configured and has valid credentials.
+
+```
+froster credentials
+``` 
 
 ### Index
 
@@ -164,25 +188,47 @@ The main motivations behind the creation of `Froster` are:
 
 - HPC users often find AWS Glacier inaccessible or complex and have a preception that it is expensive because of Egress fees. This is despite evidence that most data for most research users has not been touched in years. It seems that it is very difficult to build an on premises archive solution with a lower TCO than AWS Glacier or similar offerings from other cloud providers such as IDrive E2
 
-- Secure the archiving process via checksums. After every transfer, a checksum verifies the integrity of destination files, ensuring no data gets lost.
+- Secure the archiving process via checksums verification. After every transfer, a checksum verifies the integrity of destination files, ensuring no data gets lost.
 
 
 ## Design 
 
 1. First, we may need to crawl the file system that sometimes has billions of files to find data that is actually worth archiving. For this, Froster uses the well-known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all discovered file metadata.
+
 1. Our focus is on archiving folders rather than individual files, as data that resides in the same folder typically belongs together. To this end, we filter the pwalk's CSV file with [DuckDB](https://duckdb.org), and get a new list (CSV) of the largest folders sorted by size. (We call this a `Hotspots` file)
+
 1. We pass this new list (CSV) to an interactive tool based on [Textual](https://textual.textualize.io/), which displays a table of folders alongside their total size in GiB, their average file sizes in MiB (MiBAvg), as well as their age in days since last accessed (AccD) and modified (ModD). Users can scroll down and right using the mouse, and hitting enter will trigger the archiving of the selected folder.
    ![image](https://user-images.githubusercontent.com/1427719/230824467-6a6e5873-5a48-4656-8d75-42133a60ba30.png)
+
 1. All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. You can also [avoid tarring](#tarring-small-files) 
+
 1. We pass the folder to [Rclone](https://rclone.org) to execute a copy job in the background.
+
 1. Many researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long-running data copy jobs, and Slurm can automatically re-run copy jobs that failed. Researchers can also use the `--no-slurm` option to execute the job in the foreground. This is the default if Slurm is not installed on the Linux machine.
+
 1. Prior to copying, we place files with checksums (e.g., `.froster.md5sum`) in the folders to be archived. This allows for an easy subsequent checksum comparison, providing the user with evidence that all data was correctly archived (through size and md5sum comparisons).
+
 1. After files have been deleted from the source folder, we place a file named `Where-did-the-files-go.txt` in the source folder. This file describes where the data was archived, along with instructions on how to retrieve the data.
-1. Optionally allow `archive --recursive` to enable archiving of entire folder trees (CLI only option). [More details here](#recursive-operations).
+
+1. Optionally allow `archive --recursive` to enable archiving of entire folder trees. [More details here](#recursive-operations).
+
 1. Optionally link to NIH metadata with the `archive --nih` option to link to life sciences research projects [More details here](#nih-life-sciences-metadata).
-1. Optionally restore to a cloud machine (AWS EC2 instance) with the `restore --aws` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12).
+
+<!-- 1. Optionally restore to a cloud machine (AWS EC2 instance) with the `restore --aws` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12). -->
 
 ## Preparing Froster 
+
+### Configuring 
+
+The config is mostly automated. You can just run `froster config` command. You need to answer a few questions for which you can accept defaults in most cases. 
+
+When running `froster config`, you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the most cost-effective storage solution available. It takes only 48-72 hours to retrieve your data with the least expensive retrieval option ('Bulk'). See [AWS Storage Class guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
+
+Froster uses `~/.aws` files to store credentials, regions, and endpoints in the AWS standard way.
+
+Check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and endpoints.
+
+Froster has been tested with numerous S3-compatible storage systems such as GCS, Wasabi, IDrive, Ceph, and Minio. At this time, only AWS supports the DEEP_ARCHIVE storage class.
 
 ### Configuration sections explanation
 
@@ -214,116 +260,7 @@ Down below, you will find an explanation of each configuration section:
 - SET SLURM
   - Configure several SLURM options that will be passed to the SLURM script upon execution.
 
-### configuring 
-
-The config is mostly automated (just run `froster config`) but you need to answer a few questions for which you can accept defaults in most cases. 
-Sometimes the 'rclone' download times out, and you need to hit ctrl+c and start `froster config` again. Froster can manage the [AWS credentials/profiles](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html) that are utilized by the AWS CLI and other tools. 
-
-If you would like to work on the same configuration and database with other users, you can put those in a shared folder by answering 'yes' to "Do you want to collaborate?" or by running `froster config /your/shared/folder` any time. If you start with a personal configuration and change to a shared configuration at a later time the personal configuration will automatically be migrated to the shared folder.
-
-```
-dp@grammy:~$ froster config
-
- Installing pwalk ...
-Compilation successful: gcc -pthread pwalk.c exclude.c fileProcess.c -o pwalk
- Installing rclone ... please wait ... Done!
-
-*** Asking a few questions ***
-*** For most you can just hit <Enter> to accept the default. ***
-
-  Do you want to collaborate with other users on archive and restore? [y/N] n
-*** Enter your email address: ***
-  [Default: dp@mydomain.edu] first.last@domain.edu
-*** Please confirm/edit S3 bucket name to be created in all used profiles.: ***
-  [Default: froster-first-last-domain-edu]
-*** Please confirm/edit the archive root path inside your S3 bucket: ***
-  [Default: archive]
-*** Please confirm/edit the AWS S3 Storage class: ***
-  [Default: DEEP_ARCHIVE]
-*** Please select AWS S3 region (e.g. us-west-2 for Oregon): ***
-  (1) us-west-2
-  (2) us-west-1
-  (3) us-east-2
-  (4) us-east-1
-  (5) sa-east-1
-  (6) me-south-1
-  (7) me-central-1
-  (8) eu-west-3
-  .
-  .
-  Enter the number of your selection: 1
-*** Please confirm/edit the AWS S3 region: ***
-  [Default: us-west-2]
-
-  Verify that bucket 'froster-first-last-domain-edu' is configured ...
-  Checking credentials for profile "aws" ... Done.
-Created S3 Bucket 'froster-first-last-domain-edu'
-Applied AES256 encryption to S3 bucket 'froster-first-last-domain-edu'
-  Checking credentials for profile "default" ... Done.
-
-Found additional profiles in ~/.aws and need to ask a few more questions.
-
-Do you want to configure profile "moin"? [Y/n] n
-Do you want to configure profile "idrive"? [Y/n] y
-*** S3 Provider for profile "idrive": ***
-  (1) S3
-  (2) GCS
-  (3) Wasabi
-  (4) IDrive
-  (5) Ceph
-  (6) Minio
-  (7) Other
-  Enter the number of your selection: 4
-*** Confirm/edit S3 region for profile "idrive": ***
-  [Default: us-or]
-*** S3 Endpoint for profile "idrive" (e.g https://s3.domain.com): ***
-  [Default: https://v2u8.or.idrivee2-42.com]
-  Checking credentials for profile "idrive" ... Done.
-Created S3 Bucket 'froster-first-last-domain-edu'
-Applied AES256 encryption to S3 bucket 'froster-first-last-domain-edu'
-Do you want to configure profile "wasabi"? [Y/n] y
-*** S3 Provider for profile "wasabi": ***
-  (1) S3
-  (2) GCS
-  (3) Wasabi
-  (4) IDrive
-  (5) Ceph
-  (6) Minio
-  (7) Other
-  Enter the number of your selection: 3
-*** Confirm/edit S3 region for profile "wasabi": ***
-  [Default: us-west-1]
-*** S3 Endpoint for profile "wasabi" (e.g https://s3.domain.com): ***
-  [Default: https://s3.us-west-1.wasabisys.com]
-  Checking credentials for profile "wasabi" ... Done.
-Created S3 Bucket 'froster-first-last-domain-edu'
-
-*** And finally a few questions how your HPC uses local scratch space ***
-*** This config is optional and you can hit ctrl+c to cancel any time ***
-*** If you skip this, froster will use HPC /tmp which may have limited disk space  ***
-
-*** How do you request local scratch from Slurm?: ***
-  [Default: --gres disk:1024]
-*** Is there a user script that provisions local scratch?: ***
-  [Default: mkdir-scratch.sh]
-*** Is there a user script that tears down local scratch at the end?: ***
-  [Default: rmdir-scratch.sh]
-*** What is the local scratch root ?: ***
-  [Default: /mnt/scratch]
-
-Done!    
-```
-
-When running `froster config`, you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the most cost-effective storage solution available. It takes only 5-12 hours to retrieve your data with the least expensive retrieval option ('Bulk'). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
-
-Please note that Froster expects a profile named 'default', 'aws', or 'AWS' in ~/.aws/credentials, which will be used for the Amazon cloud (AWS). If Froster finds other profiles, it will ask you questions about providers, regions, and endpoints. If you do not wish to configure additional 3rd party storage providers, you can simply hit "n" multiple times. Please check the [rclone S3 docs](https://rclone.org/s3/) to learn about different providers and endpoints.
-
-It's important to note that Froster uses the same bucket name for S3 and all S3-compatible storage systems it supports. This streamlines the process if data needs to be migrated between multiple storage systems. The selected bucket will be created if it does not exist, and encryption will be applied (at least in AWS).
-
-Froster has been tested with numerous S3-compatible storage systems such as GCS, Wasabi, IDrive, Ceph, and Minio. At this time, only AWS supports the DEEP_ARCHIVE storage class.
-
-
-#### working with multiple users 
+<!-- #### working with multiple users 
 
 If we setup a team configuration using `froster config /our/shared/froster/config` Froster knows 3 types of users or roles:
 
@@ -338,7 +275,7 @@ chgrp data_steward_grp /our/shared/froster/config
 chmod 2775 /our/shared/froster/config
 ```
 
-The chmod command ensures that the group of data stewards has write access while all other users have read only access to the configuration. Using 2775 instead of 0775 ensures that the group ownership is inherited to all sub-directories when running chmod (SETGID, This chmod command is run automatically each time you run `froster config`)
+The chmod command ensures that the group of data stewards has write access while all other users have read only access to the configuration. Using 2775 instead of 0775 ensures that the group ownership is inherited to all sub-directories when running chmod (SETGID, This chmod command is run automatically each time you run `froster config`) -->
 
 ##### AWS configuration for teams
 
@@ -399,7 +336,7 @@ Policy ReadOnlyGroup:
 
 #### Changing defaults with aliases
 
-Froster has a number of global options that you may prefer but you don't like to type them all the time. We have `--no-slurm` (don't submit batch jobs even if Slurm is found), `--cores` (use a number of CPU cores that is different from the default 4) and `--profile` (use a different ~/.aws profile for example if you have your own S3 storage). You can create a command alias that uses these settings by default. For example, if you think that typing froster is too long and would like to rather type `fro` and use 8 cpu cores in the foreground with a custom profile named `myceph` you can simply enter this command in bash:
+Froster has a number of global options that you may prefer but you don't like to type them all the time. We have `--no-slurm` (don't submit batch jobs even if Slurm is found), `--cores` (use a number of CPU cores that is different from the default 4) and `--profile` (use a different profile than default_profile for S3 related commands). You can create a command alias that uses these settings by default. For example, if you think that typing froster is too long and would like to rather type `fro` and use 8 cpu cores in the foreground with a custom profile named `myceph` you can simply enter this command in bash:
 
 ```
 alias fro="froster --no-slurm --cores=8 --profile=myceph"
@@ -411,7 +348,7 @@ If you would like to keep this past the next login you can add this alias to the
 echo 'alias fro="froster --no-slurm --cores=8 --profile=myceph"' >> ~/.bashrc
 ```
 
-#### advanced configuration 
+<!-- #### advanced configuration 
 
 Some advanced configuration settings are not offered through a user inferface but you can change them under `~/.froster/config`. For example,  `~/.froster/config/general` has one file per setting which makes it very easy to use the settings in shell scripts, for example when writing addon tools: 
 
@@ -436,7 +373,7 @@ The maximum number of entries that will be shown in the dialog once a hotspots f
 
 * max_small_file_size_kib (Default: 1024)
 
-If a file is smaller than this size, it will be moved to a file Froster.smallfiles.tar at the same folder level before uploading with the `froster archive` command. This is useful because Glacier consumes an overhead of about 40 KiB for each uploaded file. If you want to avoid tarring files set max_small_file_size_kib to 0.
+If a file is smaller than this size, it will be moved to a file Froster.smallfiles.tar at the same folder level before uploading with the `froster archive` command. This is useful because Glacier consumes an overhead of about 40 KiB for each uploaded file. If you want to avoid tarring files set max_small_file_size_kib to 0. -->
 
 ## Using Froster 
 
@@ -444,26 +381,45 @@ If a file is smaller than this size, it will be moved to a file Froster.smallfil
 
 In its most simple form you can use Froster to archive a specific folder, delete the source and restore the data interactively on a standalone Linux machine. 
 
-For example we have 3 csv files in a folder
+For example we have 2 files in a folder
 
 ```
-dp@grammy:~$ ls -la ~/csv
+vmachado@vmachado:~$ ls -la ~/Desktop/froster/csv
 
-total 840
--rw-rw---- 1 dp dp 347712 Apr  4 06:08 myfile1.csv
--rw-rw---- 1 dp dp 507443 Apr  4 06:08 myfile2.csv
--rw-rw---- 1 dp dp   1370 Apr 19 17:10 myfile3.csv
+total 2008
+-rw-rw-r--  1 vmachado vmachado 1126400 jul  1 17:19 9j6_3ne_medium_1.out
+-rw-rw-r--  1 vmachado vmachado  921600 jul  1 17:19 9j6_rqu_small_1.out
 ```
 
 Now let's archive this folder 
 
 ```
-dp@grammy:~$ froster archive ~/csv
+vmachado@vmachado:~$ froster archive ~/Desktop/froster/csv
 
-Archiving folder /home/dp/csv, please wait ...
-Generating hashfile .froster.md5sum ...
-Copying files to archive ...
-Source and archive are identical. 3 files with 836.45 KiB transferred.
+ARCHIVING /home/vmachado/Desktop/froster/csv
+
+    Generating Froster.allfiles.csv and tar small files...
+        ...done
+
+    Generating checksums...
+        ...done
+
+    Uploading Froster.allfiles.csv file...
+        ...done
+
+    Uploading files...
+        ...done
+
+    Verifying checksums...
+        ...done
+
+ARCHIVING SUCCESSFULLY COMPLETED
+
+    PROVIDER:           "AWS"
+    PROFILE:            "profile aws"
+    ENDPOINT:           "https://s3.eu-west-2.amazonaws.com"
+    LOCAL SOURCE:       "/home/vmachado/Desktop/froster/csv"
+    S3 DESTINATION:     ":s3:froster-vmachado-test/froster/home/vmachado/Desktop/froster/csv"
 ```
 
 Froster creates md5 checksums for the files in the local folder, uploads the files and then compares the checksums in the archive with the local ones.
@@ -476,40 +432,56 @@ Now we delete the local data as we have evidence that the data is intact in the 
 after the deletion is completed, we see that a manifest file was created that gives users some info.
 
 ```
-dp@grammy:~$ froster delete
+vmachado@vmachado:~$ froster delete
 
-Deleting archived objects in /home/dp/csv, please wait ...
-Deleted files and wrote manifest to /home/dp/csv/Where-did-the-files-go.txt
+DELETING /home/vmachado/Desktop/froster/csv...
+
+    Verifying checksums...
+        ...done
+
+    Deleting files...
+        ...done
+
+DELETING SUCCESSFULLY COMPLETED
+
+    LOCAL DELETED FOLDER:   /home/vmachado/Desktop/froster/csv
+    AWS S3 DESTINATION:     :s3:froster-vmachado-test/froster/home/vmachado/Desktop/froster/csv
+
+    Total files deleted:    2
+
+    Manifest:               /home/vmachado/Desktop/froster/csv/Where-did-the-files-go.txt
 ```
 
 The file has information that should allow other users to find out where the data went and who to contact to get it back. It is important to understand that before deletion, Froster will compare the checksums of each file that was archived with the file in the archive and will only delete local files that have an identical copy in the archive. The manifest file and the checksum comparison are good reasons why you should always let Froster handle the data deletion instead of deleting the source folder manually.
 
 ```
-dp@grammy:~$ cat /home/dp/csv/Where-did-the-files-go.txt
+vmachado@vmachado:~$ cat /home/dp/csv/Where-did-the-files-go.txt
 
-The files in this folder have been moved to an archive!
+The files in this folder have been moved to an AWS S3 archive!
 
-Archive location: :s3:froster/archive/home/dp/csv
-Archive profile (~/.aws): default
-Archiver: username@domain.edu
-Archive Tool: https://github.com/dirkpetersen/froster
-Restore command: froster restore "/home/dp/csv"
-Deletion date: 2023-04-19 20:55:15.701141
+Archive location: :s3:froster-vmachado-test/froster/home/vmachado/Desktop/froster/csv
+Archive aws profile: profile aws
+Archiver user: vmachado
+Archiver email: victor.machado@hpcnow.com
+froster-archives.json: /home/vmachado/.local/share/froster/froster-archives.json
+Archive tool: https://github.com/dirkpetersen/froster
+Restore command: froster restore "/home/vmachado/Desktop/froster/csv"
+Deletion date: 2024-07-01 17:23:19.917602
 
-First 10 files archived:
-myfile3.csv, myfile1.csv, myfile2.csv
 
 First 10 files deleted this time:
-myfile3.csv, myfile1.csv, myfile2.csv
+9j6_3ne_medium_1.out, Froster.smallfiles.tar
 
-Please see more metadata in Froster.allfiles.csv
+Please see more metadata in Froster.allfiles.csv file
+
+You can use "visidata" or "vd" tool to help you visualize Froster.allfiles.csv file
 
 ```
 
 After a folder has been deleted and you wish to view the file names in the archive, simply execute `froster mount`. Then, select the folder you want to access. Froster will then mount the bucket location to the folder that was deleted. This allows you to see file and folder names, along with their modification dates. Additionally, you can view the `Froster.allfiles.csv` file using any editor or the `visidata` / `vd` tool. This particular file contains metadata for all files in the folders, including those archived in a .tar format. If you haven't used the DEEP_ARCHIVE or GLACIER S3 archive tiers, you can also copy individual files or access them through your existing pipelines. Remember to use froster umount to unmount the folder when done. 
 
 ```
-vd /home/dp/csv/Froster.allfiles.csv
+vd /home/vmachado/Desktop/froster/csv
 froster mount
 froster umount
 ```
@@ -522,24 +494,52 @@ After a while you may want to restore the data. Again, you forgot the actual fol
 
  
 ```
-dp@grammy:~$ froster restore
+vmachado@vmachado:~$ froster restore
  
-Restoring folder /home/dp/csv, please wait ...
-Triggered Glacier retrievals: 3
-Currently retrieving from Glacier: 0
-Retrieved from Glacier: 0
-Not in Glacier: 0
-Glacier retrievals pending, run this again in 5-12h
+RESTORING /home/vmachado/Desktop/froster/csv
+
+    Triggered Glacier retrievals: 2
+    Currently retrieving from Glacier: 0
+    Retrieved from Glacier: 0
+    Not in Glacier: 1
+
+
+    Glacier retrievals pending. Depending on the storage class and restore mode run this command again in:
+        Expedited mode: ~ 5 minuts
+
+        Standard mode: ~ 12 hours
+
+        Bulk mode: ~ 48 hours
+
+        
+NOTE: You can check more accurate times in the AWS S3 console
 ```
 
-If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 5-12 hours and run the `froster restore` command again. If all data has been retrieved (which means both "Triggered Glacier retrievals" and "Currently retrieving from Glacier" show 0) the restore to the original folder location will proceed. As an alternative to running `froster restore` a second time, you can use `froster mount` which allows you to access individual files once they have been retrieved from Glacier.
+If you use the DEEP_ARCHIVE (default) or GLACIER AWS S3 storage classes, the first execution of `froster restore` will initiate a Glacier retrieval. This retrieval will copy the data in the background from the Glacier archive to the S3 One Zone-IA storage class which costs about $10 per TiB/month and keep it there for 30 days by default (you can change this to something like 7 days with `froster restore --days 7`). Wait for 12 hours and run the `froster restore` command again. If all data has been retrieved (which means both "Triggered Glacier retrievals" and "Currently retrieving from Glacier" show 0) the restore to the original folder location will proceed. As an alternative to running `froster restore` a second time, you can use `froster mount` which allows you to access individual files once they have been retrieved from Glacier.
 
 ```
 dp@grammy:~$ froster restore
-Restoring folder /home/dp/csv, please wait ...
-Copying files from archive ...
-Generating hashfile .froster-restored.md5sum ...
-Target and archive are identical. 3 files with 836.45 KiB transferred.
+
+RESTORING /home/vmachado/Desktop/froster/csv
+
+    Triggered Glacier retrievals: 0
+    Currently retrieving from Glacier: 0
+    Retrieved from Glacier: 2
+    Not in Glacier: 1
+
+    Downloading files...
+        ...done
+
+    Generating checksums...
+        ...done
+
+    Verifying checksums...
+        ...done
+
+    Untarring Froster.smallfiles.tar... 
+        ...done
+
+RESTORATION OF /home/vmachado/Desktop/froster/csv COMPLETED SUCCESSFULLY
 ```
 
 Note that if you restore from AWS S3 to on-premises, you may be subject to AWS data egress charges (up to $90 per TiB downloaded, or $20 per TiB with AWS DirectConnect), unless your organization has negotiated an [AWS data egress waiver](https://aws.amazon.com/blogs/publicsector/data-egress-waiver-available-for-eligible-researchers-and-institutions/).
@@ -549,37 +549,32 @@ Note that if you restore from AWS S3 to on-premises, you may be subject to AWS d
 If you have hundreds of terabytes or even petabtyes of data in billions of files you may not be able to easily locate data that is worth archiving. Among hundreds of thousands of folders there are typically only a few hundred that make up most of your storage consumption. We call these folders 'Hotspots' and to find them you use the `froster index` command and pass the root directory of your lab data. 
 
 ```
-[user@login ~]$ froster index /home/gscratch/dpcri
-Submitted froster indexing job: 22218558
-Check Job Output:
- tail -f froster-index-@gscratch+dpcri-22218558.out
-```
+[user@login ~]$ froster index /home/vmachado/data_2
 
-we can see the status of the job 
+SLURM JOB
 
-```
-[user@login ~]$ squeue --me
-             JOBID PART         NAME     USER ST       TIME  TIME_LEFT NOD CPU TRES_PER_ MIN_ NODELIST(REASON)
-          22218560 exac froster:index:dp user  R       0:07   23:59:53   1   4 gres:disk  64G node-2-0
-```
-
-and then use the suggested tail command to see how the indexing is progressing, we can see that the job finished successfully  
+  ID: 2251
+  Type: index
+  Check status: "squeue -j 2251"
+  Check output: "tail -n 100 -f /home/.local/shared/froster/slurm/froster-index@+home+vmachado+data_2-2251.out"
+  Cancel the job: "scancel 2251"
 
 ```
-[user@login ~]$ tail -f froster-index-@gscratch+dpcri-22218558.out
-2023-04-20 08:28:22-07:00 mkdir-scratch.sh info: Preparing scratch space for job 22218558
-2023-04-20 08:28:22-07:00 mkdir-scratch.sh info: /mnt/scratch/22218558 has been created
-Indexing folder /home/exacloud/gscratch/dpcri, please wait ...
 
-Wrote @gscratch+dpcri.csv
-with 6 hotspots >= 1 GiB
-with a total disk use of 0.08 TiB
+we can see the status of the job and then use the suggested tail command to see how the indexing is progressing, we can see that the job finished successfully  
 
-Histogram for 37111 total folders processed:
-0.013 TiB have not been accessed for 365 days (or 1.0 years)
-0.028 TiB have not been accessed for 30 days (or 0.1 years)
-2023-04-20 08:29:11-07:00 rmdir-scratch.sh info: Preparing to clean scratch space for job 22218558
-2023-04-20 08:29:11-07:00 rmdir-scratch.sh info: Deleting directory /mnt/scratch/22218558 for job 22218558
+```
+[user@login ~]$ tail -n 100 -f /home/.local/shared/froster/slurm/froster-index@+home+vmachado+data_2-2251.out
+
+INDEXING /home/vmachado/data_2
+
+Hotspots file: /home/vmachado/shared_dir/hotspots/+home+vmachado+data_2.csv
+    with 0 hotspots >= 1 GiB
+    with a total disk use of 0.0 TiB
+
+Total folders processed: 3
+
+INDEXING SUCCESSFULLY COMPLETED
 ```
 
 now we run the `froster archive` command without entering folder names on the command line. We just created a csv folder for testing that contains 3 csv files with a total of about 1.1 GiB data. We pick this csv folder. It shows that it has been accessed 0 days ago (column AccD) because we just created it.  
@@ -592,10 +587,16 @@ now we run the `froster archive` command without entering folder names on the co
 
 
 ```
-[user@login ~]$ froster archive
-Submitted froster archiving job: 22218563
-Check Job Output:
- tail -f froster-archive-+home+gscratch+dpcri+csv-22218563.out
+[user@login ~]$ froster archive /home/vmachado/data_2
+
+SLURM JOB
+
+  ID: 2252
+  Type: archive
+  Check status: "squeue -j 2252"
+  Check output: "tail -n 100 -f /home/.local/shared/froster/slurm/froster-archive@+home+vmachado+data_2-2252.out"
+  Cancel the job: "scancel 2252"
+
 ```
 
 Once the archive job has completed you should receive an email from your Slurm system.
@@ -654,10 +655,10 @@ echo 0 > ~/.froster/config/general/max_small_file_size_kib
 
 In many cases we would like to create a link between the data we archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) maintains a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov). Froster uses the [RePORTER API](https://api.reporter.nih.gov) to allow you to search for grants and link them to your datasets.
 
-To invoke the search interface use the --nih option with `archive` subcommand
+To invoke the search interface configure it as default on the `froster config` SET_NIH section or use the --nih option with `archive` subcommand
 
 ```
-froster archive --nih
+froster archive --nih [folders...]
 ```
 
 ![image](https://github.com/dirkpetersen/froster/assets/1427719/b8a69cc0-8e23-44ee-9234-4d4f45a8834c)
@@ -665,7 +666,7 @@ froster archive --nih
 
 You can search multiple times. Once you found the grant you are looking for hit TAB and use the allow keys to select the grant and confirm with enter
 
-#### Restore to cloud machine 
+<!-- #### Restore to cloud machine 
 
 In some cases you may want to restore rarely needed data from Glacier to a cloud machine on EC2. The most frequent use case is to save AWS Egress fees. Use the --aws option with the restore sub-command to create a new ec2 instance with enough local disk space to restore your data there: `froster restore --aws ~/archtest/data1`
 
@@ -714,7 +715,7 @@ type "conda deactivate" to leave current conda environment
 In addition you can click the link (often ctrl+click) to a Jupyter Lab Notebook which has Python and R Kernels installed. You will find a symbolic link starting 'restored-' in your home directory that points to your data. How should this EC2 instance be configured? Please [participate in this discussion](https://github.com/dirkpetersen/froster/discussions/12) 
 
 ![image](https://github.com/dirkpetersen/froster/assets/1427719/1837511c-69ec-4b90-b408-a34833c3a68d)
-
+ -->
 
 #### Using desktop tools to browse S3 Glacier
 
@@ -750,9 +751,9 @@ vd ~/my_department.csv
 
 ## FAQ and Troubleshooting
 
-### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
+<!-- ### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
 
-This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.froster/config/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location)
+This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.froster/config/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location) -->
 
 ### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
 
@@ -766,183 +767,224 @@ Each of the sub commands has a help option, for example `froster archive --help`
 ### froster --help
 
 ```
-dp@grammy:~$ froster
-usage: froster  [-h] [--debug] [--no-slurm] [--cores CORES] [--profile aws_profile] [--version]
-                {config,cnf,index,idx,archive,arc,delete,del,mount,umount,restore,rst,ssh,scp} ...
+dp@grammy:~$ froster --help
 
-A (mostly) automated tool for archiving large scale data after finding folders in the file system that
-are worth archiving.
+usage: froster  [-h] [-c CORES] [-d] [-D] [-i] [-l] [-m MEMORY] [-n] [-p PROFILE] [-v]
+                {credentials,crd,config,cnf,index,idx,archive,arc,delete,del,mount,umount,restore,rst,update,upd} ...
+
+A user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems
 
 positional arguments:
-  {config,cnf,index,idx,archive,arc,delete,del,mount,umount,restore,rst,ssh,scp}
+  {credentials,crd,config,cnf,index,idx,archive,arc,delete,del,mount,umount,restore,rst,update,upd}
                         sub-command help
-    config (cnf)        Bootstrap the configurtion, install dependencies and setup your environment. You
-                        will need to answer a few questions about your cloud and hpc setup.
-    index (idx)         Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file
-                        that lists the largest folders. As this process is compute intensive the index
-                        job will be automatically submitted to Slurm if the Slurm tools are found.
-    archive (arc)       Select from a list of large folders, that has been created by 'froster index',
-                        and archive a folder to S3/Glacier. Once you select a folder the archive job will
-                        be automatically submitted to Slurm. You can also automate this process
-    delete (del)        Remove data from a local filesystem folder that has been confirmed to be archived
-                        (through checksum verification). Use this instead of deleting manually
-    mount (umount)      Mount or unmount the remote S3 or Glacier storage in your local file system at
-                        the location of the original folder.
-    restore (rst)       Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need to download
-                        all data to local storage after the restore is complete. Just use the mount sub
-                        command.
-    ssh (scp)           Login to an AWS EC2 instance to which data was restored with the --aws option
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  --debug, -d           verbose output for all commands
-  --no-slurm, -n        do not submit a Slurm job, execute in the foreground.
-  --cores CORES, -c CORES
+  -c CORES, --cores CORES
                         Number of cores to be allocated for the machine. (default=4)
-  --profile aws_profile, -p aws_profile
-                        which AWS profile in ~/.aws/ should be used. default="aws"
-  --version, -v         print Froster and Python version info
-
-For example, use one of these commands:
-  froster config
-  froster index /your/lab/root
-  froster archive
-or you can use one of these:
-  'froster delete', 'froster mount' or 'froster restore'
+  -d, --debug           verbose output for all commands
+  -D, --default-profile
+                        Select default profile
+  -i, --info            print froster and packages info
+  -l, --log-print       Print the log file to the screen
+  -m MEMORY, --mem MEMORY
+                        Amount of memory to be allocated for the machine in GB. (default=64)
+  -n, --no-slurm        do not submit a Slurm job, execute in the foreground.
+  -p PROFILE, --profile PROFILE
+                        User this profile for the current session
+  -v, --version         print froster version
 ```
 
 ### froster config --help
  
 ```
-dp@grammy:~$ froster config  --help
-usage: froster config [-h] [--index] [--monitor <email@address.org>] [cfgfolder]
+dp@grammy:~$ froster config --help
 
-positional arguments:
-  cfgfolder             configuration root folder where .froster/config will be created (default=~ home directory)
+usage: froster config [-h] [-p] [-r] [-i IMPORT_CONFIG] [-e EXPORT_CONFIG]
 
-optional arguments:
+Froster configuration bootstrap. This command will guide you through the
+configuration of Froster. You can also import and export configurations.
+
+options:
   -h, --help            show this help message and exit
-  --index, -i           configure froster for indexing only, don't ask addional questions.
-  --monitor <email@address.org>, -m <email@address.org>
-                        setup froster as a monitoring cronjob on an ec2 instance and notify an email address
+  -p, --print           Print the current configuration
+  -r, --reset           Delete the current configuration and start over
+  -i IMPORT_CONFIG, --import IMPORT_CONFIG
+                        Import a given configuration file
+  -e EXPORT_CONFIG, --export EXPORT_CONFIG
+                        Export the current configuration to the given directory
 ```
 
 ### froster index --help
  
 ```
-dp@grammy:~$ froster index  --help
-usage: froster index [-h] [--pwalk-csv PWALKCSV] [--pwalk-copy PWALKCOPY] [folders ...]
+dp@grammy:~$ froster index --help
+
+usage: froster index [-h] [-f] [-p] [-y PWALKCOPY] [folders ...]
+
+Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file
+that lists the largest folders. As this process is compute intensive the
+index job will be automatically submitted to Slurm if the Slurm tools are
+found.
 
 positional arguments:
-  folders               folders you would like to index (separated by space), using the pwalk file system crawler
+  folders               Folders you would like to index (separated by space), using the pwalk file system crawler 
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  --pwalk-csv PWALKCSV, -p PWALKCSV
-                        If someone else has already created CSV files using pwalk you can enter a specific pwalk CSV file here and are not required to run the time consuming pwalk.
-  --pwalk-copy PWALKCOPY, -y PWALKCOPY
-                        Create this backup copy of a newly generated pwalk CSV file. By default the pwalk csv file will only be gnerated in temp space and then deleted.
+  -f, --force           Force indexing
+  -p, --permissions     Print read and write permissions for the provided folder(s)
+  -y PWALKCOPY, --pwalk-copy PWALKCOPY
+                        Directory where the pwalk CSV file should be copied to.
 ```
  
 ### froster archive --help
 
 ```
 dp@grammy:~$ froster archive --help
-usage: froster archive [-h] [--larger LARGER] [--older OLDER] [--mtime] [--recursive] [--no-tar] [--nih]
-                       [--dry-run]
-                       [folders ...]
+
+usage: froster archive [-h] [-f] [-l LARGER] [-o OLDER] [--newer NEWER] [-n] [-i NIHREF] [-m] [-r] [-s] [-t] [-d] [folders ...]
+
+Select from a list of large folders, that has been created by 'froster index', and
+archive a folder to S3/Glacier. Once you select a folder the archive job will be
+automatically submitted to Slurm. You can also automate this process
 
 positional arguments:
-  folders               folders you would like to archive (separated by space), the last folder in this list is the target
+  folders               folders you would like to archive (separated by space), the last folder in this list is the target   
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  --larger LARGER, -l LARGER
-
+  -f, --force           Force archiving of a folder that contains the .froster.md5sum file
+  -l LARGER, --larger LARGER
+                        
                         Archive folders larger than <GiB>. This option
                         works in conjunction with --older <days>. If both
                         options are set froster will print a command that
                         allows you to archive all matching folders at once.
-  --older OLDER, -o OLDER
-
+  -o OLDER, --older OLDER
+                        
                         Archive folders that have not been accessed more than
                         <days>. (optionally set --mtime to select folders that
                         have not been modified more than <days>). This option
                         works in conjunction with --larger <GiB>. If both
                         options are set froster will print a command that
                         allows you to archive all matching folders at once.
-  --mtime, -m           Use modified file time (mtime) instead of accessed time (atime)
-  --recursive, -r       Archive the current folder and all sub-folders
-  --no-tar, -t          Do not move small files to tar file before archiving
-  --nih, -n             Search and Link Metadata from NIH Reporter
+  --newer NEWER, -w NEWER
+                        
+                        Archive folders that have been accessed within the last 
+                        <days>. (optionally set --mtime to select folders that
+                        have not been modified more than <days>). This option
+                        works in conjunction with --larger <GiB>. If both 
+                        options are set froster will print a command that 
+                        allows you to archive all matching folders at once.
+  -n, --nih             Search and Link Metadata from NIH Reporter
+  -i NIHREF, --nih-ref NIHREF
+                        Use NIH Reporter reference for the current archive
+  -m, --mtime           Use modified file time (mtime) instead of accessed time (atime)
+  -r, --recursive       Archive the current folder and all sub-folders
+  -s, --reset           
+                        This will not download any data, but recusively reset a folder
+                        from previous (e.g. failed) archiving attempt.
+                        It will delete .froster.md5sum and extract Froster.smallfiles.tar
+  -t, --no-tar          Do not move small files to tar file before archiving
+  -d, --dry-run         Execute a test archive without actually copying the data
 ```
 
 ### froster delete --help
  
 ```
-usage: froster delete [-h] [folders ...]
+dp@grammy:~$ froster delete --help
+
+usage: froster delete [-h] [-r] [folders ...]
+
+Remove data from a local filesystem folder that has been confirmed to
+be archived (through checksum verification). Use this instead of deleting manually
 
 positional arguments:
-  folders     folders (separated by space) from which you would like to delete files, you can only delete files that have been archived
+  folders          folders (separated by space) from which you would like to delete files, you can only delete files that have been archived
 
-optional arguments:
-  -h, --help  show this help message and exit
+options:
+  -h, --help       show this help message and exit
+  -r, --recursive  Delete the current archived folder and all archived sub-folders
 ```
 
-### froster mount --help
+### froster {mount|umount} --help
 
 ```
-froster mount --help
-usage: froster mount [-h] [--mount-point MOUNTPOINT] [--aws] [--unmount] [folders ...]
+dp@grammy:~$ froster mount --help
+usage: froster mount [-h] [-a] [-l] [-m MOUNTPOINT] [folders ...]
+
+Mount or unmount the remote S3 or Glacier storage in your local file system
+at the location of the original folder.
 
 positional arguments:
   folders               archived folders (separated by space) which you would like to mount.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  --mount-point MOUNTPOINT, -m MOUNTPOINT
+  -a, --aws             Mount folder on new EC2 instance instead of local machine
+  -l, --list            List all mounted folders
+  -m MOUNTPOINT, --mount-point MOUNTPOINT
                         pick a custom mount point, this only works if you select a single folder.
-  --aws, -a             Mount folder on new EC2 instance instead of local machine
-  --unmount, -u         unmount instead of mount, you can also use the umount sub command instead.
 ```
 
 ### froster restore --help
  
 ```
-froster restore --help
-usage: froster restore [-h] [--days DAYS] [--retrieve-opt RETRIEVEOPT] [--aws]
-                       [--instance-type INSTANCETYPE] [--monitor] [--no-download]
-                       [folders ...]
+fdp@grammy:~$ froster restore --help
+usage: froster restore [-h] [-a] [-d DAYS] [-i INSTANCETYPE] [-l] [-m] [-o RETRIEVEOPT] [-r] [folders ...]
+
+Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need
+to download all data to local storage after the restore is complete.
+Just use the mount sub command.
 
 positional arguments:
-  folders               folders you would like to to restore (separated by space),
+  folders               folders you would like to to restore (separated by space)
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  --days DAYS, -d DAYS  Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)
-  --retrieve-opt RETRIEVEOPT, -r RETRIEVEOPT
-
-                        Bulk (default):
-                            - 5-12 hours retrieval
-                            - costs of $2.50 per TiB
-                        Standard:
-                            - 3-5 hours retrieval
-                            - costs of $10 per TiB
-                        Expedited:
-                            - 1-5 minutes retrieval
-                            - costs of $30 per TiB
-
-                        In addition to the retrieval cost, AWS will charge you about
-                        $10/TiB/month for the duration you keep the data in S3.
-                        (Costs in Summer 2023)
-  --aws, -a             Restore folder on new EC2 instance instead of local machine
-  --instance-type INSTANCETYPE, -i INSTANCETYPE
+  -a, --aws             Restore folder on new AWS EC2 instance instead of local machine
+  -d DAYS, --days DAYS  Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)
+  -i INSTANCETYPE, --instance-type INSTANCETYPE
                         The EC2 instance type is auto-selected, but you can pick any other type here
-  --monitor, -m         Monitor EC2 server for cost and idle time.
-  --no-download, -l     skip download to local storage after retrieval from Glacier
+  -l, --no-download     skip download to local storage after retrieval from Glacier
+  -m, --monitor         Monitor EC2 server for cost and idle time.
+  -o RETRIEVEOPT, --retrieve-opt RETRIEVEOPT
+                        
+                        More information at:
+                            https://docs.aws.amazon.com/AmazonS3/latest/userguide/restoring-objects-retrieval-options.html
+                            https://aws.amazon.com/es/s3/pricing/
+                        
+                        S3 GLACIER DEEP ARCHIVE or S3 INTELLIGET-TIERING DEEP ARCHIVE ACCESS
+                            Bulk:
+                                - Within 48 hours retrieval            <-- default
+                                - costs of $2.50 per TiB
+                            Standard:
+                                - Within 12 hours retrieval
+                                - costs of $10 per TiB
+                            Expedited:
+                                - 9-12 hours retrieval
+                                - costs of $30 per TiB
+                        
+                        S3 GLACIER FLEXIBLE RETRIEVAL or S3 INTELLIGET-TIERING ARCHIVE ACCESS
+                            Bulk:
+                                - 5-12 hours retrieval
+                                - costs of $2.50 per TiB
+                            Standard:
+                                - 3-5 hours retrieval
+                                - costs of $10 per TiB
+                            Expedited:
+                                - 1-5 minutes retrieval
+                                - costs of $30 per TiB
+                        
+                        
+                            In addition to the retrieval cost, AWS will charge you about
+                            $10/TiB/month for the duration you keep the data in S3.
+                            (Costs in Summer 2023)
+  -r, --recursive       Restore the current archived folder and all archived sub-folders
 ```
 
-### froster ssh --help  (froster scp --help)
+<!-- ### froster ssh --help  (froster scp --help)
 
 ```
 dp@grammy:~$ froster ssh  --help
@@ -956,7 +998,7 @@ optional arguments:
   --list, -l            List running Froster AWS EC2 instances
   --terminate <hostname>, -t <hostname>
                         Terminate AWS EC2 instance with this public IP Address or instance id
-```
+``` -->
 
 ## Commercial solutions 
 

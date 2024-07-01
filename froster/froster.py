@@ -1509,8 +1509,11 @@ class ConfigManager:
                 if result.returncode != 0:
                     log(
                         "\nError: sacctmgr command failed. Please ensure it's installed and in your PATH and you are in a head node.")
-                    log(f'\n  stdout: {result.stdout.decode("utf-8")}\n')
-                    log(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
+                    
+                    if result.stdout:
+                        log(f'\n  stdout: {result.stdout.decode("utf-8")}')
+                    if result.stderr:
+                        log(f'\n  stderr: {result.stderr.decode("utf-8")}\n')
                     return False
 
                 # Get user answer
@@ -1524,7 +1527,7 @@ class ConfigManager:
                 slurm_walltime_hours = inquirer.text(
                     message=f"Set the Slurm --time (hours) for froster jobs",
                     default=self.__get_configuration_entry(
-                        'SLURM', 'slurm_walltime_days', is_int=True, fallback=0),
+                        'SLURM', 'slurm_walltime_hours', is_int=True, fallback=0),
                     validate=self.__inquirer_check_is_number)
 
                 se = Slurm(args, self)
@@ -3482,9 +3485,9 @@ class Archiver:
             # If pwalkcopy location provided, run pwalk and copy the output to the specified location every time
             if self.args.pwalkcopy:
                 log(
-                    f'\nIndexing folder "{folder}" and copying output to {self.args.pwalkcopy}...', flush=True)
+                    f'\nINDEXING {folder}" and copying output to {self.args.pwalkcopy}', flush=True)
             else:
-                log(f'\nIndexing folder "{folder}"...', flush=True)
+                log(f'\nINDEXING {folder}', flush=True)
 
                 # Get the path to the hotspots CSV file
                 folder_hotspot = self.get_hotspots_path(folder)
@@ -3495,8 +3498,8 @@ class Archiver:
                         # Ignore the existing file and re-index the folder
                         pass
                     else:
-                        log(
-                            f'    ...folder already indexed at "{folder_hotspot}". Use "-f" or "--force" flag to force indexing again.\n')
+                        log(f'FOLDER ALREADY INDEXED at {folder_hotspot}')
+                        log(f'\nUse "-f" or "--force" flag to force indexing again.\n')
                         return True
 
             locked_dirs = ''
@@ -3674,7 +3677,6 @@ class Archiver:
                                         f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
                                 agedbytes[i] += row[9]
 
-            log(f'    ...indexing done.')
 
             log(textwrap.dedent(f'''
                 Hotspots file: {mycsv}
@@ -3683,6 +3685,8 @@ class Archiver:
                 '''))
 
             log(f'Total folders processed: {len(rows)}')
+
+            log(f'INDEXING SUCCESSFULLY COMPLETED')
 
             lastagedbytes = 0
             for i in range(0, len(daysaged)):
@@ -4666,7 +4670,7 @@ class Archiver:
     def _delete_locally(self, folder_to_delete):
         '''Delete the given folder'''
 
-        log(f'\nDELETING {folder_to_delete}...')
+        log(f'\nDELETING {folder_to_delete}')
 
         # Check if the folder is already deleted
         where_did_files_go = os.path.join(
@@ -4841,7 +4845,7 @@ class Archiver:
         '''Restore the given folder'''
 
         try:
-            log(f'\nRestoring folder "{folder}..."\n')
+            log(f'\nRESTORING "{folder}"\n')
 
             # Get folder info
             bucket, prefix, is_recursive, is_glacier, profile, user = self.archive_get_bucket_info(
@@ -4870,7 +4874,7 @@ class Archiver:
             else:
                 log(f'...no glacier restore needed\n')
 
-            log(f'...folder restored\n')
+            log(f'...RESTORING SUCCESSFULLY COMPLETED\n')
 
             return True
 
@@ -5008,7 +5012,7 @@ class Archiver:
                 if os.path.exists(where_did_file_go_full_path):
                     os.remove(where_did_file_go_full_path)
 
-                log(f'Restoration of {root} completed successfully\n')
+                log(f'RESTORATION OF {root} COMPLETED SUCCESSFULLY\n')
 
         except Exception:
             print_error()
