@@ -4009,7 +4009,7 @@ class Archiver:
                 new_entry = {'local_folder': folder_to_archive,
                              'archive_folder': s3_dest,
                              's3_storage_class': self.cfg.storage_class,
-                             'profile': self.cfg.profile,
+                             'profile': self.cfg.credentials,
                              'provider': self.cfg.provider,
                              'endpoint': self.cfg.endpoint,
                              'archive_mode': archive_mode,
@@ -4745,11 +4745,16 @@ class Archiver:
             with open(readme, 'w') as rme:
                 rme.write(
                     f'The files in this folder have been moved to an AWS S3 archive!\n')
-                rme.write(f'\nArchive location: {s3_dest}\n')
+                rme.write(f"Archive location: {s3_dest}\n")
+                rme.write(f"\nLocal folder : {archived_folder_info['local_folder']}\n")
+                rme.write(f"Provider: {archived_folder_info['provider']}\n")
+                rme.write(f"Endpoint: {archived_folder_info['endpoint']}\n")
+                rme.write(f"S3 storage class: {archived_folder_info['s3_storage_class']}\n")
+                rme.write(f"Archive mode: {archived_folder_info['archive_mode']}\n")
                 rme.write(
                     f"Archive aws profile: {archived_folder_info['profile']}\n")
                 rme.write(f"Archiver user: {archived_folder_info['user']}\n")
-                rme.write(f'Archiver email: {self.cfg.email}\n')
+                rme.write(f"Archiver email: {self.cfg.email}\n")
                 rme.write(
                     f'froster-archives.json: {self.archive_json}\n')
                 rme.write(
@@ -4873,8 +4878,6 @@ class Archiver:
                     return False
             else:
                 log(f'...no glacier restore needed\n')
-
-            log(f'...RESTORING SUCCESSFULLY COMPLETED\n')
 
             return True
 
