@@ -5630,6 +5630,7 @@ class Rclone:
             self.envrn['RCLONE_S3_PROVIDER'] = cfg.provider
             self.envrn['RCLONE_S3_ENDPOINT'] = cfg.endpoint
             self.envrn['RCLONE_S3_REGION'] = cfg.region
+            self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = cfg.region
             self.envrn['RCLONE_S3_STORAGE_CLASS'] = cfg.storage_class
 
             # Get the AWS credentials
