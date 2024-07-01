@@ -23,13 +23,12 @@ catch() {
     if [ "$1" != "0" ]; then
         # error handling goes here
 
-        echo
-        echo "Rolling back installation..."
-
-        if pipx list | grep 'froster' >/dev/null 2>&1; then
-            echo "  Uninstalling froster..."
-            pipx uninstall froster >/dev/null 2>&1
-            echo "  ...uninstalled"
+        if [[ $(command -v pipx) ]]; then
+            if pipx list | grep 'froster' >/dev/null 2>&1; then
+                echo "  Uninstalling froster..."
+                pipx uninstall froster >/dev/null 2>&1
+                echo "  ...uninstalled"
+            fi
         fi
 
         # Restore (if any) backed up froster config files
@@ -44,7 +43,6 @@ catch() {
 
         rm -rf ${pwalk_path} >/dev/null 2>&1
         rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
-        echo "...done"
 
         echo
         echo "Installation failed!"
