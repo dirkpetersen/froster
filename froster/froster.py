@@ -505,7 +505,7 @@ class ConfigManager:
             raise inquirer.errors.ValidationError(
                 "", reason="Field is required")
 
-        if not current.startswith('profile ') and not len(current) > 8:
+        if not current.startswith('profile ') or not len(current) > 8:
             raise inquirer.errors.ValidationError(
                 "", reason="Profile name must start with 'profile <name>'")
 
@@ -735,7 +735,7 @@ class ConfigManager:
                     message='Enter the new region', validate=self.__inquirer_check_required)
 
             if region == '-- no region --':
-                region = 'auto'
+                region = 'default'
 
             # Update region in the config file
             self.__set_aws_config(credentials_profile=self.credentials, region=region)
