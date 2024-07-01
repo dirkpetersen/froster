@@ -1,6 +1,6 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
-Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems. It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. 
+Froster is a user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems. It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore it to an AWS EC2 instance. 
 
 </br>
 
@@ -33,22 +33,22 @@ curl python3 python3-pip python3-venv python3.xx-devel gcc lib32gcc-s1 unzip fus
 
 ## Installation
 
-To install Froster, execute the following command into your terminal:
+To install Froster, execute the following command in your terminal:
 
 ```
 curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash
 
 ```
 
-To check everything is installed correctly you can run `froster --info` or `froster --version` commands.
-Check available command on help section `froster --help`
+To check that everything is installed correctly, run `froster --info` or `froster --version` commands.
+Check available command on the help section `froster --help`
 
 
 </br>
 
 ## Update
 
-To update froster execute the same command from the [Installation section](#installation). 
+To update Froster, execute the same command from the [Installation section](#installation). 
 
 Froster prompts you once a week when there is a new update available.
 You can manually check if there is an update available by running the command:
@@ -60,41 +60,12 @@ froster update
 
 ## Configuration
 
-To run Froster you need to configure it first. Froster will guide you through the configuration with questions you need to answer. In most cases you can accept default options by pressing enter.
-To configure Froster run the command:
+To run Froster, you need to configure it first. Froster will guide you through the configuration with questions you need to answer. In most cases, you can accept default options by pressing enter.
+To configure Froster, run the command:
 ```
 froster config
 ```
-If you have any doubts on while configuring froster check the [Configuration sections explanation](#configuration-sections-explanation)
-
-### Configuration sections explanation
-Down below you will find an explanation of each configuration section:
-
-- SET USER
-  - Set your name. This information will be stored locally as metadata when archiving files.
-
-- SET EMAIL
-  - Set your email. This information will be stored locally as metadata when archiving files. Email is also used to notify about SLURM executions.
-
-- SET SHARED
-  - If set to yes, then enter the path to the shared folder. The shared folder will be used to store hotspots (output of `froster index <folder>` command) and the archiving database (file with all archived files). This is useful when Froster is used by more than one user. Current user hotspots will be copied to the new shared folder. The archiving database will ONLY be copied to the shared folder if no archiving database is already in the shared folder.
-  - If set to no, hotspots and the archiving database will be stored in the local user filesystem.
-
-- SET NIH
-  - If set to yes, it allows you to create a link between the data you archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) maintains a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov).
-
-- SET PROFILE
-  - Profiles are the most important configuration of Froster. You will need to have at least one configured profile to be able to archive folders to your S3 provider. Profiles store the following information:
-    - Select profile: Configure an already existing profile or create a new one.
-    - Select S3 provider: Select the S3 provider for this profile. Currently supported S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, Minio. There is also a generic option called "Other" where you can configure a generic S3 provider.
-    - Select credentials: Select the credentials for this profile or create new ones. These credentials will be used to authenticate to your S3 provider. They are stored in the ```~/.aws/credentials``` file.
-    - Select region: Select the region for this profile or create a new one. ```-- no region --``` option will set the region to the value "default".
-    - Select S3 bucket: Select the bucket for this profile or create a new one.
-    - Enter directory inside S3 bucket: Enter the root folder where files will be archived for the selected S3 bucket.
-    - Select the S3 storage class: Select the S3 storage class for this profile or create a new one. ```DEEP_ARCHIVE``` is currently the most cost-effective storage solution available. See [AWS Storage Class guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html)
-
-- SET SLURM
-  - Configure several SLURM options that will be passed to the SLURM script upon execution.
+If you have any doubts while configuring Froster, check the [Configuration sections explanation](#configuration-sections-explanation)
 
 </br>
 
@@ -102,10 +73,10 @@ Down below you will find an explanation of each configuration section:
 
 ### Index
 
-Index command crawls your file system looking for hotspots (i.e., folders with files larger than 1GB).
-It uses a third-party tool called [filesystem-reporting-tools](https://github.com/fizwit/filesystem-reporting-tools) that use parallel threads to efficiently crawl large filesystems.
+The index command crawls your file system, looking for hotspots (i.e., folders with files larger than 1GB).
+It uses a third-party tool called [filesystem-reporting-tools](https://github.com/fizwit/filesystem-reporting-tools), which uses parallel threads to crawl large filesystems efficiently.
 
-This command is not strictly necessary for archiving but it helps you to spot large folders that are potentially worth archiving. You can provide one or more folders separated by space:
+This command is not strictly necessary for archiving, but it helps you to spot large folders that are potentially worth archiving. You can provide one or more folders separated by space:
 
 ```
 froster index [folders...]
@@ -115,24 +86,42 @@ Check more options at `froster index --help`.
 
 ### Archive
 
-Archive command uploads folders from local filesystem to the default's profile S3 bucket. If one or more folders are provided all of them will be archived. If no folder is provided froster will allow you to select a hotspots of previously indexed folders.
+The archive command uploads folders from the local filesystem to the default profile's S3 bucket. If one or more folders are provided, they will be archived. If no folder is provided, froster will allow you to select hotspots of previously indexed folders.
 
 ```
 froster archive [folders...]
 ``` 
 Check more options at `froster archive --help`.
 
-**Note**: To change default profile use `froster --default-profile` command. To use a different profile for the current command you can use the `--profile PROFILE` flag. Check these options at `froster --help`
+**Note**: To change default profile use `froster --default-profile` command. To use a different profile for the current command, you can use the `--profile PROFILE` flag. Check these options at `froster --help`
 
 ### Delete
 
-Delete command deletes a previously archived folders. If one or more folders are provided all of them will be deleted from local filesystem ONLY after verifying that they have been successfully stored in the S3 server. If no folder is provided froster will allow you to select a folder from previously successfully archived folders.
-
+The delete command deletes previously archived folders. If one or more folders are provided, all of them will be deleted from the local filesystem ONLY after verifying that they have been successfully stored in the S3 server. If no folder is provided, froster will allow you to select a folder from previously successfully archived folders. It is worth noting that this commands checks if the folders have been successfully upload to the S3 bucket. Please do NOT delete folders manually.
 ```
 froster delete [folders...]
 ``` 
 Check more options at `froster delete --help`.
 
+### Restore
+
+The restore command restores a previously deleted folder (i.e., deleted by using the `froster delete` command). This command will first trigger the folder retrieval if folders are stored in a DEEP_ARCHIVE storage class (See [AWS Storage Class guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html)). Once retrieval finishes, executing this command again will download files from the S3 bucket to the local filesystem.
+```
+froster restore [folders...]
+``` 
+Check more options at `froster restore --help`.
+
+### Mount / Umount
+The mount / umount command (u)mounts the remote S3 or Glacier storage in your local file system at the location of the original folder. If one or more folders are provided, they will be (u)mounted. If no folder is provided, froster will allow you to select folders of previously archived folders.
+```
+froster mount [folders...]
+```
+```
+froster umount [folders...]
+``` 
+Check more options at `froster mount --help`.
+
+***
 
 ## Table of Contents
 
@@ -194,6 +183,36 @@ The main motivations behind the creation of `Froster` are:
 1. Optionally restore to a cloud machine (AWS EC2 instance) with the `restore --aws` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12).
 
 ## Preparing Froster 
+
+### Configuration sections explanation
+
+Down below, you will find an explanation of each configuration section:
+
+- SET USER
+  - Set your name. This information will be stored locally as metadata when archiving files.
+
+- SET EMAIL
+  - Set your email. This information will be stored locally as metadata when archiving files. Email is also used to notify about SLURM executions.
+
+- SET SHARED
+  - If set to yes, then enter the path to the shared folder. The shared folder will be used to store hotspots (output of `froster index <folder>` command) and the archiving database (file with all archived files). This is useful when Froster is used by more than one user. Current user hotspots will be copied to the new shared folder. The archiving database will ONLY be copied to the shared folder if no archiving database is already in the shared folder.
+  - If set to no, hotspots and the archiving database will be stored in the local user filesystem.
+
+- SET NIH
+  - If set to yes, it allows you to create a link between the data you archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) has maintained a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov).
+
+- SET PROFILE
+  - Profiles are the most important configuration of Froster. You will need to have at least one configured profile to be able to archive folders to your S3 provider. Profiles store the following information:
+    - Select profile: Configure an already existing profile or create a new one.
+    - Select S3 provider: Select the S3 provider for this profile. Currently supported S3 providers are AWS, GCS, Wasabi, IDrive, Ceph, and Minio. There is also a generic option called "Other," where you can configure a generic S3 provider.
+    - Select credentials: Select the credentials for this profile or create new ones. These credentials will be used to authenticate to your S3 provider. They are stored in the ```~/.aws/credentials``` file.
+    - Select region: Select the region for this profile or create a new one. ```-- no region --``` option will set the region to the value "default".
+    - Select S3 bucket: Select the bucket for this profile or create a new one.
+    - Enter directory inside S3 bucket: Enter the root folder where files will be archived for the selected S3 bucket.
+    - Select the S3 storage class: Select the S3 storage class for this profile or create a new one. ```DEEP_ARCHIVE``` is currently the most cost-effective storage solution available. See [AWS Storage Class guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html)
+
+- SET SLURM
+  - Configure several SLURM options that will be passed to the SLURM script upon execution.
 
 ### configuring 
 
