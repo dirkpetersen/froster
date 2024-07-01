@@ -1,7 +1,7 @@
 #! /bin/bash
 
 # Make sure script ends as soon as an error arises
-# set -e
+set -e
 
 #################
 ### VARIABLES ###
