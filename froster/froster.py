@@ -251,7 +251,6 @@ class ConfigManager:
             # Shared configuration
             self.is_shared = config.getboolean(
                 'SHARED', 'is_shared', fallback=False)
-            
 
             # If shared configuration is enabled, then change the froster-archives.json and hotspots directory
             if self.is_shared:
@@ -285,15 +284,15 @@ class ConfigManager:
                 # Get default profile
                 self.profile = config.get(
                     'DEFAULT_PROFILE', 'profile', fallback=None)
-            
+
             # Get the provider
             self.provider = config.get(
                 self.profile, 'provider', fallback=None)
-            
+
             # Get the credentials
             self.credentials = config.get(
                 self.profile, 'credentials', fallback=None)
-            
+
             # Current S3 Bucket name
             self.bucket_name = config.get(
                 self.profile, 'bucket_name', fallback=None)
@@ -310,7 +309,8 @@ class ConfigManager:
             self.region = self.get_region(credentials_profile=self.credentials)
 
             # Get the S3 endpoint
-            self.endpoint = self.get_endpoint(credentials_profile=self.credentials)
+            self.endpoint = self.get_endpoint(
+                credentials_profile=self.credentials)
 
             # Slurm configuration
             self.slurm_walltime_days = config.get(
@@ -497,7 +497,7 @@ class ConfigManager:
             raise inquirer.errors.ValidationError(
                 "", reason="Field is required")
         return True
-    
+
     def __inquirer_check_profile_name(self, answers, current):
         '''Check input is set'''
 
@@ -537,7 +537,6 @@ class ConfigManager:
                 if config.has_section('UPDATE'):
                     config.remove_section('UPDATE')
 
-
                 # Get all sections
                 all_sections = config.sections()
 
@@ -545,30 +544,31 @@ class ConfigManager:
                 profiles = [
                     section for section in all_sections if section.startswith('profile ')]
 
-
                 for profile in profiles:
 
-                        # Get the profile before being deleted
-                        credentials = config.get(profile, 'credentials')
+                    # Get the profile before being deleted
+                    credentials = config.get(profile, 'credentials')
 
-                        # Remove the credentials as this per-user information
-                        config.remove_option(profile, 'credentials')
+                    # Remove the credentials as this per-user information
+                    config.remove_option(profile, 'credentials')
 
-                        # Get the region for these credentials
-                        exported_region = self.get_region(credentials_profile=credentials)
+                    # Get the region for these credentials
+                    exported_region = self.get_region(
+                        credentials_profile=credentials)
 
-                        # Set the exported region
-                        config.set(profile,
-                                   'exported_region',
-                                   exported_region)
+                    # Set the exported region
+                    config.set(profile,
+                               'exported_region',
+                               exported_region)
 
-                        # Get the endpoint for these credentials
-                        export_endpoint = self.get_endpoint(credentials_profile=credentials)
-                        
-                        # Set the exported endpoint
-                        config.set(profile,
-                                   'exported_endpoint',
-                                   export_endpoint)
+                    # Get the endpoint for these credentials
+                    export_endpoint = self.get_endpoint(
+                        credentials_profile=credentials)
+
+                    # Set the exported endpoint
+                    config.set(profile,
+                               'exported_endpoint',
+                               export_endpoint)
 
                 os.makedirs(export_dir, exist_ok=True, mode=0o775)
 
@@ -617,7 +617,7 @@ class ConfigManager:
                 log(f'\n*** NO CONFIGURATION FOUND ***')
                 log('\nYou can configure froster using the command:')
                 log('    froster config\n')
-            
+
             return True
 
         except Exception:
@@ -677,8 +677,8 @@ class ConfigManager:
                     if not is_overwrite:
                         # If user does not want to overwrite the profile, then return
                         if inquirer.confirm(
-                            message=f'Do you want to configure other credentials?',
-                            default=False):
+                                message=f'Do you want to configure other credentials?',
+                                default=False):
                             return self.set_credentials(aws)
                         else:
                             return False
@@ -695,7 +695,6 @@ class ConfigManager:
                 self.__set_aws_credentials(profile_name=credentials,
                                            aws_access_key_id=aws_access_key_id,
                                            aws_secret_access_key=aws_secret_access_key)
-
 
             # Store aws profile in the config file
             self.__set_configuration_entry(
@@ -723,13 +722,14 @@ class ConfigManager:
             if exported_region:
                 default_region = exported_region
             else:
-                default_region = self.get_region(credentials_profile=self.credentials)
+                default_region = self.get_region(
+                    credentials_profile=self.credentials)
 
             # Ask user to choose a region
             region = inquirer.list_input(f'Select region for "{self.profile}"',
                                          default=default_region,
                                          choices=aws_regions)
-    
+
             if region == '+ Create new region':
                 region = inquirer.text(
                     message='Enter the new region', validate=self.__inquirer_check_required)
@@ -738,10 +738,12 @@ class ConfigManager:
                 region = 'default'
 
             # Update region in the config file
-            self.__set_aws_config(credentials_profile=self.credentials, region=region)
+            self.__set_aws_config(
+                credentials_profile=self.credentials, region=region)
 
             # Remove the exported_region from the config object if it exists
-            self.__remove_config_option(section=self.profile, option='exported_region')
+            self.__remove_config_option(
+                section=self.profile, option='exported_region')
 
             return True
 
@@ -872,7 +874,8 @@ class ConfigManager:
                         value = nested_config.get(nested_option[1], None)
                     else:
                         # Fallback to direct retrieval if not a nested option
-                        value = config.get(credentials_profile, option, fallback=None)
+                        value = config.get(
+                            credentials_profile, option, fallback=None)
                 else:
                     value = None
             else:
@@ -893,7 +896,7 @@ class ConfigManager:
         except Exception:
             print_error()
             return None
-        
+
     def get_exported_region(self, profile):
         '''Get the exported_region for the given profile'''
 
@@ -913,7 +916,7 @@ class ConfigManager:
         except Exception:
             print_error()
             return None
-        
+
     def get_exported_endpoint(self, profile):
         '''Get the exported_endpoint for the given profile'''
 
@@ -1088,12 +1091,14 @@ class ConfigManager:
                 endpoint = 'https://storage.googleapis.com'
             else:
 
-                exported_endpoint = self.get_exported_endpoint(profile=self.profile)
+                exported_endpoint = self.get_exported_endpoint(
+                    profile=self.profile)
 
-                if exported_endpoint: 
+                if exported_endpoint:
                     default_endpoint = exported_endpoint
                 else:
-                    default_endpoint = self.get_endpoint(credentials_profile=self.credentials)
+                    default_endpoint = self.get_endpoint(
+                        credentials_profile=self.credentials)
 
                 # Get the user answer
                 endpoint = inquirer.text(
@@ -1107,10 +1112,12 @@ class ConfigManager:
                     endpoint = 'https://' + endpoint
 
             # Update endpoint in the config file
-            self.__set_aws_config(credentials_profile=self.credentials, endpoint=endpoint)
+            self.__set_aws_config(
+                credentials_profile=self.credentials, endpoint=endpoint)
 
             # Remove the exported_region from the config object if it exists
-            self.__remove_config_option(section=self.profile, option='exported_endpoint')
+            self.__remove_config_option(
+                section=self.profile, option='exported_endpoint')
 
             return True
 
@@ -1180,7 +1187,7 @@ class ConfigManager:
         except Exception:
             print_error()
             return False
-        
+
     def set_profile(self):
 
         try:
@@ -1206,7 +1213,7 @@ class ConfigManager:
                 default=self.__get_configuration_entry(
                     'DEFAULT_PROFILE', 'profile'),
                 choices=profiles)
-            
+
             if default_profile == '+ Create new profile':
                 # Get new profile name
                 default_profile = inquirer.text(
@@ -1225,7 +1232,7 @@ class ConfigManager:
                             return self.set_profile()
                         else:
                             return False
-                        
+
             self.__set_configuration_entry(
                 'DEFAULT_PROFILE', 'profile', default_profile)
 
@@ -1310,7 +1317,7 @@ class ConfigManager:
                     default=self.__get_configuration_entry(
                         self.profile, 'bucket_name'),
                     validate=self.__inquirer_check_required)
-                
+
                 # Store the s3 bucket in the config object
                 self.__set_configuration_entry(
                     self.profile, 'bucket_name', bucket_name)
@@ -1449,7 +1456,7 @@ class ConfigManager:
                         if not os.path.exists(os.path.join(shared_hotspots_dir, file)):
                             shutil.copy(os.path.join(root, file),
                                         shared_hotspots_dir)
-                            
+
                 # Set the shared directory in the config file
                 self.__set_configuration_entry(
                     'SHARED', 'shared_dir', shared_config_dir)
@@ -1604,7 +1611,6 @@ class ConfigManager:
 
         try:
             current_timestamp = int(time.time())
-
 
             # Check if last day was less than 86400 * 7 = (1 day) * 7  = 1 week
             if current_timestamp - self.timestamp < (86400*7):
@@ -1885,7 +1891,7 @@ class AWSBoto:
 
             # Initialize a Boto3 session using the configured profile
             session = boto3.session.Session()
-    
+
             # Initialize the AWS clients
             self.ce_client = session.client(
                 service_name='ce',
@@ -3855,9 +3861,8 @@ class Archiver:
                 f':s3:{self.cfg.bucket_name}',
                 self.cfg.archive_dir,
                 folder_to_archive.lstrip(os.path.sep))
-            
-            hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
 
+            hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
 
             # Force flag provided, reset the folder and continue the archive process
             if is_force:
@@ -3871,32 +3876,34 @@ class Archiver:
                 # If hash file exists, check if the folder is already archived
                 if os.path.exists(hashfile):
                     # Check if folder is archived according to our database
-                    archived_folder_info = self.froster_archives_get_entry(folder_to_archive)
-                    
+                    archived_folder_info = self.froster_archives_get_entry(
+                        folder_to_archive)
+
                     # Check if folder is already archived in S3
                     rclone = Rclone(self.args, self.cfg)
-                    checksum = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+                    checksum = rclone.checksum(
+                        hashfile, s3_dest, '--max-depth', '1')
 
                     if archived_folder_info and checksum:
                         # Folder is already archived. Print error message
                         log(
                             f'\nThe folder {folder_to_archive} is already archived in S3 bucket.\n')
                         log(f'{archived_folder_info}\n')
-            
+
                     elif archived_folder_info and not checksum:
                         # Folder is archived in our database but checksums do not match in the S3 bucket. Print error message
                         log(
                             f'\nThe folder {folder_to_archive} is already archived in our database but checksums do not match in the S3 bucket.\n')
                         log(f'{archived_folder_info}\n')
                         log(f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
-                
+
                     else:
                         # Folder has a hasfile and is not archived. Print error message
                         log(
                             f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process attempt.')
 
                         log(f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
-                
+
                     return False
 
             # Check if the folder is empty
@@ -4097,9 +4104,9 @@ class Archiver:
                         is_subfolder = False
                         self._archive_locally(
                             folder, is_recursive, is_subfolder, is_tar, is_force)
-                        
+
             return True
-        
+
         except Exception:
             print_error()
             return False
@@ -4224,9 +4231,9 @@ class Archiver:
             folders = clean_path_list(folders)
 
             self._unmount_locally(folders)
-        
+
             return True
-        
+
         except Exception:
             print_error()
             return False
@@ -4793,7 +4800,7 @@ class Archiver:
                         self._delete_locally(folder)
 
             return True
-    
+
         except Exception:
             print_error()
             return False
@@ -6815,7 +6822,7 @@ class Commands:
 
             arch.mount(folders=self.args.folders,
                        mountpoint=self.args.mountpoint)
-            
+
             return True
 
         except Exception:
@@ -6973,8 +6980,7 @@ class Commands:
         '''Gather and parse command-line arguments'''
 
         parser = argparse.ArgumentParser(prog='froster ',
-                                         description='A (mostly) automated tool for archiving large scale data ' +
-                                         'after finding folders in the file system that are worth archiving.')
+                                         description='A user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems')
 
         # ***
 
@@ -6998,7 +7004,7 @@ class Commands:
 
         parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true',
                             help="do not submit a Slurm job, execute in the foreground. ")
-        
+
         parser.add_argument('-p', '--profile', dest='profile', action='store', default='',
                             help='User this profile for the current session')
 
@@ -7011,16 +7017,16 @@ class Commands:
         # ***
 
         parser_credentials = subparsers.add_parser('credentials', aliases=['crd'],
-                                                   help=textwrap.dedent(f'''
+                                                   description=textwrap.dedent(f'''
                 Check the current profile has valid credentials.
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
         # ***
 
         parser_config = subparsers.add_parser('config', aliases=['cnf'],
-                                              help=textwrap.dedent(f'''
-                Bootstrap the configurtion, install dependencies and setup your environment.
-                You will need to answer a few questions about your cloud and hpc setup.
+                                              description=textwrap.dedent(f'''
+                Froster configuration bootstrap. This command will guide you through the
+                configuration of Froster. You can also import and export configurations.
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
         parser_config.add_argument('-p', '--print', dest='print', action='store_true',
@@ -7038,7 +7044,7 @@ class Commands:
         # ***
 
         parser_index = subparsers.add_parser('index', aliases=['idx'],
-                                             help=textwrap.dedent(f'''
+                                             description=textwrap.dedent(f'''
                 Scan a file system folder tree using 'pwalk' and generate a hotspots CSV file
                 that lists the largest folders. As this process is compute intensive the
                 index job will be automatically submitted to Slurm if the Slurm tools are
@@ -7061,7 +7067,7 @@ class Commands:
         # ***
 
         parser_archive = subparsers.add_parser('archive', aliases=['arc'],
-                                               help=textwrap.dedent(f'''
+                                               description=textwrap.dedent(f'''
                 Select from a list of large folders, that has been created by 'froster index', and
                 archive a folder to S3/Glacier. Once you select a folder the archive job will be
                 automatically submitted to Slurm. You can also automate this process
@@ -7130,7 +7136,7 @@ class Commands:
         # ***
 
         parser_delete = subparsers.add_parser('delete', aliases=['del'],
-                                              help=textwrap.dedent(f'''
+                                              description=textwrap.dedent(f'''
                 Remove data from a local filesystem folder that has been confirmed to
                 be archived (through checksum verification). Use this instead of deleting manually
             '''), formatter_class=argparse.RawTextHelpFormatter)
@@ -7148,7 +7154,7 @@ class Commands:
         # ***
 
         parser_mount = subparsers.add_parser('mount', aliases=['umount'],
-                                             help=textwrap.dedent(f'''
+                                             description=textwrap.dedent(f'''
                 Mount or unmount the remote S3 or Glacier storage in your local file system
                 at the location of the original folder.
             '''), formatter_class=argparse.RawTextHelpFormatter)
@@ -7168,7 +7174,7 @@ class Commands:
         # ***
 
         parser_restore = subparsers.add_parser('restore', aliases=['rst'],
-                                               help=textwrap.dedent(f'''
+                                               description=textwrap.dedent(f'''
                 Restore data from AWS Glacier to AWS S3 One Zone-IA. You do not need
                 to download all data to local storage after the restore is complete.
                 Just use the mount sub command.
@@ -7249,8 +7255,8 @@ class Commands:
         # ***
 
         parser_update = subparsers.add_parser('update', aliases=['upd'],
-                                              help=textwrap.dedent(f'''
-                Update froster to the latest version
+                                              description=textwrap.dedent(f'''
+                Check for froster updates
             '''), formatter_class=argparse.RawTextHelpFormatter)
 
         parser_update.add_argument('--rclone', '-r', dest='rclone', action='store_true',
