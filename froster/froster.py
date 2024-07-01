@@ -726,7 +726,7 @@ class ConfigManager:
                 default_region = self.get_region(credentials_profile=self.credentials)
 
             # Ask user to choose a region
-            region = inquirer.list_input(f"Choose region for {self.profile}",
+            region = inquirer.list_input(f'Select region for "{self.profile}"',
                                          default=default_region,
                                          choices=aws_regions)
     
@@ -1275,7 +1275,7 @@ class ConfigManager:
 
             # Ask user to choose an existing aws s3 bucket or create a new one
             s3_bucket = inquirer.list_input(
-                "Choose your s3 bucket",
+                f'Select S3 bucket for "{self.profile}"',
                 default=self.__get_configuration_entry(
                     self.profile, 'bucket_name'),
                 choices=s3_buckets)
@@ -1285,7 +1285,7 @@ class ConfigManager:
 
                 # Get new bucket name
                 new_bucket_name = inquirer.text(
-                    message='Enter new bucket name',
+                    message=f'Enter new S3 bucket name for "{self.profile}"',
                     default='froster-',
                     validate=self.__inquirer_check_required)
 
@@ -1306,7 +1306,7 @@ class ConfigManager:
             elif s3_bucket == '+ Enter bucket name':
                 # Get bucket name
                 bucket_name = inquirer.text(
-                    message='Enter bucket name',
+                    message=f'Enter S3 bucket name for "{self.profile}"',
                     default=self.__get_configuration_entry(
                         self.profile, 'bucket_name'),
                     validate=self.__inquirer_check_required)
@@ -1321,7 +1321,7 @@ class ConfigManager:
 
             # Get user answer
             archive_dir = inquirer.text(
-                message='Enter the directory name inside S3 bucket',
+                message=f'Enter the directory inside S3 bucket for "{self.profile}"',
                 default=self.__get_configuration_entry(
                     self.profile, 'archive_dir', fallback='froster'),
                 validate=self.__inquirer_check_required)
@@ -1338,7 +1338,7 @@ class ConfigManager:
 
             if self.provider == 'AWS':
                 storage_class = inquirer.list_input(
-                    "Choose the AWS S3 storage class",
+                    f'Select the AWS S3 storage class for "{self.profile}"',
                     default=default_storage_class,
                     choices=[
                         'DEEP_ARCHIVE',
@@ -1353,7 +1353,7 @@ class ConfigManager:
 
             elif self.provider == 'GCS':
                 storage_class = inquirer.list_input(
-                    "Choose the GCS S3 storage class",
+                    f'Select the GCS S3 storage class for "{self.profile}"',
                     default=default_storage_class,
                     choices=[
                         'STANDARD',
@@ -1365,7 +1365,7 @@ class ConfigManager:
                 )
             else:
                 storage_class = inquirer.list_input(
-                    "Choose the S3 storage class",
+                    f'Select the S3 storage class for "{self.profile}"',
                     default=default_storage_class,
                     choices=[
                         'STANDARD',
@@ -1376,7 +1376,7 @@ class ConfigManager:
             if storage_class == '+ Create new storage class':
                 # Get new storage class
                 storage_class = inquirer.text(
-                    message='Enter the new storage class',
+                    message=f'Enter the new storage class for "{self.profile}"',
                     validate=self.__inquirer_check_required)
 
             # Store aws s3 storage class in the config object

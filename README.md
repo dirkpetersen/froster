@@ -1,6 +1,6 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
-Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems such as AWS Glacier. Froster crawls your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. 
+Froster is a user-friendly archiving tool for teams that move data between higher cost Posix file systems and lower cost S3-like object storage systems. It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommends folders for archiving, generates checksums, and uploads your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore to an AWS EC2 instance. 
 
 </br>
 
@@ -33,7 +33,6 @@ curl python3 python3-pip python3-venv python3.xx-devel gcc lib32gcc-s1 unzip fus
 
 ## Installation
 
-After you installed the pre-requisites, close and open the terminal again to refresh the environment.
 To install Froster, execute the following command into your terminal:
 
 ```
@@ -41,9 +40,99 @@ curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$
 
 ```
 
-## Update (TODO)
+To check everything is installed correctly you can run `froster --info` or `froster --version` commands.
+Check available command on help section `froster --help`
+
 
 </br>
+
+## Update
+
+To update froster execute the same command from the [Installation section](#installation). 
+
+Froster prompts you once a week when there is a new update available.
+You can manually check if there is an update available by running the command:
+```
+froster update
+``` 
+
+</br>
+
+## Configuration
+
+To run Froster you need to configure it first. Froster will guide you through the configuration with questions you need to answer. In most cases you can accept default options by pressing enter.
+To configure Froster run the command:
+```
+froster config
+```
+If you have any doubts on while configuring froster check the [Configuration sections explanation](#configuration-sections-explanation)
+
+### Configuration sections explanation
+Down below you will find an explanation of each configuration section:
+
+- SET USER
+  - Set your name. This information will be stored locally as metadata when archiving files.
+
+- SET EMAIL
+  - Set your email. This information will be stored locally as metadata when archiving files. Email is also used to notify about SLURM executions.
+
+- SET SHARED
+  - If set to yes, then enter the path to the shared folder. The shared folder will be used to store hotspots (output of `froster index <folder>` command) and the archiving database (file with all archived files). This is useful when Froster is used by more than one user. Current user hotspots will be copied to the new shared folder. The archiving database will ONLY be copied to the shared folder if no archiving database is already in the shared folder.
+  - If set to no, hotspots and the archiving database will be stored in the local user filesystem.
+
+- SET NIH
+  - If set to yes, it allows you to create a link between the data you archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) maintains a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov).
+
+- SET PROFILE
+  - Profiles are the most important configuration of Froster. You will need to have at least one configured profile to be able to archive folders to your S3 provider. Profiles store the following information:
+    - Select profile: Configure an already existing profile or create a new one.
+    - Select S3 provider: Select the S3 provider for this profile. Currently supported S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, Minio. There is also a generic option called "Other" where you can configure a generic S3 provider.
+    - Select credentials: Select the credentials for this profile or create new ones. These credentials will be used to authenticate to your S3 provider. They are stored in the ```~/.aws/credentials``` file.
+    - Select region: Select the region for this profile or create a new one. ```-- no region --``` option will set the region to the value "default".
+    - Select S3 bucket: Select the bucket for this profile or create a new one.
+    - Enter directory inside S3 bucket: Enter the root folder where files will be archived for the selected S3 bucket.
+    - Select the S3 storage class: Select the S3 storage class for this profile or create a new one. ```DEEP_ARCHIVE``` is currently the most cost-effective storage solution available. See [AWS Storage Class guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html)
+
+- SET SLURM
+  - Configure several SLURM options that will be passed to the SLURM script upon execution.
+
+</br>
+
+## Basic usage of Froster
+
+### Index
+
+Index command crawls your file system looking for hotspots (i.e., folders with files larger than 1GB).
+It uses a third-party tool called [filesystem-reporting-tools](https://github.com/fizwit/filesystem-reporting-tools) that use parallel threads to efficiently crawl large filesystems.
+
+This command is not strictly necessary for archiving but it helps you to spot large folders that are potentially worth archiving. You can provide one or more folders separated by space:
+
+```
+froster index [folders...]
+``` 
+
+Check more options at `froster index --help`.
+
+### Archive
+
+Archive command uploads folders from local filesystem to the default's profile S3 bucket. If one or more folders are provided all of them will be archived. If no folder is provided froster will allow you to select a hotspots of previously indexed folders.
+
+```
+froster archive [folders...]
+``` 
+Check more options at `froster archive --help`.
+
+**Note**: To change default profile use `froster --default-profile` command. To use a different profile for the current command you can use the `--profile PROFILE` flag. Check these options at `froster --help`
+
+### Delete
+
+Delete command deletes a previously archived folders. If one or more folders are provided all of them will be deleted from local filesystem ONLY after verifying that they have been successfully stored in the S3 server. If no folder is provided froster will allow you to select a folder from previously successfully archived folders.
+
+```
+froster delete [folders...]
+``` 
+Check more options at `froster delete --help`.
+
 
 ## Table of Contents
 
@@ -51,7 +140,6 @@ curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$
   * [Motivation](#motivation)
 * [Design](#design)
 * [Preparing Froster](#preparing-froster)
-  * [Installing](#installing)
   * [Configuring](#configuring)
     * [Changing defaults with aliases](#changing-defaults-with-aliases)
     * [Working with multiple users](#working-with-multiple-users)
@@ -78,17 +166,17 @@ curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$
 ## Problem 
 
 We have yet to find an easy to use, open-source solution for large-scale archiving intended to free up disk space on a primary storage system. Researchers, who may have hundreds of terabytes or even petabytes of data, need to decide what to archive and where to archive it. Archiving processes can stretch on for days and are susceptible to failure. These processes must be able to resume automatically until completion, and need to be validated (for instance, through a checksum comparison with the source). Additionally, it's crucial to maintain some metadata regarding when the archiving occurred, where the data was transferred to, and the original location of the data to be able to restore it quickly.
-A specific issue with AWS Glacier is its current implementation as a backend to S3. Only the Glacier features that S3 does not support require the use of a special Glacier API. This fact is often not well documented in how-to guides.
 
 ### Motivation 
 
-There were three motivations behind the creation of `Froster`:
+The main motivations behind the creation of `Froster` are:
 
 - We were working with researchers to optimize their archiving processes. In doing so, we wanted to understand user workflows and identify the essential metadata to be captured. Thanks to Froster's compact codebase, it can be easily adapted to various needs. Metadata could potentially be captured through an additional web interface. However, a web system often requires IT support and an extra layer of authentication. It might be simpler to gather such information through a [Textual TUI interface](https://www.textualize.io/projects/). A first [demo of this option is here](#nih-life-sciences-metadata). The insights gained through working with `Froster` will likely guide the development or acquisition of more advanced tools in the future. 
 
-- HPC users often find AWS Glacier inaccessible or complex and have a preception that it is expensive because of Egress fees. This is despite evidence that most data for most research users has not been touched in years. It seems that it is very difficult to build an on premises archive solution with a lower TCO than AWS Glacier or similar offerings from other cloud providers such as IDrive E2 
+- HPC users often find AWS Glacier inaccessible or complex and have a preception that it is expensive because of Egress fees. This is despite evidence that most data for most research users has not been touched in years. It seems that it is very difficult to build an on premises archive solution with a lower TCO than AWS Glacier or similar offerings from other cloud providers such as IDrive E2
 
-- Around the time we were discussing data archiving, ChatGPT4 had just been released. We wanted to assemble a few scripts to explore the best approaches. With ChatGPT4 and Github copilot handling a significant portion of Python coding, nearly 50% of Froster's code was autogenerated. As a result, Froster quickly transformed into a practical tool. The logo was autogenerated by https://www.brandcrowd.com/
+- Secure the archiving process via checksums. After every transfer, a checksum verifies the integrity of destination files, ensuring no data gets lost.
+
 
 ## Design 
 
