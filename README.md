@@ -4,6 +4,7 @@
 ![PyPI](https://img.shields.io/pypi/v/froster.svg)
 ![Downloads](https://img.shields.io/pypi/dm/froster.svg)
 ![License](https://img.shields.io/github/license/dirkpetersen/froster)
+![Python Version](https://img.shields.io/pypi/pyversions/froster.svg)
 [![PyPi Release Publish](https://github.com/HPCnow/froster/actions/workflows/pypi-release-publish.yml/badge.svg)](https://github.com/HPCnow/froster/actions/workflows/pypi-release-publish.yml)
 [![Test "froster credentials"](https://github.com/HPCnow/froster/actions/workflows/test-credentials.yml/badge.svg)](https://github.com/HPCnow/froster/actions/workflows/test-credentials.yml)
 
