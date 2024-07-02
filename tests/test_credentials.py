@@ -44,8 +44,7 @@ class TestCredentials(unittest.TestCase):
 
         # Run the index command and check if sys.exit(0), which means no issues detected while executing the command
         with \
-                patch('sys.argv', ['froster', 'credentials']), \
-                patch('builtins.print') as mock_print:
+                patch('sys.argv', ['froster', 'credentials']):
             self.assertFalse(main())
 
 
