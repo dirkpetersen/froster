@@ -73,34 +73,34 @@ check_dependencies(){
 
 check_environment() {
   if [[ -z $RCLONE_S3_PROVIDER ]]; then
-    echo -e "\nRCLONE_S3_PROVIDER not set. Set it in the environment or in the script.\n"
+    echo -e "\nRCLONE_S3_PROVIDER not set. Set it in the install.sh top's variables.\n"
     echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
     exit 1
   fi
 
   if [[ -z $RCLONE_S3_ENDPOINT && $RCLONE_S3_PROVIDER != "AWS" ]]; then
-    echo -e "\nRCLONE_S3_ENDPOINT not set. Set it in the environment or in the script.\n"
+    echo -e "\nRCLONE_S3_ENDPOINT not set. Set it in the install.sh top's variables.\n"
     echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
     exit 1
   fi
 
   if [[ -z $RCLONE_S3_REGION ]]; then
-    echo -e "\nWARNING: RCLONE_S3_REGION not set. Set it in the environment or in the script.\n"
+    echo -e "\nWARNING: RCLONE_S3_REGION not set. Set it in the install.sh top's variables.\n"
     echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
   fi
 
   if [[ -z $RCLONE_S3_LOCATION_CONSTRAINT ]]; then
-    echo -e "\n WARNING: RCLONE_S3_LOCATION_CONSTRAINT not set. Set it in the environment or in the script.\n"
+    echo -e "\n WARNING: RCLONE_S3_LOCATION_CONSTRAINT not set. Set it in the install.sh top's variables.\n"
     echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
   fi
 
   if [[ -z $RCLONE_S3_PROFILE ]]; then
     if [[ -z $AWS_ACCESS_KEY_ID || -z $AWS_SECRET_ACCESS_KEY ]]; then
-      echo -e "\nAWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not set. Set it in the environment or in the script.\n"
+      echo -e "\nAWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not set. Set it in the install.sh top's variables.\n"
       echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
       exit 1
     else
-      echo -e "\nRCLONE_S3_PROFILE not set. Set it in the environment or in the script.\n"
+      echo -e "\nRCLONE_S3_PROFILE not set. Set it in the install.sh top's variables.\n"
       echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
       exit 1
     fi
