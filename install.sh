@@ -292,7 +292,7 @@ install_pipx() {
 
         # Install or upgrade pipx
         echo "  Installing pipx via pip"
-        python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
+        python3 -m pip install --upgrade pipx >/dev/null 2>&1
 
         # Ensure path for pipx
         echo "  Ensuring path for pipx"
