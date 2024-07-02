@@ -7533,9 +7533,7 @@ def main():
         if cfg.check_update():
             cmd.subcmd_update(mute_no_update=True)
 
-        if res:
-            sys.exit(0)
-        else:
+        if not res:
             sys.exit(1)
 
     except KeyboardInterrupt:
