@@ -1,5 +1,13 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
+
+![PyPI](https://img.shields.io/pypi/v/froster.svg)
+![Downloads](https://img.shields.io/pypi/dm/froster.svg)
+![License](https://img.shields.io/github/license/dirkpetersen/froster)
+![Python Version](https://img.shields.io/pypi/pyversions/froster.svg)
+![Workflow Status](https://github.com/dirkpetersen/froster/actions/workflows/pypi-release-publish.yml/badge.svg)
+
+
 Froster is a user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems. It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore it to an AWS EC2 instance. 
 
 </br>
@@ -23,7 +31,7 @@ sudo dnf install -y curl python3 python3-pip python3-devel unzip fuse3
 
 ### On HPC machine
 
-Please contact your administrator to install these packages:
+Please get in touch with your administrator to install these packages:
 ```
 curl python3 python3-pip python3-venv python3.xx-devel gcc lib32gcc-s1 unzip fuse3
 ```
@@ -41,7 +49,7 @@ curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$
 ```
 
 To check that everything is installed correctly, run `froster --info` or `froster --version` commands.
-Check available command on the help section `froster --help`
+Check available commands on the help section `froster --help`
 
 
 </br>
@@ -50,7 +58,7 @@ Check available command on the help section `froster --help`
 
 To update Froster, execute the same command from the [Installation section](#installation). 
 
-Froster prompts you once a week when there is a new update available.
+Froster will prompt you once a week when a new update is available.
 You can manually check if there is an update available by running the command:
 ```
 froster update
@@ -71,7 +79,7 @@ If you have any doubts while configuring Froster, check the [Configuration secti
 
 ### Import and Export Configuration
 
-If several users of the same team wants to use Froster, they will have to configure the same profiles to work with same configuration, same buckets, same endpoints, etc. To ease this configuration accross teams a user that has already configured Froster can export its configuration. This will export all configuration except for sensitive information: username, email and credentials. To export a configuration run the command:
+If several users of the same team want to use Froster, they will have to configure the same profiles to work with the same configuration, buckets, endpoints, etc. To ease this configuration across teams, a user that has already configured Froster can export its configuration. This will export all configurations except for sensitive information: username, email, and credentials. To export a configuration, run the command:
 ```
 froster config --export /folder/path
 ```
@@ -81,7 +89,7 @@ To import a configuration, run the command:
 froster config --import /path/to/exported/config
 ```
 
-Please note that `froster config` command still needs to be executed, as username, email and credentials still need to be configured.
+Please note that the `froster config` command still needs to be executed, as username, email, and credentials still need to be configured.
 
 </br>
 
@@ -89,7 +97,7 @@ Please note that `froster config` command still needs to be executed, as usernam
 
 ### Credentials
 
-The credentials commands checks that the current selected profile is correctly configured and has valid credentials.
+The credentials command checks that the current selected profile is correctly configured and has valid credentials.
 
 ```
 froster credentials
@@ -121,7 +129,7 @@ Check more options at `froster archive --help`.
 
 ### Delete
 
-The delete command deletes previously archived folders. If one or more folders are provided, all of them will be deleted from the local filesystem ONLY after verifying that they have been successfully stored in the S3 server. If no folder is provided, froster will allow you to select a folder from previously successfully archived folders. It is worth noting that this commands checks if the folders have been successfully upload to the S3 bucket. Please do NOT delete folders manually.
+The delete command deletes previously archived folders. If one or more folders are provided, all of them will be deleted from the local filesystem ONLY after verifying that they have been successfully stored in the S3 server. If no folder is provided, froster will allow you to select a folder from previously successfully archived folders. It is worth noting that this command checks if the folders have been successfully uploaded to the S3 bucket. Please do NOT delete folders manually.
 ```
 froster delete [folders...]
 ``` 
@@ -181,41 +189,41 @@ Check more options at `froster mount --help`.
 
 ## Problem 
 
-We have yet to find an easy to use, open-source solution for large-scale archiving intended to free up disk space on a primary storage system. Researchers, who may have hundreds of terabytes or even petabytes of data, need to decide what to archive and where to archive it. Archiving processes can stretch on for days and are susceptible to failure. These processes must be able to resume automatically until completion, and need to be validated (for instance, through a checksum comparison with the source). Additionally, it's crucial to maintain some metadata regarding when the archiving occurred, where the data was transferred to, and the original location of the data to be able to restore it quickly.
+We have yet to find an easy-to-use, open-source solution for large-scale archiving intended to free up disk space on a primary storage system. Researchers, who may have hundreds of terabytes or even petabytes of data, must decide what to archive and where. Archiving processes can stretch for days and are susceptible to failure. These processes must be able to resume automatically until completion and need to be validated (for instance, through a checksum comparison with the source). Additionally, it's crucial to maintain some metadata regarding when the archiving occurred, where the data was transferred to, and the data's original location to restore it quickly.
 
 ## Motivation 
 
 The main motivations behind the creation of `Froster` are:
 
-- We were working with researchers to optimize their archiving processes. In doing so, we wanted to understand user workflows and identify the essential metadata to be captured. Thanks to Froster's compact codebase, it can be easily adapted to various needs. Metadata could potentially be captured through an additional web interface. However, a web system often requires IT support and an extra layer of authentication. It might be simpler to gather such information through a [Textual TUI interface](https://www.textualize.io/projects/). A first [demo of this option is here](#nih-life-sciences-metadata). The insights gained through working with `Froster` will likely guide the development or acquisition of more advanced tools in the future. 
+- We were working with researchers to optimize their archiving processes. In doing so, we wanted to understand user workflows and identify the essential metadata to be captured. Thanks to Froster's compact codebase, it can be easily adapted to various needs. Metadata could be captured through an additional web interface. However, a web system often requires IT support and an extra layer of authentication. It might be simpler to gather such information through a [Textual TUI interface](https://www.textualize.io/projects/). A first [demo of this option is here](#nih-life-sciences-metadata). The insights gained through working with `Froster` will likely guide the development or acquisition of more advanced tools in the future. 
 
-- HPC users often find AWS Glacier inaccessible or complex and have a preception that it is expensive because of Egress fees. This is despite evidence that most data for most research users has not been touched in years. It seems that it is very difficult to build an on premises archive solution with a lower TCO than AWS Glacier or similar offerings from other cloud providers such as IDrive E2
+- HPC users often find AWS Glacier inaccessible or complex and perceive that it is expensive because of Egress fees. This is despite evidence that most data for most research users has not been touched in years. It seems that it is very difficult to build an on-premises archive solution with a lower TCO than AWS Glacier or similar offerings from other cloud providers such as IDrive E2
 
-- Secure the archiving process via checksums verification. After every transfer, a checksum verifies the integrity of destination files, ensuring no data gets lost.
+- Secure the archiving process via checksum verification. After every transfer, a checksum verifies the integrity of destination files, ensuring no data gets lost.
 
 
 ## Design 
 
-1. First, we may need to crawl the file system that sometimes has billions of files to find data that is actually worth archiving. For this, Froster uses the well-known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all discovered file metadata.
+1. First, we may need to crawl the file system, which sometimes has billions of files, to find data that is actually worth archiving. For this, Froster uses the well-known [pwalk](https://github.com/fizwit/filesystem-reporting-tools), a multi-threaded parallel file system crawler that creates a large CSV file of all discovered file metadata.
 
-1. Our focus is on archiving folders rather than individual files, as data that resides in the same folder typically belongs together. To this end, we filter the pwalk's CSV file with [DuckDB](https://duckdb.org), and get a new list (CSV) of the largest folders sorted by size. (We call this a `Hotspots` file)
+1. Our focus is on archiving folders rather than individual files, as data in the same folder typically belongs together. To this end, we filter the pwalk's CSV file with [DuckDB](https://duckdb.org) and get a new list (CSV) of the largest folders sorted by size. (We call this a `Hotspots` file)
 
-1. We pass this new list (CSV) to an interactive tool based on [Textual](https://textual.textualize.io/), which displays a table of folders alongside their total size in GiB, their average file sizes in MiB (MiBAvg), as well as their age in days since last accessed (AccD) and modified (ModD). Users can scroll down and right using the mouse, and hitting enter will trigger the archiving of the selected folder.
+1. We pass this new list (CSV) to an interactive tool based on [Textual](https://textual.textualize.io/), which displays a table of folders alongside their total size in GiB, their average file sizes in MiB (MiBAvg), as well as their age in days since last accessed (AccD) and modified (ModD). Users can scroll down and right using the mouse and hitting enter will trigger the archiving of the selected folder.
    ![image](https://user-images.githubusercontent.com/1427719/230824467-6a6e5873-5a48-4656-8d75-42133a60ba30.png)
 
-1. All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar prior to uploading. You can also [avoid tarring](#tarring-small-files) 
+1. All files < 1 MiB size are moved to an archive called Froster.smallfiles.tar before uploading. You can also [avoid tarring](#tarring-small-files) 
 
 1. We pass the folder to [Rclone](https://rclone.org) to execute a copy job in the background.
 
-1. Many researchers with very large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long-running data copy jobs, and Slurm can automatically re-run copy jobs that failed. Researchers can also use the `--no-slurm` option to execute the job in the foreground. This is the default if Slurm is not installed on the Linux machine.
+1. Many researchers with large datasets will have a Slurm cluster connected to their data storage system. This is ideal for long-running data copy jobs, and Slurm can automatically re-run copy jobs that fail. Researchers can also use the `--no-slurm` option to execute the job in the foreground. This is the default if Slurm is not installed on the Linux machine.
 
-1. Prior to copying, we place files with checksums (e.g., `.froster.md5sum`) in the folders to be archived. This allows for an easy subsequent checksum comparison, providing the user with evidence that all data was correctly archived (through size and md5sum comparisons).
+1. Before copying, we place files with checksums (e.g., `.froster.md5sum`) in the folders to be archived. This allows for an easy subsequent checksum comparison, providing the user with evidence that all data was correctly archived (through size and md5sum comparisons).
 
-1. After files have been deleted from the source folder, we place a file named `Where-did-the-files-go.txt` in the source folder. This file describes where the data was archived, along with instructions on how to retrieve the data.
+1. After files have been deleted from the source folder, we place a file named `Where-did-the-files-go.txt` in it. This file describes where the data was archived and provides instructions on how to retrieve it.
 
 1. Optionally allow `archive --recursive` to enable archiving of entire folder trees. [More details here](#recursive-operations).
 
-1. Optionally link to NIH metadata with the `archive --nih` option to link to life sciences research projects [More details here](#nih-life-sciences-metadata).
+1. (Optional) Link to NIH metadata with the `archive --nih` option to link to life sciences research projects [More details here](#nih-life-sciences-metadata).
 
 <!-- 1. Optionally restore to a cloud machine (AWS EC2 instance) with the `restore --aws` option to avoid egress fees. [More details here](#restore-to-cloud-machine), also please see [this discussion](https://github.com/dirkpetersen/froster/discussions/12). -->
 
@@ -225,7 +233,7 @@ The main motivations behind the creation of `Froster` are:
 
 The config is mostly automated. You can just run `froster config` command. You need to answer a few questions for which you can accept defaults in most cases. 
 
-When running `froster config`, you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the most cost-effective storage solution available. It takes only 48-72 hours to retrieve your data with the least expensive retrieval option ('Bulk'). See [AWS Storage Class guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
+When running `froster config`, you should confirm the default DEEP_ARCHIVE for `AWS S3 storage class` as this is currently the most cost-effective storage solution. It takes only 48-72 hours to retrieve your data with the least expensive retrieval option ('Bulk'). See [AWS Storage Class guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html). However, you can choose other [AWS S3 storage classes](https://rclone.org/s3/#s3-storage-class) supported by the rclone copy tool. 
 
 Froster uses `~/.aws` files to store credentials, regions, and endpoints in the AWS standard way.
 
@@ -251,8 +259,8 @@ Down below, you will find an explanation of each configuration section:
   - If set to yes, it allows you to create a link between the data you archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) has maintained a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov).
 
 - SET PROFILE
-  - Profiles are the most important configuration of Froster. You will need to have at least one configured profile to be able to archive folders to your S3 provider. Profiles store the following information:
-    - Select profile: Configure an already existing profile or create a new one.
+  - Profiles are Froster's most important configuration. You will need to have at least one configured profile to be able to archive folders to your S3 provider. Profiles store the following information:
+    - Select profile: Configure an existing profile or create a new one.
     - Select S3 provider: Select the S3 provider for this profile. Currently supported S3 providers are AWS, GCS, Wasabi, IDrive, Ceph, and Minio. There is also a generic option called "Other," where you can configure a generic S3 provider.
     - Select credentials: Select the credentials for this profile or create new ones. These credentials will be used to authenticate to your S3 provider. They are stored in the ```~/.aws/credentials``` file.
     - Select region: Select the region for this profile or create a new one. ```-- no region --``` option will set the region to the value "default".
@@ -265,10 +273,10 @@ Down below, you will find an explanation of each configuration section:
 
 <!-- #### working with multiple users 
 
-If we setup a team configuration using `froster config /our/shared/froster/config` Froster knows 3 types of users or roles:
+If we set a team configuration using `froster config /our/shared/froster/config` Froster knows 3 types of users or roles:
 
 * **Data Stewards**: Users with full write access, they can delete/destroy data in the archive as well as in the local file system
-* **Archive Users**: Data scientists with read only access to the archive bucket, they can restore data or mount the archive into the local file system
+* **Archive Users**: Data scientists with read-only access to the archive bucket, they can restore data or mount the archive into the local file system
 * **Other Users**: Users without access to the archive cannot use froster with this team. However they can setup their own froster configuration using a different bucket and setup a new team. 
 
 The team config requires correct permissions for the AWS bucket (archive) and in your shared Posix file system where the Froster configuration and json database resides. In the Posix file system we need a security group (e.g. an ActiveDirectory groups called data_steward_grp) to give the group of data stewards write access to the shared config. For this we execute 2 commands:
@@ -339,7 +347,7 @@ Policy ReadOnlyGroup:
 
 ### Changing defaults with aliases
 
-Froster has a number of global options that you may prefer but you don't like to type them all the time. We have `--no-slurm` (don't submit batch jobs even if Slurm is found), `--cores` (use a number of CPU cores that is different from the default 4) and `--profile` (use a different profile than default_profile for S3 related commands). You can create a command alias that uses these settings by default. For example, if you think that typing froster is too long and would like to rather type `fro` and use 8 cpu cores in the foreground with a custom profile named `myceph` you can simply enter this command in bash:
+Froster has several global options that you may prefer, but you don't like to type them all the time. We have `--no-slurm` (don't submit batch jobs even if Slurm is found), `--cores` (use a number of CPU cores that is different from the default 4), and `--profile` (use a different profile than default_profile for S3 related commands). You can create a command alias that uses these settings by default. For example, if you think that typing froster is too long and would like to rather type `fro` and use 8 cpu cores in the foreground with a custom profile named `myceph` you can simply enter this command in bash:
 
 ```
 alias fro="froster --no-slurm --cores=8 --profile=myceph"
@@ -353,7 +361,7 @@ echo 'alias fro="froster --no-slurm --cores=8 --profile=myceph"' >> ~/.bashrc
 
 <!-- #### advanced configuration 
 
-Some advanced configuration settings are not offered through a user inferface but you can change them under `~/.froster/config`. For example,  `~/.froster/config/general` has one file per setting which makes it very easy to use the settings in shell scripts, for example when writing addon tools: 
+Some advanced configuration settings are not offered through a user interface, but you can change them under `~/.froster/config`. For example,  `~/.froster/config/general` has one file per setting which makes it very easy to use the settings in shell scripts, for example when writing addon tools: 
 
 ```
 DEFAULT_STORAGE_CLASS=$(cat ~/.froster/config/general/s3_storage_class)
@@ -363,7 +371,7 @@ a few advanced settings at ~/.froster/config/general deserve more explanation:
 
 * min_index_folder_size_gib (Default: 10)
 
-If the sum of all file sizes in one folder level is larger than this value in GiB that folder will be included in a hotspots file which is generated using the `froster index` command  
+If the sum of all file sizes in one folder level is larger than this value in GiB that folder will be included in a hotspots file, which is generated using the `froster index` command  
 
 
 * min_index_folder_size_avg_mib (Default: 10)
@@ -372,7 +380,7 @@ If the size of one folder level is at least min_index_folder_size_gib and if the
 
 * max_hotspots_display_entries (Default: 5000)
 
-The maximum number of entries that will be shown in the dialog once a hotspots file is selected after using the `froster archive` command.
+The maximum number of entries that will be shown in the dialog once a hotspot file is selected after using the `froster archive` command.
 
 * max_small_file_size_kib (Default: 1024)
 
@@ -382,9 +390,9 @@ If a file is smaller than this size, it will be moved to a file Froster.smallfil
 
 ### Standard usage
 
-In its most simple form you can use Froster to archive a specific folder, delete the source and restore the data interactively on a standalone Linux machine. 
+In its most simple form, Froster can archive a specific folder, delete the source, and restore the data interactively on a standalone Linux machine. 
 
-For example we have 2 files in a folder
+For example, we have 2 files in a folder
 
 ```
 vmachado@vmachado:~$ ls -la ~/Desktop/froster/csv
@@ -425,9 +433,9 @@ ARCHIVING SUCCESSFULLY COMPLETED
     S3 DESTINATION:     ":s3:froster-vmachado-test/froster/home/vmachado/Desktop/froster/csv"
 ```
 
-Froster creates md5 checksums for the files in the local folder, uploads the files and then compares the checksums in the archive with the local ones.
+Froster creates MD5 checksums for the files in the local folder, uploads them, and then compares the checksums in the archive with the local ones.
 
-Now we delete the local data as we have evidence that the data is intact in the archive. We could execute `froster delete ~/csv` but, since the archiving process took a long time, we forgot which folder we needed to delete. We just run `froster delete` without the folder argument to see a list of archived folders and pick the one in which we want to delete files.
+Now we delete the local data as we have evidence that the data is intact in the archive. We could execute `froster delete ~/csv`, but since the archiving process took a long time, we forgot which folder we needed to delete. We just run `froster delete` without the folder argument to see a list of archived folders and pick the one in which we want to delete files.
 
 ![image](https://user-images.githubusercontent.com/1427719/235413606-b24db72d-cb58-44cc-9754-175d0e4fca9e.png)
 
@@ -549,7 +557,7 @@ Note that if you restore from AWS S3 to on-premises, you may be subject to AWS d
 
 ### Large scale use on HPC
 
-If you have hundreds of terabytes or even petabtyes of data in billions of files you may not be able to easily locate data that is worth archiving. Among hundreds of thousands of folders there are typically only a few hundred that make up most of your storage consumption. We call these folders 'Hotspots' and to find them you use the `froster index` command and pass the root directory of your lab data. 
+If you have hundreds of terabytes or even petabytes of data in billions of files, you may not be able to easily locate data that is worth archiving. Among hundreds of thousands of folders, there are typically only a few hundred that make up most of your storage consumption. We call these folders 'Hotspots,' and to find them, you use the `froster index` command and pass the root directory of your lab data. 
 
 ```
 [user@login ~]$ froster index /home/vmachado/data_2
@@ -602,7 +610,7 @@ SLURM JOB
 
 ```
 
-Once the archive job has completed you should receive an email from your Slurm system.
+Once the archive job has been completed, you should receive an email from your Slurm system.
 
 ### Picking old and large data 
 
@@ -643,12 +651,12 @@ However, you can use the `archive --recursive` option with the archive command t
 
 #### Tarring small files
 
-Folders with large amounts of small files have always been problematic to manage as they can degrade the metadata performance of a storage system and copying many of them is very slow. Since Glacier objects have an overhead of 40K per uploaded file, storage consumption can get quickly out of hand if not properly managed as a folder with 1 million tiny files would require an addional 40GB storage capacity.
+Folders with large amounts of small files have always been problematic to manage, as they can degrade a storage system's metadata performance, and copying many of them is very slow. Since Glacier objects have an overhead of 40K per uploaded file, storage consumption can quickly get out of hand if not properly managed, as a folder with 1 million tiny files would require an additional 40GB storage capacity.
 
-Froster addresses this by moving all small files < 1 MiB to to a Tar archive called Froster.smallfiles.tar in each folder.
-Froster.smallfiles.tar is created prior to uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. You do not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3 like objectstore after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](#using-cyberduck-to-browse-glacier) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata including the ones that were tarred to provide addional transparency.
+Froster addresses this by moving all small files < 1 MiB to a Tar archive called Froster.smallfiles.tar in each folder.
+Froster.smallfiles.tar is created before uploading. When restoring data Froster.smallfiles.tar is automatically extracted and then removed. You do not need to know anything about Froster.smallfiles.tar as you will only see Froster.smallfiles.tar in the S3-like object store after it has been deleted from the local file system. If you browse the objectstore with a tool such as [Cyberduck](#using-cyberduck-to-browse-glacier) you will see a file Froster.allfiles.csv along with Froster.smallfiles.tar. The CSV file contains a list of all filenames and metadata, including the ones that were tarred to provide additional transparency.
  
-To avoid tarring you can set max_small_file_size_kib to 0 using this command. The default is 1024 (KiB) or you can use the `archive --notar` option.
+To avoid tarring, use this command: `froster archive—- notar` option.
 
 ```
 echo 0 > ~/.froster/config/general/max_small_file_size_kib
@@ -656,7 +664,7 @@ echo 0 > ~/.froster/config/general/max_small_file_size_kib
 
 #### NIH Life Sciences metadata
 
-In many cases we would like to create a link between the data we archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) maintains a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov). Froster uses the [RePORTER API](https://api.reporter.nih.gov) to allow you to search for grants and link them to your datasets.
+In many cases, we would like to create a link between the data we archive and the research project granted by a funding organization to increase the [FAIR level](https://the-turing-way.netlify.app/reproducible-research/rdm/rdm-fair.html) of an archived dataset. The National Institutes of Health (NIH) has maintained a large database of all publicly funded life sciences projects in the US since the 1980s at [NIH RePORTER](https://reporter.nih.gov). Froster uses the [RePORTER API](https://api.reporter.nih.gov) to allow you to search for grants and link them to your datasets.
 
 To invoke the search interface configure it as default on the `froster config` SET_NIH section or use the --nih option with `archive` subcommand
 
@@ -667,11 +675,11 @@ froster archive --nih [folders...]
 ![image](https://github.com/dirkpetersen/froster/assets/1427719/b8a69cc0-8e23-44ee-9234-4d4f45a8834c)
 
 
-You can search multiple times. Once you found the grant you are looking for hit TAB and use the allow keys to select the grant and confirm with enter
+You can search multiple times. Once you find the grant you are looking for, hit TAB and use the allow keys to select the grant and confirm with enter
 
 <!-- #### Restore to cloud machine 
 
-In some cases you may want to restore rarely needed data from Glacier to a cloud machine on EC2. The most frequent use case is to save AWS Egress fees. Use the --aws option with the restore sub-command to create a new ec2 instance with enough local disk space to restore your data there: `froster restore --aws ~/archtest/data1`
+In some cases, you may want to restore rarely needed data from Glacier to a cloud machine on EC2. The most frequent use case is to save AWS Egress fees. Use the --aws option with the restore sub-command to create a new ec2 instance with enough local disk space to restore your data there: `froster restore --aws ~/archtest/data1`
 
 ```
 dp@grammy:~$ froster restore --aws ~/archtest/data1
@@ -690,7 +698,7 @@ Instance IP: 34.222.33.xxx
 Sent email "Froster restore on EC2" to dp@domain.edu!
 ```
 
-After the instance is created simply run `froster ssh` to login to the last EC2 instance you created or (if you have created multiple machines) `froster ssh <ip-address>`. Once logged in, use the up-arrow key to list the folder where data should be restored to. (Note the data may not be there yet). The environment you find has Conda (with Pytohn and R) as well as Docker and Apptainer/Singularity installed. 
+After the instance is created, simply run `froster ssh` to login to the last EC2 instance you created or (if you have created multiple machines) `froster ssh <ip-address>`. Once logged in, use the up-arrow key to list the folder where data should be restored. (Note the data may not be there yet). The environment you find has Conda (with Python and R) as well as Docker and Apptainer/Singularity installed. 
 
 ```
 dp@grammy:~$ froster ssh
@@ -715,7 +723,7 @@ type "conda deactivate" to leave current conda environment
 (base) ec2-user@froster:~$
 ```
 
-In addition you can click the link (often ctrl+click) to a Jupyter Lab Notebook which has Python and R Kernels installed. You will find a symbolic link starting 'restored-' in your home directory that points to your data. How should this EC2 instance be configured? Please [participate in this discussion](https://github.com/dirkpetersen/froster/discussions/12) 
+In addition, you can click the link (often ctrl+click) to a Jupyter Lab Notebook, which has Python and R Kernels installed. You will find a symbolic link starting 'restored-' in your home directory that points to your data. How should this EC2 instance be configured? Please [participate in this discussion](https://github.com/dirkpetersen/froster/discussions/12) 
 
 ![image](https://github.com/dirkpetersen/froster/assets/1427719/1837511c-69ec-4b90-b408-a34833c3a68d)
  -->
@@ -745,7 +753,7 @@ Cloudberry Explorer is a GUI tool to browse, upload and transfer data from AWS S
 
 #### More detailed file system analysis 
 
-`froster index` runs pwalk to create a large csv file with all file system information but this file is immedatly deleted after running index and all detailed file information ist lost. You can save that original file (warning: it can be huge) using the `--pwalk-copy` option and then analyse that data later. You can then use visidata (command: vd) to view the csv file (hit q to quit visidata)
+`froster index` runs `pwalk` to create a large csv file with all file system information but this file is immediately deleted after running the index and all detailed file information is lost. You can save that original file (warning: it can be huge) using the `--pwalk-copy` option and then analyze that data later. You can then use `visidata` (command: vd) to view the csv file (hit q to quit `visidata`)
 
 ```
 froster index --pwalk-copy ~/my_department.csv /shared/my_department
@@ -754,7 +762,7 @@ vd ~/my_department.csv
 
 ## Command line help 
 
-Each of the sub commands has a help option, for example `froster archive --help`
+Each of the sub-commands has a help option, for example `froster archive --help`
  
 ### froster --help
 
@@ -1000,8 +1008,8 @@ This error can occur when using `froster restore --aws`. To resolve this problem
 
 ### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
 
-Today Froster only supports S3 compatible stores, but it could be adopted to support more as it is using rclone underneath which supports almost everything. The annoying thing with end user file sharing services such as Drive/OneDrive/Sharepoint is that you need to have an oauth authentication token and this needs to be re-generated often. This is not user friendly on an HPC machine without GUI and web browser and on a standard linux machine it is still not super smooth. 
-Another adjustment needed: you have perhaps seen that the tool creates a tar file for each directory. Currently only files < 1MB are tarred up (this can be changed). At least for Sharepoint one wants to create larger tar archives as the number of total files is limited in Sharepoint. If you are interested in this please submit an issue. 
+Today, Froster only supports S3 compatible stores, but it could be adapted to support more as it is using Rclone underneath, which supports almost everything. The annoying thing with end-user file-sharing services such as Drive/OneDrive/Sharepoint is that you need to have an OAuth authentication token, and this needs to be re-generated often. This is not user-friendly on an HPC machine without GUI and web browser, and on a standard Linux machine, it is still not super smooth. 
+Another adjustment is needed: you have perhaps seen that the tool creates a tar file for each directory. Currently, only files < 1MB are tarred up (this can be changed). At least for Sharepoint, one wants to create larger tar archives as the number of total files is limited in Sharepoint. If you are interested in this please submit an issue. 
 
 
 
@@ -1019,17 +1027,17 @@ To install Froster in --editable mode follow these steps:
 git clone https://github.com/dirkpetersen/froster.git
 ```
 
-1. Go to downloaded repository
+1. Go to the downloaded repository
 ``` 
 cd froster
 ``` 
 
-1. Create a virtual enviroment
+1. Create a virtual environment
 ``` 
 python3 -m venv .venv
 ```
 
-1. Activate virtual enviroment
+1. Activate virtual environment
 ``` 
 source .venv/bin/activate
 ```
@@ -1045,10 +1053,10 @@ export LOCAL_INSTALL=true
 ``` 
 
 Now Froster is installed in --editable mode inside the virtual environment.
-Any changes on the source code will be immediately reflected without needed to reinstall froster.
-Beware that ```froster --version``` takes the version from the package metadata (pyproject.toml), therefore Froster's version will only be updated if reinstalled. This only affects to version printing value.
+Any changes to the source code will be immediately reflected without needing to reinstall froster.
+Beware that ```froster --version``` takes the version from the package metadata (pyproject.toml). Therefore Froster's version will only be updated if reinstalled. This only affects to version printing value.
 
-> **Note**: If you want to develop and debug Froster using [VS Code](https://code.visualstudio.com/) you should create the virtual enviroment via VS Code following these instructions: [Python environments in VS Code](https://code.visualstudio.com/docs/python/environments). Delete any previous virtual enviroments and let VS Code create the environment, otherwise you will experiencie some inconsistencies while debugging. Follow the rest installation instructions. Now you can debug froster by pressing `F5` or via command palette. You can also debug given the debugger the desired CLI arguments.
+> **Note**: If you want to develop and debug Froster using [VS Code](https://code.visualstudio.com/), you should create the virtual environment via VS Code following these instructions: [Python environments in VS Code](https://code.visualstudio.com/docs/python/environments). Delete any previous virtual enviroments and let VS Code create the environment, otherwise you will experiencie some inconsistencies while debugging. Follow the rest installation instructions. Now you can debug froster by pressing `F5` or via the command palette. You can also debug by giving CLI command parameters.
 
 ### Froster development
 
@@ -1057,10 +1065,10 @@ For developing on Froster, please follow the standard convention of Fork and Pul
 
 ### Release new Froster version
 
-Froster's releases to [PyPi](https://pypi.org/search/?q=froster) are automatically handled by Github Actions.
+Froster's releases to [PyPi](https://pypi.org/search/?q=froster) are automatically handled by GitHub Actions.
 A release in the [Froster's Github repository](https://github.com/dirkpetersen/froster) will trigger the Release Github Actions Workflow and it will upload the new release package to [PyPi](https://pypi.org/search/?q=froster).
 
-After new Froster development, Froster version MUST be increased.
+After the new Froster development, the Froster version MUST be increased.
 To increase the Froster version update the [pyproject.toml version](https://github.com/dirkpetersen/froster/blob/2ac87cc3b2438cffb874ca436fbe565abf272dab/pyproject.toml#L7). The Froster's version follows this convention: `v<Major>.<Minor>.<Subminor>`
 
 When to increase each value?
@@ -1083,18 +1091,18 @@ Steps to release a new version of Froster:
 
 1. Press `Publish release` button
 
-> **Warning**: Even though the new package version is immediately released and shown as available in [PyPi](https://pypi.org/search/?q=froster), it takes a few minutes to actually update the package in the PyPi servers. Please wait ~5 minuts before updating Froster or you will be likely installing the old version.
+> **Warning**: Even though the new package version is immediately released and shown as available in [PyPi](https://pypi.org/search/?q=froster), it takes a few minutes to actually update the package in the PyPi servers. Please wait ~5 minutes before updating Froster, or you will likely be installing the old version.
 
 ## Commercial solutions 
 
-You can self-install Froster in a few seconds without requiring root access and you can collaborate well in small teams. However, since Froster requires you having write access to all folders and at least read access to all files you manage, it will not scale to many users. If you are rather looking for a feature rich software managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com).
-Froster is a good on-ramp to Starfish. If many users in your organization end up using Froster, it is time considering Starfish as an alternative but if fewer than a handful users find Froster useful, you may be able to defer your Starfish project until you have a critical mass. You can access many advanced Starfish features through a web browser while Froster has a simple CLI/TUI interface.
+You can self-install Froster in a few seconds without requiring root access, and you can collaborate well in small teams. However, since Froster requires you to have write access to all folders and at least read access to all files you manage, it will not scale to many users. If you are looking for feature-rich software managed by IT, you should consider an Enterprise solution such as [Starfish](https://starfishstorage.com).
+Froster is a good on-ramp to Starfish. If many users in your organization end up using Froster, it is time to consider Starfish as an alternative, but if fewer than a handful of users find Froster useful, you may be able to defer your Starfish project until you have a critical mass. You can access many advanced Starfish features through a web browser while Froster has a simple CLI/TUI interface.
 
 ## Discontinuing Froster  
 
 All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While AWS Glacier and Rclone will still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone or [Cyberduck](#using-cyberduck-to-browse-glacier) (for smaller amounts of data) to retrieve your data, as it is kept in its original format.   
 
-Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database. Default localtion of Froster JSON database is: `~/.local/share/froster/froster-archives.json`. This may have change if you are using a shared configuration. Check the foldelr's `Where-did-the-files-go.txt` manifest for more information. 
+Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database. Default localtion of Froster JSON database is: `~/.local/share/froster/froster-archives.json`. This path may have changed if you are using a shared configuration. Check the `Where-did-the-files-go.txt` manifest for more information on the folder's metadata. 
 
 To restore a specific folder, simply use the command followed by the desired path, for example: `s3-restore.sh /my/shared/folder`. It's worth noting that system administrators might hesitate to endorse tools written in programming languages they aren't familiar with, such as Python. Fortunately, `s3-restore.sh` is a straightforward bash shell script, easily customizable to suit specific needs. 
 
