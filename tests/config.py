@@ -22,8 +22,8 @@ PROFILE_2 = "profile alice"
 AWS_CREDENTIALS_PROFILE_1 = "bob"
 AWS_CREDENTIALS_PROFILE_2 = "alice"
 
-AWS_REGION_1 = "eu-west-2"
-AWS_REGION_2 = "eu-west-2"
+AWS_REGION_1 = "us-west-2"
+AWS_REGION_2 = "us-west-2"
 
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET = os.getenv('AWS_SECRET')
