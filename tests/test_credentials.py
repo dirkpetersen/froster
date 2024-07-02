@@ -18,7 +18,7 @@ class TestCredentials(unittest.TestCase):
                 patch('sys.argv', ['froster', 'config']), \
                 patch('inquirer.text', side_effect=[NAME_1, EMAIL_1, PROFILE_1, AWS_CREDENTIALS_PROFILE_1, AWS_ACCESS_KEY_ID, AWS_SECRET, S3_BUCKET_NAME_CREDENTIALS_1, S3_ARCHIVE_DIR_1]), \
                 patch('inquirer.confirm', side_effect=[False, False, True, False]), \
-                patch('inquirer.list_input', side_effect=['+ Create new profile', PROVIDER_1, '+ Create new credentials', AWS_REGION_1, '+ Create new bucket', S3_STORAGE_CLASS_1])
+                patch('inquirer.list_input', side_effect=['+ Create new profile', PROVIDER_1, '+ Create new credentials', AWS_REGION_1, '+ Create new bucket', S3_STORAGE_CLASS_1]):
             main()
 
     # Method executed once after all tests
