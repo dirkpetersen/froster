@@ -6,8 +6,9 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Upload as PyPi package
-run-name: Publish froster in PyPi and install in Ubuntu-latest
+name: PyPi Release Publish
+
+run-name: PyPi Release Publish
 
 on: 
   release:
