@@ -3,5 +3,8 @@
         "-c",
         "source .venv/bin/activate"
     ],
-    "python.pythonPath": ".venv/bin/python"
+    "python.pythonPath": ".venv/bin/python",
+    "python.analysis.extraPaths": [
+        "./tests"
+    ]
 }
