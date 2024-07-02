@@ -326,7 +326,7 @@ install_froster() {
     echo "Installing latest version of froster..."
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
-        echo "  Installing from the current directory"
+        echo "  Installing from the current directory in --editable mode"
         pip install -e . >/dev/null 2>&1 &
         spinner $!
     else
@@ -381,10 +381,13 @@ install_pwalk() {
     gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
     spinner $!
 
-    # Move pwalk to froster's binaries folder
+    # Get the froster's binaries folder
     froster_dir=$(dirname "$(readlink -f $(which froster))")
-    echo "    Moving pwalk to froster's binaries folder: $froster_dir"
+    echo "    Moving pwalk to froster's binaries folder"
+    
+    # Move pwalk to froster's binaries folder
     mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
+    echo "    Installed pwalk at ${froster_dir}/pwalk"
 
     # Delete downloaded pwalk files
     echo "    Cleaning up pwalk installation files"
@@ -427,10 +430,13 @@ install_rclone() {
     unzip rclone-current-linux-*.zip >/dev/null 2>&1 &
     spinner $!
 
-    # Move rclone to froster's binaries folder
+    # Get the froster's binaries folder
     froster_dir=$(dirname "$(readlink -f $(which froster))")
-    echo "    Moving rclone to froster's binaries folder: $froster_dir"
+    echo "    Moving rclone to froster's binaries folder"
+
+    # Move rclone to froster's binaries folder
     mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
+    echo "    Installed rclone at ${froster_dir}/rclone"
 
     # Remove the downloaded zip file
     echo "    Cleaning up rclone installation files"

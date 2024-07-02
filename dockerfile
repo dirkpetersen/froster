@@ -7,5 +7,8 @@ RUN apt update -y
 # Install dependencies
 RUN apt install -y curl python3 python3-pip python3-venv python3-dev gcc lib32gcc-s1 unzip fuse3
 
+# Install git
+RUN apt install -y git
+
 # Set the working directory in the container to /app
 WORKDIR /home/ubuntu

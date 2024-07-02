@@ -760,6 +760,7 @@ This error can occur when using `froster restore --aws`. To resolve this problem
 Today Froster only supports S3 compatible stores, but it could be adopted to support more as it is using rclone underneath which supports almost everything. The annoying thing with end user file sharing services such as Drive/OneDrive/Sharepoint is that you need to have an oauth authentication token and this needs to be re-generated often. This is not user friendly on an HPC machine without GUI and web browser and on a standard linux machine it is still not super smooth. 
 Another adjustment needed: you have perhaps seen that the tool creates a tar file for each directory. Currently only files < 1MB are tarred up (this can be changed). At least for Sharepoint one wants to create larger tar archives as the number of total files is limited in Sharepoint. If you are interested in this please submit an issue. 
 
+
 ## Command line help 
 
 Each of the sub commands has a help option, for example `froster archive --help`
@@ -999,6 +1000,87 @@ optional arguments:
   --terminate <hostname>, -t <hostname>
                         Terminate AWS EC2 instance with this public IP Address or instance id
 ``` -->
+
+
+## Contributing
+
+### Install Froster in development mode 
+
+If you want to develop Froster features, you can install it in --editable mode.
+This allows you to modify the package source code and see the changes directly without having to reinstall the package.
+
+To install Froster in --editable mode follow these steps:
+
+1. Download the repository
+```
+git clone https://github.com/dirkpetersen/froster.git
+```
+
+1. Go to downloaded repository
+``` 
+cd froster
+``` 
+
+1. Create a virtual enviroment
+``` 
+python3 -m venv .venv
+```
+
+1. Activate virtual enviroment
+``` 
+source .venv/bin/activate
+```
+
+1. Set LOCAL_INSTALL environment variable to true
+```
+export LOCAL_INSTALL=true
+``` 
+
+1. execute the install.sh script
+``` 
+./install.sh
+``` 
+
+Now Froster is installed in --editable mode inside the virtual environment.
+Any changes on the source code will be immediately reflected without needed to reinstall froster.
+Beware that ```froster --version``` takes the version from the package metadata (pyproject.toml), therefore Froster's version will only be updated if reinstalled. This only affects to version printing value.
+
+> **Note**: If you want to develop and debug Froster using [VS Code](https://code.visualstudio.com/) you should create the virtual enviroment via VS Code following these instructions: [Python environments in VS Code](https://code.visualstudio.com/docs/python/environments). Delete any previous virtual enviroments and let VS Code create the environment, otherwise you will experiencie some inconsistencies while debugging. Follow the rest installation instructions. Now you can debug froster by pressing `F5` or via command palette. You can also debug given the debugger the desired CLI arguments.
+
+### Froster development
+
+For developing on Froster, please follow the standard convention of Fork and Pull Request. More information in Github's manual [Contributing to a project](https://docs.github.com/en/get-started/exploring-projects-on-github/contributing-to-a-project)
+
+
+### Release new Froster version
+
+Froster's releases to [PyPi](https://pypi.org/search/?q=froster) are automatically handled by Github Actions.
+A release in the [Froster's Github repository](https://github.com/dirkpetersen/froster) will trigger the Release Github Actions Workflow and it will upload the new release package to [PyPi](https://pypi.org/search/?q=froster).
+
+After new Froster development, Froster version MUST be increased.
+To increase the Froster version update the [pyproject.toml version](https://github.com/dirkpetersen/froster/blob/2ac87cc3b2438cffb874ca436fbe565abf272dab/pyproject.toml#L7). The Froster's version follows this convention: `v<Major>.<Minor>.<Subminor>`
+
+When to increase each value?
+- Major: Introduce breaking changes or major new features.
+- Minor: Add functionality in a backward-compatible manner.
+- Subminor: Make backward-compatible bug fixes or small improvements.
+
+Steps to release a new version of Froster:
+1. Go to [Froster's release site](https://github.com/dirkpetersen/froster/releases)
+
+1. "Draft a new release"
+
+1. Make sure the target branch is "main"
+
+1. Make sure you `"Choose a tag",` follow version tag convention: `v<Major>.<Minor>.<Subminor>`
+
+1. Make sure to select `"+ Create new tag vXX.XX.XX on publish"`
+
+1. Go to bottom page and tick `Set as the latest release`
+
+1. Press `Publish release` button
+
+> **Warning**: Even though the new package version is immediately released and shown as available in [PyPi](https://pypi.org/search/?q=froster), it takes a few minutes to actually update the package in the PyPi servers. Please wait ~5 minuts before updating Froster or you will be likely installing the old version.
 
 ## Commercial solutions 
 
