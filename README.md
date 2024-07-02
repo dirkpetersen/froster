@@ -75,6 +75,11 @@ froster config
 ```
 If you have any doubts while configuring Froster, check the [Configuration sections explanation](#configuration-sections-explanation)
 
+If you want a clean config file, run the config command with the `--reset` option:
+```
+froster config --reset
+```
+
 </br>
 
 ### Import and Export Configuration
