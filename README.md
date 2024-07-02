@@ -150,29 +150,32 @@ Check more options at `froster mount --help`.
 ## Table of Contents
 
 * [Problem](#problem)
-  * [Motivation](#motivation)
+* [Motivation](#motivation)
 * [Design](#design)
 * [Preparing Froster](#preparing-froster)
   * [Configuring](#configuring)
-    * [Changing defaults with aliases](#changing-defaults-with-aliases)
-    * [Working with multiple users](#working-with-multiple-users)
-      * [AWS configuration for teams](#aws-configuration-for-teams)
-    * [Advanced configuration](#advanced-configuration)
+  * [Configuration sections explanation](#configuration-sections-explanation)
+  * [AWS configuration for teams](#aws-configuration-for-teams)
+  * [Changing defaults with aliases](#changing-defaults-with-aliases)
 * [Using Froster](#using-froster)    
   * [Standard usage](#standard-usage)
   * [Large scale use on HPC](#large-scale-use-on-hpc)
-    * [Picking old and large data](#picking-old-and-large-data)
+  * [Picking old and large data](#picking-old-and-large-data)
   * [Special use cases](#special-use-cases)
     * [Recursive operations](#recursive-operations)
     * [Tarring small files](#tarring-small-files)
     * [NIH Life Science metadata](#nih-life-sciences-metadata)
-    * [Restore to cloud machine (EC2)](#restore-to-cloud-machine)
+    <!-- * [Restore to cloud machine (EC2)](#restore-to-cloud-machine) -->
     * [Using desktop tools to browse S3 Glacier](#using-desktop-tools-to-browse-s3-glacier)
       * [Cloudberry Explorer](#cloudberry-explorer)
       * [Cyberduck](#cyberduck)
     * [More detailed file system analysis](#more-detailed-file-system-analysis)
 * [Command line help](#command-line-help)
 * [FAQ and Troubleshooting](#faq-and-troubleshooting)
+* [Contributing](#contributing)
+  * [Install Froster in development mode](#install-froster-in-development-mode)
+  * [Froster development](#froster-development)
+  * [Release new Froster version](#release-new-froster-version)
 * [Commercial Solutions](#commercial-solutions)
 * [Discontinuing Froster](#discontinuing-froster)
 
@@ -180,7 +183,7 @@ Check more options at `froster mount --help`.
 
 We have yet to find an easy to use, open-source solution for large-scale archiving intended to free up disk space on a primary storage system. Researchers, who may have hundreds of terabytes or even petabytes of data, need to decide what to archive and where to archive it. Archiving processes can stretch on for days and are susceptible to failure. These processes must be able to resume automatically until completion, and need to be validated (for instance, through a checksum comparison with the source). Additionally, it's crucial to maintain some metadata regarding when the archiving occurred, where the data was transferred to, and the original location of the data to be able to restore it quickly.
 
-### Motivation 
+## Motivation 
 
 The main motivations behind the creation of `Froster` are:
 
@@ -277,7 +280,7 @@ chmod 2775 /our/shared/froster/config
 
 The chmod command ensures that the group of data stewards has write access while all other users have read only access to the configuration. Using 2775 instead of 0775 ensures that the group ownership is inherited to all sub-directories when running chmod (SETGID, This chmod command is run automatically each time you run `froster config`) -->
 
-##### AWS configuration for teams
+### AWS configuration for teams
 
 You typically use AWS Identity and Access Management (IAM) to set up policies for S3. You can define permissions at a granular level, such as by specifying individual API actions or using resource-level permissions for specific S3 buckets and objects.
 
@@ -334,7 +337,7 @@ Policy ReadOnlyGroup:
 
 ```
 
-#### Changing defaults with aliases
+### Changing defaults with aliases
 
 Froster has a number of global options that you may prefer but you don't like to type them all the time. We have `--no-slurm` (don't submit batch jobs even if Slurm is found), `--cores` (use a number of CPU cores that is different from the default 4) and `--profile` (use a different profile than default_profile for S3 related commands). You can create a command alias that uses these settings by default. For example, if you think that typing froster is too long and would like to rather type `fro` and use 8 cpu cores in the foreground with a custom profile named `myceph` you can simply enter this command in bash:
 
@@ -601,7 +604,7 @@ SLURM JOB
 
 Once the archive job has completed you should receive an email from your Slurm system.
 
-#### Picking old and large data 
+### Picking old and large data 
 
 Now let's take it to the next level. Small datasets are not really worth archiving as the cost of storing them is low .... and if we started archiving data that was just used last week, some users would get really angry with us. This means our task is pretty clear: First we are looking for datasets that are large and old. In the example below we want to identify datasets that have not been touched in 3 years (1095 days) and that are larger than 1 TiB (1024 GiB without subfolders). We are executing `froster archive --older 1095 --larger 1024`. As you can see, this produces an output command that you can copy and paste directly into the shell of your HPC login node to submit an archiving batch job. In this case you will save more than 50 TiB of disk space with a few seconds of labor even though the archiving job may take days to run. 
 
@@ -748,17 +751,6 @@ Cloudberry Explorer is a GUI tool to browse, upload and transfer data from AWS S
 froster index --pwalk-copy ~/my_department.csv /shared/my_department
 vd ~/my_department.csv
 ```
-
-## FAQ and Troubleshooting
-
-<!-- ### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
-
-This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.froster/config/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location) -->
-
-### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
-
-Today Froster only supports S3 compatible stores, but it could be adopted to support more as it is using rclone underneath which supports almost everything. The annoying thing with end user file sharing services such as Drive/OneDrive/Sharepoint is that you need to have an oauth authentication token and this needs to be re-generated often. This is not user friendly on an HPC machine without GUI and web browser and on a standard linux machine it is still not super smooth. 
-Another adjustment needed: you have perhaps seen that the tool creates a tar file for each directory. Currently only files < 1MB are tarred up (this can be changed). At least for Sharepoint one wants to create larger tar archives as the number of total files is limited in Sharepoint. If you are interested in this please submit an issue. 
 
 ## Command line help 
 
@@ -999,6 +991,99 @@ optional arguments:
   --terminate <hostname>, -t <hostname>
                         Terminate AWS EC2 instance with this public IP Address or instance id
 ``` -->
+
+## FAQ and Troubleshooting
+
+<!-- ### Error: Permission denied (publickey,gssapi-keyex,gssapi-with-mic)
+
+This error can occur when using `froster restore --aws`. To resolve this problem delete or rename the ssh key `~/.froster/config/cloud/froster-ec2.pem` (or froster-ec2.pem in your shared config location) -->
+
+### Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?
+
+Today Froster only supports S3 compatible stores, but it could be adopted to support more as it is using rclone underneath which supports almost everything. The annoying thing with end user file sharing services such as Drive/OneDrive/Sharepoint is that you need to have an oauth authentication token and this needs to be re-generated often. This is not user friendly on an HPC machine without GUI and web browser and on a standard linux machine it is still not super smooth. 
+Another adjustment needed: you have perhaps seen that the tool creates a tar file for each directory. Currently only files < 1MB are tarred up (this can be changed). At least for Sharepoint one wants to create larger tar archives as the number of total files is limited in Sharepoint. If you are interested in this please submit an issue. 
+
+
+
+## Contributing
+
+### Install Froster in development mode 
+
+If you want to develop Froster features, you can install it in --editable mode.
+This allows you to modify the package source code and see the changes directly without having to reinstall the package.
+
+To install Froster in --editable mode follow these steps:
+
+1. Download the repository
+```
+git clone https://github.com/dirkpetersen/froster.git
+```
+
+1. Go to downloaded repository
+``` 
+cd froster
+``` 
+
+1. Create a virtual enviroment
+``` 
+python3 -m venv .venv
+```
+
+1. Activate virtual enviroment
+``` 
+source .venv/bin/activate
+```
+
+1. Set LOCAL_INSTALL environment variable to true
+```
+export LOCAL_INSTALL=true
+``` 
+
+1. execute the install.sh script
+``` 
+./install.sh
+``` 
+
+Now Froster is installed in --editable mode inside the virtual environment.
+Any changes on the source code will be immediately reflected without needed to reinstall froster.
+Beware that ```froster --version``` takes the version from the package metadata (pyproject.toml), therefore Froster's version will only be updated if reinstalled. This only affects to version printing value.
+
+> **Note**: If you want to develop and debug Froster using [VS Code](https://code.visualstudio.com/) you should create the virtual enviroment via VS Code following these instructions: [Python environments in VS Code](https://code.visualstudio.com/docs/python/environments). Delete any previous virtual enviroments and let VS Code create the environment, otherwise you will experiencie some inconsistencies while debugging. Follow the rest installation instructions. Now you can debug froster by pressing `F5` or via command palette. You can also debug given the debugger the desired CLI arguments.
+
+### Froster development
+
+For developing on Froster, please follow the standard convention of Fork and Pull Request. More information in Github's manual [Contributing to a project](https://docs.github.com/en/get-started/exploring-projects-on-github/contributing-to-a-project)
+
+
+### Release new Froster version
+
+Froster's releases to [PyPi](https://pypi.org/search/?q=froster) are automatically handled by Github Actions.
+A release in the [Froster's Github repository](https://github.com/dirkpetersen/froster) will trigger the Release Github Actions Workflow and it will upload the new release package to [PyPi](https://pypi.org/search/?q=froster).
+
+After new Froster development, Froster version MUST be increased.
+To increase the Froster version update the [pyproject.toml version](https://github.com/dirkpetersen/froster/blob/2ac87cc3b2438cffb874ca436fbe565abf272dab/pyproject.toml#L7). The Froster's version follows this convention: `v<Major>.<Minor>.<Subminor>`
+
+When to increase each value?
+- Major: Introduce breaking changes or major new features.
+- Minor: Add functionality in a backward-compatible manner.
+- Subminor: Make backward-compatible bug fixes or small improvements.
+
+Steps to release a new version of Froster:
+1. Go to [Froster's release site](https://github.com/dirkpetersen/froster/releases)
+
+1. "Draft a new release"
+
+1. Make sure the target branch is "main"
+
+1. Make sure you `"Choose a tag",` follow version tag convention: `v<Major>.<Minor>.<Subminor>`
+
+1. Make sure to select `"+ Create new tag vXX.XX.XX on publish"`
+
+1. Go to bottom page and tick `Set as the latest release`
+
+1. Press `Publish release` button
+
+> **Warning**: Even though the new package version is immediately released and shown as available in [PyPi](https://pypi.org/search/?q=froster), it takes a few minutes to actually update the package in the PyPi servers. Please wait ~5 minuts before updating Froster or you will be likely installing the old version.
 
 ## Commercial solutions 
 
