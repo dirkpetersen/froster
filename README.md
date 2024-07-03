@@ -1,12 +1,13 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
 
-![PyPI](https://img.shields.io/pypi/v/froster.svg)
-![Downloads](https://img.shields.io/pypi/dm/froster.svg)
-![License](https://img.shields.io/github/license/dirkpetersen/froster)
-![Python Version](https://img.shields.io/pypi/pyversions/froster.svg)
-[![PyPi Release Publish](https://github.com/HPCnow/froster/actions/workflows/pypi-release-publish.yml/badge.svg)](https://github.com/HPCnow/froster/actions/workflows/pypi-release-publish.yml)
-[![Test "froster credentials"](https://github.com/HPCnow/froster/actions/workflows/test-credentials.yml/badge.svg)](https://github.com/HPCnow/froster/actions/workflows/test-credentials.yml)
+[![PyPI](https://img.shields.io/pypi/v/froster.svg)](https://pypi.org/project/froster/)
+[![Downloads](https://img.shields.io/pypi/dm/froster.svg)](https://pypi.org/project/froster/)
+[![License](https://img.shields.io/github/license/dirkpetersen/froster)](https://raw.githubusercontent.com/dirkpetersen/froster/main/LICENSE)
+[![Python Version](https://img.shields.io/pypi/pyversions/froster.svg)](https://pypi.org/project/froster/)
+[![PyPi Release Publish](https://github.com/dirkpetersen/froster/actions/workflows/pypi-release-publish.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/pypi-release-publish.yml)
+[![Test "froster credentials"](https://github.com/dirkpetersen/froster/actions/workflows/test-credentials.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/test-credentials.yml)
+[![Test basic features](https://github.com/dirkpetersen/froster/actions/workflows/test-basic-features.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/test-basic-features.yml)
 
 Froster is a user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems. It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore it to an AWS EC2 instance. 
 
@@ -478,7 +479,7 @@ The files in this folder have been moved to an AWS S3 archive!
 Archive location: :s3:froster-vmachado-test/froster/home/vmachado/Desktop/froster/csv
 Archive aws profile: profile aws
 Archiver user: vmachado
-Archiver email: victor.machado@hpcnow.com
+Archiver email: your@email.com
 froster-archives.json: /home/vmachado/.local/share/froster/froster-archives.json
 Archive tool: https://github.com/dirkpetersen/froster
 Restore command: froster restore "/home/vmachado/Desktop/froster/csv"
