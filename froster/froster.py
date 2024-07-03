@@ -49,6 +49,7 @@ import getpass
 import pwd
 import grp
 import stat
+from typing import List
 import re
 import traceback
 import pkg_resources
@@ -1542,14 +1543,14 @@ class ConfigManager:
                         message=f'Select the Slurm partition for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
                         default=self.__get_configuration_entry(
                             'SLURM', 'slurm_partition'),
-                        choices=list(parts.keys()))
+                        choices=List(parts.keys()))
 
                     # Ask the user to select the Slurm QOS
                     slurm_qos = inquirer.list_input(
                         message=f'Select the Slurm QOS for jobs that last up to {slurm_walltime_days} days and {slurm_walltime_hours} hours',
                         default=self.__get_configuration_entry(
                             'SLURM', 'slurm_qos'),
-                        choices=list(parts[slurm_partition]))
+                        choices=List(parts[slurm_partition]))
 
                 # Set the Slurm configuration in the config file
                 self.__set_configuration_entry(
@@ -2894,7 +2895,7 @@ class AWSBoto:
             log(f'Other Error: {e}')
 
         checks = [sender, to]
-        checks = list(set(checks))  # remove duplicates
+        checks = List(set(checks))  # remove duplicates
         email_list = []
 
         try:
@@ -3655,7 +3656,7 @@ class Archiver:
                 writer.writerow([col[0] for col in header])
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
                 for r in rows:
-                    row = list(r)
+                    row = List(r)
                     if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
                         atime = self._get_newest_file_atime(row[5], row[1])
                         mtime = self._get_newest_file_mtime(row[5], row[2])
@@ -5444,7 +5445,7 @@ class ScreenConfirm(ModalScreen[bool]):
         self.dismiss(result=event.button.id)
 
 
-class TableHotspots(App[list]):
+class TableHotspots(App[List]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
@@ -5485,11 +5486,11 @@ class TableHotspots(App[list]):
         self.app.exit()
 
 
-class TextualStringListSelector(App[list]):
+class TextualStringListSelector(App[List]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, title: str, items: list[str]):
+    def __init__(self, title: str, items: List[str]):
         super().__init__()
         self.title = title
         self.items = items
@@ -5516,11 +5517,11 @@ class TextualStringListSelector(App[list]):
         self.app.exit()
 
 
-class TableArchive(App[list]):
+class TableArchive(App[List]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, files: list[str]):
+    def __init__(self, files: List[str]):
         super().__init__()
         self.files = files
 
@@ -5547,7 +5548,7 @@ class TableArchive(App[list]):
         self.app.exit()
 
 
-class TableNIHGrants(App[list]):
+class TableNIHGrants(App[List]):
 
     DEFAULT_CSS = """
     Input.-valid {
@@ -5747,7 +5748,7 @@ class Rclone:
         '''Copy files from source to destination using Rclone'''
         try:
             # Build the copy command
-            command = [self.rc, 'copy'] + list(args)
+            command = [self.rc, 'copy'] + List(args)
             command.append(src)
             command.append(dst)
             command.append('-vvv')
@@ -5761,7 +5762,7 @@ class Rclone:
     def checksum(self, md5file, dst, *args):
         '''Check the checksum of a file using Rclone'''
         try:
-            command = [self.rc, 'checksum'] + list(args)
+            command = [self.rc, 'checksum'] + List(args)
             command.append('md5')
             command.append(md5file)
             command.append(dst)
@@ -5782,7 +5783,7 @@ class Rclone:
 
         try:
             # Build the copy command
-            command = [self.rc, 'mount'] + list(args)
+            command = [self.rc, 'mount'] + List(args)
             command.append('--allow-non-empty')
             command.append('--default-permissions')
             command.append('--read-only')
@@ -6033,7 +6034,7 @@ class Slurm:
             # we need to make sure that all #BATCH are at the top
             script_buffer.seek(0)
             lines = script_buffer.readlines()
-            # Remove the shebang line from the list of lines
+            # Remove the shebang line from the List of lines
             shebang_line = lines.pop(0)
             sbatch_lines = [
                 line for line in lines if line.startswith("#SBATCH")]
