@@ -21,6 +21,12 @@ class TestCredentials(unittest.TestCase):
                 patch('inquirer.list_input', side_effect=['+ Create new profile', PROVIDER_1, '+ Create new credentials', AWS_REGION_1, '+ Create new bucket', S3_STORAGE_CLASS_1]):
             main()
 
+        # Delete all unittest buckets
+        with \
+                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', 'froster-unittest']), \
+                patch('builtins.print') as mock_print:
+            main()
+
     # Method executed once after all tests
 
     @classmethod
@@ -29,12 +35,12 @@ class TestCredentials(unittest.TestCase):
 
         # Delete the S3 buckets
         with \
-                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CONFIG_1]), \
+                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CREDENTIALS_1]), \
                 patch('builtins.print') as mock_print:
             main()
 
         with \
-                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CONFIG_2]), \
+                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CREDENTIALS_2]), \
                 patch('builtins.print') as mock_print:
             main()
 
