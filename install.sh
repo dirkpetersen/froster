@@ -296,7 +296,12 @@ install_pipx() {
 
         # Ensure path for pipx
         echo "  Ensuring path for pipx"
-        $HOME/.local/bin/pipx ensurepath >/dev/null 2>&1
+        if [[ $(command -v pipx) ]]; then
+            pipx ensurepath >/dev/null 2>&1
+        else
+            $HOME/.local/bin/pipx ensurepath >/dev/null 2>&1
+        fi
+        
         echo "...pipx installed"
     else
         echo "...pipx already installed"

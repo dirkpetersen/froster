@@ -6,6 +6,8 @@
 """
 
 # internal modules
+import random
+import string
 from textual.widgets import DataTable, Footer, Button
 from textual.widgets import Label, Input, LoadingIndicator
 from textual.screen import ModalScreen
@@ -1776,25 +1778,70 @@ class AWSBoto:
             print_error()
             return False
 
-    def delete_bucket(self, bucket_name):
-        '''Delete the given bucket'''
-
-        if os.environ.get('DEBUG') != '1':
-            raise ValueError('Buckets cannot be deleted outside DEBUG mode.')
+    def empty_bucket(self, bucket_name):
 
         if not bucket_name:
             raise ValueError('No bucket name provided')
+       
+        # Added a check to prevent accidental deletion of buckets
+        if os.environ.get('DEBUG') != '1':
+            raise ValueError('Objects in bucket cannot be deleted outside DEBUG mode.')
 
+        # Additional check to prevent accidental deletion of buckets
+        if not bucket_name.startswith('froster-unittest') and not bucket_name.startswith('froster-cli-test'):
+            raise ValueError('Bucket name must start with "froster-unittest" or "froster-cli-test" to be emptied.')
+        
+        try:
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=bucket_name):
+                for obj in page.get('Contents', []):
+                    # print(f"Deleting {obj['Key']}")
+                    self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
+
+            return True
+
+        except Exception:
+            print_error()
+            return False
+
+    def delete_bucket(self, bucket_name):
+        '''Delete the given bucket'''
+
+        if not bucket_name:
+            raise ValueError('No bucket name provided')
+       
+        # Added a check to prevent accidental deletion of buckets
+        if os.environ.get('DEBUG') != '1':
+            raise ValueError('Objects in bucket cannot be deleted outside DEBUG mode.')
+
+        # Additional check to prevent accidental deletion of buckets
+        if not bucket_name.startswith('froster-unittest') and not bucket_name.startswith('froster-cli-test'):
+            raise ValueError('Bucket name must start with "froster-unittest" or "froster-cli-test" to be deleted.')
+        
         try:
 
             s3_buckets = self.get_buckets()
 
-            # Delete the buckets if they exists
+            # Delete the bucket if its exists
             if bucket_name in s3_buckets:
+                self.empty_bucket(bucket_name)
                 self.s3_client.delete_bucket(Bucket=bucket_name)
                 log(f'Bucket {bucket_name} deleted\n')
+
+            # This is here in case there is a mistake and the S3 buckets are not deleted
+            # This will erase all the froster-unittest* or froster-cli-test buckets at once
+            elif bucket_name == "froster-unittest" or bucket_name == "froster-cli-test":
+                for bucket in s3_buckets:
+                    if bucket.startswith(bucket_name):
+                        try:
+                            self.empty_bucket(bucket_name)
+                            self.s3_client.delete_bucket(Bucket=bucket)
+                        except Exception as e:
+                            print(f'Error: {e}')
+                            continue
+                        log(f'\nBucket {bucket} deleted\n')
             else:
-                log(f'Bucket {bucket_name} not found\n')
+                log(f'\nBucket {bucket_name} not found\n')
 
             return True
 
@@ -1862,7 +1909,7 @@ class AWSBoto:
             print_error()
             sys.exit(1)
 
-    def list_objects_in_bucket(self, bucket_name):
+    def get_objects(self, bucket_name):
         '''List all the objects in the given bucket'''
 
         if not bucket_name:
@@ -3686,7 +3733,7 @@ class Archiver:
 
             log(f'Total folders processed: {len(rows)}')
 
-            log(f'INDEXING SUCCESSFULLY COMPLETED')
+            log(f'\nINDEXING SUCCESSFULLY COMPLETED')
 
             lastagedbytes = 0
             for i in range(0, len(daysaged)):
@@ -5489,7 +5536,7 @@ class TextualStringListSelector(App[list]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, title: str, items: list[str]):
+    def __init__(self, title, items):
         super().__init__()
         self.title = title
         self.items = items
@@ -5520,7 +5567,7 @@ class TableArchive(App[list]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, files: list[str]):
+    def __init__(self, files):
         super().__init__()
         self.files = files
 
@@ -6866,6 +6913,104 @@ class Commands:
             print_error()
             return False
 
+    def subcmd_test(self, cfg: ConfigManager, arch: Archiver, aws: AWSBoto):
+        '''Test basic functionality of Froster'''
+
+        try:
+            def tearDown(bucket_name, folder_path):
+                # Delete the directory
+                shutil.rmtree(folder_path)
+
+                # Delete the bucket
+                os.environ['DEBUG'] = '1'
+                aws.delete_bucket(bucket_name)
+
+            log('\nTESTING FROSTER...')
+
+            if not aws.check_credentials(prints=True):
+                log('\nTESTING FAILED\n')
+                return False
+
+            # Generate a random bucket name
+            rnd = ''.join(random.choices(
+                string.ascii_lowercase + string.digits, k=4))
+            new_bucket_name = f'froster-cli-test-{rnd}'
+
+            # Set temporary this new bucket name in the configuration
+            cfg.bucket_name = new_bucket_name
+
+            # Create a dummy file
+            folder_path = tempfile.mkdtemp(prefix='froster_test_')
+            file_path = os.path.join(folder_path, 'dummy_file')
+
+            log(f'\nCreating dummy file {file_path}...')
+
+            with open(file_path, 'wb') as f:
+                f.truncate(1)
+
+            subprocess.run(['touch', file_path])
+
+            log(f'    ....dummy file create')
+
+            # Create a new bucket
+            if not aws.create_bucket(bucket_name=new_bucket_name, region=cfg.region):
+                tearDown(new_bucket_name, folder_path)
+                log('\nTESTING FAILED\n')
+                return False
+
+            # Mocking the index arguments
+            self.args.folders = [folder_path]
+            self.args.permissions = False
+            self.args.pwalkcopy = None
+
+            # Running index command
+            if not self.subcmd_index(cfg, arch):
+                tearDown(new_bucket_name, folder_path)
+                log('\nTESTING FAILED\n')
+                return False
+
+            # Mocking the archive arguments
+            self.args.older = 0
+            self.args.newer = 0
+            self.args.reset = False
+            self.args.recursive = False
+            self.args.nih = False
+            self.args.nihref = None
+            self.args.notar = True # True to check by file name in the archive
+            self.args.force = False
+            self.args.noslurm = True # Avoid slurm execution
+
+            # Running archive command
+            if not self.subcmd_archive(arch, aws):
+                tearDown(new_bucket_name, folder_path)
+                log('\nTESTING FAILED\n')
+                return False
+
+            # Mocking the delete command
+            self.args.bucket = None
+            self.args.debug = False
+            self.args.recursive = False
+            self.args.noslurm = True # Avoid slurm execution
+
+            # Running delete command
+            if not self.subcmd_delete(arch, aws):
+                tearDown(new_bucket_name, folder_path)
+                log('\nTESTING FAILED\n')
+                return False
+
+            # Clean up 
+            tearDown(new_bucket_name, folder_path)
+
+            log('\nTEST SUCCESSFULLY COMPLETED\n')
+
+            return True
+
+        except Exception:
+            print_error()
+            aws.delete_bucket(new_bucket_name)
+            log('\nTESTING FAILED\n')
+            return False
+        
     def subcmd_ssh(self, cfg: ConfigManager, aws: AWSBoto):
         '''SSH into an AWS EC2 instance'''
 
@@ -7269,6 +7414,13 @@ class Commands:
         parser_update.add_argument('--rclone', '-r', dest='rclone', action='store_true',
                                    help="Update rclone to latests version")
 
+        # ***
+
+        parser_test = subparsers.add_parser('test', aliases=['tst'],
+                                            description=textwrap.dedent(f'''
+                Test basic functionality of Froster
+            '''), formatter_class=argparse.RawTextHelpFormatter)
+
         return parser
 
 
@@ -7499,6 +7651,8 @@ def main():
             # Calling check_update as we are checking for udpates (used to store the last timestamp check)
             cfg.check_update()
             res = cmd.subcmd_update(mute_no_update=False)
+        elif args.subcmd in ['test', 'tst']:
+            res = cmd.subcmd_test(cfg, arch, aws)
         else:
 
             # Check credentials

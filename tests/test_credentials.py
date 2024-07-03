@@ -22,19 +22,18 @@ class TestCredentials(unittest.TestCase):
             main()
 
     # Method executed once after all tests
-
     @classmethod
     def tearDownClass(cls):
         '''- Tear down class.'''
 
         # Delete the S3 buckets
         with \
-                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CONFIG_1]), \
+                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CREDENTIALS_1]), \
                 patch('builtins.print') as mock_print:
             main()
 
         with \
-                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CONFIG_2]), \
+                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CREDENTIALS_2]), \
                 patch('builtins.print') as mock_print:
             main()
 
