@@ -6940,15 +6940,13 @@ class Commands:
             cfg.bucket_name = new_bucket_name
 
             # Create a dummy file
+            log(f'\nCreating dummy file {file_path}...')
+
             folder_path = tempfile.mkdtemp(prefix='froster_test_')
             file_path = os.path.join(folder_path, 'dummy_file')
 
-            log(f'\nCreating dummy file {file_path}...')
-
             with open(file_path, 'wb') as f:
                 f.truncate(1)
-
-            subprocess.run(['touch', file_path])
 
             log(f'    ....dummy file create')
 

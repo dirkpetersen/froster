@@ -28,13 +28,7 @@ class TestCredentials(unittest.TestCase):
 
         # Delete the S3 buckets
         with \
-                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CREDENTIALS_1]), \
-                patch('builtins.print') as mock_print:
-            main()
-
-        with \
-                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CREDENTIALS_2]), \
-                patch('builtins.print') as mock_print:
+                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', S3_BUCKET_NAME_CREDENTIALS_1]):
             main()
 
     def test_subcmd_credentials(self):
@@ -49,31 +43,8 @@ class TestCredentials(unittest.TestCase):
 if __name__ == '__main__':
 
     try:
-        if True:
-            unittest.main(verbosity=2)
-        else:
-            suite = unittest.TestSuite()
-            # FULL CONFIGURATION
-            # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfig))
 
-            # PARTIAL CONFIGURATION
-            # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigUser))
-            # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigAWS))
-            # suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestConfigShared))
-            # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigNIH))
-            # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigS3))
-            # suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestConfigSlurm))
-
-            # BASIC TEST CASE FOR EVERY TEST
-            # suite.addTest(TestConfig('test_subcmd_config'))
-            # suite.addTest(TestConfigUser('test_set_user'))
-            # suite.addTest(TestConfigAWS('test_set_aws'))
-            # suite.addTest(TestConfigShared('test_set_shared'))
-            # suite.addTest(TestConfigNIH('test_set_nih'))
-            suite.addTest(TestConfigS3('test_set_s3'))
-
-            runner = unittest.TextTestRunner(verbosity=2)
-            runner.run(suite)
+        unittest.main(verbosity=2)
 
     except KeyboardInterrupt:
         print("\nTests interrupted by the user. Exiting...")
