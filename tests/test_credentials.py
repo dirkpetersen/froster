@@ -21,14 +21,7 @@ class TestCredentials(unittest.TestCase):
                 patch('inquirer.list_input', side_effect=['+ Create new profile', PROVIDER_1, '+ Create new credentials', AWS_REGION_1, '+ Create new bucket', S3_STORAGE_CLASS_1]):
             main()
 
-        # Delete all unittest buckets
-        with \
-                patch('sys.argv', ['froster', '--debug', 'delete', '--bucket', 'froster-unittest']), \
-                patch('builtins.print') as mock_print:
-            main()
-
     # Method executed once after all tests
-
     @classmethod
     def tearDownClass(cls):
         '''- Tear down class.'''
