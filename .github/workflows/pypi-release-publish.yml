@@ -45,7 +45,7 @@ jobs:
         password: ${{ secrets.PYPI_API_TOKEN }}
 
   check-froster-installation:
-    needs: deploy
+    needs: pypi-release
     runs-on: ubuntu-latest
     steps:   
 
