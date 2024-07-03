@@ -3686,7 +3686,7 @@ class Archiver:
 
             log(f'Total folders processed: {len(rows)}')
 
-            log(f'INDEXING SUCCESSFULLY COMPLETED')
+            log(f'\nINDEXING SUCCESSFULLY COMPLETED')
 
             lastagedbytes = 0
             for i in range(0, len(daysaged)):
