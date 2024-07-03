@@ -1,0 +1,42 @@
+name: Test basic features
+
+run-name: Test basic features
+
+on: [push, pull_request]
+
+jobs:
+  test-credentials:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Display Python version
+        run: python3 -c "import sys; print(sys.version)"
+
+      - name: Create and activate virtual environment
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+
+      - name: Install froster locally
+        env:
+          LOCAL_INSTALL: true
+        run: ./install.sh
+
+      - name: Run test_credentials tests
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET: ${{ secrets.AWS_SECRET }}
+        run: python3 tests/test_basic_features.py
