@@ -5489,7 +5489,7 @@ class TextualStringListSelector(App[list]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, title: str, items: list[str]):
+    def __init__(self, title, items):
         super().__init__()
         self.title = title
         self.items = items
@@ -5520,7 +5520,7 @@ class TableArchive(App[list]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, files: list[str]):
+    def __init__(self, files):
         super().__init__()
         self.files = files
 
