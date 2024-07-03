@@ -1789,12 +1789,24 @@ class AWSBoto:
 
             s3_buckets = self.get_buckets()
 
-            # Delete the buckets if they exists
+            # Delete the bucket if its exists
             if bucket_name in s3_buckets:
                 self.s3_client.delete_bucket(Bucket=bucket_name)
                 log(f'Bucket {bucket_name} deleted\n')
+
+            # This is here in case there is a mistake and the S3 buckets are not deleted
+            # This will erase all the froster-unittest* buckets at once
+            elif bucket_name == "froster-unittest":
+                for bucket in s3_buckets:
+                    if bucket.startswith(bucket_name):
+                        try:
+                            self.s3_client.delete_bucket(Bucket=bucket)
+                        except Exception as e:
+                            print(f'Error: {e}')
+                            continue
+                        log(f'\nBucket {bucket} deleted\n')
             else:
-                log(f'Bucket {bucket_name} not found\n')
+                log(f'\nBucket {bucket_name} not found\n')
 
             return True
 
