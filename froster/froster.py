@@ -6916,6 +6916,15 @@ class Commands:
     def subcmd_test(self, cfg: ConfigManager, arch: Archiver, aws: AWSBoto):
         '''Test basic functionality of Froster'''
 
+        # Generate a random bucket name
+        rnd = ''.join(random.choices(
+            string.ascii_lowercase + string.digits, k=4))
+        new_bucket_name = f'froster-cli-test-{rnd}'
+
+        # Create a temporary folder and a dummy file
+        folder_path = tempfile.mkdtemp(prefix='froster_test_')
+        file_path = os.path.join(folder_path, 'dummy_file')
+        
         try:
             def tearDown(bucket_name, folder_path):
                 # Delete the directory
@@ -6931,19 +6940,11 @@ class Commands:
                 log('\nTESTING FAILED\n')
                 return False
 
-            # Generate a random bucket name
-            rnd = ''.join(random.choices(
-                string.ascii_lowercase + string.digits, k=4))
-            new_bucket_name = f'froster-cli-test-{rnd}'
-
             # Set temporary this new bucket name in the configuration
             cfg.bucket_name = new_bucket_name
 
             # Create a dummy file
             log(f'\nCreating dummy file {file_path}...')
-
-            folder_path = tempfile.mkdtemp(prefix='froster_test_')
-            file_path = os.path.join(folder_path, 'dummy_file')
 
             with open(file_path, 'wb') as f:
                 f.truncate(1)
