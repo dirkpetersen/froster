@@ -7,6 +7,7 @@
 ![Python Version](https://img.shields.io/pypi/pyversions/froster.svg)
 [![PyPi Release Publish](https://github.com/HPCnow/froster/actions/workflows/pypi-release-publish.yml/badge.svg)](https://github.com/HPCnow/froster/actions/workflows/pypi-release-publish.yml)
 [![Test "froster credentials"](https://github.com/HPCnow/froster/actions/workflows/test-credentials.yml/badge.svg)](https://github.com/HPCnow/froster/actions/workflows/test-credentials.yml)
+[![Test basic features](https://github.com/dirkpetersen/froster/actions/workflows/test-basic-features.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/test-basic-features.yml)
 
 Froster is a user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems. It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore it to an AWS EC2 instance. 
 
