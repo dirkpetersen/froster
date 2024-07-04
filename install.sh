@@ -260,20 +260,6 @@ backup_old_installation() {
         echo "...froster uninstalled"
     fi
 
-    # Keep the froster-archives.json file (if any)
-    if [[ -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
-        echo
-        echo "Restoring Froster archives json data from backup..."
-        
-        # Create the froster directory if it does not exist
-        mkdir -p ${XDG_DATA_HOME}/froster
-
-        # Copy the froster-archives.json file to the data directory
-        cp -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
-
-        echo "...restored"
-    fi
-
     # Remove old files
     rm -rf ${XDG_DATA_HOME}/froster
     rm -rf ${XDG_CONFIG_HOME}/froster
@@ -352,12 +338,12 @@ install_froster() {
     fi
 
     # Keep the froster-archives.json file (if any)
-    if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+    if [[ -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
         # Create the froster directory if it does not exist
         mkdir -p ${XDG_DATA_HOME}/froster
 
         # Copy the froster-archives.json file to the data directory
-        cp -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
+        cp -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
     fi
 
     echo "...froster installed"
