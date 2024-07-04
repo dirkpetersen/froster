@@ -7,10 +7,18 @@ set -e
 ### VARIABLES ###
 #################
 
-date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
-
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+
+date_YYYYMMDDHHMMSS=$(date +%Y%m%d%H%M%S) # Get the current date in YYYYMMDD format
+
+froster_data_dir=${XDG_DATA_HOME}/froster
+froster_all_data_backups=${XDG_DATA_HOME}/froster_backups
+froster_data_backup_dir=${froster_all_data_backups}/froster_${date_YYYYMMDDHHMMSS}.bak
+
+froster_config_dir=${XDG_CONFIG_HOME}/froster
+froster_all_config_backups=${XDG_CONFIG_HOME}/froster_backups
+froster_config_backup_dir=${froster_all_config_backups}/froster_${date_YYYYMMDDHHMMSS}.bak
 
 #####################
 ### ERROR HANDLER ###
@@ -20,32 +28,22 @@ XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 trap 'catch $? $BASH_COMMAND' EXIT
 
 catch() {
-    if [ "$1" != "0" ]; then
-        # error handling goes here
 
-        if [[ $(command -v pipx) ]]; then
-            if pipx list | grep 'froster' >/dev/null 2>&1; then
-                echo "  Uninstalling froster..."
-                pipx uninstall froster >/dev/null 2>&1
-                echo "  ...uninstalled"
-            fi
-        fi
+    if [ "$1" != "0" ]; then
+        echo -e "\nError: $2: Installation failed!\n"
 
         # Restore (if any) backed up froster config files
-        if [[ -d ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ${XDG_CONFIG_HOME}/froster >/dev/null 2>&1
+        if [[ -d ${froster_config_backup_dir} ]]; then
+            mv -f ${froster_config_backup_dir} ${froster_config_dir} >/dev/null 2>&1
         fi
 
         # Restore (if any) backed up froster data files
-        if [[ -d ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ]]; then
-            mv -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak ${XDG_DATA_HOME}/froster >/dev/null 2>&1
+        if [[ -d ${froster_data_backup_dir} ]]; then
+            mv -f ${froster_data_backup_dir} ${froster_data_dir} >/dev/null 2>&1
         fi
 
         rm -rf ${pwalk_path} >/dev/null 2>&1
         rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
-
-        echo
-        echo "Installation failed!"
     fi
 }
 
@@ -70,7 +68,6 @@ spinner() {
         printf "\r"
     fi
 }
-
 
 #################
 ### FUNCTIONS ###
@@ -213,79 +210,46 @@ check_dependencies() {
 # Backup older installations (if any) but keep the froster-archive.json and config.ini files
 backup_old_installation() {
 
+    # Make sure we did not left any backup files from previous updates.
+    # Move all backups to the data or config backup directories
+    mkdir -p ${froster_all_data_backups}
+    mkdir -p ${froster_all_config_backups}
+    find ${XDG_DATA_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 | xargs -0 -I {} mv {} $froster_all_data_backups
+    find ${XDG_CONFIG_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 | xargs -0 -I {} mv {} $froster_all_config_backups
+
+
     # Back up (if any) older froster data files
-    if [[ -d ${XDG_DATA_HOME}/froster ]]; then
+    if [[ -d ${froster_data_dir} ]]; then
 
-        backup=true
-
-        echo
-        echo "Backing up older froster installation..."
+        echo -e "\nBacking Froster data folder ..."
 
         # Copy the froster directory to froster_YYYYMMDD.bak
-        cp -rf ${XDG_DATA_HOME}/froster ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak
+        cp -rf ${froster_data_dir} ${froster_data_backup_dir}
 
-        echo "    Data back up at ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak"
+        echo "    source: ${froster_data_dir}"
+        echo "    destination: ${froster_data_backup_dir}"
+
+        echo "...data backed up"
     fi
 
     # Back up (if any) older froster configurations
-    if [[ -d ${XDG_CONFIG_HOME}/froster ]]; then
+    if [[ -d ${froster_config_dir} ]]; then
 
-        if [ "$backup" != "true" ]; then
-            echo
-            echo "Backing up older froster installation..."
-        fi
+        echo -e "\nBacking Froster config folder ..."
 
-        backup=true
+        echo "    source: ${froster_config_dir}"
+        echo "    destination: ${froster_config_backup_dir}"
 
         # Move the froster config directory to froster.bak
-        cp -rf ${XDG_CONFIG_HOME}/froster ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak
+        cp -rf ${froster_config_dir} ${froster_config_backup_dir}
 
-        echo "    Config back up at ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak"
+        echo "...config backed up"
     fi
-
-    if [ "$backup" = "true" ]; then
-        echo "...older froster installation backed up"
-    fi
-
-    # Check if froster is already installed, if so uninstall it
-    if which froster >/dev/null 2>&1; then
-        echo
-        echo "Uninstalling existing froster installation..."
-
-        if pipx list | grep froster >/dev/null 2>&1; then
-            pipx uninstall froster >/dev/null 2>&1 &
-            spinner $!
-        fi
-
-        echo "...froster uninstalled"
-    fi
-
-    # Keep the froster-archives.json file (if any)
-    if [[ -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
-        echo
-        echo "Restoring Froster archives json data from backup..."
-        
-        # Create the froster directory if it does not exist
-        mkdir -p ${XDG_DATA_HOME}/froster
-
-        # Copy the froster-archives.json file to the data directory
-        cp -f ${XDG_DATA_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
-
-        echo "...restored"
-    fi
-
-    # Remove old files
-    rm -rf ${XDG_DATA_HOME}/froster
-    rm -rf ${XDG_CONFIG_HOME}/froster
-    rm -f ${HOME}/.local/bin/froster
-    rm -f ${HOME}/.local/bin/froster.py
-    rm -f ${HOME}/.local/bin/s3-restore.py
 }
 
 install_pipx() {
 
-    echo
-    echo "Installing pipx..."
+    echo -e "\nInstalling pipx..."
 
     # Check if pipx is installed
     if [[ -z $(command -v pipx) ]]; then
@@ -306,67 +270,72 @@ install_pipx() {
     else
         echo "...pipx already installed"
 
-        echo
-        echo "Upgrading pipx..."
+        echo -e "\nUpgrading pipx..."
         pipx upgrade pipx >/dev/null 2>&1 &
         spinner $!
         echo "...pipx upgraded"
 
-        echo
-        echo "Ensuring path for pipx..."
+        echo -e "\nEnsuring path for pipx..."
         pipx ensurepath >/dev/null 2>&1
         echo "...path ensured"
     fi
 
     # Check if PIPX_BIN_DIR is set and not empty, otherwise default to ~/.local/bin
     PIPX_BIN_DIR="${PIPX_BIN_DIR:-$HOME/.local/bin}"
-    echo
-    echo "Adding $PIPX_BIN_DIR to PATH for this installation session"
+    echo -e "\nAdding $PIPX_BIN_DIR to PATH for this installation session"
     export PATH="$PATH:$PIPX_BIN_DIR"
 }
 
 install_froster() {
 
-    echo
-    echo "Installing latest version of froster..."
+    echo -e "\nRemoving old froster files..."
+    rm -rf ${froster_data_dir}
+    rm -rf ${froster_config_dir}
+    rm -f ${HOME}/.local/bin/froster
+    rm -f ${HOME}/.local/bin/froster.py
+    rm -f ${HOME}/.local/bin/s3-restore.py
+    echo "...old froster files removed"
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
-        echo "  Installing from the current directory in --editable mode"
+        echo -e "\nInstalling Froster from the current directory in --editable mode..."
         pip install -e . >/dev/null 2>&1 &
         spinner $!
+        echo "...Froster installed"
     else
-        echo "  Installing from PyPi package repository"
+        if pipx list | grep froster >/dev/null 2>&1; then
+            echo -e "\nUninstalling old Froster..."
+            pipx uninstall froster >/dev/null 2>&1
+            echo "...old Froster uninstalled"
+        fi
+
+        echo -e "\nInstalling Froster from PyPi package repository"
         pipx install froster >/dev/null 2>&1 &
         spinner $!
+        echo "...Froster installed"
     fi
 
-    echo "  Installation path: $(which froster)"
-
     # Keep the config.ini file (if any)
-    if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ]]; then
+    if [[ -f ${froster_config_backup_dir}/config.ini ]]; then
         # Create the froster directory if it does not exist
-        mkdir -p ${XDG_CONFIG_HOME}/froster
+        mkdir -p ${froster_config_dir}
 
         # Copy the config file to the data directory
-        cp -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/config.ini ${XDG_CONFIG_HOME}/froster/config.ini
+        cp -f ${froster_config_backup_dir}/config.ini ${froster_config_dir}
     fi
 
     # Keep the froster-archives.json file (if any)
-    if [[ -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ]]; then
+    if [[ -f ${froster_data_backup_dir}/froster-archives.json ]]; then
         # Create the froster directory if it does not exist
-        mkdir -p ${XDG_DATA_HOME}/froster
+        mkdir -p ${froster_data_dir}
 
         # Copy the froster-archives.json file to the data directory
-        cp -f ${XDG_CONFIG_HOME}/froster_${date_YYYYMMDDHHMMSS}.bak/froster-archives.json ${XDG_DATA_HOME}/froster/froster-archives.json
+        cp -f ${froster_data_backup_dir}/froster-archives.json ${froster_data_dir}
     fi
-
-    echo "...froster installed"
 }
 
 install_pwalk() {
 
-    echo
-    echo "Installing third-party dependency: pwalk... "
+    echo -e "\nInstalling third-party dependency: pwalk... "
 
     # Variables of pwalk third-party tool froster is using
     pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
@@ -404,8 +373,7 @@ install_pwalk() {
 # Install rclone
 install_rclone() {
 
-    echo
-    echo "Installing third-party dependency: rclone... "
+    echo -e "\nInstalling third-party dependency: rclone... "
 
     # Check the architecture of the system
     arch=$(uname -m)
@@ -479,12 +447,11 @@ install_rclone
 version=$(froster -v | awk '{print $2}')
 
 # Print success message
-echo
-echo "froster $version has been successfully installed!"
-echo
+echo -e "\n\nSUCCESS!"
+
+echo -e "\nFroster version: $version"
+echo -e "Installation path: $(which froster)"
 
 # Print post-installation instructions
-echo
-echo "You will need to open a new terminal or refresh your current terminal session by running command:"
-echo "  source ~/.bashrc"
-echo
+echo -e "\n\nYou will need to open a new terminal or refresh your current terminal session by running command:"
+echo -e "  source ~/.bashrc\n"

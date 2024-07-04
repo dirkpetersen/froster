@@ -5294,7 +5294,7 @@ class Archiver:
         except Exception:
             print_error()
 
-    def _walkerr(oserr):
+    def _walkerr(self, oserr):
         """ error handler for os.walk """
         print_error(str(oserr))
 

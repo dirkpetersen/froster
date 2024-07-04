@@ -20,11 +20,11 @@
 # Check your AWS PROFILE at ~/.aws/credentials and ~/.aws/config
 # The output of rclone command should be shown in a few minuts
 
+export RCLONE_S3_PROFILE=
+export RCLONE_S3_REGION=
 export RCLONE_S3_PROVIDER=
 export RCLONE_S3_ENDPOINT=
-export RCLONE_S3_REGION=
 export RCLONE_S3_LOCATION_CONSTRAINT=
-export RCLONE_S3_PROFILE=
 export AWS_ACCESS_KEY_ID=
 export AWS_SECRET_ACCESS_KEY=
 
@@ -86,21 +86,22 @@ check_environment() {
 
   if [[ -z $RCLONE_S3_REGION ]]; then
     echo -e "\nWARNING: RCLONE_S3_REGION not set. Set it in the install.sh top's variables.\n"
+    echo -e "If your S3 provider does not need a region, you can ignore this warning.\n"
     echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
   fi
 
   if [[ -z $RCLONE_S3_LOCATION_CONSTRAINT ]]; then
     echo -e "\n WARNING: RCLONE_S3_LOCATION_CONSTRAINT not set. Set it in the install.sh top's variables.\n"
+    echo -e "If your S3 provider does not need a region, you can ignore this warning.\n"
     echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
   fi
 
   if [[ -z $RCLONE_S3_PROFILE ]]; then
-    if [[ -z $AWS_ACCESS_KEY_ID || -z $AWS_SECRET_ACCESS_KEY ]]; then
-      echo -e "\nAWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not set. Set it in the install.sh top's variables.\n"
-      echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
-      exit 1
-    else
-      echo -e "\nRCLONE_S3_PROFILE not set. Set it in the install.sh top's variables.\n"
+    if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+      echo -e "\nRclone needs to configure one of two options:"
+      echo "    1) RCLONE_S3_PROFILE"
+      echo "    2) AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY\n"
+      echo -e "\nSet one of them it in the install.sh top's variables.\n"
       echo -e "You may get this information from the Where-did-the-files-go.txt manifest file\n"
       exit 1
     fi
@@ -154,7 +155,7 @@ restore_rclone(){
       echo -e "\t[-]${RCLONE_S3_PROFILE} profile not found in ~/.aws/credentials. Add credentials to restore.conf.\n"
       exit 1
     else
-      echo -e "\t\t[+] Using configured AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as AWS credentials\n"
+      echo -e "\t\t[+] Using configured AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as AWS credentials"
     fi
   else
     echo -e "\t\t[+] Using ~/.aws/credentials profile:${RCLONE_S3_PROFILE}"
@@ -204,9 +205,15 @@ restore_rclone(){
 
     # Execute the restore command
     rclone backend restore --max-depth=1 -o priority=Bulk -o lifetime=30 ${ARCHIVE_FOLDER} > ${RESTORE_OUTPUT}
-
+  
     # Get the status of each file
     statuses=$(jq -r '.[].Status' ${RESTORE_OUTPUT})
+
+    # Check if the retrieve command failed
+    if [ -z "$statuses" ]; then
+      echo -e "\nError: Retrieve command failed. Check the configured variables at the top of the script.\n"
+      exit 1
+    fi
 
     # Variable to store the status of the restore
     all_ok=true
@@ -219,12 +226,12 @@ restore_rclone(){
         fi
     done
 
+
     if $all_ok; then
       echo -e "\nGlacier retrieve initiated."
       echo -e "Execute the same command again 48 hours after restore was initiated.\n"
       exit 0
     else 
-      # Retrieval already initiated
 
       # Execute the restore-status command
       rclone backend restore-status --max-depth=1 -o priority=Bulk -o lifetime=30 ${ARCHIVE_FOLDER} > ${RESTORE_STATUS_OUTPUT}
@@ -251,27 +258,40 @@ restore_rclone(){
       done
 
       if $all_true; then
-        echo -e "\nRetrieve: Glacier retrieve in progress, try again 48 hours after restore was initiated.\n"
+        echo -e "\nINFO: Glacier retrieve in progress, try again 48 hours after restore was initiated.\n"
         exit 0
       elif $all_false; then
         # If all files have been restored, we can proceed with the restore
         # This path is the only one that goes though the restore process
-        echo -e "\nRetrieve: Glacier retrieve finished."
+        echo -e "\nINFO: Glacier retrieve finished."
       else
-        echo -e "\nRetrieve: Only some files have been retrieved. Glacier retrieve in progress, try again 48 hours after restore was initiated.\n"
+        echo -e "\nINFO: Only some files have been retrieved. Glacier retrieve in progress, try again 48 hours after restore was initiated.\n"
         exit 0
       fi
     fi
   fi
 
   ### Restoring from S3 to local folder
-  echo "Restoring from ${ARCHIVE_FOLDER} to ${DIRECTORY_PATH} ..."
+  echo -e "\nRestoring from ${ARCHIVE_FOLDER} to ${DIRECTORY_PATH} ..."
   rclone copy --checksum --progress --verbose ${ARCHIVE_FOLDER} ${DIRECTORY_PATH} ${DEPTH}
   
   ### Comparing S3 with local folder
-  echo "Running Checksum comparison, hit ctrl+c to cancel ... "
-  rclone check --verbose --exclude='.froster.md5sum' ${ARCHIVE_FOLDER} ${DIRECTORY_PATH} ${DEPTH}
+  echo -e "\nRunning Checksum comparison, hit ctrl+c to cancel ... "
+  rclone check --verbose --exclude='.froster.md5sum' --exclude='Where-did-the-files-go.txt' ${ARCHIVE_FOLDER} ${DIRECTORY_PATH} ${DEPTH}
   
+  rclone_checksum_result=$?
+
+  if [ $rclone_checksum_result -eq 0 ]; then
+    echo -e "\nChecksum verification: success"
+    echo -e "Download successfull!"
+  elif [ $rclone_checksum_result -eq 1 ]; then
+    echo "Error: Checksums do not match."
+    exit 1
+  else
+    echo "Error: rclone error code: $rclone_checksum_result."
+    exit 1
+  fi
+
   ### After restore we must check if there are any files to untar
   ## Find all tar files and store them in an array
   mapfile -t tar_files < <(find "${DIRECTORY_PATH}" -type f -name "${TAR_FILENAME}")
@@ -290,11 +310,14 @@ restore_rclone(){
       echo "Deleted: $tar_file"
     else
       echo "Failed to extract: $tar_file"
+      exit 1
     fi
     # Change back to the original directory
     cd - >/dev/null || return
   done
   cd "$cdir"
+
+  echo -e "\nRESTORE SUCCESSFULLY COMPLETED!"
 }
 
 ########
