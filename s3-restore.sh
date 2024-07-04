@@ -21,8 +21,8 @@
 # The output of rclone command should be shown in a few minuts
 
 export RCLONE_S3_PROFILE=
-export RCLONE_S3_REGION=  
-export RCLONE_S3_PROVIDER=      
+export RCLONE_S3_REGION=
+export RCLONE_S3_PROVIDER=
 export RCLONE_S3_ENDPOINT=
 export RCLONE_S3_LOCATION_CONSTRAINT=
 export AWS_ACCESS_KEY_ID=
@@ -277,8 +277,21 @@ restore_rclone(){
   
   ### Comparing S3 with local folder
   echo -e "\nRunning Checksum comparison, hit ctrl+c to cancel ... "
-  rclone check --verbose --exclude='.froster.md5sum' ${ARCHIVE_FOLDER} ${DIRECTORY_PATH} ${DEPTH}
+  rclone check --verbose --exclude='.froster.md5sum' --exclude='Where-did-the-files-go.txt' ${ARCHIVE_FOLDER} ${DIRECTORY_PATH} ${DEPTH}
   
+  rclone_checksum_result=$?
+
+  if [ $rclone_checksum_result -eq 0 ]; then
+    echo -e "\nChecksum verification: success"
+    echo -e "Download successfull!"
+  elif [ $rclone_checksum_result -eq 1 ]; then
+    echo "Error: Checksums do not match."
+    exit 1
+  else
+    echo "Error: rclone error code: $rclone_checksum_result."
+    exit 1
+  fi
+
   ### After restore we must check if there are any files to untar
   ## Find all tar files and store them in an array
   mapfile -t tar_files < <(find "${DIRECTORY_PATH}" -type f -name "${TAR_FILENAME}")
@@ -297,11 +310,14 @@ restore_rclone(){
       echo "Deleted: $tar_file"
     else
       echo "Failed to extract: $tar_file"
+      exit 1
     fi
     # Change back to the original directory
     cd - >/dev/null || return
   done
   cd "$cdir"
+
+  echo -e "\nRESTORE SUCCESSFULLY COMPLETED!"
 }
 
 ########
