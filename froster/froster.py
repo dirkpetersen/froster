@@ -7621,8 +7621,9 @@ def main():
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
 
-        # Clean the provided paths
-        cmd.args.folders = clean_path_list(cmd.args.folders)
+        # Clean the provided paths (if any)
+        if hasattr(cmd.args, "folders"):
+            cmd.args.folders = clean_path_list(cmd.args.folders)
 
         # CLI commands that do NOT need credentials or configuration
         if args.subcmd in ['config', 'cnf']:
