@@ -3788,9 +3788,6 @@ class Archiver:
     def index(self, folders):
         '''Index the given folders for archiving'''
         try:
-            # Clean the provided paths
-            folders = clean_path_list(folders)
-
             if self._is_recursive_collision(folders):
                 log(
                     f'\nError: You cannot index folders if there is a dependency between them. Specify only the parent folder.\n')
@@ -4090,9 +4087,6 @@ class Archiver:
     def archive(self, folders):
         '''Archive the given folders'''
         try:
-            # Clean the provided paths
-            folders = clean_path_list(folders)
-
             # Set flags
             is_recursive = self.args.recursive
 
@@ -4251,7 +4245,6 @@ class Archiver:
         '''Mount the given folder'''
 
         # Clean the provided paths
-        folders = clean_path_list(folders)
         mountpoint = clean_path(mountpoint)
 
         self._mount_locally(folders, mountpoint)
@@ -4278,9 +4271,6 @@ class Archiver:
     def unmount(self, folders):
 
         try:
-            # Clean the provided paths
-            folders = clean_path_list(folders)
-
             self._unmount_locally(folders)
 
             return True
@@ -4833,9 +4823,6 @@ class Archiver:
         '''Delete the given folders'''
 
         try:
-            # Clean the provided paths
-            folders = clean_path_list(folders)
-
             # Set flags
             is_recursive = self.args.recursive
 
@@ -4953,9 +4940,6 @@ class Archiver:
         '''Restore the given folder'''
 
         try:
-            # Clean the provided paths
-            folders = clean_path_list(folders)
-
             # Set flags
             is_recursive = self.args.recursive
 
@@ -7636,6 +7620,9 @@ def main():
         # Restore folder and files permissions
         if cfg.is_shared and cfg.shared_dir:
             cfg.assure_permissions_and_group(cfg.shared_dir)
+
+        # Clean the provided paths
+        cmd.args.folders = clean_path_list(cmd.args.folders)
 
         # CLI commands that do NOT need credentials or configuration
         if args.subcmd in ['config', 'cnf']:
