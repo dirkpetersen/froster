@@ -280,7 +280,7 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo -e "\nInstalling Froster from the current directory in --editable mode..."
-        pip install -e . >/dev/null 2>&1 &
+        python3 -m pip install -e . >/dev/null 2>&1 &
         spinner $!
         echo "...Froster installed"
     else
@@ -324,6 +324,9 @@ install_pwalk() {
         exit 1
     fi
 
+    # Get the current directory and change to a new temporary directory
+    curdir=$(pwd) && tmpdir=$(mktemp -d -t froster.XXX) && cd "$tmpdir"    
+
     # Variables of pwalk third-party tool froster is using
     pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
     pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
@@ -353,6 +356,9 @@ install_pwalk() {
     # Delete downloaded pwalk files
     echo "    Cleaning up pwalk installation files"
     rm -rf ${pwalk_path} >/dev/null 2>&1
+    
+    # back to PWD 
+    cd $curdir
 
     echo "...pwalk installed"
 }
@@ -366,6 +372,9 @@ install_rclone() {
         echo "rclone downloads page https://downloads.rclone.org is not reachable. Please check your firewall settings."
         exit 1
     fi
+
+    # Get the current directory and change to a new temporary directory
+    curdir=$(pwd) && tmpdir=$(mktemp -d -t froster.XXX) && cd "$tmpdir"    
 
 
     # Check the architecture of the system
@@ -408,6 +417,9 @@ install_rclone() {
     echo "    Cleaning up rclone installation files"
     rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
 
+    # back to PWD 
+    cd $curdir
+
     echo "...rclone installed"
 }
 
@@ -424,9 +436,6 @@ umask 0002
 # Backup old installation (if any)
 backup_old_installation
 
-# Get the current directory and change to a new temporary directory
-curdir=$(pwd) && tmpdir=$(mktemp -d -t froster.XXX) && cd "$tmpdir"
-
 # Install pipx
 install_pipx
 
@@ -438,9 +447,6 @@ install_pwalk
 
 # Install rclone
 install_rclone
-
-# back to PWD 
-cd $curdir
 
 # Get the installed froster version
 version=$(froster -v | awk '{print $2}')
