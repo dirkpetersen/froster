@@ -319,6 +319,11 @@ install_pwalk() {
 
     echo -e "\nInstalling third-party dependency: pwalk... "
 
+    if ! curl -s --head https://github.com | grep "HTTP/2 200" > /dev/null; then
+        echo "rclone downloads page https://downloads.rclone.org is not reachable. Please check your firewall settings."
+        exit 1
+    fi
+
     # Variables of pwalk third-party tool froster is using
     pwalk_commit=1df438e9345487b9c51d1eea3c93611e9198f173 # update this commit when new pwalk version released
     pwalk_repository=https://github.com/fizwit/filesystem-reporting-tools/archive/${pwalk_commit}.tar.gz
@@ -356,6 +361,12 @@ install_pwalk() {
 install_rclone() {
 
     echo -e "\nInstalling third-party dependency: rclone... "
+
+    if ! curl -s --head https://downloads.rclone.org | grep "HTTP/2 200" > /dev/null; then
+        echo "rclone downloads page https://downloads.rclone.org is not reachable. Please check your firewall settings."
+        exit 1
+    fi
+
 
     # Check the architecture of the system
     arch=$(uname -m)
