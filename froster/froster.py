@@ -1167,7 +1167,7 @@ class ConfigManager:
 
             if not profiles:
                 log(
-                    f'No profiles found in the config file {self.config_file}. Configure a profile by running command:\n')
+                    f'No S3 profiles found in the config file {self.config_file}. Configure an S3 profile by running command:\n')
                 log('    froster config\n')
                 return False
             else:
@@ -1683,7 +1683,7 @@ class AWSBoto:
 
         try:
             if not self.cfg.profile:
-                log('\nError: No profile found. Please configure a profile using the command:')
+                log('\nError: No profile found. Please configure an S3 profile using the command:')
                 log('    froster config\n')
                 return False
 
@@ -3619,7 +3619,10 @@ class Archiver:
                                 self.args.pwalkcopy, copy_filename)
 
                             # Build the copy command
-                            mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
+                            iconv = 'iconv'
+                            if os.path.exists('/usr/bin/iconv'):
+                                iconv = '/usr/bin/iconv'
+                            mycmd = f'{iconv} -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
 
                             # Run the copy command
                             result = subprocess.run(mycmd, shell=True)
@@ -6636,7 +6639,7 @@ class Commands:
                 # Aesthetic line
                 log()
 
-                if not inquirer.confirm(message=f'Do you want to configure a profile?', default=False):
+                if not inquirer.confirm(message=f'Do you want to configure an S3 profile?', default=False):
                     break
 
                 if not cfg.set_profile():
@@ -7525,7 +7528,7 @@ def print_error(msg: str = None):
         log(f'\nYou can check the permissions of the files and folders using the command:')
         log(f'    froster index --permissions "/your/folder"')
 
-    log('\nIf you thing this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
+    log('\nIf you think this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
 
 def log(*args, **kwargs):

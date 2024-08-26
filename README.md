@@ -19,22 +19,21 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 
 ```
 sudo apt update
-sudo apt install -y curl python3 python3-pip python3-venv python3-dev gcc lib32gcc-s1 unzip fuse3
+sudo apt install -y curl python3-pip python3-venv python3-dev gcc lib32gcc-s1 unzip fuse3
 ```
 
-### On Fedora / CentOS / RHEL
+### On Fedora / RHEL / Rocky
 
 ```
 sudo dnf update -y
-sudo dnf groupinstall -y "Development Tools"
-sudo dnf install -y curl python3 python3-pip python3-devel unzip fuse3
+sudo dnf install -y curl python3-pip python3-devel gcc unzip fuse3 which
 ```
 
-### On HPC machine
+### On HPC machine (RHEL based)
 
-Please get in touch with your administrator to install these packages:
+Please get in touch with your administrator to install these packages (Python >= 3.8)
 ```
-curl python3 python3-pip python3-venv python3.xx-devel gcc lib32gcc-s1 unzip fuse3
+curl python3 python3-pip python3-devel gcc lib32gcc-s1 which unzip fuse3
 ```
 
 </br>
@@ -163,35 +162,58 @@ Check more options at `froster mount --help`.
 
 ## Table of Contents
 
-* [Problem](#problem)
-* [Motivation](#motivation)
-* [Design](#design)
-* [Preparing Froster](#preparing-froster)
-  * [Configuring](#configuring)
-  * [Configuration sections explanation](#configuration-sections-explanation)
-  * [AWS configuration for teams](#aws-configuration-for-teams)
-  * [Changing defaults with aliases](#changing-defaults-with-aliases)
-* [Using Froster](#using-froster)    
-  * [Standard usage](#standard-usage)
-  * [Large scale use on HPC](#large-scale-use-on-hpc)
-  * [Picking old and large data](#picking-old-and-large-data)
-  * [Special use cases](#special-use-cases)
-    * [Recursive operations](#recursive-operations)
-    * [Tarring small files](#tarring-small-files)
-    * [NIH Life Science metadata](#nih-life-sciences-metadata)
-    <!-- * [Restore to cloud machine (EC2)](#restore-to-cloud-machine) -->
-    * [Using desktop tools to browse S3 Glacier](#using-desktop-tools-to-browse-s3-glacier)
-      * [Cloudberry Explorer](#cloudberry-explorer)
-      * [Cyberduck](#cyberduck)
-    * [More detailed file system analysis](#more-detailed-file-system-analysis)
-* [Command line help](#command-line-help)
-* [FAQ and Troubleshooting](#faq-and-troubleshooting)
-* [Contributing](#contributing)
-  * [Install Froster in development mode](#install-froster-in-development-mode)
-  * [Froster development](#froster-development)
-  * [Release new Froster version](#release-new-froster-version)
-* [Commercial Solutions](#commercial-solutions)
-* [Discontinuing Froster](#discontinuing-froster)
+- [Installation pre-requisite: packages](#installation-pre-requisite-packages)
+  - [On Debian / Ubuntu](#on-debian--ubuntu)
+  - [On Fedora / RHEL / Rocky](#on-fedora--rhel--rocky)
+  - [On HPC machine (RHEL based)](#on-hpc-machine-rhel-based)
+- [Installation](#installation)
+- [Update](#update)
+- [Configuration](#configuration)
+  - [Import and Export Configuration](#import-and-export-configuration)
+- [Basic usage of Froster](#basic-usage-of-froster)
+  - [Credentials](#credentials)
+  - [Index](#index)
+  - [Archive](#archive)
+  - [Delete](#delete)
+  - [Restore](#restore)
+  - [Mount / Umount](#mount--umount)
+- [Table of Contents](#table-of-contents)
+- [Problem](#problem)
+- [Motivation](#motivation)
+- [Design](#design)
+- [Preparing Froster](#preparing-froster)
+  - [Configuring](#configuring)
+  - [Configuration sections explanation](#configuration-sections-explanation)
+  - [AWS configuration for teams](#aws-configuration-for-teams)
+  - [Changing defaults with aliases](#changing-defaults-with-aliases)
+- [Using Froster](#using-froster)
+  - [Standard usage](#standard-usage)
+  - [Large scale use on HPC](#large-scale-use-on-hpc)
+  - [Picking old and large data](#picking-old-and-large-data)
+  - [Special use cases](#special-use-cases)
+    - [Recursive operations](#recursive-operations)
+    - [Tarring small files](#tarring-small-files)
+    - [NIH Life Sciences metadata](#nih-life-sciences-metadata)
+    - [Using desktop tools to browse S3 Glacier](#using-desktop-tools-to-browse-s3-glacier)
+      - [Cloudberry Explorer](#cloudberry-explorer)
+      - [Cyberduck](#cyberduck)
+    - [More detailed file system analysis](#more-detailed-file-system-analysis)
+- [Command line help](#command-line-help)
+  - [froster --help](#froster---help)
+  - [froster config --help](#froster-config---help)
+  - [froster index --help](#froster-index---help)
+  - [froster archive --help](#froster-archive---help)
+  - [froster delete --help](#froster-delete---help)
+  - [froster {mount|umount} --help](#froster-mountumount---help)
+  - [froster restore --help](#froster-restore---help)
+- [FAQ and Troubleshooting](#faq-and-troubleshooting)
+  - [Why can't I use Froster to archive to Google Drive, Sharepoint/OneDrive, etc ?](#why-cant-i-use-froster-to-archive-to-google-drive-sharepointonedrive-etc-)
+- [Contributing](#contributing)
+  - [Install Froster in development mode](#install-froster-in-development-mode)
+  - [Froster development](#froster-development)
+  - [Release new Froster version](#release-new-froster-version)
+- [Commercial solutions](#commercial-solutions)
+- [Discontinuing Froster](#discontinuing-froster)
 
 ## Problem 
 

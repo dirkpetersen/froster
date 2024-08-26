@@ -133,24 +133,6 @@ check_dependencies() {
         exit 1
     fi
 
-    # Check if pip3 is installed
-    if [[ -z $(command -v pip3) ]]; then
-        echo "Error: pip3 is not installed."
-        echo
-        echo "Please install pip3 by running the following commands:"
-        echo "  On Debian / Ubuntu based systems:"
-        echo "    apt update"
-        echo "    apt install -y python3-pip"
-        echo
-        echo "  On Fedora / CentOS / RHEL based systems:"
-        echo "    dnf update"
-        echo "    dnf install -y python3-pip"
-        echo
-        echo "  Other HPC based systems: Contact your administrator to install this package."
-        echo
-        exit 1
-    fi
-
     # Check if gcc is installed
     if [[ -z $(command -v gcc) ]]; then
         echo "Error: gcc is not installed."
@@ -431,6 +413,9 @@ umask 0002
 # Backup old installation (if any)
 backup_old_installation
 
+# Get the current directory and change to a new temporary directory
+curdir=$(pwd) && tmpdir=$(mktemp -t froster.XXX) && cd "$tmpdir"
+
 # Install pipx
 install_pipx
 
@@ -442,6 +427,9 @@ install_pwalk
 
 # Install rclone
 install_rclone
+
+# back to PWD 
+cd $curdir
 
 # Get the installed froster version
 version=$(froster -v | awk '{print $2}')
