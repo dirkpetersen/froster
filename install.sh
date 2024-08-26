@@ -425,7 +425,7 @@ umask 0002
 backup_old_installation
 
 # Get the current directory and change to a new temporary directory
-curdir=$(pwd) && tmpdir=$(mktemp -t froster.XXX) && cd "$tmpdir"
+curdir=$(pwd) && tmpdir=$(mktemp -d -t froster.XXX) && cd "$tmpdir"
 
 # Install pipx
 install_pipx
