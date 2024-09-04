@@ -82,6 +82,12 @@ spinner() {
 # Check all needed apt dependencies to install froster
 check_dependencies() {
 
+    # Check if ~/.local/bin is in PATH
+    local_bin_in_path=false
+    if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+        local_bin_in_path=true
+    fi
+
     # Check if curl is installed
     if [[ -z $(command -v curl) ]]; then
         echo "Error: curl is not installed."
@@ -291,7 +297,18 @@ install_pipx() {
     echo "Installing pipx..."
 
     # Check if pipx is installed
-    if [[ -z $(command -v pipx) ]]; then
+    pipx_version=$(python3 -m pipx --version 2>/dev/null)
+    version_regex='^[0-9]+\.[0-9]+\.[0-9]+$'
+
+    if [[ $pipx_version =~ $version_regex ]]; then
+
+        echo "...pipx already installed"
+        echo
+        echo "Upgrading pipx..."
+
+        python3 -m pipx upgrade pipx >/dev/null 2>&1 &
+        spinner $!
+    else
 
         # Install or upgrade pipx
         python3 -m pip install --user --upgrade pipx >/dev/null 2>&1
@@ -304,16 +321,9 @@ install_pipx() {
         export PATH="$HOME/.local/bin:$PATH"
 
         echo "...pipx installed"
-    else
-        echo "...pipx already installed"
-        echo
-        echo "Upgrading pipx..."
-        
-        pipx upgrade pipx >/dev/null 2>&1 &
-        spinner $!
 
-        echo "...pipx upgraded"
     fi
+
 }
 
 install_froster() {
@@ -323,11 +333,11 @@ install_froster() {
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
         echo "  Installing from the current directory"
-        pip install -e . >/dev/null 2>&1 &
+        python3 -m pip install -e . >/dev/null 2>&1 &
         spinner $!
     else
         echo "  Installing from PyPi package repository"
-        pipx install froster >/dev/null 2>&1 &
+        python3 -m pipx install froster >/dev/null 2>&1 &
         spinner $!
     fi
 
@@ -503,8 +513,10 @@ echo
 echo "froster $version has been successfully installed!"
 echo
 
-# Print post-installation instructions
-echo
-echo "You will need to open a new terminal or refresh your current terminal session by running command:"
-echo "  source ~/.bashrc"
-echo
+# Refresh Terminal
+if [[ "$local_bin_in_path" = false ]]; then
+    echo
+    echo "You will need to open a new terminal or refresh your current terminal session by running command:"
+    echo "  source ~/.bashrc"
+    echo
+fi

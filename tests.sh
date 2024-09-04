@@ -78,6 +78,7 @@ created_folder=$(generate_test_data)
 
 echo "Test data folder: $created_folder"
 
+exit
 
 script_dir=~/.local/bin
 
