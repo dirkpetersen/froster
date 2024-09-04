@@ -17,7 +17,7 @@ duckdb = "^1.0.0"
 inquirer = "^3.2.4"
 psutil = "^5.9.8"
 requests = "^2.32.3"
-textual = "^0.64.0"
+textual = "^0.79.0"
 visidata = "^3.0.2"
 setuptools = "^70.0.0"
 
