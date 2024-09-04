@@ -4,20 +4,26 @@ import random
 import string
 import tempfile
 
-
 def random_string(length=4):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
-NAME = "Test-Bob"
-NAME_2 = "Test-Alice"
-EMAIL = "bob@bob.com"
+NAME_1 = "bob"
+NAME_2 = "alice"
+
+EMAIL_1 = "bob@bob.com"
 EMAIL_2 = "alice@alice.com"
 
-AWS_DEFAULT_PATH = os.path.join(tempfile.gettempdir(), '.aws')
-AWS_REGION = "eu-west-1"
-AWS_REGION_2 = "eu-west-2"
-AWS_PROFILE = "froster-unittest-bob"
-AWS_PROFILE_2 = "froster-unittest-alice"
+PROVIDER_1 = "AWS"
+PROVIDER_2 = "AWS"
+
+PROFILE_1 = "profile bob"
+PROFILE_2 = "profile alice"
+
+AWS_CREDENTIALS_PROFILE_1 = "bob"
+AWS_CREDENTIALS_PROFILE_2 = "alice"
+
+AWS_REGION_1 = "us-west-2"
+AWS_REGION_2 = "us-west-2"
 
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET = os.getenv('AWS_SECRET')
@@ -28,16 +34,20 @@ SHARED_SECTION = 'SHARED'
 NIH_SECTION = 'NIH'
 S3_SECTION = 'S3'
 
-S3_BUCKET_NAME_CONFIG = 'froster-unittest-config-' + random_string(4)
+S3_BUCKET_NAME_CONFIG_1 = 'froster-unittest-config-' + random_string(4)
 S3_BUCKET_NAME_CONFIG_2 = 'froster-unittest-config-' + random_string(4)
 
-S3_BUCKET_NAME_INDEX = 'froster-unittest-index-' + random_string(4)
+S3_BUCKET_NAME_INDEX_1 = 'froster-unittest-index-' + random_string(4)
 S3_BUCKET_NAME_INDEX_2 = 'froster-unittest-index-' + random_string(4)
 
-S3_ARCHIVE_DIR = 'froster_bob'
-S3_ARCHIVE_DIR_2 = 'froster_alice'
-S3_STORAGE_CLASS = 'DEEP_ARCHIVE'
-S3_STORAGE_CLASS_2 = 'GLACIER'
+S3_BUCKET_NAME_CREDENTIALS_1 = 'froster-unittest-credentials-' + random_string(4)
+S3_BUCKET_NAME_CREDENTIALS_2 = 'froster-unittest-credentials-' + random_string(4)
+
+S3_ARCHIVE_DIR_1 = 'froster-bob'
+S3_ARCHIVE_DIR_2 = 'froster-alice'
+
+S3_STORAGE_CLASS_1 = 'DEEP_ARCHIVE'
+S3_STORAGE_CLASS_2 = 'STANDARD'
 
 SLURM_WALLTIME_DAYS = 8
 SLURM_WALLTIME_HOURS = 1

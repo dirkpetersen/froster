@@ -6,8 +6,9 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Upload as PyPi package
-run-name: Publish froster in PyPi and install in Ubuntu-latest
+name: PyPi Release Publish
+
+run-name: PyPi Release Publish
 
 on: 
   release:
@@ -17,7 +18,7 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  pypi-release:
 
     runs-on: ubuntu-latest
 
@@ -25,7 +26,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: '3.x'
 
@@ -44,7 +45,7 @@ jobs:
         password: ${{ secrets.PYPI_API_TOKEN }}
 
   check-froster-installation:
-    needs: deploy
+    needs: pypi-release
     runs-on: ubuntu-latest
     steps:   
 
