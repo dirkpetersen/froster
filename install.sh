@@ -19,6 +19,7 @@ froster_data_backup_dir=${froster_all_data_backups}/froster_${date_YYYYMMDDHHMMS
 froster_config_dir=${XDG_CONFIG_HOME}/froster
 froster_all_config_backups=${XDG_CONFIG_HOME}/froster_backups
 froster_config_backup_dir=${froster_all_config_backups}/froster_${date_YYYYMMDDHHMMSS}.bak
+version_regex='^[0-9]+\.[0-9]+\.[0-9]+$'
 
 #####################
 ### ERROR HANDLER ###
@@ -76,11 +77,16 @@ spinner() {
 # Check all needed apt dependencies to install froster
 check_dependencies() {
 
+    PIPX_BIN_DIR="${PIPX_BIN_DIR:-$HOME/.local/bin}"
+
     # Check if ~/.local/bin is in PATH
     local_bin_in_path=false
     if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
         local_bin_in_path=true
+    else
+        echo -e "\nAdding $PIPX_BIN_DIR to PATH for this installation session"
     fi
+    export PATH="$PATH:$PIPX_BIN_DIR"
 
     # Check if curl is installed
     if [[ -z $(command -v curl) ]]; then
@@ -241,7 +247,6 @@ install_pipx() {
 
     # Check if pipx is installed
     pipx_version=$(python3 -m pipx --version 2>/dev/null)
-    version_regex='^[0-9]+\.[0-9]+\.[0-9]+$'
 
     if [[ $pipx_version =~ $version_regex ]]; then
 
@@ -257,38 +262,21 @@ install_pipx() {
         echo "  Installing pipx via pip"
         python3 -m pip install --upgrade pipx >/dev/null 2>&1
 
-        # Ensure path for pipx
-        echo "  Ensuring path for pipx"
-        if [[ $(command -v pipx) ]]; then
-            pipx ensurepath >/dev/null 2>&1
+        # ensure path for pipx 
+        pipx_version=$(python3 -m pipx --version 2>/dev/null)
+        if [[ $pipx_version =~ $version_regex ]]; then
+           python3 -m pipx ensurepath >/dev/null 2>&1
+           echo "...pipx installed"
         else
-            $HOME/.local/bin/pipx ensurepath >/dev/null 2>&1
+           echo "...pipx ensurepath failed"
         fi
-        
-        echo "...pipx installed"
-<<<<<<< HEAD
-
-    fi
-
-=======
-    else
-        echo "...pipx already installed"
-
-        echo -e "\nUpgrading pipx..."
-        pipx upgrade pipx >/dev/null 2>&1 &
-        spinner $!
-        echo "...pipx upgraded"
-
-        echo -e "\nEnsuring path for pipx..."
-        pipx ensurepath >/dev/null 2>&1
-        echo "...path ensured"
+      
     fi
 
     # Check if PIPX_BIN_DIR is set and not empty, otherwise default to ~/.local/bin
     PIPX_BIN_DIR="${PIPX_BIN_DIR:-$HOME/.local/bin}"
     echo -e "\nAdding $PIPX_BIN_DIR to PATH for this installation session"
     export PATH="$PATH:$PIPX_BIN_DIR"
->>>>>>> c29f433e57877f8eb12eb3f002fbe6bace698ae3
 }
 
 install_froster() {
@@ -302,19 +290,18 @@ install_froster() {
     echo "...old froster files removed"
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
-<<<<<<< HEAD
+
         echo "  Installing from the current directory"
-=======
         echo -e "\nInstalling Froster from the current directory in --editable mode..."
->>>>>>> c29f433e57877f8eb12eb3f002fbe6bace698ae3
         python3 -m pip install -e . >/dev/null 2>&1 &
         spinner $!
         echo "...Froster installed"
+
     else
-<<<<<<< HEAD
+
         echo "  Installing from PyPi package repository"
         python3 -m pipx install froster >/dev/null 2>&1 &
-=======
+
         if pipx list | grep froster >/dev/null 2>&1; then
             echo -e "\nUninstalling old Froster..."
             pipx uninstall froster >/dev/null 2>&1
@@ -322,8 +309,7 @@ install_froster() {
         fi
 
         echo -e "\nInstalling Froster from PyPi package repository"
-        pipx install froster >/dev/null 2>&1 &
->>>>>>> c29f433e57877f8eb12eb3f002fbe6bace698ae3
+        python3 -m pipx install froster >/dev/null 2>&1 &
         spinner $!
         echo "...Froster installed"
     fi
@@ -489,7 +475,7 @@ echo -e "\n\nSUCCESS!"
 echo -e "\nFroster version: $version"
 echo -e "Installation path: $(which froster)"
 
-<<<<<<< HEAD
+
 # Refresh Terminal
 if [[ "$local_bin_in_path" = false ]]; then
     echo
@@ -497,8 +483,4 @@ if [[ "$local_bin_in_path" = false ]]; then
     echo "  source ~/.bashrc"
     echo
 fi
-=======
-# Print post-installation instructions
-echo -e "\n\nYou will need to open a new terminal or refresh your current terminal session by running command:"
-echo -e "  source ~/.bashrc\n"
->>>>>>> c29f433e57877f8eb12eb3f002fbe6bace698ae3
+
