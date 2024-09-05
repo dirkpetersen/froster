@@ -273,10 +273,6 @@ install_pipx() {
       
     fi
 
-    # Check if PIPX_BIN_DIR is set and not empty, otherwise default to ~/.local/bin
-    PIPX_BIN_DIR="${PIPX_BIN_DIR:-$HOME/.local/bin}"
-    echo -e "\nAdding $PIPX_BIN_DIR to PATH for this installation session"
-    export PATH="$PATH:$PIPX_BIN_DIR"
 }
 
 install_froster() {
