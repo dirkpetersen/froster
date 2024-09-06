@@ -245,34 +245,17 @@ install_pipx() {
 
     echo -e "\nInstalling pipx..."
 
-    # Check if pipx is installed
-    pipx_version=$(python3 -m pipx --version 2>/dev/null)
+    python3 -m pip install pipx >/dev/null 2>&1
 
+    # ensure path for pipx 
+    pipx_version=$(python3 -m pipx --version 2> /dev/null)
     if [[ $pipx_version =~ $version_regex ]]; then
-
-        echo "...pipx already installed"
-        echo
-        echo "Upgrading pipx..."
-
-        python3 -m pipx upgrade pipx >/dev/null 2>&1 &
-        spinner $!
+        python3 -m pipx ensurepath >/dev/null 2>&1
+        echo "...pipx installed"
     else
-
-        # Install or upgrade pipx
-        echo "  Installing pipx via pip"
-        python3 -m pip install --upgrade pipx >/dev/null 2>&1
-
-        # ensure path for pipx 
-        pipx_version=$(python3 -m pipx --version 2>/dev/null)
-        if [[ $pipx_version =~ $version_regex ]]; then
-           python3 -m pipx ensurepath >/dev/null 2>&1
-           echo "...pipx installed"
-        else
-           echo "...pipx ensurepath failed"
-        fi
-      
+        echo "...pipx ensurepath failed"
     fi
-
+        
 }
 
 install_froster() {
@@ -289,9 +272,14 @@ install_froster() {
 
         echo "  Installing from the current directory"
         echo -e "\nInstalling Froster from the current directory in --editable mode..."
-        python3 -m pip install -e . >/dev/null 2>&1 &
+        python3 -m pip install --force -e . >/dev/null 2>&1 &  #>/dev/null 2>&1
         spinner $!
-        echo "...Froster installed"
+        sleep 3 
+        if ! [[ -f "${HOME}/.local/bin/froster" ]]; then
+            echo "${HOME}/.local/bin/froster not available, exiting."
+            exit
+        fi
+        #until [ -f ${HOME}/.local/bin/froster ]; do sleep 1; done; echo "...Froster installed"
 
     else
 
