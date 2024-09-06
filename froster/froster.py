@@ -7,10 +7,10 @@
 
 # internal modules
 import argparse, asyncio, concurrent.futures, configparser, csv, datetime
-import fnmatch, functools, getpass, grp, hashlib, inspect, io, itertools, json
-import linecache, math, os, pathlib, pkg_resources, platform, pwd, random, re
-import shlex, shutil, socket, stat, string, subprocess, sys, tarfile, tempfile
-import textwrap, time, traceback
+import fnmatch, functools, getpass, grp, hashlib, importlib.metadata, inspect
+import io, itertools, json, linecache, math, os, pathlib, platform, pwd, random
+import re, shlex, shutil, socket, stat, string, subprocess, sys, tarfile
+import tempfile, textwrap, time, traceback
 
 # external modules
 from textual.widgets import DataTable, Footer, Button
@@ -6591,7 +6591,9 @@ class Commands:
     def print_version(self):
         '''Print froster version'''
 
-        log(f'froster v{pkg_resources.get_distribution("froster").version}')
+        #log(f'froster v{pkg_resources.get_distribution("froster").version}')
+        log(f'froster v{importlib.metadata.version("froster")}')
+        
 
     def print_info(self, cfg: ConfigManager):
         '''Print froster info'''
@@ -6605,7 +6607,8 @@ class Commands:
 
         log(f'\nTOOLS')
         log(f'\n  froster')
-        log(f'    version: v{pkg_resources.get_distribution("froster").version}')
+        #log(f'    version: v{pkg_resources.get_distribution("froster").version}')
+        log(f'    version: {importlib.metadata.version("froster")}')
         log(f'    path: {os.path.join(froster_dir, "froster")}')
 
         log(f'\n  python')
@@ -7131,7 +7134,8 @@ class Commands:
                 return False
 
             latest = releases[0]['tag_name'].replace('v', '')
-            current = pkg_resources.get_distribution("froster").version
+            #current = pkg_resources.get_distribution("froster").version
+            current = importlib.metadata.version("froster")
 
             if compare_versions(latest, current) > 0:
                 log(f'\nA froster update is available!')
