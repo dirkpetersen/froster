@@ -322,7 +322,7 @@ install_froster() {
 
         echo -e "\nInstalling Froster from PyPi package repository"
         python3 -m pipx install froster >/dev/null 2>&1 &
-        spinner $!
+        spinner "froster"
         echo "...Froster installed"
     fi
 
