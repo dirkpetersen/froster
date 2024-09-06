@@ -308,12 +308,6 @@ install_froster() {
         echo -e "\nInstalling Froster from the current directory in --editable mode..."
         python3 -m pip install --force -e . >/dev/null 2>&1 &  #>/dev/null 2>&1
         spinner "froster"
-        sleep 3 
-        if ! [[ -f "${HOME}/.local/bin/froster" ]]; then
-            echo "${HOME}/.local/bin/froster not available, exiting."
-            exit
-        fi
-        #until [ -f ${HOME}/.local/bin/froster ]; do sleep 1; done; echo "...Froster installed"
 
     else
 
