@@ -48,27 +48,61 @@ catch() {
     fi
 }
 
+# spinner() {
+#     pid=$1
+#     spin='-\|/'
+#     i=0
+
+#     while kill -0 $pid 2>/dev/null; do
+#         i=$(((i + 1) % 4))
+
+#         # If we are in a github actions workflow, we don't want to print the spinner
+#         if [ "$GITHUB_ACTIONS" != "true" ]; then
+#             printf "\r${spin:$i:1}"
+#         fi
+
+#         sleep .1
+#     done
+
+#     # If we are in a github actions workflow, we don't want to print this return line
+#     if [ "$GITHUB_ACTIONS" != "true" ]; then
+#         printf "\r"
+#     fi
+# }
+
 spinner() {
-    pid=$1
+    arg="$1"
     spin='-\|/'
     i=0
 
-    while kill -0 $pid 2>/dev/null; do
-        i=$(((i + 1) % 4))
+    check_condition() {
+        if [[ "$arg" =~ ^[0-9]+$ ]]; then
+            # Numeric: assume it's a PID
+            ! kill -0 "$arg" 2>/dev/null
+        elif [[ "$arg" == /* ]]; then
+            # Starts with /: assume it's a file path
+            [ -e "$arg" ]
+        else
+            # Otherwise: check if command is in PATH
+            command -v "$arg" >/dev/null 2>&1
+        fi
+    }
 
-        # If we are in a github actions workflow, we don't want to print the spinner
+    while ! check_condition; do
+        i=$(( (i + 1) % 4 ))
+        # If we are in a GitHub Actions workflow, we don't want to print the spinner
         if [ "$GITHUB_ACTIONS" != "true" ]; then
             printf "\r${spin:$i:1}"
         fi
-
         sleep .1
     done
 
-    # If we are in a github actions workflow, we don't want to print this return line
+    # If we are in a GitHub Actions workflow, we don't want to print this return line
     if [ "$GITHUB_ACTIONS" != "true" ]; then
         printf "\r"
     fi
 }
+
 
 #################
 ### FUNCTIONS ###
@@ -273,7 +307,7 @@ install_froster() {
         echo "  Installing from the current directory"
         echo -e "\nInstalling Froster from the current directory in --editable mode..."
         python3 -m pip install --force -e . >/dev/null 2>&1 &  #>/dev/null 2>&1
-        spinner $!
+        spinner "froster"
         sleep 3 
         if ! [[ -f "${HOME}/.local/bin/froster" ]]; then
             echo "${HOME}/.local/bin/froster not available, exiting."
