@@ -6,8 +6,13 @@
 """
 
 # internal modules
-import random
-import string
+import argparse, asyncio, concurrent.futures, configparser, csv, datetime
+import fnmatch, functools, getpass, grp, hashlib, inspect, io, itertools, json
+import linecache, math, os, pathlib, pkg_resources, platform, pwd, random, re
+import shlex, shutil, socket, stat, string, subprocess, sys, tarfile, tempfile
+import textwrap, time, traceback
+
+# external modules
 from textual.widgets import DataTable, Footer, Button
 from textual.widgets import Label, Input, LoadingIndicator
 from textual.screen import ModalScreen
@@ -20,44 +25,9 @@ import boto3
 import duckdb
 import requests
 import inquirer
-import sys
-import os
-import argparse
-import json
-import configparser
-import csv
-import platform
-import asyncio
-import stat
-import datetime
-import tarfile
-import textwrap
-import tarfile
-import time
-import platform
-import concurrent.futures
-import hashlib
-import fnmatch
-import io
-import math
-import shlex
-import shutil
-import tempfile
-import subprocess
-import itertools
-import socket
-import inspect
-import getpass
-import pwd
-import grp
-import stat
-import re
-import traceback
-import pkg_resources
-from pathlib import Path
+import tqdm 
 
 logger = ""
-
 
 PROVIDERS_LIST = [
     'AWS',
@@ -1221,7 +1191,7 @@ class ConfigManager:
                 default_profile = inquirer.text(
                     message="Enter new profile name",
                     default="profile ",
-                    validate=self.__inquirer_check_profile_name)
+                    validate=self.__inquirer_check_profile_name).strip()
 
                 # If new profile name already exists, then prompt user if we should overwrite it
                 if default_profile in profiles:
@@ -1351,11 +1321,12 @@ class ConfigManager:
                     default=default_storage_class,
                     choices=[
                         'DEEP_ARCHIVE',
+                        'GLACIER',
+                        'GLACIER_IR',
                         'INTELLIGENT_TIERING',
+                        'ONEZONE_IA',
                         'STANDARD',
                         'STANDARD_IA',
-                        'ONEZONE_IA',
-                        'GLACIER',
                         '+ Create new storage class'
                     ]
                 )
@@ -2049,13 +2020,16 @@ class AWSBoto:
                     'Check your permissions and/or credentials.', file=sys.stderr)
             else:
                 print_error()
-            return [], [], [], []
+            return [], [], [], [], []
 
         # Initialize lists to store the keys
         triggered_keys = []
         restoring_keys = []
         restored_keys = []
         not_glacier_keys = []
+        not_supported_keys = []
+
+        current_restore_tier = None
 
         for page in pages:
             if not 'Contents' in page:
@@ -2072,23 +2046,33 @@ class AWSBoto:
 
                 header = self.s3_client.head_object(
                     Bucket=bucket, Key=object_key)
-
-                if 'StorageClass' in header:
-                    if not header['StorageClass'] in {'GLACIER', 'DEEP_ARCHIVE'}:
-                        not_glacier_keys.append(object_key)
-                        continue
-                else:
+                httpheaders = header.get('ResponseMetadata', {}).get('HTTPHeaders', {})
+                
+                if not 'StorageClass' in header:
                     continue
 
+                current_restore_tier=httpheaders.get('x-amz-restore-tier', None)
+                    
                 if 'Restore' in header:
+
                     if 'ongoing-request="true"' in header['Restore']:
                         restoring_keys.append(object_key)
                         continue
-
-                if 'Restore' in header:
+                
                     if 'ongoing-request="false"' in header['Restore']:
                         restored_keys.append(object_key)
                         continue
+
+                if not header['StorageClass'] in {'GLACIER', 'DEEP_ARCHIVE'}:
+                    if not object_key.endswith('Froster.allfiles.csv'):
+                        not_glacier_keys.append(object_key)
+                    continue
+                else:
+                    if 'DEEP_ARCHIVE' in header['StorageClass']:
+                        if ret_opt == 'Expedited':
+                            not_supported_keys.append(object_key)
+                            log(f'{object_key}: No Expedited retrieval in DEEP_ARCHIVE storage class.')
+                            continue
 
                 try:
                     self.s3_client.restore_object(
@@ -2106,9 +2090,12 @@ class AWSBoto:
                 except Exception:
                     print_error()
                     log(f'Restore request for {object_key} failed.')
-                    return [], [], [], []
+                    return [], [], [], [], []
+                
+        if current_restore_tier:
+            print(f'Current restore tier: {current_restore_tier}\n')
 
-        return triggered_keys, restoring_keys, restored_keys, not_glacier_keys
+        return triggered_keys, restoring_keys, restored_keys, not_glacier_keys, not_supported_keys
 
     def _get_s3_data_size(self, folders):
         """
@@ -3518,6 +3505,11 @@ class Archiver:
 
         self.grants = []
 
+        # this is suppress verbose output when not in terminal
+        self.output_disable = False
+        if not sys.stdin.isatty():
+            self.output_disable = True
+
     def _index_locally(self, folder):
         '''Index the given folder for archiving'''
         try:
@@ -3743,7 +3735,7 @@ class Archiver:
                 if agedbytes[i] > 0 and agedbytes[i] != lastagedbytes:
                     # dedented multi-line removing \n
                     log(textwrap.dedent(f'''
-                    {round(agedbytes[i]/TiB,3)} TiB have not been accessed
+                    {round(agedbytes[i]/TiB,3)} TiB have not been accessed 
                     for {daysaged[i]} days (or {round(daysaged[i]/365,1)} years)
                     ''').replace('\n', ''))
                 lastagedbytes = agedbytes[i]
@@ -3949,7 +3941,7 @@ class Archiver:
                         log(f'\nIf you want to force the archiving process again on this folder, please us the -f or --force flag\n')
 
                     else:
-                        # Folder has a hasfile and is not archived. Print error message
+                        # Folder has a hashfile and is not archived. Print error message
                         log(
                             f'\nThe hashfile ".froster.md5sum" already exists in {folder_to_archive} from a previous archiving process attempt.')
 
@@ -3979,7 +3971,7 @@ class Archiver:
                 return False
 
             # Generate md5 checksums for all files in the folder
-            log(f'\n    Generating checksums...')
+            log(f'\n    Generating checksums...\n')
             if self._gen_md5sums(folder_to_archive, self.md5sum_filename):
                 log('        ...done')
             else:
@@ -4021,7 +4013,10 @@ class Archiver:
                               '--exclude', self.md5sum_filename,
                               '--exclude', self.md5sum_restored_filename,
                               '--exclude', self.allfiles_csv_filename,
-                              '--exclude', self.where_did_the_files_go_filename
+                              '--exclude', self.where_did_the_files_go_filename,
+                              '--transfers', str(self.args.cores),
+                              '--checkers', str(self.args.cores//2),
+                              '--multi-thread-streams', '4'
                               )
 
             # Check if the folder was archived successfully
@@ -4502,59 +4497,6 @@ class Archiver:
             log(f'\ncan_read: {can_read}')
             log(f'can_write: {can_write}\n')
 
-    def _gen_md5sums(self, directory, hash_file):
-        '''Generate md5sums for all files in the directory and write them to a hash file'''
-
-        try:
-            for root, dirs, files in self._walker(directory):
-
-                # We only want to generate the hash file in the root directory. Avoid recursion
-                if root != directory:
-                    break
-
-                # Build the path to the hash file
-                hashpath = os.path.join(root, hash_file)
-
-                # Set the number of workers
-                max_workers = max(4, int(self.args.cores))
-
-                with open(hashpath, "w") as out_f:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-
-                        tasks = {}
-
-                        for file in files:
-
-                            # Get the file path
-                            file_path = os.path.join(root, file)
-
-                            # Skip froster files
-                            if os.path.isfile(file_path) and \
-                                    file != hash_file and \
-                                    file != self.where_did_the_files_go_filename and \
-                                    file != self.md5sum_filename and \
-                                    file != self.md5sum_restored_filename:
-
-                                task = executor.submit(self.md5sum, file_path)
-
-                                tasks[task] = file_path
-
-                        for future in concurrent.futures.as_completed(tasks):
-                            file = os.path.basename(tasks[future])
-                            md5 = future.result()
-                            out_f.write(f"{md5}  {file}\n")
-
-                # Check we generated the hash file
-                if os.path.getsize(hashpath) == 0:
-                    os.remove(hashpath)
-                    return False
-                else:
-                    return True
-
-        except Exception:
-            print_error()
-            return False
-
     def _gen_allfiles_and_tar(self, directory, smallsize=1024, is_tar=True):
         '''Tar small files in a directory'''
 
@@ -4894,24 +4836,25 @@ class Archiver:
                 folder)
 
             if is_glacier:
-                trig, rest, done, notg = aws.glacier_restore(
+                trig, rest, done, notg, nosup = aws.glacier_restore(
                     bucket, prefix, self.args.days, self.args.retrieveopt)
 
                 log(f'    Triggered Glacier retrievals: {len(trig)}')
                 log(
                     f'    Currently retrieving from Glacier: {len(rest)}')
                 log(f'    Retrieved from Glacier: {len(done)}')
-                log(f'    Not in Glacier: {len(notg)}\n')
+                log(f'    Not in Glacier: {len(notg)}')
+                log(f'    Restore option not supported: {len(nosup)}\n')
 
                 if len(trig) > 0 or len(rest) > 0:
                     # glacier is still ongoing
                     log(
-                        f'\n    Glacier retrievals pending. Depending on the storage class and restore mode run this command again in:')
-                    log(f'        Expedited mode: ~ 5 minuts\n')
-                    log(f'        Standard mode: ~ 12 hours\n')
+                        f'\n    Glacier retrievals pending. Depending on the storage class and restore mode run this command again in:\n')
+                    log(f'        Expedited mode: ~ 5 minutes (DEEP_ARCHIVE not supported)')
+                    log(f'        Standard mode: ~ 12 hours')
                     log(f'        Bulk mode: ~ 48 hours\n')
                     log(
-                        f'        \nNOTE: You can check more accurate times in the AWS S3 console\n')
+                        f'        NOTE: You can check more accurate times in the AWS S3 console\n')
                     return False
             else:
                 log(f'...no glacier restore needed\n')
@@ -4945,7 +4888,7 @@ class Archiver:
         try:
             # Set flags
             is_recursive = self.args.recursive
-
+            
             # Check if there is a conflict between folders and recursive flag,
             # i.e. recursive flag is set and a folder is a subdirectory of another one
             if is_recursive:
@@ -4956,6 +4899,8 @@ class Archiver:
 
             # Archive locally all folders. If recursive flag set, archive all subfolders too.
             for folder in folders:
+                if not os.path.exists(folder):
+                    os.makedirs(folder)
                 for root, dirs, files in self._walker(folder):
 
                     # Break in case of non-recursive restore
@@ -4972,7 +4917,9 @@ class Archiver:
 
                     if not self._contains_non_froster_files(root):
                         log(
-                            f'\nWARNING: Folder {root} contains non-froster metadata files')
+                            f'\nWARNING: Folder {root} ')
+                        log(
+                            '    contains files in addition to Froster meta data.\n')
                         log(
                             'Has this folder been deleted using "froster delete" command?.')
                         log(
@@ -4993,9 +4940,14 @@ class Archiver:
                         # Restore ongoing
                         # In this case the slurm will only be used for downloading. AWS has taken care of the restore
                         if is_slurm_installed() and not self.args.noslurm:
-                            # schedule execution in 12 hours
+                            # schedule execution in 12, 24 and 48 hours
                             self._slurm_cmd(
-                                folders=folders, cmd_type='restore', scheduled=12)
+                                folders=folders, cmd_type='restore', scheduled="now+12hours")
+                            self._slurm_cmd(
+                                folders=folders, cmd_type='restore', scheduled="now+24hours")
+                            self._slurm_cmd(
+                                folders=folders, cmd_type='restore', scheduled="now+48hours")
+
             return True
 
         except Exception:
@@ -5015,7 +4967,7 @@ class Archiver:
                     source = source + os.path.basename(root) + '/'
 
                 # Generate md5 checksums for all files in the folder
-                log(f'Generating checksums...')
+                log(f'\n    Generating checksums...\n')
                 if self._gen_md5sums(restpath, self.md5sum_restored_filename):
                     log('    ...done')
                 else:
@@ -5054,14 +5006,100 @@ class Archiver:
         except Exception:
             print_error()
 
+
+    def parallel_md5sum(self, file_path, chunk_size=100*1024*1024, executor=None):
+
+        file_size = os.path.getsize(file_path)
+        if file_size <= chunk_size:
+            return self.md5sum(file_path)
+
+        chunk_count = (file_size + chunk_size - 1) // chunk_size
+        
+        md5_hash = hashlib.md5()
+        
+        chunk_read = functools.partial(self.chunk_reader, file_path, chunk_size)
+        
+        with tqdm.tqdm(total=file_size, unit='B', disable=self.output_disable, unit_scale=True, desc="    " + 
+                                os.path.basename(file_path), leave=False) as pbar:
+            for chunk in executor.map(chunk_read, range(chunk_count)):
+                md5_hash.update(chunk)  # Directly update with the chunk data
+                pbar.update(len(chunk))
+        
+        return md5_hash.hexdigest()
+
+    def chunk_reader(self, file_path, chunk_size, offset):
+        with open(file_path, "rb") as f:
+            f.seek(offset * chunk_size)  # Fix the offset to correctly seek the position
+            chunk = f.read(chunk_size)
+        return chunk
+
+    def md5sum_chunk(self, chunk):
+        return hashlib.md5(chunk).digest()
+
     def md5sum(self, file_path):
-        '''Calculate md5sum of a file'''
+        '''Calculate md5sum of a file - use parallel_md5sum instead'''
 
         md5_hash = hashlib.md5()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 md5_hash.update(chunk)
         return md5_hash.hexdigest()
+    
+    def _gen_md5sums(self, directory, hash_file):
+        '''Generate md5sums for all files in the directory and write them to a hash file'''
+
+        try:
+            for root, dirs, files in self._walker(directory):
+
+                # We only want to generate the hash file in the root directory. Avoid recursion
+                if root != directory:
+                    break
+
+                # Build the path to the hash file
+                hashpath = os.path.join(root, hash_file)
+
+                # Set the number of workers
+                max_workers = max(4, int(self.args.cores))
+
+                with open(hashpath, "w") as out_f:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+
+                        tasks = {}
+
+                        for file in files:
+
+                            # Get the file path
+                            file_path = os.path.join(root, file)
+
+                            # Skip froster files
+                            if os.path.isfile(file_path) and \
+                                    file != hash_file and \
+                                    file != self.where_did_the_files_go_filename and \
+                                    file != self.md5sum_filename and \
+                                    file != self.md5sum_restored_filename:
+
+                                task = executor.submit(self.parallel_md5sum, file_path, executor=executor)
+
+                                tasks[task] = file_path
+
+                        total_size = sum(os.path.getsize(tasks[task]) for task in tasks)
+                        with tqdm.tqdm(total=total_size, unit='B', disable=self.output_disable, unit_scale=True, desc="    Overall Progress") as overall_pbar:
+                            for future in concurrent.futures.as_completed(tasks):
+                                file = os.path.basename(tasks[future])
+                                md5 = future.result()
+                                out_f.write(f"{md5}  {file}\n")
+                                overall_pbar.update(os.path.getsize(tasks[future]))
+
+                # Check we generated the hash file
+                if os.path.getsize(hashpath) == 0:
+                    os.remove(hashpath)
+                    return False
+                else:
+                    return True
+
+        except Exception:
+            print_error()
+            return False
 
     def uid2user(self, uid):
         '''Convert uid to username'''
@@ -5217,7 +5255,7 @@ class Archiver:
                 return data[folder]
             else:
                 # Check if a parent folder exists in the data dictionary with recursive archiving
-                path = Path(folder)
+                path = pathlib.Path(folder)
 
                 for parent in path.parents:
                     parent = str(parent)
@@ -5283,7 +5321,9 @@ class Archiver:
 
     def _walkerr(self, oserr):
         """ error handler for os.walk """
-        print_error(str(oserr))
+        sys.stderr.write(str(oserr))
+        sys.stderr.write('\n')
+        return 0        
 
     def _get_newest_file_atime(self, folder_path, folder_atime=None):
         '''Get the atime of the newest file in the folder'''
@@ -5702,9 +5742,14 @@ class Rclone:
 
     def _run_rclone_command(self, command, background=False):
         '''Run Rclone command'''
+
         try:
             # Add options to Rclone command
             command = self._add_opt(command, '--use-json-log')
+
+            if self.args.debug:
+                log(f'    ... Running command {" ".join(command)}')
+
             # Run the command
             if background:
 
@@ -5722,6 +5767,9 @@ class Rclone:
                     with open(os.devnull, 'w') as devnull:
                         ret = subprocess.Popen(
                             command, stdout=devnull, stderr=devnull, text=True, env=self.envrn)
+                
+                if self.args.debug:
+                    log(ret.stderr)
 
                 # If we have a pid we assume the command was successful
                 if ret.pid:
@@ -5760,6 +5808,9 @@ class Rclone:
                         f'        Return code: {ret.returncode}', file=sys.stderr)
                     log(
                         f'        Return code meaning: {exit_codes[ret.returncode]}\n', file=sys.stderr)
+
+                    if self.args.debug:
+                        log(ret.stderr)
 
                     # TODO: Review if this is really necessary for Minio
                     if self.cfg.provider == 'Minio':
@@ -6576,27 +6627,11 @@ class Commands:
             AUTHORS
 
               Written by Dirk Petersen and Hpc Now Consulting SL
-
                             
             REPOSITORY:
 
               https://github.com/dirkpetersen/froster
 
-            ----------------------------------------------------------------
- 
-            Copyright (C) 2024 Oregon Health & Science University (OSHU)
-
-            Licensed under the Apache License, Version 2.0 (the "License");
-            you may not use this file except in compliance with the License.
-            You may obtain a copy of the License at
-
-                http://www.apache.org/licenses/LICENSE-2.0
-
-            Unless required by applicable law or agreed to in writing, software
-            distributed under the License is distributed on an "AS IS" BASIS,
-            WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-            See the License for the specific language governing permissions and
-            limitations under the License.
             '''))
 
     def subcmd_config(self, cfg: ConfigManager, aws: AWSBoto):
@@ -6639,7 +6674,7 @@ class Commands:
                 # Aesthetic line
                 log()
 
-                if not inquirer.confirm(message=f'Do you want to configure an S3 profile?', default=False):
+                if not inquirer.confirm(message=f'Do you want to configure an S3 connection profile?', default=False):
                     break
 
                 if not cfg.set_profile():
@@ -6776,7 +6811,8 @@ class Commands:
             return arch.restore(self.args.folders, aws)
 
         except Exception:
-            print_error()
+            #print_error()
+            traceback.print_exc()  # This will print the full stack trace
             return False
 
     def subcmd_delete(self, arch: Archiver, aws: AWSBoto):
@@ -7121,9 +7157,11 @@ class Commands:
                                          description='A user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems')
 
         # ***
+        cpucores = int(os.getenv('SLURM_CPUS_ON_NODE',4))
+        nodemem = int(os.getenv('SLURM_MEM_PER_NODE',16384)) // 1024
 
-        parser.add_argument('-c', '--cores', dest='cores', type=int, default=4,
-                            help='Number of cores to be allocated for the machine. (default=4)')
+        parser.add_argument('-c', '--cores', dest='cores', type=int, default=cpucores,
+                            help=f'Number of cores to be allocated for the machine. (default={cpucores})')
 
         parser.add_argument('-d', '--debug', dest='debug', action='store_true',
                             help="verbose output for all commands")
@@ -7137,8 +7175,8 @@ class Commands:
         parser.add_argument('-l', '--log-print', dest='log_print', action='store_true',
                             help='Print the log file to the screen')
 
-        parser.add_argument('-m', '--mem', dest='memory', type=int, default=64,
-                            help='Amount of memory to be allocated for the machine in GB. (default=64)')
+        parser.add_argument('-m', '--mem', dest='memory', type=int, default=nodemem,
+                            help=f'Amount of memory to be allocated for the machine in GB. (default={nodemem})')
 
         parser.add_argument('-n', '--no-slurm', dest='noslurm', action='store_true',
                             help="do not submit a Slurm job, execute in the foreground. ")
@@ -7350,8 +7388,7 @@ class Commands:
                     - Within 12 hours retrieval
                     - costs of $10 per TiB
                 Expedited:
-                    - 9-12 hours retrieval
-                    - costs of $30 per TiB
+                    - not supported 
                                                          
             S3 GLACIER FLEXIBLE RETRIEVAL or S3 INTELLIGET-TIERING ARCHIVE ACCESS
                 Bulk:
@@ -7367,7 +7404,7 @@ class Commands:
                                                          
                 In addition to the retrieval cost, AWS will charge you about
                 $10/TiB/month for the duration you keep the data in S3.
-                (Costs in Summer 2023)
+                (Costs in Summer 2024)
                 '''))
 
         parser_restore.add_argument('-r', '--recursive', dest='recursive', action='store_true',
@@ -7406,6 +7443,7 @@ class Commands:
                                             description=textwrap.dedent(f'''
                 Test basic functionality of Froster
             '''), formatter_class=argparse.RawTextHelpFormatter)
+
 
         return parser
 
@@ -7483,17 +7521,17 @@ def get_caller_function():
     caller_name = caller_frame.f_code.co_name
     return caller_name
 
-
 def print_error(msg: str = None):
     exc_type, exc_value, exc_tb = sys.exc_info()
 
     if exc_tb is None:
         # Printing error message but no error raised from the code
         function_name = get_caller_function()
-        line = get_caller_line()
+        line_number = get_caller_line()
         file_name = os.path.split(__file__)[1]
         error_code = 1
-
+        line = linecache.getline(__file__, line_number).strip()
+        class_name = get_caller_class()
     else:
         # Get the traceback details
         traceback_details = traceback.extract_tb(exc_tb)
@@ -7505,7 +7543,14 @@ def print_error(msg: str = None):
         file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 
         # Get the line number
-        line = exc_tb.tb_lineno
+        line_number = exc_tb.tb_lineno
+
+        # Get the actual line of code
+        line = linecache.getline(exc_tb.tb_frame.f_code.co_filename, line_number).strip()
+
+        # Get the class name
+        frame = exc_tb.tb_frame
+        class_name = get_class_name(frame)
 
         # Get the error code
         if hasattr(exc_value, 'errno'):
@@ -7515,7 +7560,9 @@ def print_error(msg: str = None):
 
     log('\nError')
     log('  File:', file_name)
+    log('  Class:', class_name)
     log('  Function:', function_name)
+    log('  Line number:', line_number)
     log('  Line:', line)
     log('  Error code:', error_code)
     log('  Exception type:', exc_type)
@@ -7530,11 +7577,25 @@ def print_error(msg: str = None):
 
     log('\nIf you think this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
+def get_class_name(frame):
+    args, _, _, value_dict = inspect.getargvalues(frame)
+    # Check if the method is bound to an instance
+    if len(args) and args[0] == 'self':
+        # Get the class from the instance
+        instance = value_dict.get('self', None)
+        if instance:
+            return instance.__class__.__name__
+    # If not, try to get the class name from the frame's local variables
+    return frame.f_locals.get('__class__', None).__name__
+
+def get_caller_class():
+    frame = inspect.currentframe().f_back.f_back  # Go back two frames
+    return get_class_name(frame)
 
 def log(*args, **kwargs):
 
     try:
-        print(*args, **kwargs)
+        print(*args, **kwargs, flush=True)
 
         global logger
         if logger and os.environ.get('DEBUG') == '1':
