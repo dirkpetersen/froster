@@ -6591,7 +6591,6 @@ class Commands:
     def print_version(self):
         '''Print froster version'''
 
-        #log(f'froster v{pkg_resources.get_distribution("froster").version}')
         log(f'froster v{importlib.metadata.version("froster")}')
         
 
@@ -6607,7 +6606,6 @@ class Commands:
 
         log(f'\nTOOLS')
         log(f'\n  froster')
-        #log(f'    version: v{pkg_resources.get_distribution("froster").version}')
         log(f'    version: {importlib.metadata.version("froster")}')
         log(f'    path: {os.path.join(froster_dir, "froster")}')
 
@@ -7134,7 +7132,6 @@ class Commands:
                 return False
 
             latest = releases[0]['tag_name'].replace('v', '')
-            #current = pkg_resources.get_distribution("froster").version
             current = importlib.metadata.version("froster")
 
             if compare_versions(latest, current) > 0:
