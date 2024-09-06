@@ -322,7 +322,7 @@ install_pwalk() {
     echo -e "\nInstalling third-party dependency: pwalk... "
 
     if ! curl -s --head https://github.com | grep "HTTP/2 200" > /dev/null; then
-        echo "rclone downloads page https://downloads.rclone.org is not reachable. Please check your firewall settings."
+        echo "Pwalk downloads page https://github.com is not reachable. Please check your firewall settings."
         exit 1
     fi
 
