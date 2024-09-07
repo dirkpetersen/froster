@@ -7379,9 +7379,9 @@ class Commands:
                                     help=textwrap.dedent(f'''
             More information at:
                 https://docs.aws.amazon.com/AmazonS3/latest/userguide/restoring-objects-retrieval-options.html
-                https://aws.amazon.com/es/s3/pricing/
+                https://aws.amazon.com/s3/pricing/
 
-            S3 GLACIER DEEP ARCHIVE or S3 INTELLIGET-TIERING DEEP ARCHIVE ACCESS
+            S3 GLACIER DEEP ARCHIVE or S3 INTELLIGENT-TIERING DEEP ARCHIVE ACCESS
                 Bulk:
                     - Within 48 hours retrieval            <-- default
                     - costs of $2.50 per TiB
@@ -7391,7 +7391,7 @@ class Commands:
                 Expedited:
                     - not supported 
                                                          
-            S3 GLACIER FLEXIBLE RETRIEVAL or S3 INTELLIGET-TIERING ARCHIVE ACCESS
+            S3 GLACIER FLEXIBLE RETRIEVAL or S3 INTELLIGENT-TIERING ARCHIVE ACCESS
                 Bulk:
                     - 5-12 hours retrieval
                     - costs of $2.50 per TiB
@@ -7576,7 +7576,8 @@ def print_error(msg: str = None):
         log(f'\nYou can check the permissions of the files and folders using the command:')
         log(f'    froster index --permissions "/your/folder"')
 
-    log('\nIf you think this is a bug, please report this to froster developers at: https://github.com/dirkpetersen/froster/issues \n')
+    log('\nIf you think this is a bug, please use the output of "froster --debug <subcommand>" to report ')
+    log('this to the froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
 def get_class_name(frame):
     args, _, _, value_dict = inspect.getargvalues(frame)
