@@ -289,7 +289,7 @@ install_pipx() {
     else
         echo "...pipx ensurepath failed"
     fi
-        
+
 }
 
 install_froster() {
@@ -302,12 +302,20 @@ install_froster() {
     rm -f ${HOME}/.local/bin/s3-restore.py
     echo "...old froster files removed"
 
-    if [ "$LOCAL_INSTALL" = "true" ]; then
+    if [[ "$LOCAL_INSTALL" = "true" ]]; then
 
         echo "  Installing from the current directory"
+        MIN_PIP="21.3"
+        CUR_PIP=$(python3 -m pip --version | awk '{print $2}')
+        # Compare versions using sort -V
+        if [[ $(echo -e "$CUR_PIP\n$MIN_PIP" | sort -V | head -n 1) != "$MIN_PIP" ]]; then
+            echo -e "\nYour pip version is $CUR_PIP. Please upgrade to at least version $MIN_PIP."
+            echo "Upgrading pip now ..."
+            python3 -m pip install --upgrade pip
+        fi
         echo -e "\nInstalling Froster from the current directory in --editable mode..."
-        python3 -m pip install --force -e . >/dev/null 2>&1 &  #>/dev/null 2>&1
-        spinner "froster"
+        python3 -m pip install --force -e . #>/dev/null 2>&1 &
+        #spinner "froster"
 
     else
 
