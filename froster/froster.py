@@ -26,6 +26,7 @@ import duckdb
 import requests
 import inquirer
 import tqdm 
+
 logger = ""
 
 PROVIDERS_LIST = [
@@ -183,15 +184,15 @@ class ConfigManager:
                 self.data_dir, self.archive_json_file_name)
 
             # AWS directory
-            self.aws_profile_dir = os.path.join(self.home_dir, '.aws')
+            self.credentials_dir = os.path.join(self.home_dir, '.aws')
 
             # AWS config file
             self.aws_config_file = os.path.join(
-                self.aws_profile_dir, 'config')
+                self.credentials_dir, 'config')
 
             # AWS credentials file
             self.aws_credentials_file = os.path.join(
-                self.aws_profile_dir, 'credentials')
+                self.credentials_dir, 'credentials')
 
             # Basic setup, focus the indexer on larger folders and file sizes
             self.max_small_file_size_kib = 1024
@@ -243,47 +244,45 @@ class ConfigManager:
 
             # Check if user wants to use a specific profile for this session
             if use_profile:
-                self.profile = use_profile
+                if not use_profile.startswith('profile '):
+                    self.profile = 'profile ' + use_profile
+                else:
+                    self.profile = use_profile
 
-                if not config.has_section(f'profile {self.profile}'):
+                if not config.has_section(self.profile):
                     log(f'\nError: "{self.profile}" does not exist in the configuration file (remember case sensitive)\n')
                     sys.exit(1)
             else:
                 # Get default profile
                 self.profile = config.get(
                     'DEFAULT_PROFILE', 'profile', fallback=None)
-                if self.profile and self.profile.startswith('profile '):
-                        self.profile = self.profile[8:]
 
             # Get the provider
             self.provider = config.get(
-                f'profile {self.profile}', 'provider', fallback=None)
+                self.profile, 'provider', fallback=None)
 
             # Get the credentials
-            # self.credentials = config.get(
-            #     self.profile, 'credentials', fallback=None)
-
-            # print(self.credentials)
+            self.credentials = config.get(
+                self.profile, 'credentials', fallback=None)
 
             # Current S3 Bucket name
             self.bucket_name = config.get(
-                f'profile {self.profile}', 'bucket_name', fallback=None)
+                self.profile, 'bucket_name', fallback=None)
 
             # Archive directoy inside AWS S3 bucket
             self.archive_dir = config.get(
-                f'profile {self.profile}', 'archive_dir', fallback=None)
+                self.profile, 'archive_dir', fallback=None)
 
             # Store aws s3 storage class in the config object
             self.storage_class = config.get(
-                f'profile {self.profile}', 'storage_class', fallback=None)
+                self.profile, 'storage_class', fallback=None)
 
             # Get the region
-            self.region = self.get_region(credentials_profile=self.profile)
-            #print('Region:', self.region)
+            self.region = self.get_region(credentials_profile=self.credentials)
 
             # Get the S3 endpoint
-            self.endpoint = self.get_endpoint(credentials_profile=self.profile)
-            #print('Endpoint:', self.endpoint)
+            self.endpoint = self.get_endpoint(
+                credentials_profile=self.credentials)
 
             # Slurm configuration
             self.slurm_walltime_days = config.get(
@@ -471,18 +470,18 @@ class ConfigManager:
                 "", reason="Field is required")
         return True
 
-    # def __inquirer_check_profile_name(self, answers, current):
-    #     '''Check input is set'''
+    def __inquirer_check_profile_name(self, answers, current):
+        '''Check input is set'''
 
-    #     if not current:
-    #         raise inquirer.errors.ValidationError(
-    #             "", reason="Field is required")
+        if not current:
+            raise inquirer.errors.ValidationError(
+                "", reason="Field is required")
 
-    #     if not current.startswith('profile ') or not len(current) > 8:
-    #         raise inquirer.errors.ValidationError(
-    #             "", reason="Profile name must start with 'profile <name>'")
+        if not current.startswith('profile ') or not len(current) > 8:
+            raise inquirer.errors.ValidationError(
+                "", reason="Profile name must start with 'profile <name>'")
 
-    #     return True
+        return True
 
     def __inquirer_check_path_exists(self, answers, current):
         '''Check if the path exists'''
@@ -605,7 +604,7 @@ class ConfigManager:
 
             # Write the config object to the config file
             self.__set_configuration_entry(
-                'CLOUD', 'ses_verify_requests_sent', email_list)
+                'CLOULD', 'ses_verify_requests_sent', email_list)
 
         except Exception:
             print_error()
@@ -616,58 +615,62 @@ class ConfigManager:
         try:
             log(f'\n*** SET CREDENTIALS ***\n')
 
-            # Read existing credentials file
+            # Create a ConfigParser object
             config = configparser.ConfigParser()
-            if os.path.exists(self.aws_credentials_file):
-                config.read(self.aws_credentials_file)
-                existing_profiles = config.sections()
-            else:
-                existing_profiles = []
 
-            # Default to the credentials of the same profile if already configured
-            default_profile = self.profile.replace('profile ', '') if self.profile.startswith('profile ') else self.profile
-            #default_profile = default_profile if default_profile in existing_profiles else None
+            # Read the config file
+            config.read(self.aws_credentials_file)
 
-            print('default_profile', default_profile)
+            # Get list of current AWS credentials under ~/.aws/credentials
+            credentials_list = config.sections()
 
-            if existing_profiles:
-                # Add option to create new credentials
-                existing_profiles.insert(0, '+ Create new credentials')
+            # Add an option to create a new profile
+            credentials_list.insert(0, '+ Create new credentials')
 
-                # Ask user to select existing profile or create new
-                selected = inquirer.list_input(
-                    "Select credentials to use or create new",
-                    choices=existing_profiles,
-                    default=default_profile)
+            # Ask user to choose an existing aws credential or create a new one
+            credentials = inquirer.list_input(
+                f'Select credentials for "{self.profile}"',
+                default=self.__get_configuration_entry(
+                    self.profile, 'credentials'),
+                choices=credentials_list)
 
-                if selected != '+ Create new credentials':
-                    # Copy selected credentials to new profile
-                    aws_access_key_id = config.get(selected, 'aws_access_key_id')
-                    aws_secret_access_key = config.get(selected, 'aws_secret_access_key')
-                    self.__set_aws_credentials(profile_name=default_profile,
+            # Check if user wants to create a new aws profile
+            if credentials == '+ Create new credentials':
+
+                # Get new profile name
+                credentials = inquirer.text(
+                    message="Enter new credentials name", validate=self.__inquirer_check_required)
+
+                # If new credentials name already exists, then prompt user if we should overwrite it
+                if credentials in credentials_list:
+                    is_overwrite = inquirer.confirm(
+                        message=f'WARNING: Do you want to overwrite credentials {credentials}?', default=False)
+
+                    if not is_overwrite:
+                        # If user does not want to overwrite the profile, then return
+                        if inquirer.confirm(
+                                message=f'Do you want to configure other credentials?',
+                                default=False):
+                            return self.set_credentials(aws)
+                        else:
+                            return False
+
+                # Get access key id
+                aws_access_key_id = inquirer.text(
+                    message="Access Key ID (user)", validate=self.__inquirer_check_required)
+
+                # Get secret access key
+                aws_secret_access_key = inquirer.text(
+                    message="Secret Access Key (password)", validate=self.__inquirer_check_required)
+
+                # Create new profile in ~/.aws/credentials
+                self.__set_aws_credentials(profile_name=credentials,
                                            aws_access_key_id=aws_access_key_id,
                                            aws_secret_access_key=aws_secret_access_key)
-                    # Update the current object's credentials
-                    self.aws_access_key_id = aws_access_key_id
-                    self.aws_secret_access_key = aws_secret_access_key
-                    print('aws_access_key_id:', self.aws_access_key_id)
-                    return True
 
-            # Get new credentials
-            aws_access_key_id = inquirer.text(
-                message="Access Key ID (user)", validate=self.__inquirer_check_required)
-
-            aws_secret_access_key = inquirer.text(
-                message="Secret Access Key (password)", validate=self.__inquirer_check_required)
-
-            # Create new profile in ~/.aws/credentials using profile name without 'profile ' prefix
-            self.__set_aws_credentials(profile_name=default_profile,
-                                   aws_access_key_id=aws_access_key_id,
-                                   aws_secret_access_key=aws_secret_access_key)
-
-            # Update the current object's credentials
-            self.aws_access_key_id = aws_access_key_id
-            self.aws_secret_access_key = aws_secret_access_key
+            # Store aws profile in the config file
+            self.__set_configuration_entry(
+                self.profile, 'credentials', credentials)
 
             return True
 
@@ -681,7 +684,7 @@ class ConfigManager:
             log(f'\n*** SET REGION ***\n')
 
             # Get list of AWS regions
-            aws_regions = sorted(aws.get_regions(), reverse=True)
+            aws_regions = aws.get_regions()
 
             aws_regions.insert(0, '+ Create new region')
             aws_regions.insert(0, '-- no region --')
@@ -692,7 +695,7 @@ class ConfigManager:
                 default_region = exported_region
             else:
                 default_region = self.get_region(
-                    credentials_profile=self.profile)
+                    credentials_profile=self.credentials)
 
             # Ask user to choose a region
             region = inquirer.list_input(f'Select region for "{self.profile}"',
@@ -708,7 +711,7 @@ class ConfigManager:
 
             # Update region in the config file
             self.__set_aws_config(
-                credentials_profile=self.profile, region=region)
+                credentials_profile=self.credentials, region=region)
 
             # Remove the exported_region from the config object if it exists
             self.__remove_config_option(
@@ -734,28 +737,25 @@ class ConfigManager:
             if os.path.exists(self.aws_config_file):
                 aws_config.read(self.aws_config_file)
 
-            if not credentials_profile.startswith('profile '):
-                credentials_profile = f'profile {credentials_profile}'
-
             # If it does not exist, create a new profile in the aws config file
-            if not aws_config.has_section(credentials_profile):
-                aws_config.add_section(credentials_profile)
+            if not aws_config.has_section(f'profile {credentials_profile}'):
+                aws_config.add_section(f'profile {credentials_profile}')
 
             if region:
                 # Write the profile with the new region
-                aws_config[credentials_profile]['region'] = region
+                aws_config[f'profile {credentials_profile}']['region'] = region
                 self.region = region
 
             if endpoint:
                 # Write the profile with the new endpoint
-                aws_config[credentials_profile]['s3'] = f'\n  endpoint_url = {endpoint}'
+                aws_config[f'profile {credentials_profile}']['s3'] = f'\n  endpoint_url = {endpoint}'
                 self.endpoint = endpoint
 
             # Write the profile with the new output format
-            # aws_config[f'profile {credentials_profile}']['output'] = 'json' ## not required
+            aws_config[f'profile {credentials_profile}']['output'] = 'json'
 
             # Create the credentials directory if it does not exist
-            os.makedirs(self.aws_profile_dir, exist_ok=True, mode=0o775)
+            os.makedirs(self.credentials_dir, exist_ok=True, mode=0o775)
 
             # Write the config object to the ~/.aws/config file
             with open(self.aws_config_file, 'w') as f:
@@ -775,7 +775,7 @@ class ConfigManager:
 
         try:
             if not profile_name:
-                profile_name = 'default'
+                raise ValueError('No AWS profile provided')
 
             if not aws_access_key_id:
                 raise ValueError('No AWS access key id provided')
@@ -790,7 +790,7 @@ class ConfigManager:
             if hasattr(self, 'aws_credentials_file') and os.path.exists(self.aws_credentials_file):
                 aws_credentials.read(self.aws_credentials_file)
 
-            # Update or add the profile
+            # Update the region of the profile
             if not aws_credentials.has_section(profile_name):
                 aws_credentials.add_section(profile_name)
 
@@ -800,25 +800,19 @@ class ConfigManager:
             # Write the profile with the new secret access key
             aws_credentials[profile_name]['aws_secret_access_key'] = aws_secret_access_key
 
-            # Ensure the AWS profile directory exists
-            os.makedirs(self.aws_profile_dir, exist_ok=True, mode=0o775)
-
-            # Write the credentials to the credentials file
+            # Write the credentials in the credentials file
+            os.makedirs(self.credentials_dir, exist_ok=True, mode=0o775)
             with open(self.aws_credentials_file, 'w') as f:
                 aws_credentials.write(f)
 
-            # Ensure the permissions of the credentials file are secure
+            # Asure the permissions of the credentials file
             os.chmod(self.aws_credentials_file, 0o600)
-
-            log(f"AWS credentials for profile '{profile_name}' have been updated.")
 
         except Exception:
             print_error()
 
     def get_aws_config_option(self, credentials_profile, option):
         '''Get the AWS config option for the given profile'''
-
-        #print('get_aws_config_option', credentials_profile, option)
 
         try:
             # If no profile, then return None
@@ -835,8 +829,7 @@ class ConfigManager:
 
                 # Get the correct profile name
                 if credentials_profile != 'default':
-                    if not credentials_profile.startswith('profile '):
-                        credentials_profile = f'profile {credentials_profile}'
+                    credentials_profile = f'profile {credentials_profile}'
 
                 if config.has_section(credentials_profile):
 
@@ -876,6 +869,17 @@ class ConfigManager:
             print_error()
             return None
 
+    def get_exported_region(self, profile):
+        '''Get the exported_region for the given profile'''
+
+        try:
+            return self.__get_configuration_entry(
+                profile, 'exported_region')
+
+        except Exception:
+            print_error()
+            return None
+
     def get_endpoint(self, credentials_profile):
         '''Get the endpoint_url for the given profile'''
 
@@ -885,31 +889,25 @@ class ConfigManager:
             print_error()
             return None
 
-    def get_exported_region(self, profile):
-        '''Get the exported_region for the given profile'''
+    def get_exported_endpoint(self, profile):
+        '''Get the exported_endpoint for the given profile'''
 
         try:
-            return self.__get_configuration_entry(profile, 'exported_region')
+            return self.__get_configuration_entry(
+                profile, 'exported_endpoint')
+
         except Exception:
             print_error()
             return None
 
-    def get_credential(self, profile, key_name):
-        '''Get the key for the given profile'''
+    def get_credential(self, credentials_profile, key_name):
+        '''Get the key the given profile'''
 
         try:
-            # If no profile, then return None  
-            if not profile:
+            # If no profile, then return None
+            if not credentials_profile:
                 return None
 
-            # Remove 'profile ' prefix if present
-            profile_name = profile.replace('profile ', '')
-
-            # First, check if the credential is stored in the object
-            if hasattr(self, key_name):
-                return getattr(self, key_name)
-
-            # If not in the object, check the credentials file
             # Create a ConfigParser object
             config = configparser.ConfigParser()
 
@@ -920,20 +918,10 @@ class ConfigManager:
 
                 # Get the access key from the config file
                 key = config.get(
-                    profile_name, key_name, fallback=None)
-
-                # If found, store it in the object for future use
-                if key:
-                    setattr(self, key_name, key)
-
-                    # Also update the corresponding attribute of the object
-                    if key_name == 'aws_access_key_id':
-                        self.aws_access_key_id = key
-                    elif key_name == 'aws_secret_access_key':
-                        self.aws_secret_access_key = key
+                    credentials_profile, key_name, fallback=None)
 
             else:
-                # AWS credentials file does not exist
+                # AWS credentials file does not exists
                 key = None
 
             return key
@@ -1030,7 +1018,7 @@ class ConfigManager:
 
             # Write the config object to the config file
             self.__set_configuration_entry(
-                'CLOUD', 'ec2_last_instance', instance)
+                'CLOULD', 'ec2_last_instance', instance)
 
         except Exception:
             print_error()
@@ -1082,7 +1070,7 @@ class ConfigManager:
                     default_endpoint = exported_endpoint
                 else:
                     default_endpoint = self.get_endpoint(
-                        credentials_profile=self.profile)
+                        credentials_profile=self.credentials)
 
                 # Get the user answer
                 endpoint = inquirer.text(
@@ -1097,7 +1085,7 @@ class ConfigManager:
 
             # Update endpoint in the config file
             self.__set_aws_config(
-                credentials_profile=self.profile, endpoint=endpoint)
+                credentials_profile=self.credentials, endpoint=endpoint)
 
             # Remove the exported_region from the config object if it exists
             self.__remove_config_option(
@@ -1119,7 +1107,7 @@ class ConfigManager:
 
             # Get the user answer
             is_nih = inquirer.confirm(
-                message=f"Do you want to search and link\n    NIH life sciences grants? (Default: {default_is_nih})",
+                message=f"Do you want to search and link NIH life sciences grants? (Default: {default_is_nih})",
                 default=default_is_nih
             )
 
@@ -1173,6 +1161,7 @@ class ConfigManager:
             return False
 
     def set_profile(self):
+
         try:
             # Create a ConfigParser object
             config = configparser.ConfigParser()
@@ -1185,8 +1174,7 @@ class ConfigManager:
 
             # Filter sections to only include those that start with "profile "
             profiles = [
-                section[8:] for section in all_sections if section.startswith('profile ')
-            ]
+                section for section in all_sections if section.startswith('profile ')]
 
             # Add an option to create a new profile
             profiles.insert(0, '+ Create new profile')
@@ -1199,15 +1187,11 @@ class ConfigManager:
                 choices=profiles)
 
             if default_profile == '+ Create new profile':
-                # Get new profile name 
+                # Get new profile name
                 default_profile = inquirer.text(
-                    message="Enter new profile name (without 'profile ' prefix)",
-                    default="",
-                    validate=self.__inquirer_check_required).strip()
-                
-                # # Add profile prefix
-                # if not default_profile.startswith('profile '):
-                #     default_profile = f"profile {default_profile}"
+                    message="Enter new profile name",
+                    default="profile ",
+                    validate=self.__inquirer_check_profile_name).strip()
 
                 # If new profile name already exists, then prompt user if we should overwrite it
                 if default_profile in profiles:
@@ -1221,9 +1205,6 @@ class ConfigManager:
                         else:
                             return False
 
-            # Store the profile name without 'profile ' prefix for credentials
-            self.profile = default_profile.replace('profile ', '')
-            
             self.__set_configuration_entry(
                 'DEFAULT_PROFILE', 'profile', default_profile)
 
@@ -1248,7 +1229,7 @@ class ConfigManager:
                     self.profile, 'provider'),
                 choices=list_of_providers)
 
-            self.__set_configuration_entry(f'profile {self.profile}', 'provider', provider)
+            self.__set_configuration_entry(self.profile, 'provider', provider)
 
             return True
 
@@ -1299,7 +1280,7 @@ class ConfigManager:
 
                 # Store new aws s3 bucket in the config object
                 self.__set_configuration_entry(
-                    f'profile {self.profile}', 'bucket_name', new_bucket_name)
+                    self.profile, 'bucket_name', new_bucket_name)
 
             elif s3_bucket == '+ Enter bucket name':
                 # Get bucket name
@@ -1311,11 +1292,11 @@ class ConfigManager:
 
                 # Store the s3 bucket in the config object
                 self.__set_configuration_entry(
-                    f'profile {self.profile}', 'bucket_name', bucket_name)
+                    self.profile, 'bucket_name', bucket_name)
             else:
                 # Store aws s3 bucket in the config object
                 self.__set_configuration_entry(
-                    f'profile {self.profile}', 'bucket_name', s3_bucket)
+                    self.profile, 'bucket_name', s3_bucket)
 
             # Get user answer
             archive_dir = inquirer.text(
@@ -1329,7 +1310,7 @@ class ConfigManager:
 
             # Store aws s3 archive dir in the config object
             self.__set_configuration_entry(
-                f'profile {self.profile}', 'archive_dir', archive_dir)
+                self.profile, 'archive_dir', archive_dir)
 
             default_storage_class = self.__get_configuration_entry(
                 self.profile, 'storage_class', fallback='DEEP_ARCHIVE')
@@ -1380,7 +1361,7 @@ class ConfigManager:
 
             # Store aws s3 storage class in the config object
             self.__set_configuration_entry(
-                f'profile {self.profile}', 'storage_class', storage_class)
+                self.profile, 'storage_class', storage_class)
 
             return True
 
@@ -1395,7 +1376,7 @@ class ConfigManager:
             log(f'\n*** SET SHARED ***\n')
 
             is_shared = inquirer.confirm(
-                message=f"Do you want to share your hotspots\n    and archived database? (Default:{self.is_shared})",
+                message=f"Do you want to share your hotspots and archived database? (Default:{self.is_shared})",
                 default=self.is_shared)
 
             # Set the shared flag in the config file
@@ -1638,14 +1619,9 @@ class AWSBoto:
 
             self.is_session_set = False
 
-            session=self.set_session(credentials_profile=cfg.profile,
+            self.set_session(credentials_profile=cfg.credentials,
                              region=cfg.region,
-                             endpoint_url=cfg.endpoint)
-            
-            if not cfg.region and session: 
-                cfg.region = session.region_name
-            if not cfg.endpoint and session: 
-                cfg.endpoint = self.s3_client.meta.endpoint_url
+                             endopoint_url=cfg.endpoint)
 
         except Exception:
             print_error()
@@ -1686,15 +1662,12 @@ class AWSBoto:
                 log(f'\nChecking credentials...\n')
                 log(f'  Profile: {self.cfg.profile}')
                 log(f'  Provider: {self.cfg.provider}')
-                log(f'  Region: {self.cfg.region}')
+                log(f'  Credentials: {self.cfg.credentials}')
                 log(f'  Endpoint: {self.cfg.endpoint}\n')
 
-            #log('Is session set')
-
             if self.is_session_set:
-                # Command that needs credentials to be successful
+                # Command that needs credentials to be successfull
                 self.s3_client.list_buckets()
-                #log('list bucket')
 
                 if prints:
                     log('...credentials are valid\n')
@@ -1714,28 +1687,25 @@ class AWSBoto:
 
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get('Error', {}).get('Code')
-            error_msg = e.response.get('Error', {}).get('Message', '')
 
             if error_code == 'RequestTimeTooSkewed':
-                log(f"Error: The time difference between S3 storage and your computer is too high")
+                log(
+                    f"Error: The time difference between S3 storage and your computer is too high:\n{e}")
             elif error_code == 'InvalidAccessKeyId':
-                log(f"Error: Invalid Access Key ID")
+                log(f"Error: Invalid Access Key ID\n{e}")
+
             elif error_code == 'SignatureDoesNotMatch':
-                if "Signature expired" in error_msg:
-                    log(f"Error: Signature expired. The system time of your computer is likely wrong")
+                if "Signature expired" in str(e):
+                    log(
+                        f"Error: Signature expired. The system time of your computer is likely wrong:\n{e}")
                 else:
-                    log(f"Error: Invalid Secret Access Key")
+                    log(f"Error: Invalid Secret Access Key:\n{e}")
             elif error_code == 'InvalidClientTokenId':
-                log(f"Error: Invalid Access Key ID or Secret Access Key")
+                log(f"Error: Invalid Access Key ID or Secret Access Key !")
             elif error_code == 'ExpiredToken':
                 log(f"Error: Your session token has expired")
-            elif error_code == 'AccessDenied':
-                log(f"\033[93mError: Access denied - your credentials are valid but you don't have permission to list buckets\033[0m")
-                if prints:
-                    log(f"Note: This is OK if you only need access to specific buckets")
-                    return True
             else:
-                log(f"Error: {error_msg}")
+                print_error()
             return False
 
         except Exception as e:
@@ -1775,19 +1745,8 @@ class AWSBoto:
 
             return True
 
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response['Error']['Code']
-            error_message = e.response['Error']['Message']
-            if error_code == 'AccessDenied':
-                log(f"\nError: Access denied when trying to create bucket '{bucket_name}'.")
-                log(f"Reason: {error_message}")
-                log("\nPlease check your IAM permissions and ensure you have the necessary rights to create S3 buckets.")
-            else:
-                log(f"\nError creating bucket '{bucket_name}': {error_code}")
-                log(f"Reason: {error_message}")
-            return False
-        except Exception as e:
-            log(f"\nUnexpected error creating bucket '{bucket_name}': {str(e)}")
+        except Exception:
+            print_error()
             return False
 
     def empty_bucket(self, bucket_name):
@@ -1872,20 +1831,16 @@ class AWSBoto:
             bucket_list = [bucket['Name']
                            for bucket in existing_buckets['Buckets']]
 
-            # Return the list of buckets
+            # Filter the bucket names and retrieve only froster-* buckets
+            # froster_bucket_list = [
+            #     x for x in bucket_list if x.startswith('froster-')]
+
+            # Return the list of froster buckets
             return bucket_list
 
-        except botocore.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == 'AccessDenied':
-                log("Warning: Unable to list all buckets due to access restrictions.")
-                log("You may need to specify the bucket name explicitly.")
-                return []
-            else:
-                print_error()
-                return []
         except Exception:
             print_error()
-            return []
+            sys.exit(1)
 
     def __get_aws_regions(self):
         '''Get the regions for the current session or get default regions.'''
@@ -1939,55 +1894,78 @@ class AWSBoto:
             print_error()
             return []
 
-    def set_session(self, credentials_profile, region, endpoint_url):
+    def set_session(self, credentials_profile, region, endopoint_url):
         ''' Set the AWS profile for the current session'''
 
-        if not credentials_profile or not region or not endpoint_url:
-            return
+        try:
+            if not credentials_profile or not region or not endopoint_url:
+                return
 
-        # Initialize a Boto3 session using the configured profile
-        #print('credentials_profile in set_session', credentials_profile)
-        session = boto3.session.Session(profile_name=credentials_profile)
+            # Get the AWS credentials
+            aws_access_key_id = self.cfg.get_credential(
+                credentials_profile=credentials_profile, key_name='aws_access_key_id')
+            aws_secret_access_key = self.cfg.get_credential(
+                credentials_profile=credentials_profile, key_name='aws_secret_access_key')
 
-        # Initialize the AWS clients
-        self.ce_client = session.client(
-            service_name='ce',
-            endpoint_url=endpoint_url,
-            region_name=region
-        )
+            if not aws_access_key_id or not aws_secret_access_key:
+                return
 
-        self.ec2_client = session.client(
-            service_name='ec2',
-            endpoint_url=endpoint_url,
-            region_name=region
-        )
+            # Initialize a Boto3 session using the configured profile
+            session = boto3.session.Session()
 
-        self.iam_client = session.client(
-            service_name='iam',
-            endpoint_url=endpoint_url,
-            region_name=region
-        )
+            # Initialize the AWS clients
+            self.ce_client = session.client(
+                service_name='ce',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                endpoint_url=endopoint_url,
+                region_name=region
+            )
 
-        self.ses_client = session.client(
-            service_name='ses',
-            endpoint_url=endpoint_url,
-            region_name=region
-        )
+            self.ec2_client = session.client(
+                service_name='ec2',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                endpoint_url=endopoint_url,
+                region_name=region
+            )
 
-        self.sts_client = session.client(
-            service_name='sts',
-            endpoint_url=endpoint_url,
-            region_name=region
-        )
+            self.iam_client = session.client(
+                service_name='iam',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                endpoint_url=endopoint_url,
+                region_name=region
+            )
 
-        self.s3_client = session.client(
-            service_name='s3',
-            endpoint_url=endpoint_url,
-            region_name=region
-        )
+            self.ses_client = session.client(
+                service_name='ses',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                endpoint_url=endopoint_url,
+                region_name=region
+            )
 
-        self.is_session_set = True
-        return session
+            self.sts_client = session.client(
+                service_name='sts',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                endpoint_url=endopoint_url,
+                region_name=region
+            )
+
+            self.s3_client = session.client(
+                service_name='s3',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                endpoint_url=endopoint_url,
+                region_name=region
+            )
+
+            self.is_session_set = True
+
+        except Exception as e:
+            print_error()
 
     def close_session(self):
         if hasattr(self, 'ce_client'):
@@ -3922,14 +3900,9 @@ class Archiver:
         '''Archive the given folder'''
 
         try:
-            if not self.cfg.bucket_name:
-                log(f'\nError: No bucket name specified. Please configure a bucket using the command:')
-                log(f'    froster config\n')
-                return False
-
             s3_dest = os.path.join(
                 f':s3:{self.cfg.bucket_name}',
-                self.cfg.archive_dir or '',
+                self.cfg.archive_dir,
                 folder_to_archive.lstrip(os.path.sep))
 
             hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
@@ -4078,7 +4051,7 @@ class Archiver:
                 new_entry = {'local_folder': folder_to_archive,
                              'archive_folder': s3_dest,
                              's3_storage_class': self.cfg.storage_class,
-                             'profile': self.cfg.profile,
+                             'profile': self.cfg.credentials,
                              'provider': self.cfg.provider,
                              'endpoint': self.cfg.endpoint,
                              'archive_mode': archive_mode,
@@ -5177,18 +5150,21 @@ class Archiver:
     def _archive_json_add_entry(self, key, value):
         '''Add a new entry to the archive JSON file'''
         try:
-            # Initialize the data to empty dictionary
+
+            # Initialize the data to empty dictionary in case archive_json does not exist
             data = {}
 
-            # Read the archive JSON file if it exists and is not empty
-            if os.path.isfile(self.archive_json) and os.path.getsize(self.archive_json) > 0:
+            # Read the archive JSON file
+            if os.path.isfile(self.archive_json):
                 with open(self.archive_json, 'r') as file:
                     try:
                         data = json.load(file)
-                    except json.JSONDecodeError:
-                        log('Error in Archiver._archive_json_add_entry():')
-                        log(f'Cannot read {self.archive_json}, file corrupt?')
-                        log('Initializing with an empty dictionary.')
+                    except Exception:
+                        log(
+                            'Error in Archiver._archive_json_add_entry():')
+                        log(
+                            f'Cannot read {self.archive_json}, file corrupt?')
+                        return
 
             # Add the new entry to the data dictionary
             data[key] = value
@@ -5745,14 +5721,20 @@ class Rclone:
             self.envrn['RCLONE_S3_LOCATION_CONSTRAINT'] = cfg.region
             self.envrn['RCLONE_S3_STORAGE_CLASS'] = cfg.storage_class
 
-            # Use the AWS_PROFILE environment variable to specify the profile
-            self.envrn['AWS_PROFILE'] = cfg.profile
+            # Get the AWS credentials
+            aws_access_key_id = self.cfg.get_credential(
+                credentials_profile=cfg.credentials, key_name='aws_access_key_id')
+            aws_secret_access_key = self.cfg.get_credential(
+                credentials_profile=cfg.credentials, key_name='aws_secret_access_key')
 
-            if not cfg.profile:
-                log('\nError: No profile specified for Rclone to use.')
-                log('Please configure a profile by using command:')
+            if not aws_access_key_id or not aws_secret_access_key:
+                log('\nError: No credentials found for Rclone to use.')
+                log('Please configure the credentials by using command:')
                 log('    froster config\n')
                 sys.exit(1)
+            else:
+                self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
+                self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
 
         except Exception:
             print_error()
@@ -6451,6 +6433,7 @@ class NIHReporter:
     def search_one(self, criteria, header=False):
         '''Search NIH Reporter for metadata using a criteria'''
         try:
+            searchstr = self._clean_string(searchstr)
             self._post_request(criteria)
             return self._result_sets(header)
 
@@ -6692,9 +6675,7 @@ class Commands:
                 # Aesthetic line
                 log()
 
-                # Default to True if DEFAULT_PROFILE exists in config
-                has_default_profile = cfg._ConfigManager__get_configuration_entry('DEFAULT_PROFILE', 'profile') is not None
-                if not inquirer.confirm(message=f'Do you want to configure S3 connection profiles?', default=has_default_profile):
+                if not inquirer.confirm(message=f'Do you want to configure an S3 connection profile?', default=False):
                     break
 
                 if not cfg.set_profile():
@@ -6713,9 +6694,9 @@ class Commands:
                     return False
 
                 # Once credentials are set we need to set up the session in the AWS object
-                aws.set_session(credentials_profile=cfg.profile,
+                aws.set_session(credentials_profile=cfg.credentials,
                                 region=cfg.region,
-                                endpoint_url=cfg.endpoint)
+                                endopoint_url=cfg.endpoint)
 
                 # Check credentials are valid
                 if not aws.check_credentials(prints=True):
@@ -7729,13 +7710,12 @@ def main():
 
             # Check credentials
             if not aws.check_credentials():
-                print('Creds Error')
                 # Print message only if profile is set
                 if cfg.profile:
                     log(f'\nError: Invalid credentials.')
                     log(f'  Profile: {cfg.profile}')
                     log(f'  Provider: {cfg.provider}')
-                    #log(f'  Credentials: {cfg.credentials}')
+                    log(f'  Credentials: {cfg.credentials}')
                     log(f'  Endpoint: {cfg.endpoint}\n')
 
                 log(f'\nYou can configure the credentials using the command:')
