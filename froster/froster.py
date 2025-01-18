@@ -5723,9 +5723,9 @@ class Rclone:
 
             # Get the AWS credentials
             aws_access_key_id = self.cfg.get_credential(
-                credentials_profile=cfg.credentials, key_name='aws_access_key_id')
+                aws_profile=cfg.credentials, key_name='aws_access_key_id')
             aws_secret_access_key = self.cfg.get_credential(
-                credentials_profile=cfg.credentials, key_name='aws_secret_access_key')
+                aws_profile=cfg.credentials, key_name='aws_secret_access_key')
 
             if not aws_access_key_id or not aws_secret_access_key:
                 log('\nError: No credentials found for Rclone to use.')
