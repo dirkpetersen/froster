@@ -278,11 +278,11 @@ class ConfigManager:
                 self.froster_profile, 'storage_class', fallback=None)
 
             # Get the region
-            self.region = self.get_region(aws_profile=self.aws_profile)
+            self.region = self.get_region(credentials_profile=self.aws_profile)
 
             # Get the S3 endpoint
             self.endpoint = self.get_endpoint(
-                aws_profile=self.aws_profile)
+                credentials_profile=self.aws_profile)
 
             # Slurm configuration
             self.slurm_walltime_days = config.get(
@@ -1619,7 +1619,7 @@ class AWSBoto:
 
             self.is_session_set = False
 
-            self.set_session(credentials_profile=cfg.credentials,
+            self.set_session(credentials_profile=cfg.aws_profile,
                              region=cfg.region,
                              endopoint_url=cfg.endpoint)
 
@@ -1903,9 +1903,9 @@ class AWSBoto:
 
             # Get the AWS credentials
             aws_access_key_id = self.cfg.get_credential(
-                credentials_profile=credentials_profile, key_name='aws_access_key_id')
+                aws_profile=credentials_profile, key_name='aws_access_key_id')
             aws_secret_access_key = self.cfg.get_credential(
-                credentials_profile=credentials_profile, key_name='aws_secret_access_key')
+                aws_profile=credentials_profile, key_name='aws_secret_access_key')
 
             if not aws_access_key_id or not aws_secret_access_key:
                 return
