@@ -253,29 +253,29 @@ class ConfigManager:
                     log(f'\nError: "{self.profile}" does not exist in the configuration file (remember case sensitive)\n')
                     sys.exit(1)
             else:
-                # Get default profile
-                self.profile = config.get(
+                # Get default Froster profile
+                self.froster_profile = config.get(
                     'DEFAULT_PROFILE', 'profile', fallback=None)
 
             # Get the provider
             self.provider = config.get(
-                self.profile, 'provider', fallback=None)
+                self.froster_profile, 'provider', fallback=None)
 
-            # Get the credentials
-            self.credentials = config.get(
-                self.profile, 'credentials', fallback=None)
+            # Get the AWS credentials profile
+            self.aws_profile = config.get(
+                self.froster_profile, 'credentials', fallback=None)
 
             # Current S3 Bucket name
             self.bucket_name = config.get(
-                self.profile, 'bucket_name', fallback=None)
+                self.froster_profile, 'bucket_name', fallback=None)
 
             # Archive directoy inside AWS S3 bucket
             self.archive_dir = config.get(
-                self.profile, 'archive_dir', fallback=None)
+                self.froster_profile, 'archive_dir', fallback=None)
 
             # Store aws s3 storage class in the config object
             self.storage_class = config.get(
-                self.profile, 'storage_class', fallback=None)
+                self.froster_profile, 'storage_class', fallback=None)
 
             # Get the region
             self.region = self.get_region(aws_profile=self.aws_profile)
