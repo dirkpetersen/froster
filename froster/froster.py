@@ -918,7 +918,7 @@ class ConfigManager:
 
                 # Get the access key from the config file
                 key = config.get(
-                    credentials_profile, key_name, fallback=None)
+                    aws_profile, key_name, fallback=None)
 
             else:
                 # AWS credentials file does not exists
@@ -6433,7 +6433,6 @@ class NIHReporter:
     def search_one(self, criteria, header=False):
         '''Search NIH Reporter for metadata using a criteria'''
         try:
-            searchstr = self._clean_string(searchstr)
             self._post_request(criteria)
             return self._result_sets(header)
 
