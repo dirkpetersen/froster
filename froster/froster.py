@@ -278,11 +278,11 @@ class ConfigManager:
                 self.profile, 'storage_class', fallback=None)
 
             # Get the region
-            self.region = self.get_region(credentials_profile=self.credentials)
+            self.region = self.get_region(aws_profile=self.aws_profile)
 
             # Get the S3 endpoint
             self.endpoint = self.get_endpoint(
-                credentials_profile=self.credentials)
+                aws_profile=self.aws_profile)
 
             # Slurm configuration
             self.slurm_walltime_days = config.get(
@@ -900,12 +900,12 @@ class ConfigManager:
             print_error()
             return None
 
-    def get_credential(self, credentials_profile, key_name):
-        '''Get the key the given profile'''
+    def get_credential(self, aws_profile, key_name):
+        '''Get the key for the given AWS credentials profile'''
 
         try:
-            # If no profile, then return None
-            if not credentials_profile:
+            # If no AWS profile, then return None
+            if not aws_profile:
                 return None
 
             # Create a ConfigParser object
