@@ -279,7 +279,7 @@ install_pipx() {
 
     echo -e "\nInstalling pipx..."
 
-    python3 -m pip install pipx >/dev/null 2>&1
+    python3 -m pip install --user pipx >/dev/null 2>&1 || python3 -m pip install --user --break-system-packages pipx >/dev/null 2>&1
 
     # ensure path for pipx 
     pipx_version=$(python3 -m pipx --version 2> /dev/null)
