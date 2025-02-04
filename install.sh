@@ -3,6 +3,30 @@
 # Make sure script ends as soon as an error arises
 set -e
 
+# Parse command line arguments
+VERBOSE=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --verbose)
+            VERBOSE=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Function to conditionally redirect output
+redirect_output() {
+    if [ "$VERBOSE" = true ]; then
+        cat
+    else
+        cat >/dev/null 2>&1
+    fi
+}
+
 #################
 ### VARIABLES ###
 #################
@@ -279,12 +303,12 @@ install_pipx() {
 
     echo -e "\nInstalling pipx..."
 
-    python3 -m pip install --user pipx >/dev/null 2>&1 || python3 -m pip install --user --break-system-packages pipx >/dev/null 2>&1
+    python3 -m pip install --user pipx 2>&1 | redirect_output || python3 -m pip install --user --break-system-packages pipx 2>&1 | redirect_output
 
     # ensure path for pipx 
     pipx_version=$(python3 -m pipx --version 2> /dev/null)
     if [[ $pipx_version =~ $version_regex ]]; then
-        python3 -m pipx ensurepath >/dev/null 2>&1
+        python3 -m pipx ensurepath 2>&1 | redirect_output
         echo "...pipx installed"
     else
         echo "...pipx ensurepath failed"
@@ -312,7 +336,7 @@ install_froster() {
     else
 
         echo "  Installing from PyPi package repository"
-        python3 -m pipx install froster >/dev/null 2>&1 &
+        python3 -m pipx install froster 2>&1 | redirect_output &
 
         if pipx list | grep froster >/dev/null 2>&1; then
             echo -e "\nUninstalling old Froster..."
@@ -363,16 +387,16 @@ install_pwalk() {
     pwalk_path=filesystem-reporting-tools-${pwalk_commit}
 
     # Delete previous downloaded pwalk files (if any)
-    rm -rf ${pwalk_path} >/dev/null 2>&1
+    rm -rf ${pwalk_path} 2>&1 | redirect_output
 
     # Gather pwalk repository files
     echo "    Downloading pwalk files"
-    curl -s -L ${pwalk_repository} | tar xzf - >/dev/null 2>&1 &
+    curl -s -L ${pwalk_repository} | tar xzf - 2>&1 | redirect_output &
     spinner $!
 
     # Compile pwalk tool and put exec file in froster's binaries folder
     echo "    Compiling pwalk"
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk >/dev/null 2>&1 &
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk 2>&1 | redirect_output &
     spinner $!
 
     # Get the froster's binaries folder
@@ -380,7 +404,7 @@ install_pwalk() {
     echo "    Moving pwalk to froster's binaries folder"
     
     # Move pwalk to froster's binaries folder
-    mv ${pwalk_path}/pwalk ${froster_dir}/pwalk >/dev/null 2>&1
+    mv ${pwalk_path}/pwalk ${froster_dir}/pwalk 2>&1 | redirect_output
     echo "    Installed pwalk at ${froster_dir}/pwalk"
 
     # Delete downloaded pwalk files
@@ -423,16 +447,16 @@ install_rclone() {
     fi
 
     # Remove previous downloaded zip file (if any)
-    rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
+    rm -rf rclone-current-linux-*.zip rclone-v*/ 2>&1 | redirect_output
 
     # Download the rclone zip file
     echo "    Downloading rclone files"
-    curl -LO $rclone_url >/dev/null 2>&1 &
+    curl -LO $rclone_url 2>&1 | redirect_output &
     spinner $!
 
     # Extract the zip file
     echo "    Extracting rclone files"
-    unzip rclone-current-linux-*.zip >/dev/null 2>&1 &
+    unzip rclone-current-linux-*.zip 2>&1 | redirect_output &
     spinner $!
 
     # Get the froster's binaries folder
@@ -440,7 +464,7 @@ install_rclone() {
     echo "    Moving rclone to froster's binaries folder"
 
     # Move rclone to froster's binaries folder
-    mv rclone-v*/rclone ${froster_dir}/rclone >/dev/null 2>&1
+    mv rclone-v*/rclone ${froster_dir}/rclone 2>&1 | redirect_output
     echo "    Installed rclone at ${froster_dir}/rclone"
 
     # Remove the downloaded zip file
