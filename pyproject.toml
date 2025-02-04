@@ -5,22 +5,22 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "froster"
 version = "0.20.0"
-description = "Froster is a tool for easy data transfer between local file systems and AWS S3 storage."
+description = "Froster is a tool for easy archive and restore between local file systems and AWS S3 storage."
 authors = ["Dirk Petersen <no@mail.com>", "Victor Machado <victor.machado@hpcnow.com>"]
 readme = "README.md"
 license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-boto3 = "^1.35.14"
-duckdb = "^1.0.0"
-inquirer = "^3.2.4"
-psutil = "^5.9.8"
+boto3 = "^1.36.12"
+duckdb = "^1.1.0"
+inquirer = "^3.4.0"
+psutil = "^6.1.1"
 requests = "^2.32.3"
-textual = "^0.79.1"
-visidata = "^3.0.2"
-setuptools = "^70.0.0"
-tqdm = "^4.66.5"
+textual = "^1.0.0"
+visidata = "^3.1.1"
+setuptools = "^75.8.0"
+tqdm = "^4.67.1"
 
 [tool.poetry.scripts]
 froster = "froster.froster:main"
