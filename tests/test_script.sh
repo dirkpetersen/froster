@@ -74,8 +74,8 @@ generate_test_data() {
     echo "$base_dir"
 }
 
-# Execute the function and capture the returned folder path
-created_folder=$(generate_test_data)
+# Execute the external script and capture the returned folder path
+created_folder=$("$script_dir/test_data.sh")
 
 echo "Test data folder: $created_folder"
 
