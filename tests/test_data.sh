@@ -65,7 +65,9 @@ generate_test_data() {
 
     # Create directory symlinks
     ln -s "${subdir1_name}_subdir" "$base_dir/link_to_subdir1"
+    touch -h -d '100 days ago' "$base_dir/link_to_subdir1"
     ln -s ".." "$base_dir/link_to_parent"
+    touch -h -d '100 days ago' "$base_dir/link_to_parent"
 
     # Create file symlinks to existing files in the base directory
     # Find some target files first (handle potential errors if no files match)
@@ -76,12 +78,15 @@ generate_test_data() {
     # Create links only if target files were found
     if [ -n "$target_medium" ]; then
         ln -s "$(basename "$target_medium")" "$base_dir/link_to_medium_file"
+        touch -h -d '100 days ago' "$base_dir/link_to_medium_file"
     fi
     if [ -n "$target_small" ]; then
         ln -s "$(basename "$target_small")" "$base_dir/link_to_small_file"
+        touch -h -d '100 days ago' "$base_dir/link_to_small_file"
     fi
     if [ -n "$target_script" ]; then
         ln -s "$(basename "$target_script")" "$base_dir/link_to_script_file"
+        touch -h -d '100 days ago' "$base_dir/link_to_script_file"
     fi
 
     # Create a sparse large file and other files only in the first subdirectory
