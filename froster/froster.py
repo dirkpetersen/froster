@@ -5855,10 +5855,11 @@ class Rclone:
     def checksum(self, md5file, dst, *args):
         '''Check the checksum of a file using Rclone'''
         try:
-            command = [self.rc, 'checksum'] + list(args)
-            command.append('md5')
+            command = [self.rc, 'checksum']
+            command.append('md5')          # <-- Move hash type here
             command.append(md5file)
             command.append(dst)
+            command.extend(list(args))     # <-- Add flags at the end
 
             return self._run_rclone_command(command)
 
