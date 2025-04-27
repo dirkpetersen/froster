@@ -57,7 +57,9 @@ create_files_in_dir() {
 generate_test_data() {
     local base_dir_name="froster_test_data_$(random_string)"
     # Ensure mktemp uses a safe pattern and directory
-    local base_dir=$(mktemp -d -t "$base_dir_name.XXXXXX")
+    local random_suffix=$(random_string 3) # Generate a 3-char random string
+    local base_dir="./froster.data.${random_suffix}" # Define the directory name in the current dir
+    mkdir "$base_dir" # Create the directory
 
     # Create main directory files
     create_files_in_dir "$base_dir" "main"
