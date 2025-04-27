@@ -427,6 +427,9 @@ class ConfigManager:
                     if (dir_current_mode & 0o7777) != desired_mode:
                         os.chmod(dir_path, desired_mode)
 
+                if self.is_shared:
+                    continue 
+                
                 for file in files:
                     path = os.path.join(root, file)
                     file_current_mode = os.stat(path).st_mode
@@ -3623,7 +3626,7 @@ class Archiver:
                             iconv = 'iconv'
                             if os.path.exists('/usr/bin/iconv'):
                                 iconv = '/usr/bin/iconv'
-                            mycmd = f'{iconv} -f ISO-8859-1 -t UTF-8 {pwalk_output.name} -o {copy_file_path}'
+                            mycmd = f'{iconv} -f ISO-8859-1 -t UTF-8 {pwalk_output.name} > {copy_file_path}'
 
                             # Run the copy command
                             result = subprocess.run(mycmd, shell=True)
@@ -3650,7 +3653,7 @@ class Archiver:
                         # pwalk does already output UTF-8, weird, probably duckdb error
 
                         # Build the file conversion command
-                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} -o {pwalk_output_folders_converted.name}'
+                        mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} > {pwalk_output_folders_converted.name}'
 
                         # Run the file conversion command
                         result = subprocess.run(mycmd, shell=True)
