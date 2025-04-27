@@ -63,6 +63,27 @@ generate_test_data() {
     # Create sparse files and an executable script in the main directory
     create_files_in_dir "$base_dir" "main"
 
+    # Create directory symlinks
+    ln -s "${subdir1_name}_subdir" "$base_dir/link_to_subdir1"
+    ln -s ".." "$base_dir/link_to_parent"
+
+    # Create file symlinks to existing files in the base directory
+    # Find some target files first (handle potential errors if no files match)
+    target_medium=$(ls -1 "$base_dir"/main_*_medium_*.out 2>/dev/null | head -n 1)
+    target_small=$(ls -1 "$base_dir"/main_*_small_*.out 2>/dev/null | head -n 1)
+    target_script=$(ls -1 "$base_dir"/main_*_script.sh 2>/dev/null | head -n 1)
+
+    # Create links only if target files were found
+    if [ -n "$target_medium" ]; then
+        ln -s "$(basename "$target_medium")" "$base_dir/link_to_medium_file"
+    fi
+    if [ -n "$target_small" ]; then
+        ln -s "$(basename "$target_small")" "$base_dir/link_to_small_file"
+    fi
+    if [ -n "$target_script" ]; then
+        ln -s "$(basename "$target_script")" "$base_dir/link_to_script_file"
+    fi
+
     # Create a sparse large file and other files only in the first subdirectory
     create_sparse_file "$subdir1/large_$(random_string).out" "1G"
     create_files_in_dir "$subdir1" "${subdir1_name}"
