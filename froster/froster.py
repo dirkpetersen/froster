@@ -407,33 +407,42 @@ class ConfigManager:
                 raise ValueError(
                     f'{inspect.currentframe().f_code.co_name}: tried to fix permissions of a non-directory "{directory}"')
 
-            # Get the group ID of the directory
+            # Get current permissions and group
             dir_stat = os.stat(directory)
+            current_mode = dir_stat.st_mode
             dir_gid = dir_stat.st_gid
-
-            # Change the permissions of the directory to 0o2775
-            os.chmod(directory, 0o2775)
+            
+            # Calculate desired mode (preserve existing bits except setgid + rwx for group)
+            desired_mode = 0o2775  # drwxrwsr-x
+            
+            # Only modify if needed
+            if (current_mode & 0o7777) != desired_mode:
+                os.chmod(directory, desired_mode)
 
             # Iterate over all files and directories in the directory and its subdirectories
             for root, dirs, files in os.walk(directory, topdown=True):
                 for dir in dirs:
                     dir_path = os.path.join(root, dir)
-                    # Change the permissions of the subdirectory to 0o2775
-                    os.chmod(dir_path, 0o2775)
+                    dir_current_mode = os.stat(dir_path).st_mode
+                    if (dir_current_mode & 0o7777) != desired_mode:
+                        os.chmod(dir_path, desired_mode)
 
                 for file in files:
                     path = os.path.join(root, file)
+                    file_current_mode = os.stat(path).st_mode
 
                     # Get the file extension
                     _, extension = os.path.splitext(path)
 
                     # If the file is a .pem file
                     if extension == '.pem':
-                        # Change the permissions to 400
-                        os.chmod(path, 0o400)
+                        # Only change permissions if needed
+                        if (file_current_mode & 0o777) != 0o400:
+                            os.chmod(path, 0o400)
                     else:
-                        # Change the permissions to 664
-                        os.chmod(path, 0o664)
+                        # Only change permissions if needed
+                        if (file_current_mode & 0o777) != 0o664:
+                            os.chmod(path, 0o664)
 
                     # Change the group ID to the same as the directory
                     os.chown(path, -1, dir_gid)
