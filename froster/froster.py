@@ -6442,7 +6442,6 @@ class NIHReporter:
     def search_one(self, criteria, header=False):
         '''Search NIH Reporter for metadata using a criteria'''
         try:
-            searchstr = self._clean_string(searchstr)
             self._post_request(criteria)
             return self._result_sets(header)
 
