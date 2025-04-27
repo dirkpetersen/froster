@@ -79,9 +79,9 @@ created_folder=$("$script_dir/test_data.sh")
 
 echo "Test data folder: $created_folder"
 
-script_dir=~/.local/bin
+froster_install_dir=~/.local/bin
 
-if ! [[ -f $script_dir/froster ]]; then
+if ! [[ -f $froster_install_dir/froster ]]; then
   curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
 fi
 
@@ -104,21 +104,21 @@ rclone --log-level error mkdir ":s3:$testbucket"
 echo "Running in ${script_dir} ..."
 
 echo -e "\n*** froster config --index"
-${script_dir}/froster --no-slurm config --index
+${froster_install_dir}/froster --no-slurm config --index
 echo -e "\n*** froster index $created_folder:"
-${script_dir}/froster --no-slurm index "$created_folder"
+${froster_install_dir}/froster --no-slurm index "$created_folder"
 echo "*** froster archive $created_folder:"
-${script_dir}/froster --no-slurm archive "$created_folder"
+${froster_install_dir}/froster --no-slurm archive "$created_folder"
 echo "*** froster delete $created_folder:"
-${script_dir}/froster --no-slurm delete "$created_folder"
+${froster_install_dir}/froster --no-slurm delete "$created_folder"
 echo "*** froster mount $created_folder:"
-${script_dir}/froster --no-slurm mount "$created_folder"
+${froster_install_dir}/froster --no-slurm mount "$created_folder"
 echo "Wait 3 sec for mount to finish"
 sleep 3
 echo -e "\n*** froster umount $created_folder:"
-${script_dir}/froster --no-slurm umount "$created_folder"
+${froster_install_dir}/froster --no-slurm umount "$created_folder"
 echo -e "\n*** froster restore $created_folder:"
-${script_dir}/froster --no-slurm restore "$created_folder"
+${froster_install_dir}/froster --no-slurm restore "$created_folder"
 
 if [[ -n $cfgbucket ]]; then
   echo "$cfgbucket" > ~/.config/froster/general/bucket
