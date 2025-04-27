@@ -4546,44 +4546,53 @@ class Archiver:
                         if file_path == csv_path:
                             continue
 
-                        # Check if file is larger than X MB
-                        size, mtime, atime = self._get_file_stats(file_path)
+                        # Check if it's a regular file or a symlink
+                        if os.path.isfile(file_path) or os.path.islink(file_path):
+                            # Check if file is larger than X MB
+                            size, mtime, atime = self._get_file_stats(file_path)
 
-                        # Get last modified date
-                        mdate = datetime.datetime.fromtimestamp(
-                            mtime).strftime('%Y-%m-%d %H:%M:%S')
+                            # Get last modified date
+                            mdate = datetime.datetime.fromtimestamp(
+                                mtime).strftime('%Y-%m-%d %H:%M:%S')
 
-                        # Get last accessed date
-                        adate = datetime.datetime.fromtimestamp(
-                            atime).strftime('%Y-%m-%d %H:%M:%S')
+                            # Get last accessed date
+                            adate = datetime.datetime.fromtimestamp(
+                                atime).strftime('%Y-%m-%d %H:%M:%S')
 
-                        # Get ownership
-                        owner = self.uid2user(os.lstat(file_path).st_uid)
-                        group = self.gid2group(os.lstat(file_path).st_gid)
+                            # Get ownership
+                            owner = self.uid2user(os.lstat(file_path).st_uid)
+                            group = self.gid2group(os.lstat(file_path).st_gid)
 
-                        # Get permissions
-                        permissions = oct(os.lstat(file_path).st_mode)
+                            # Get permissions
+                            permissions = oct(os.lstat(file_path).st_mode)
 
-                        # Set tarred to No
-                        tarred = "No"
+                            # Set tarred to No
+                            tarred = "No"
 
-                        # Tar the file if it's smaller than the specified size
-                        if is_tar and size < smallsize*1024:
-                            # add to tar file
-                            tar_file.add(file_path, arcname=file)
+                            # Tar the file if it's smaller than the specified size
+                            if is_tar and size < smallsize*1024:
+                                try:
+                                    # add to tar file
+                                    tar_file.add(file_path, arcname=file)
 
-                            # Set didtar to True, so we know we tarred a file
-                            didtar = True
+                                    # Set didtar to True, so we know we tarred a file
+                                    didtar = True
 
-                            # remove original file
-                            os.remove(file_path)
+                                    # remove original file
+                                    os.remove(file_path)
 
-                            # Set tarred to Yes
-                            tarred = "Yes"
+                                    # Set tarred to Yes
+                                    tarred = "Yes"
+                                except FileNotFoundError:
+                                    log(f"Warning: File {file_path} disappeared before tarring/removal.")
+                                    continue # Skip writing CSV row if tarring failed
+                                except Exception as e:
+                                    log(f"Warning: Failed to tar or remove {file_path}: {e}")
+                                    continue # Skip writing CSV row if tarring failed
 
-                        # Write file info to the csv file
-                        writer.writerow(
-                            [file, size, mdate, adate, owner, group, permissions, tarred])
+                            # Write file info to the csv file
+                            writer.writerow(
+                                [file, size, mdate, adate, owner, group, permissions, tarred])
 
                 # Check if we tarred any files
                 if not didtar:
