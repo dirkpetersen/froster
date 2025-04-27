@@ -6798,6 +6798,7 @@ class Commands:
             if self.args.reset:
                 for folder in self.args.folders:
                     arch.reset_folder(folder, self.args.recursive)
+                return True
 
             if not self.args.folders:
                 return arch.archive_select_hotspots()
