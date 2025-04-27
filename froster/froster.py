@@ -5332,10 +5332,18 @@ class Archiver:
     def _walker(self, top, skipdirs=['.snapshot',]):
         """ returns subset of os.walk  """
         try:
-            for root, dirs, files in os.walk(top, topdown=True, onerror=self._walkerr):
+            for root, dirs, files in os.walk(top, topdown=True, followlinks=False, onerror=self._walkerr):
                 for skipdir in skipdirs:
                     if skipdir in dirs:
                         dirs.remove(skipdir)  # don't visit this directory
+
+                # Move directory symlinks from dirs to files as symlinks are really files
+                symlink_dirs = [d for d in dirs if os.path.islink(os.path.join(root, d))]
+                files.extend(symlink_dirs)
+                # Remove symlinked directories from dirs list
+                for d in symlink_dirs:
+                    dirs.remove(d)
+
                 yield root, dirs, files
         except Exception:
             print_error()
