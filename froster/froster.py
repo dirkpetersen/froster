@@ -5870,6 +5870,10 @@ class Rclone:
             command.append(dst)
             command.append('-vvv')
 
+            # Add flag for Ceph provider to avoid bucket creation attempt
+            if self.cfg.provider == 'Ceph':
+                command.append('--s3-no-check-bucket')
+
             # Run the copy command and return if it was successful
             return self._run_rclone_command(command)
         except Exception:
