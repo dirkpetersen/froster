@@ -349,6 +349,13 @@ install_froster() {
         echo "...Froster installed"
     fi
 
+    # Wait until 'froster' command is available in PATH
+    echo "    Verifying froster command availability..."
+    while ! command -v froster >/dev/null 2>&1; do
+        sleep 1
+    done
+    echo "    ...froster command verified."
+
     # Keep the config.ini file (if any)
     if [[ -f ${froster_config_backup_dir}/config.ini ]]; then
         # Create the froster directory if it does not exist
