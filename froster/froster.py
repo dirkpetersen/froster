@@ -3961,14 +3961,15 @@ class Archiver:
 
                     return False
 
-            # Check if the folder is empty or contains only froster metadata files
+            # Check if the folder contains any files or symlinks (excluding froster metadata)
             has_content_to_archive = False
             try:
                 with os.scandir(folder_to_archive) as entries:
                     for entry in entries:
-                        if entry.name not in self.dirmetafiles:
+                        # Check if it's a file or symlink AND not a froster metadata file
+                        if (entry.is_file(follow_symlinks=False) or entry.is_symlink()) and entry.name not in self.dirmetafiles:
                             has_content_to_archive = True
-                            break # Found something to archive
+                            break # Found a file/symlink to archive
             except FileNotFoundError:
                  log(f'\nError: Folder {folder_to_archive} not found during check.\n')
                  return False # Should not happen if checks passed before, but good practice
@@ -3977,7 +3978,7 @@ class Archiver:
                  return False
 
             if not has_content_to_archive:
-                log(f'\nFolder {folder_to_archive} is empty or contains only Froster metadata, skipping archive.\n')
+                log(f'\nFolder {folder_to_archive} contains no files or symlinks to archive (only subdirectories and/or metadata), skipping.\n')
                 return True
 
             log(f'\nARCHIVING {folder_to_archive}')
