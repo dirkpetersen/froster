@@ -344,7 +344,7 @@ install_froster() {
             echo "...old Froster uninstalled"
         fi
 
-        echo -e "\nInstalling Froster from PyPi package repository"
+        echo -e "\nInstalling Froster from PyPi package repository ..."
         python3 -m pipx install froster >/dev/null 2>&1
         echo "...Froster installed"
     fi
