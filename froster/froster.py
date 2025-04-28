@@ -4174,8 +4174,6 @@ class Archiver:
                                 overall_success = False
                                 log(f"\nError occurred during archive of {root}. Skipping remaining subfolders for {folder}.\n", file=sys.stderr)
                                 break # Stop processing subfolders for this top-level folder on error
-                        if not overall_success and folder == root: # If an error occurred in the inner loop, continue to next top-level folder
-                            continue
 
                     else:
                         is_subfolder = False
