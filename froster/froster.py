@@ -4039,7 +4039,8 @@ class Archiver:
                 return False
 
             log(f'\n    Verifying checksums...')
-            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+            checkers = max(1, self.args.cores // 2) # Ensure at least 1 checker
+            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1', '--checkers', str(checkers))
 
             # Check if the checksums are correct
             if ret:
@@ -5002,7 +5003,8 @@ class Archiver:
                 rclone = Rclone(self.args, self.cfg)
 
                 log(f'\nVerifying checksums...')
-                if rclone.checksum(hashfile, source, '--max-depth', '1'):
+                checkers = max(1, self.args.cores // 2) # Ensure at least 1 checker
+                if rclone.checksum(hashfile, source, '--max-depth', '1', '--checkers', str(checkers)):
                     log('    ...done')
                 else:
                     log('    ...FAILED\n')
