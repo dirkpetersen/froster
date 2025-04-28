@@ -395,7 +395,7 @@ install_pwalk() {
 
     # Compile pwalk tool and put exec file in froster's binaries folder
     echo "    Compiling pwalk"
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk 2>&1 | redirect_output &
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk &
     spinner $!
 
     # Get the froster's binaries folder
@@ -403,7 +403,14 @@ install_pwalk() {
     echo "    Moving pwalk to froster's binaries folder"
     
     # Move pwalk to froster's binaries folder
-    mv ${pwalk_path}/pwalk ${froster_dir}/pwalk 2>&1 | redirect_output
+    mv ${pwalk_path}/pwalk ${froster_dir}/pwalk
+
+    # Verify pwalk was moved successfully
+    if [ ! -f "${froster_dir}/pwalk" ]; then
+        echo "Error: Failed to move pwalk to ${froster_dir}/pwalk" >&2
+        exit 1
+    fi
+
     echo "    Installed pwalk at ${froster_dir}/pwalk"
 
     # Delete downloaded pwalk files
