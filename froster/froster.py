@@ -4067,8 +4067,9 @@ class Archiver:
                 # Get current timestamp
                 timestamp = datetime.datetime.now().isoformat()
 
-                # Get the archive mode
-                if is_recursive:
+                # Get the archive mode - use the original recursive flag from args, not the local is_recursive
+                # This ensures we correctly record recursive mode even for subfolders
+                if self.args.recursive:
                     archive_mode = "Recursive"
                 else:
                     archive_mode = "Single"
