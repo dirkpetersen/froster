@@ -96,7 +96,7 @@ catch() {
 
 spinner() {
     arg="$1"
-    spin='-\|/'
+    spin='-\\|/'
     i=0
 
     check_condition() {
