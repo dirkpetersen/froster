@@ -116,7 +116,7 @@ spinner() {
         i=$(( (i + 1) % 4 ))
         # If we are in a GitHub Actions workflow, we don't want to print the spinner
         if [ "$GITHUB_ACTIONS" != "true" ]; then
-            printf "\r${spin:$i:1}"
+            printf "\r%s" "${spin:$i:1}"
         fi
         sleep .1
     done
@@ -344,9 +344,8 @@ install_froster() {
             echo "...old Froster uninstalled"
         fi
 
-        echo -e "\nInstalling Froster from PyPi package repository"
-        python3 -m pipx install froster >/dev/null 2>&1 &
-        spinner "froster"
+        echo -e "\nInstalling Froster from PyPi package repository..."
+        python3 -m pipx install froster >/dev/null 2>&1
         echo "...Froster installed"
     fi
 

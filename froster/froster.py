@@ -3961,12 +3961,25 @@ class Archiver:
 
                     return False
 
-            # Check if the folder is empty
-            with os.scandir(folder_to_archive) as entries:
-                if not any(True for _ in entries):
-                    log(
-                        f'\nFolder {folder_to_archive} is empty, skipping.\n')
-                    return True
+            # Check if the folder contains any files or symlinks (excluding froster metadata)
+            has_content_to_archive = False
+            try:
+                with os.scandir(folder_to_archive) as entries:
+                    for entry in entries:
+                        # Check if it's a file or symlink AND not a froster metadata file
+                        if (entry.is_file(follow_symlinks=False) or entry.is_symlink()) and entry.name not in self.dirmetafiles:
+                            has_content_to_archive = True
+                            break # Found a file/symlink to archive
+            except FileNotFoundError:
+                 log(f'\nError: Folder {folder_to_archive} not found during check.\n')
+                 return False # Should not happen if checks passed before, but good practice
+            except OSError as e:
+                 log(f'\nError scanning folder {folder_to_archive}: {e}\n')
+                 return False
+
+            if not has_content_to_archive:
+                log(f'\nFolder {folder_to_archive} contains no files or symlinks to archive (only subdirectories and/or metadata), skipping.\n')
+                return True
 
             log(f'\nARCHIVING {folder_to_archive}')
 
@@ -4039,7 +4052,8 @@ class Archiver:
                 return False
 
             log(f'\n    Verifying checksums...')
-            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1')
+            checkers = max(1, self.args.cores // 2) # Ensure at least 1 checker
+            ret = rclone.checksum(hashfile, s3_dest, '--max-depth', '1', '--checkers', str(checkers))
 
             # Check if the checksums are correct
             if ret:
@@ -5002,7 +5016,8 @@ class Archiver:
                 rclone = Rclone(self.args, self.cfg)
 
                 log(f'\nVerifying checksums...')
-                if rclone.checksum(hashfile, source, '--max-depth', '1'):
+                checkers = max(1, self.args.cores // 2) # Ensure at least 1 checker
+                if rclone.checksum(hashfile, source, '--max-depth', '1', '--checkers', str(checkers)):
                     log('    ...done')
                 else:
                     log('    ...FAILED\n')
@@ -5764,6 +5779,8 @@ class Rclone:
             else:
                 self.envrn['AWS_ACCESS_KEY_ID'] = aws_access_key_id
                 self.envrn['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
+                self.envrn['HOME'] = cfg.home_dir
+                self.envrn['RCLONE_AWS_NO_CHECK_SSO'] = 'true'
 
         except Exception:
             print_error()
@@ -5865,6 +5882,10 @@ class Rclone:
             command.append(src)
             command.append(dst)
             command.append('-vvv')
+
+            # Add flag for Ceph provider to avoid bucket creation attempt
+            if self.cfg.provider == 'Ceph':
+                command.append('--s3-no-check-bucket')
 
             # Run the copy command and return if it was successful
             return self._run_rclone_command(command)
@@ -6798,6 +6819,7 @@ class Commands:
             if self.args.reset:
                 for folder in self.args.folders:
                     arch.reset_folder(folder, self.args.recursive)
+                return True
 
             if not self.args.folders:
                 return arch.archive_select_hotspots()

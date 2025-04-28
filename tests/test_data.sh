@@ -9,182 +9,105 @@ set -e
 script_path="$(readlink -f "$0")"
 script_dir="$(dirname "$script_path")"
 
-# Function to create a random 3-character string
+script_dir="$(dirname "$(readlink -f "$0")")"
+
+# Function to generate a random string
 random_string() {
-    cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 3 | head -n 1
+    local length=${1:-8}
+    LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w "$length" | head -n 1
 }
 
-# Function to create a sparse file
+# Function to create a sparse file of a given size
 create_sparse_file() {
-    local file_name=$1
-    local size=$2
-    truncate -s "$size" "$file_name"
-    set_file_times "$file_name"
+    local filename=$1
+    local size_mb=$2
+    local path=$3
+    # Use truncate for potentially better performance and compatibility
+    truncate -s "${size_mb}M" "$path/$filename"
+    # dd if=/dev/zero of="$path/$filename" bs=1M count=0 seek="$size_mb" status=none
 }
 
-# Function to set atime and mtime of a file to 100 days ago
+# Function to set file access and modification times
 set_file_times() {
-    local file_name=$1
-    touch -d '100 days ago' "$file_name"
+    local filepath=$1
+    local days_ago=$2
+    touch -a -d "$days_ago days ago" "$filepath"
+    touch -m -d "$days_ago days ago" "$filepath"
 }
 
+# Function to create files within a directory
+create_files_in_dir() {
+    local dir_path=$1
+    local prefix=$2
+    local days_ago=100 # Approx 3 months
+
+    # Create some files with different sizes and ages
+    create_sparse_file "${prefix}_$(random_string)_large_$(random_string).bin" 1500 "$dir_path" # 1.5 GB -> Use MB for size
+    create_sparse_file "${prefix}_$(random_string)_medium_$(random_string).out" 50 "$dir_path"  # 50 MB
+    create_sparse_file "${prefix}_$(random_string)_small_$(random_string).txt" 1 "$dir_path"    # 1 MB
+    echo "This is a script file" > "$dir_path/${prefix}_$(random_string)_script.sh"
+
+    # Set timestamps for all created files/dirs in this path
+    # Use find -exec touch directly for simplicity and potentially better handling of many files
+    find "$dir_path" -mindepth 1 -maxdepth 1 -exec touch -a -d "$days_ago days ago" {} +
+    find "$dir_path" -mindepth 1 -maxdepth 1 -exec touch -m -d "$days_ago days ago" {} +
+}
+
+# Main function to generate the test data structure
 generate_test_data() {
-    # Create a random directory using mktemp with the updated command
-    #local base_dir=$(mktemp -d -t "froster.XXX")
-    local base_dir=$(mktemp -d "froster.XXX")
-    #echo "Base directory: $base_dir"
+    local base_dir_name="froster_test_data_$(random_string)"
+    # Ensure mktemp uses a safe pattern and directory
+    local random_suffix=$(random_string 3) # Generate a 3-char random string
+    local base_dir="./froster.data.${random_suffix}" # Define the directory name in the current dir
+    mkdir "$base_dir" # Create the directory
 
-    # Function to create sparse files in a directory with unique names
-    create_files_in_dir() {
-        local dir=$1
-        local prefix=$2
-
-        # Create a few sparse files
-        for i in {1..3}; do
-            create_sparse_file "$dir/${prefix}_$(random_string)_medium_$i.out" "1100K"
-            create_sparse_file "$dir/${prefix}_$(random_string)_small_$i.out" "900K"
-        done
-
-        # Create an executable file
-        local script_name="${prefix}_$(random_string)_script.sh"
-        touch "$dir/$script_name"
-        chmod +x "$dir/$script_name"
-        set_file_times "$dir/$script_name"
-    }
-
-    # Create unique subdirectories with unique names
-    local subdir1_name=$(random_string)
-    local subdir2_name=$(random_string)
-    local subdir1="$base_dir/${subdir1_name}_subdir"
-    local subdir2="$subdir1/${subdir2_name}_subdir"
-    mkdir -p "$subdir1"
-    mkdir -p "$subdir2"
-
-    # Create sparse files and an executable script in the main directory
+    # Create main directory files
     create_files_in_dir "$base_dir" "main"
 
-    # Create a sparse large file and other files only in the first subdirectory
-    create_sparse_file "$subdir1/large_$(random_string).out" "1G"
-    create_files_in_dir "$subdir1" "${subdir1_name}"
+    # Create subdirectories and files within them
+    local subdir1_name="subdir1_$(random_string)"
+    local subdir2_name="subdir2_$(random_string)"
+    mkdir "$base_dir/$subdir1_name"
+    mkdir "$base_dir/$subdir2_name"
+    create_files_in_dir "$base_dir/$subdir1_name" "sub1"
+    create_files_in_dir "$base_dir/$subdir2_name" "sub2"
 
-    # Create sparse files and an executable script in the second subdirectory
-    create_files_in_dir "$subdir2" "${subdir2_name}"
+    # Create a deeper subdirectory
+    local subsubdir_name="subsubdir_$(random_string)"
+    mkdir "$base_dir/$subdir1_name/$subsubdir_name"
+    create_files_in_dir "$base_dir/$subdir1_name/$subsubdir_name" "subsub"
 
-    # Return the path of the created folder
+    # Create directory symlinks
+    ln -s "${subdir1_name}" "$base_dir/link_to_subdir1"
+    touch -h -d '100 days ago' "$base_dir/link_to_subdir1"
+    ln -s ".." "$base_dir/link_to_parent"
+    touch -h -d '100 days ago' "$base_dir/link_to_parent"
+
+    # Create file symlinks to existing files in the base directory
+    # Use find for more robust file searching
+    local target_medium=$(find "$base_dir" -maxdepth 1 -name 'main_*_medium_*.out' -print -quit)
+    local target_small=$(find "$base_dir" -maxdepth 1 -name 'main_*_small_*.txt' -print -quit)
+    local target_script=$(find "$base_dir" -maxdepth 1 -name 'main_*_script.sh' -print -quit)
+
+
+    # Create links only if target files were found
+    if [ -n "$target_medium" ]; then
+        ln -s "$(basename "$target_medium")" "$base_dir/link_to_medium_file"
+        touch -h -d '100 days ago' "$base_dir/link_to_medium_file"
+    fi
+    if [ -n "$target_small" ]; then
+        ln -s "$(basename "$target_small")" "$base_dir/link_to_small_file"
+        touch -h -d '100 days ago' "$base_dir/link_to_small_file"
+    fi
+    if [ -n "$target_script" ]; then
+        ln -s "$(basename "$target_script")" "$base_dir/link_to_script_file"
+        touch -h -d '100 days ago' "$base_dir/link_to_script_file"
+    fi
+
+    # Return the path to the created base directory
     echo "$base_dir"
 }
 
-# Execute the function and capture the returned folder path
-created_folder=$(generate_test_data)
+# Execute the function which echoes the created folder path
+generate_test_data
 
-echo "Test data folder: $created_folder"
-
-exit
-
-script_dir=~/.local/bin
-
-if ! [[ -f $script_dir/froster ]]; then
-  curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
-fi
-
-testbucket='froster-'$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)
-echo "Using test bucket $testbucket"
-
-cfgbucket=''
-if [[ -f ~/.config/froster/general/bucket ]]; then
-  cfgbucket=$(cat ~/.config/froster/general/bucket)
-fi
-echo "$testbucket" > ~/.config/froster/general/bucket
-
-export RCLONE_S3_PROFILE=aws # or ${AWS_PROFILE} or change this to the AWS profile you want to use
-export RCLONE_S3_REGION=us-west-2 # or change this to the AWS region you want to use
-export RCLONE_S3_PROVIDER=AWS # or change this to another S3 provider (e.g. Ceph for on-premises)
-export RCLONE_S3_ENV_AUTH=true # use AWS environment variables and settings from ~/.aws
-
-rclone --log-level error mkdir ":s3:$testbucket"
-
-echo "Running in ${script_dir} ..."
-
-echo -e "\n*** froster config --index"
-${script_dir}/froster --no-slurm config --index
-echo -e "\n*** froster index $created_folder:"
-${script_dir}/froster --no-slurm index "$created_folder"
-echo "*** froster archive $created_folder:"
-${script_dir}/froster --no-slurm archive "$created_folder"
-echo "*** froster delete $created_folder:"
-${script_dir}/froster --no-slurm delete "$created_folder"
-echo "*** froster mount $created_folder:"
-${script_dir}/froster --no-slurm mount "$created_folder"
-echo "Wait 3 sec for mount to finish"
-sleep 3
-echo -e "\n*** froster umount $created_folder:"
-${script_dir}/froster --no-slurm umount "$created_folder"
-echo -e "\n*** froster restore $created_folder:"
-${script_dir}/froster --no-slurm restore "$created_folder"
-
-if [[ -n $cfgbucket ]]; then
-  echo "$cfgbucket" > ~/.config/froster/general/bucket
-fi
-
-echo "deleting bucket s3://$testbucket"
-rclone --log-level error purge ":s3:${testbucket}${created_folder}"
-# only deletes bucket if created_folder was the only content in bucket
-rclone --log-level error rmdirs ":s3:$testbucket"
-
-echo "deleting test data in $created_folder"
-
-rm -rf $created_folder
-
-### OLD TEST DOWN HERE
-
-# # Generate dummy data
-# dummy_data_path=$(generate_test_data)
-# echo "Dummy data path: ${dummy_data_path}"
-
-# # Create an aws s3 bucket
-# testbucket='froster-'$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)
-# echo "test bucket: ${testbucket}"
-
-# # TODO: this should not be here.
-# cfgbucket=''
-# if [[ -f ~/.froster/config/general/bucket ]]; then
-#   cfgbucket=$(cat ~/.froster/config/general/bucket)
-# fi
-# echo "$testbucket" >~/.froster/config/general/bucket
-
-# export RCLONE_S3_PROFILE=aws      # or ${AWS_PROFILE} or change this to the AWS profile you want to use
-# export RCLONE_S3_REGION=us-west-2 # or change this to the AWS region you want to use
-# export RCLONE_S3_PROVIDER=AWS     # or change this to another S3 provider (e.g. Ceph for on-premises)
-# export RCLONE_S3_ENV_AUTH=true    # use AWS environment variables and settings from ~/.aws
-
-# rclone --log-level error mkdir ":s3:$testbucket"
-
-# echo -e "\n*** froster config --index"
-# froster --no-slurm config --index
-# echo -e "\n*** froster index $dummy_data_path:"
-# froster --no-slurm index "$dummy_data_path"
-# echo "*** froster archive $dummy_data_path:"
-# froster --no-slurm archive "$dummy_data_path"
-# echo "*** froster delete $dummy_data_path:"
-# froster --no-slurm delete "$dummy_data_path"
-# echo "*** froster mount $dummy_data_path:"
-# froster --no-slurm mount "$dummy_data_path"
-# echo "Wait 3 sec for mount to finish"
-# sleep 3
-# echo -e "\n*** froster umount $dummy_data_path:"
-# froster --no-slurm umount "$dummy_data_path"
-# echo -e "\n*** froster restore $dummy_data_path:"
-# froster --no-slurm restore "$dummy_data_path"
-
-# if [[ -n $cfgbucket ]]; then
-#   echo "$cfgbucket" >~/.froster/config/general/bucket
-# fi
-
-# echo "deleting bucket s3://$testbucket"
-# rclone --log-level error purge ":s3:${testbucket}${dummy_data_path}"
-# # only deletes bucket if dummy_data_path was the only content in bucket
-# rclone --log-level error rmdirs ":s3:$testbucket"
-
-# echo "deleting test data in $dummy_data_path"
-
-# rm -rf $dummy_data_path
