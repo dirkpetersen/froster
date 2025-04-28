@@ -4112,6 +4112,7 @@ class Archiver:
     def archive(self, folders):
         '''Archive the given folders'''
         try:
+            overall_success = True  # Initialize here to ensure it always exists
             # Set flags
             is_recursive = self.args.recursive
 
@@ -4160,7 +4161,6 @@ class Archiver:
                 self._slurm_cmd(folders=folders, cmd_type='archive')
 
             else:
-                overall_success = True # Flag to track success across all folders
                 for folder in folders:
                     if is_recursive:
                         for root, dirs, files in self._walker(folder):
