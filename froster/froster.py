@@ -3961,12 +3961,24 @@ class Archiver:
 
                     return False
 
-            # Check if the folder is empty
-            with os.scandir(folder_to_archive) as entries:
-                if not any(True for _ in entries):
-                    log(
-                        f'\nFolder {folder_to_archive} is empty, skipping.\n')
-                    return True
+            # Check if the folder is empty or contains only froster metadata files
+            has_content_to_archive = False
+            try:
+                with os.scandir(folder_to_archive) as entries:
+                    for entry in entries:
+                        if entry.name not in self.dirmetafiles:
+                            has_content_to_archive = True
+                            break # Found something to archive
+            except FileNotFoundError:
+                 log(f'\nError: Folder {folder_to_archive} not found during check.\n')
+                 return False # Should not happen if checks passed before, but good practice
+            except OSError as e:
+                 log(f'\nError scanning folder {folder_to_archive}: {e}\n')
+                 return False
+
+            if not has_content_to_archive:
+                log(f'\nFolder {folder_to_archive} is empty or contains only Froster metadata, skipping archive.\n')
+                return True
 
             log(f'\nARCHIVING {folder_to_archive}')
 
