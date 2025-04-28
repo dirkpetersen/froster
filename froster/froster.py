@@ -3979,7 +3979,7 @@ class Archiver:
 
             if not has_content_to_archive:
                 log(f'\nFolder {folder_to_archive} contains no files or symlinks to archive (only subdirectories and/or metadata), skipping.\n')
-                return True
+                return None # Indicate skipped, not success or failure
 
             log(f'\nARCHIVING {folder_to_archive}')
 
@@ -4170,7 +4170,8 @@ class Archiver:
                                 is_subfolder = True
                             success = self._archive_locally(
                                 root, is_recursive, is_subfolder, is_tar, is_force)
-                            if not success:
+                            # Check specifically for False (failure), ignore None (skip)
+                            if success is False:
                                 overall_success = False
                                 log(f"\nError occurred during archive of {root}. Skipping remaining subfolders for {folder}.\n", file=sys.stderr)
                                 break # Stop processing subfolders for this top-level folder on error
@@ -4179,7 +4180,8 @@ class Archiver:
                         is_subfolder = False
                         success = self._archive_locally(
                             folder, is_recursive, is_subfolder, is_tar, is_force)
-                        if not success:
+                        # Check specifically for False (failure), ignore None (skip)
+                        if success is False:
                             overall_success = False
                             log(f"\nError occurred during archive of {folder}.\n", file=sys.stderr)
                             # No inner loop to break, just continue to the next folder in the main loop
