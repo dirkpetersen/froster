@@ -4160,6 +4160,7 @@ class Archiver:
                 self._slurm_cmd(folders=folders, cmd_type='archive')
 
             else:
+                overall_success = True # Flag to track success across all folders
                 for folder in folders:
                     if is_recursive:
                         for root, dirs, files in self._walker(folder):
@@ -4167,15 +4168,25 @@ class Archiver:
                                 is_subfolder = False
                             else:
                                 is_subfolder = True
-                            self._archive_locally(
+                            success = self._archive_locally(
                                 root, is_recursive, is_subfolder, is_tar, is_force)
+                            if not success:
+                                overall_success = False
+                                log(f"\nError occurred during archive of {root}. Skipping remaining subfolders for {folder}.\n", file=sys.stderr)
+                                break # Stop processing subfolders for this top-level folder on error
+                        if not overall_success and folder == root: # If an error occurred in the inner loop, continue to next top-level folder
+                            continue
 
                     else:
                         is_subfolder = False
-                        self._archive_locally(
+                        success = self._archive_locally(
                             folder, is_recursive, is_subfolder, is_tar, is_force)
+                        if not success:
+                            overall_success = False
+                            log(f"\nError occurred during archive of {folder}.\n", file=sys.stderr)
+                            # No inner loop to break, just continue to the next folder in the main loop
 
-            return True
+            return overall_success
 
         except Exception:
             print_error()
