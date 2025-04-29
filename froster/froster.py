@@ -4135,8 +4135,12 @@ class Archiver:
                     if is_recursive:
                         archive_mode = "Recursive"
                         for root, dirs, files in self._walker(folder):
+                            s3_fld = os.path.join(
+                                f':s3:{self.cfg.bucket_name}',
+                                self.cfg.archive_dir,
+                                root.lstrip(os.path.sep))
                             success = self._archive_locally(
-                                root, s3_dest, is_tar, is_force)
+                                root, s3_fld, is_tar, is_force)
                             # Check specifically for False (failure), ignore None (skip)
                             if success is False:
                                 overall_success = False
@@ -4154,29 +4158,32 @@ class Archiver:
                             # No inner loop to break, just continue to the next folder in the main loop
 
 
-                    # Get current timestamp
-                    timestamp = datetime.datetime.now().isoformat()
-                        
-                    # Generate the metadata dictionary
-                    new_entry = {'local_folder': folder,
-                                'archive_folder': s3_dest,
-                                's3_storage_class': self.cfg.storage_class,
-                                'profile': self.cfg.credentials,
-                                'provider': self.cfg.provider,
-                                'endpoint': self.cfg.endpoint,
-                                'archive_mode': archive_mode,
-                                'timestamp': timestamp,
-                                'timestamp_archive': timestamp,
-                                'user': getpass.getuser()
-                                }
+                    if success:
+                        # If the archive was successful, add the folder to the archive JSON file
 
-                    # Add NIH information to the metadata dictionary
-                    if self.args.nihref:
-                        new_entry['nih_project'] = self.args.nihref
+                        # Get current timestamp
+                        timestamp = datetime.datetime.now().isoformat()
+                            
+                        # Generate the metadata dictionary
+                        new_entry = {'local_folder': folder,
+                                    'archive_folder': s3_dest,
+                                    's3_storage_class': self.cfg.storage_class,
+                                    'profile': self.cfg.credentials,
+                                    'provider': self.cfg.provider,
+                                    'endpoint': self.cfg.endpoint,
+                                    'archive_mode': archive_mode,
+                                    'timestamp': timestamp,
+                                    'timestamp_archive': timestamp,
+                                    'user': getpass.getuser()
+                                    }
 
-                    # Write the metadata to the archive JSON file
-                    self._archive_json_add_entry(key=folder.rstrip(os.path.sep),
-                                                value=new_entry)
+                        # Add NIH information to the metadata dictionary
+                        if self.args.nihref:
+                            new_entry['nih_project'] = self.args.nihref
+
+                        # Write the metadata to the archive JSON file
+                        self._archive_json_add_entry(key=folder.rstrip(os.path.sep),
+                                                    value=new_entry)
 
             return overall_success
 
