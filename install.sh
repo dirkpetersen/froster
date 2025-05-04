@@ -529,7 +529,7 @@ echo -e "Installation path: $(which froster)"
 if [[ "$local_bin_in_path" = false ]]; then
     echo
     echo "You will need to open a new terminal or refresh your current terminal session by running command:"
-    echo "  source ~/.bashrc"
+    echo "  source ~/.bashrc && source ~/.profile"
     echo
 fi
 
