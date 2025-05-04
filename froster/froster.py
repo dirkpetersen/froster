@@ -7201,8 +7201,8 @@ class Commands:
                 log(f'  Current version: froster v{current}')
                 log(f'  Latest version: froster v{latest}')
                 log(f'\nYou can update froster using the command:')
-                log(
-                    f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
+                log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n\nor in --verbose mode for troubleshooting:')
+                log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash -s -- --verbose\n')
             else:
                 if not mute_no_update:
                     log(f'\nFroster is up to date: froster v{current}\n')
