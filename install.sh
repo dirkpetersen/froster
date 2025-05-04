@@ -402,7 +402,7 @@ install_pwalk() {
 
     # Compile pwalk tool and put exec file in froster's binaries folder
     echo "    Compiling pwalk"
-    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk | redirect_output &
+    gcc -pthread ${pwalk_path}/pwalk.c ${pwalk_path}/exclude.c ${pwalk_path}/fileProcess.c -o ${pwalk_path}/pwalk 2>&1 | redirect_output &
     spinner $!
 
     # Get the froster's binaries folder
