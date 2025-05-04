@@ -51,15 +51,15 @@ class TestBasicFeatures(unittest.TestCase):
             # NOTE: config command is tested into the setUpClass method
             
             with \
-                    patch('sys.argv', ['froster', 'index', folder_path]):
+                    patch('sys.argv', ['froster', '--debug', 'index', folder_path]):
                 self.assertFalse(main())
 
             with \
-                    patch('sys.argv', ['froster', 'archive', folder_path]):
+                    patch('sys.argv', ['froster', '--debug', 'archive', folder_path]):
                 self.assertFalse(main())
 
             with \
-                    patch('sys.argv', ['froster', 'delete', folder_path]):
+                    patch('sys.argv', ['froster', '--debug', 'delete', folder_path]):
                 self.assertFalse(main())
 
         except Exception as e:

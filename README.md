@@ -9,7 +9,7 @@
 [![Test "froster credentials"](https://github.com/dirkpetersen/froster/actions/workflows/test-credentials.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/test-credentials.yml)
 [![Test basic features](https://github.com/dirkpetersen/froster/actions/workflows/test-basic-features.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/test-basic-features.yml)
 
-Froster is a user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems. It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore it to an AWS EC2 instance. 
+Froster is a user-friendly archiving tool for teams that move data between high-cost POSIX file systems and low-cost S3-like object storage systems. It prevents you from making [common archiving mistakes that can put your data at risk](https://dirk-petersen.medium.com/the-gruesome-job-of-managing-petabytes-of-scientific-data-466baaa5e8bc). It currently supports these S3 providers: AWS, GCS, Wasabi, IDrive, Ceph, and Minio. Froster can efficiently crawl your Posix file system metadata, recommend folders for archiving, generate checksums, and upload your selections to Glacier or other S3-like storage. It can retrieve data back from the archive using a single command. Additionally, Froster can mount S3/Glacier storage inside your on-premise file system and also restore it to an AWS EC2 instance. 
 
 </br>
 
@@ -73,7 +73,7 @@ To configure Froster, run the command:
 ```
 froster config
 ```
-If you have any doubts while configuring Froster, check the [Configuration sections explanation](#configuration-sections-explanation)
+For more detailed information about configuring Froster, check the [Configuration sections explanation](#configuration-sections-explanation)
 
 If you want a clean config file, run the config command with the `--reset` option:
 ```
@@ -84,7 +84,7 @@ froster config --reset
 
 ### Import and Export Configuration
 
-If several users of the same team want to use Froster, they will have to configure the same profiles to work with the same configuration, buckets, endpoints, etc. To ease this configuration across teams, a user that has already configured Froster can export its configuration. This will export all configurations except for sensitive information: username, email, and credentials. To export a configuration, run the command:
+If several users of the same team want to use Froster, they will have to configure the same profiles to work with the same configuration, buckets, endpoints, etc. To ease this configuration across teams, a user that has already configured Froster can export its configuration. This will export all configurations except for personal information: username, email, and credentials. To export a configuration, run the command:
 ```
 froster config --export /folder/path
 ```
@@ -1128,7 +1128,7 @@ Froster is a good on-ramp to Starfish. If many users in your organization end up
 
 ## Discontinuing Froster  
 
-All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While AWS Glacier and Rclone will still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone or [Cyberduck](#using-cyberduck-to-browse-glacier) (for smaller amounts of data) to retrieve your data, as it is kept in its original format.   
+All good things inevitably come to an end. Consider what you might encounter when attempting to restore your data 15 years from now. While AWS Glacier and Rclone will still exist, we cannot guarantee the continued maintenance of components like Textual or DuckDB, or even Froster itself. However, even if certain tools fade away, you can always rely on utilities like Rclone, [Cyberduck](#using-cyberduck-to-browse-glacier) or [Cloudberry Explorer](https://www.msp360.com/explorer/) (for smaller amounts of data) to retrieve your data, as it is kept in its original format.   
 
 Alternatively, the shell script [s3-restore.sh](https://github.com/dirkpetersen/froster/blob/main/s3-restore.sh) simplifies this process, driving Rclone with the appropriate settings. Using the command `s3-restore.sh list`, you can view all folders archived in the JSON database. Default localtion of Froster JSON database is: `~/.local/share/froster/froster-archives.json`. This path may have changed if you are using a shared configuration. Check the `Where-did-the-files-go.txt` manifest for more information on the folder's metadata. 
 

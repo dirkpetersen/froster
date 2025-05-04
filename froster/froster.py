@@ -3908,14 +3908,10 @@ class Archiver:
 
         return is_collision
 
-    def _archive_locally(self, folder_to_archive, is_recursive, is_subfolder, is_tar, is_force):
+    def _archive_locally(self, folder_to_archive, s3_dest, is_tar, is_force):
         '''Archive the given folder'''
 
         try:
-            s3_dest = os.path.join(
-                f':s3:{self.cfg.bucket_name}',
-                self.cfg.archive_dir,
-                folder_to_archive.lstrip(os.path.sep))
 
             hashfile = os.path.join(folder_to_archive, self.md5sum_filename)
 
@@ -3979,7 +3975,7 @@ class Archiver:
 
             if not has_content_to_archive:
                 log(f'\nFolder {folder_to_archive} contains no files or symlinks to archive (only subdirectories and/or metadata), skipping.\n')
-                return True
+                return None # Indicate skipped, not success or failure
 
             log(f'\nARCHIVING {folder_to_archive}')
 
@@ -4062,37 +4058,6 @@ class Archiver:
                 log('        ...FAILED\n')
                 return False
 
-            # Add the metadata to the archive JSON file ONLY if this is not a subfolder
-            if not is_subfolder:
-                # Get current timestamp
-                timestamp = datetime.datetime.now().isoformat()
-
-                # Get the archive mode
-                if is_recursive:
-                    archive_mode = "Recursive"
-                else:
-                    archive_mode = "Single"
-
-                # Generate the metadata dictionary
-                new_entry = {'local_folder': folder_to_archive,
-                             'archive_folder': s3_dest,
-                             's3_storage_class': self.cfg.storage_class,
-                             'profile': self.cfg.credentials,
-                             'provider': self.cfg.provider,
-                             'endpoint': self.cfg.endpoint,
-                             'archive_mode': archive_mode,
-                             'timestamp': timestamp,
-                             'timestamp_archive': timestamp,
-                             'user': getpass.getuser()
-                             }
-
-                # Add NIH information to the metadata dictionary
-                if self.args.nihref:
-                    new_entry['nih_project'] = self.args.nihref
-
-                # Write the metadata to the archive JSON file
-                self._archive_json_add_entry(key=folder_to_archive.rstrip(os.path.sep),
-                                             value=new_entry)
 
             # Print the final message
             log(f'\nARCHIVING SUCCESSFULLY COMPLETED\n')
@@ -4111,6 +4076,7 @@ class Archiver:
     def archive(self, folders):
         '''Archive the given folders'''
         try:
+            overall_success = True  # Initialize here to ensure it always exists
             # Set flags
             is_recursive = self.args.recursive
 
@@ -4160,21 +4126,66 @@ class Archiver:
 
             else:
                 for folder in folders:
+
+                    s3_dest = os.path.join(
+                        f':s3:{self.cfg.bucket_name}',
+                        self.cfg.archive_dir,
+                        folder.lstrip(os.path.sep))
+
                     if is_recursive:
+                        archive_mode = "Recursive"
                         for root, dirs, files in self._walker(folder):
-                            if folder == root:
-                                is_subfolder = False
-                            else:
-                                is_subfolder = True
-                            self._archive_locally(
-                                root, is_recursive, is_subfolder, is_tar, is_force)
+                            s3_fld = os.path.join(
+                                f':s3:{self.cfg.bucket_name}',
+                                self.cfg.archive_dir,
+                                root.lstrip(os.path.sep))
+                            success = self._archive_locally(
+                                root, s3_fld, is_tar, is_force)
+                            # Check specifically for False (failure), ignore None (skip)
+                            if success is False:
+                                overall_success = False
+                                log(f"\nError occurred during archive of {root}. Skipping remaining subfolders for {folder}.\n", file=sys.stderr)
+                                break # Stop processing subfolders for this top-level folder on error
 
                     else:
-                        is_subfolder = False
-                        self._archive_locally(
-                            folder, is_recursive, is_subfolder, is_tar, is_force)
+                        archive_mode = "Single"
+                        success = self._archive_locally(
+                            folder, s3_dest, is_tar, is_force)
+                        # Check specifically for False (failure), ignore None (skip)
+                        if success is False:
+                            overall_success = False
+                            log(f"\nError occurred during archive of {folder}.\n", file=sys.stderr)
+                            # No inner loop to break, just continue to the next folder in the main loop
 
-            return True
+
+                    if success:
+                        # If the archive was successful, add the folder to the archive JSON file
+
+                        # Get current timestamp
+                        timestamp = datetime.datetime.now().isoformat()
+                            
+                        # Generate the metadata dictionary
+                        new_entry = {'local_folder': folder,
+                                    'archive_folder': s3_dest,
+                                    's3_storage_class': self.cfg.storage_class,
+                                    'profile': self.cfg.credentials,
+                                    'provider': self.cfg.provider,
+                                    'endpoint': self.cfg.endpoint,
+                                    'archive_mode': archive_mode,
+                                    'timestamp': timestamp,
+                                    'timestamp_archive': timestamp,
+                                    'user': getpass.getuser()
+                                    }
+
+                        # Add NIH information to the metadata dictionary
+                        if self.args.nihref:
+                            new_entry['nih_project'] = self.args.nihref
+
+                        # Write the metadata to the archive JSON file
+                        self._archive_json_add_entry(key=folder.rstrip(os.path.sep),
+                                                    value=new_entry)
+
+            return overall_success
 
         except Exception:
             print_error()
