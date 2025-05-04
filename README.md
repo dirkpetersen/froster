@@ -48,6 +48,12 @@ curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$
 
 ```
 
+or if there is an issue, use the --verbose option like this to get more information:
+
+```
+ curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash -s -- --verbose
+```
+
 To check that everything is installed correctly, run `froster --info` or `froster --version` commands.
 Check available commands on the help section `froster --help`
 
