@@ -5658,10 +5658,10 @@ class TableHotspots(App[list]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, file):
+    def __init__(self, file): # Modified: Accept file path
         super().__init__()
         self.myrow = []
-        self.file = file
+        self.file = file # Added: Store file path
 
     def compose(self) -> ComposeResult:
         table = DataTable()
@@ -5674,10 +5674,29 @@ class TableHotspots(App[list]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        fh = open(self.file, 'r')
-        rows = csv.reader(fh)
-        table.add_columns(*next(rows))
-        table.add_rows(itertools.islice(rows, MAXHOTSPOTS))
+        try: # Added try-except block
+            with open(self.file, 'r', newline='') as fh: # Modified: Use self.file, add newline=''
+                rows = csv.reader(fh)
+                header = next(rows, None)
+                if header:
+                    table.add_columns(*header)
+                    # Read remaining rows, limiting to MAXHOTSPOTS
+                    data_rows = list(itertools.islice(rows, MAXHOTSPOTS))
+                    if data_rows:
+                         table.add_rows(data_rows)
+                    else:
+                         # Handle case where file only has a header
+                         log(f"Warning: Hotspot file contains no data rows: {self.file}")
+                         # Optionally add a message to the table or just leave it empty
+                else:
+                    log(f"Warning: Hotspot file is empty or has no header: {self.file}")
+                    self.exit([]) # Exit if file is empty or has no header
+        except FileNotFoundError:
+            log(f"Error: Hotspot file not found: {self.file}", file=sys.stderr)
+            self.exit([]) # Exit if file not found
+        except Exception as e:
+            print_error(f"Error reading hotspot file {self.file}: {e}")
+            self.exit([]) # Exit on other errors
 
     def accept_answer(self, answer: str) -> None:
         # adds yesno answer as last element in list
@@ -5685,14 +5704,18 @@ class TableHotspots(App[list]):
             self.exit(self.myrow+[True])
         elif answer == 'quit':
             self.exit(self.myrow+[False])
+        # Added 'return' case to go back without exiting the app immediately if needed,
+        # although current logic exits on selection.
+        elif answer == 'return':
+             pass # Just closes the modal, stays in the table
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.myrow = self.query_one(DataTable).get_row(event.row_key)
-        # self.exit(self.myrow)
+        # self.exit(self.myrow) # Don't exit here, wait for modal confirmation
         self.push_screen(ScreenConfirm(), callback=self.accept_answer)
-
+        
     def action_request_quit(self) -> None:
-        self.app.exit()
+        self.app.exit([]) # Ensure exit returns an empty list if quitting
 
 
 class TextualStringListSelector(App[list]):
