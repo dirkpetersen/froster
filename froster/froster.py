@@ -3874,21 +3874,45 @@ class Archiver:
 
         # Use TableHotspots to display the filtered list and select the specific folder row
         app = TableHotspots(user_hotspot_file_path)
-        retline = app.run() # retline is the selected row as a list
+        ret = app.run() # ret can be (row_data, action) or []
 
-        if not retline:
-            # No row selected in TableHotspots
+        if not ret:
+            # No row selected in TableHotspots or user quit
             return False
-        else:
+        elif isinstance(ret, tuple):
+            row_data, action = ret
             # Extract the folder path from the selected row
-            if len(retline) < 6:
+            if len(row_data) < 6:
                 log('Error: Hotspots table did not return all expected columns.', file=sys.stderr)
                 return False
             # Assuming the folder path is the 6th element (index 5)
-            folders_to_archive = [retline[5]]
+            folder_to_archive = row_data[5]
 
-        # Archive the selected folders
-        return self.archive(folders_to_archive)
+            if action == "continue":
+                # Archive the selected folders
+                return self.archive([folder_to_archive])
+            elif action == "quit":
+                # Construct the command line string
+                # Add profile if it's not the default one implicitly used
+                profile_arg = f' --profile "{self.cfg.profile.replace("profile ", "")}"' if self.cfg.profile else ""
+                # Add recursive flag if it was set
+                recursive_arg = " --recursive" if self.args.recursive else ""
+                # Add notar flag if it was set
+                notar_arg = " --no-tar" if self.args.notar else ""
+                # Add nihref if it was set
+                nih_arg = f' --nih-ref "{self.args.nihref}"' if self.args.nihref else ""
+
+                cmd_str = f'froster archive{profile_arg}{recursive_arg}{notar_arg}{nih_arg} "{folder_to_archive}"'
+                log(f'\nTo archive this folder later, run:\n\n    {cmd_str}\n')
+                return True # Indicate successful completion without archiving
+            else:
+                 # Should not happen with current logic, but handle defensively
+                 log(f"Internal Error: Unknown action '{action}' received.", file=sys.stderr)
+                 return False
+        else:
+            # Handle unexpected return type from app.run()
+            log(f"Internal Error: Unexpected return type from TableHotspots: {type(ret)}", file=sys.stderr)
+            return False
 
     def _is_recursive_collision(self, folders):
         '''Check if there is a collision between folders and recursive flag'''
@@ -5701,9 +5725,9 @@ class TableHotspots(App[list]):
     def accept_answer(self, answer: str) -> None:
         # adds yesno answer as last element in list
         if answer == 'continue':
-            self.exit(self.myrow+[True])
+            self.exit((self.myrow, "continue"))
         elif answer == 'quit':
-            self.exit(self.myrow+[False])
+            self.exit((self.myrow, "quit"))
         # Added 'return' case to go back without exiting the app immediately if needed,
         # although current logic exits on selection.
         elif answer == 'return':
