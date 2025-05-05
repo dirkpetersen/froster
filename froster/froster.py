@@ -3901,8 +3901,13 @@ class Archiver:
                 notar_arg = " --no-tar" if self.args.notar else ""
                 # Add nihref if it was set
                 nih_arg = f' --nih-ref "{self.args.nihref}"' if self.args.nihref else ""
+                # Add filtering flags if they were used
+                larger_arg = f' --larger {self.args.larger}' if self.args.larger > 0 else ""
+                older_arg = f' --older {self.args.older}' if self.args.older > 0 else ""
+                newer_arg = f' --newer {self.args.newer}' if self.args.newer > 0 else ""
+                mtime_arg = " --mtime" if self.args.agemtime else ""
 
-                cmd_str = f'froster archive{profile_arg}{recursive_arg}{notar_arg}{nih_arg} "{folder_to_archive}"'
+                cmd_str = f'froster archive{profile_arg}{recursive_arg}{notar_arg}{nih_arg}{larger_arg}{older_arg}{newer_arg}{mtime_arg} "{folder_to_archive}"'
                 log(f'\nTo archive this folder later, run:\n\n    {cmd_str}\n')
                 return True # Indicate successful completion without archiving
             else:
