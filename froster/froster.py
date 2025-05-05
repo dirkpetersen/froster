@@ -3911,14 +3911,21 @@ class Archiver:
         hotspot_selected = os.path.join(self.cfg.hotspots_dir, ret[0])
 
         # Get the path to the user-specific CSV file containing only writable folders
-        user_hotspot_file_path = self.get_hotspot_folders(hotspot_selected) # Now returns a path
+        path_result, filtering_skipped = self.get_hotspot_folders(hotspot_selected)
 
-        if not user_hotspot_file_path:
-            log(f'\nNo hotspots with write permissions found or accessible in {hotspot_selected}.\n')
+        # Determine the actual path to display in the table
+        if path_result:
+            path_to_display = path_result
+        elif filtering_skipped:
+            # Filtering skipped, use the original selected file
+            path_to_display = hotspot_selected
+        else:
+            # Filtering attempted but failed or no writable folders found
+            log(f'\nNo writable hotspots found or accessible in {hotspot_selected}.\n')
             return True # Indicate completion, even if nothing was archived
 
         # Use TableHotspots to display the filtered list and select the specific folder row
-        app = TableHotspots(user_hotspot_file_path)
+        app = TableHotspots(path_to_display)
         ret = app.run() # ret can be (row_data, action) or []
 
         if not ret:
@@ -3932,6 +3939,17 @@ class Archiver:
                 return False
             # Assuming the folder path is the 6th element (index 5)
             folder_to_archive = row_data[5]
+
+            # Permission check if filtering was skipped
+            if filtering_skipped:
+                log(f"Checking write permission for selected folder: {folder_to_archive}")
+                has_permission = self._check_path_permissions(folder_to_archive, write_only=True)
+                if not has_permission:
+                    log(f'\nError: Write permission denied for selected folder: {folder_to_archive}\n')
+                    # Ideally, we'd go back to the table here, but for simplicity, we exit.
+                    return False # Indicate failure
+                else:
+                    log("  Permission granted.")
 
             if action == "continue":
                 # Archive the selected folders
@@ -4397,6 +4415,21 @@ class Archiver:
     def _filter_hotspots_by_write_access(self, hotspot_csv):
         # Helper function to filter hotspots based on write access and return user-specific CSV path
         try:
+            # Count lines in the original file first
+            line_count = 0
+            try:
+                with open(hotspot_csv, 'r') as f_count:
+                    # Simple line count, including header
+                    line_count = sum(1 for _ in f_count)
+            except Exception as e:
+                 log(f"Warning: Could not count lines in {hotspot_csv}: {e}", file=sys.stderr)
+                 # Proceed assuming fewer than 5000 lines
+
+            # If line count is too high, skip filtering
+            if line_count >= 5000:
+                log(f"Skipping proactive write permission check for large file ({line_count} lines): {hotspot_csv}")
+                return (None, True) # Return None path, indicate filtering skipped
+
             hsdir, hsfile = os.path.split(hotspot_csv)
             # Ensure user-specific directory exists within the main hotspots dir
             hsdiruser = os.path.join(self.cfg.hotspots_dir, self.cfg.whoami)
@@ -4407,7 +4440,7 @@ class Archiver:
             if os.path.exists(user_csv) and os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
                 if not self.args.force:
                     # log(f"Using existing user hotspot file: {user_csv}") # Optional debug log
-                    return user_csv
+                    return (user_csv, False) # Return path, indicate filtering NOT skipped
                 else:
                     log(f"Re-filtering hotspots due to --force flag: {hotspot_csv}")
 
@@ -4423,7 +4456,7 @@ class Archiver:
                     header_list = next(reader_count, None)
                     if not header_list:
                          log(f"Error: Hotspot file is empty or has no header: {hotspot_csv}", file=sys.stderr)
-                         return None
+                         return (None, False)
                     fieldnames = header_list
                     try:
                         # Count remaining lines
@@ -4440,7 +4473,7 @@ class Archiver:
 
                     if 'Folder' not in fieldnames:
                         log(f"Error: 'Folder' column not found in hotspot file: {hotspot_csv}", file=sys.stderr)
-                        return None
+                        return (None, False)
 
                     # Use tqdm for progress indication
                     for row in tqdm.tqdm(reader, total=total_lines, desc="Checking write access", unit="folder", disable=self.output_disable):
@@ -4451,17 +4484,17 @@ class Archiver:
 
             except FileNotFoundError:
                 log(f"Error: Hotspot file not found: {hotspot_csv}", file=sys.stderr)
-                return None
+                return (None, False)
             except Exception as e:
                 print_error(f"Error reading hotspot file {hotspot_csv}: {e}")
-                return None
+                return (None, False)
 
             # Write the filtered data (or just header if no writable folders found)
             try:
                 with open(user_csv, mode='w', newline='') as outfile:
                     if not fieldnames: # Should have fieldnames if we got here
                         log("Error: Missing fieldnames for writing user hotspot file.", file=sys.stderr)
-                        return None
+                        return (None, False)
                     writer = csv.DictWriter(outfile, fieldnames=fieldnames)
                     writer.writeheader()
                     if writable_folders_data:
@@ -4470,50 +4503,53 @@ class Archiver:
                     else:
                          log(f"No writable folders found. Empty file created: {user_csv}")
 
-                return user_csv # Return path even if only header was written
+                return (user_csv, False) # Return path even if only header was written
 
             except Exception:
                 print_error(f"Error writing user hotspot file: {user_csv}")
-                return None
+                return (None, False)
 
         except Exception:
             print_error("Error in _filter_hotspots_by_write_access")
-            return None
+            return (None, False)
 
     def get_hotspot_folders(self, hotspot_file):
         # This function now filters the hotspot file for writable folders
-        # and returns the path to the new user-specific CSV file.
-        # It no longer returns the list of folders directly.
+        # and returns the path to the new user-specific CSV file and a flag
+        # indicating if filtering was skipped.
 
         # Check write permissions and create a user-specific CSV
-        user_csv_path = self._filter_hotspots_by_write_access(hotspot_file)
-        if not user_csv_path:
-            return None # Indicate failure or no writable folders
+        path_result, filtering_skipped = self._filter_hotspots_by_write_access(hotspot_file)
 
-        # Check if the user-specific CSV has any data rows besides the header
-        try:
-            with open(user_csv_path, 'r', newline='') as f:
-                reader = csv.reader(f)
-                header = next(reader, None) # Read header
-                if not header:
-                    log(f"Warning: User hotspot file is empty or missing header: {user_csv_path}")
-                    # Optionally remove empty file if desired
-                    # os.remove(user_csv_path)
-                    return None
-                first_row = next(reader, None) # Try to read the first data row
-                if first_row is None:
-                    log(f"No writable hotspot folders found in: {hotspot_file}")
-                    # Optionally remove empty file if desired
-                    # os.remove(user_csv_path)
-                    return None # No data rows found
-        except FileNotFoundError:
-             log(f"Error: Filtered hotspot file not found after creation: {user_csv_path}", file=sys.stderr)
-             return None
-        except Exception:
-            print_error(f"Error checking user hotspot file content: {user_csv_path}")
-            return None
+        if not path_result and not filtering_skipped:
+             # Filtering was attempted but failed or resulted in an empty file path
+             log(f"No writable hotspot folders found or error during filtering for: {hotspot_file}")
+             return (None, False) # Return None path, filtering not skipped (but failed)
+        elif not path_result and filtering_skipped:
+             # Filtering was skipped, return original path and flag
+             return (hotspot_file, True)
 
-        return user_csv_path # Return the path to the filtered CSV
+        # Check if the user-specific CSV has any data rows besides the header (only if filtering happened)
+        if not filtering_skipped:
+            try:
+                with open(path_result, 'r', newline='') as f:
+                    reader = csv.reader(f)
+                    header = next(reader, None) # Read header
+                    if not header:
+                        log(f"Warning: User hotspot file is empty or missing header: {path_result}")
+                        return (None, False) # Treat as failure
+                    first_row = next(reader, None) # Try to read the first data row
+                    if first_row is None:
+                        log(f"No writable hotspot folders found in: {hotspot_file}")
+                        return (None, False) # No data rows found
+            except FileNotFoundError:
+                 log(f"Error: Filtered hotspot file not found after creation: {path_result}", file=sys.stderr)
+                 return (None, False) # Treat as failure
+            except Exception:
+                print_error(f"Error checking user hotspot file content: {path_result}")
+                return (None, False) # Treat as failure
+
+        return (path_result, filtering_skipped) # Return the path and the flag
 
     def _check_path_permissions(self, path, write_only=False):
         '''Check if the user has read and write permissions to the given path'''
