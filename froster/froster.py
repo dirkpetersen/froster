@@ -3565,9 +3565,17 @@ class Archiver:
                         pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
                         mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
 
+                        # Add conditional logging for pwalk start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Running pwalk filesystem scan on "{folder}"...')
+
                         # Run the pwalk command
                         ret = subprocess.run(mycmd, shell=True,
                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                        # Add conditional logging for pwalk end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...pwalk scan complete.')
 
                         # Check if the pwalk command was successful
                         if ret.returncode != 0:
@@ -3640,8 +3648,16 @@ class Archiver:
                         # Build the files removing command
                         mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
 
+                        # Add conditional logging for grep start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Filtering pwalk output (removing directories)...')
+
                         # Run the files removing command
                         result = subprocess.run(mycmd, shell=True)
+
+                        # Add conditional logging for grep end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...filtering complete.')
 
                         # Check if the files removing command was successful
                         if result.returncode != 0:
@@ -3655,8 +3671,16 @@ class Archiver:
                         # Build the file conversion command
                         mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} > {pwalk_output_folders_converted.name}'
 
+                        # Add conditional logging for iconv start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Converting character encoding...')
+
                         # Run the file conversion command
                         result = subprocess.run(mycmd, shell=True)
+
+                        # Add conditional logging for iconv end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...conversion complete.')
 
                         # Check if the file conversion command was successful
                         if result.returncode != 0:
@@ -3685,8 +3709,16 @@ class Archiver:
                         duckdb_connection.execute(
                             f'PRAGMA threads={self.args.cores};')
 
+                        # Add conditional logging for DuckDB start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Analyzing folder data with DuckDB...')
+
                         # Execute the SQL query
                         rows = duckdb_connection.execute(sql_query).fetchall()
+
+                        # Add conditional logging for DuckDB end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...analysis complete.')
 
                         # Get the column names
                         header = duckdb_connection.execute(
@@ -3703,12 +3735,22 @@ class Archiver:
             # Get the path to the hotspots CSV file
             mycsv = self.get_hotspots_path(folder)
 
+            # Add conditional logging for CSV writing start
+            if not use_slurm(self.args.noslurm):
+                log(f'  Processing and writing hotspots CSV ({mycsv})...')
+
             # Write the hotspots to the CSV file
             with open(mycsv, 'w') as f:
                 writer = csv.writer(f, dialect='excel')
                 writer.writerow([col[0] for col in header])
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
-                for r in rows:
+                
+                # Use tqdm only if not running under Slurm and rows exist
+                iterable = rows
+                if not use_slurm(self.args.noslurm) and rows:
+                    iterable = tqdm.tqdm(rows, total=len(rows), desc="    Writing hotspots", unit="hotspot", disable=self.output_disable)
+                
+                for r in iterable:
                     row = list(r)
                     if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
                         atime = self._get_newest_file_atime(row[5], row[1])
@@ -3731,6 +3773,9 @@ class Archiver:
                                         f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
                                 agedbytes[i] += row[9]
 
+            # Add conditional logging for CSV writing end
+            if not use_slurm(self.args.noslurm):
+                log(f'    ...hotspots CSV written.')
 
             log(textwrap.dedent(f'''
                 Hotspots file: {mycsv}
