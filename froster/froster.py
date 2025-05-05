@@ -10,7 +10,7 @@ import argparse, asyncio, concurrent.futures, configparser, csv, datetime
 import fnmatch, functools, getpass, grp, hashlib, importlib.metadata, inspect
 import io, itertools, json, linecache, math, os, pathlib, platform, pwd, random
 import re, shlex, shutil, socket, stat, string, subprocess, sys, tarfile
-import tempfile, textwrap, time, traceback
+import tempfile, textwrap, time, traceback, tqdm
 
 # external modules
 from textual.widgets import DataTable, Footer, Button
@@ -3565,9 +3565,17 @@ class Archiver:
                         pwalkcmd = f'{pwalk_bin} --NoSnap --one-file-system --header'
                         mycmd = f'{pwalkcmd} "{folder}" > {pwalk_output.name}'
 
+                        # Add conditional logging for pwalk start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Running pwalk filesystem scan on "{folder}"...')
+
                         # Run the pwalk command
                         ret = subprocess.run(mycmd, shell=True,
                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                        # Add conditional logging for pwalk end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...pwalk scan complete.')
 
                         # Check if the pwalk command was successful
                         if ret.returncode != 0:
@@ -3640,8 +3648,16 @@ class Archiver:
                         # Build the files removing command
                         mycmd = f'grep -v ",-1,0$" "{pwalk_output.name}" > {pwalk_output_folders.name}'
 
+                        # Add conditional logging for grep start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Filtering pwalk output (removing directories)...')
+
                         # Run the files removing command
                         result = subprocess.run(mycmd, shell=True)
+
+                        # Add conditional logging for grep end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...filtering complete.')
 
                         # Check if the files removing command was successful
                         if result.returncode != 0:
@@ -3655,8 +3671,16 @@ class Archiver:
                         # Build the file conversion command
                         mycmd = f'iconv -f ISO-8859-1 -t UTF-8 {pwalk_output_folders.name} > {pwalk_output_folders_converted.name}'
 
+                        # Add conditional logging for iconv start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Converting character encoding...')
+
                         # Run the file conversion command
                         result = subprocess.run(mycmd, shell=True)
+
+                        # Add conditional logging for iconv end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...conversion complete.')
 
                         # Check if the file conversion command was successful
                         if result.returncode != 0:
@@ -3685,8 +3709,16 @@ class Archiver:
                         duckdb_connection.execute(
                             f'PRAGMA threads={self.args.cores};')
 
+                        # Add conditional logging for DuckDB start
+                        if not use_slurm(self.args.noslurm):
+                            log(f'  Analyzing folder data with DuckDB...')
+
                         # Execute the SQL query
                         rows = duckdb_connection.execute(sql_query).fetchall()
+
+                        # Add conditional logging for DuckDB end
+                        if not use_slurm(self.args.noslurm):
+                            log(f'    ...analysis complete.')
 
                         # Get the column names
                         header = duckdb_connection.execute(
@@ -3703,12 +3735,22 @@ class Archiver:
             # Get the path to the hotspots CSV file
             mycsv = self.get_hotspots_path(folder)
 
+            # Add conditional logging for CSV writing start
+            if not use_slurm(self.args.noslurm):
+                log(f'  Processing and writing hotspots CSV ({mycsv})...')
+
             # Write the hotspots to the CSV file
             with open(mycsv, 'w') as f:
                 writer = csv.writer(f, dialect='excel')
                 writer.writerow([col[0] for col in header])
                 # 0:Usr,1:AccD,2:ModD,3:GiB,4:MiBAvg,5:Folder,6:Grp,7:TiB,8:FileCount,9:DirSize
-                for r in rows:
+                
+                # Use tqdm only if not running under Slurm and rows exist
+                iterable = rows
+                if not use_slurm(self.args.noslurm) and rows:
+                    iterable = tqdm.tqdm(rows, total=len(rows), desc="    Writing hotspots", unit="hotspot", disable=self.output_disable)
+                
+                for r in iterable:
                     row = list(r)
                     if row[3] >= self.thresholdGB and row[4] >= self.thresholdMB:
                         atime = self._get_newest_file_atime(row[5], row[1])
@@ -3731,6 +3773,9 @@ class Archiver:
                                         f'  {row[5]} has not been accessed for {row[1]} days. (atime = {atime})')
                                 agedbytes[i] += row[9]
 
+            # Add conditional logging for CSV writing end
+            if not use_slurm(self.args.noslurm):
+                log(f'    ...hotspots CSV written.')
 
             log(textwrap.dedent(f'''
                 Hotspots file: {mycsv}
@@ -3862,27 +3907,80 @@ class Archiver:
         if not ret:
             return False
 
-        # Get the selected CSV file
+        # Get the selected CSV file path from the first selector result
         hotspot_selected = os.path.join(self.cfg.hotspots_dir, ret[0])
 
-        # Get the folders to archive from the selected Hotspot file
-        folders_to_archive = self.get_hotspot_folders(hotspot_selected)
+        # Get the path to the user-specific CSV file containing only writable folders
+        path_result, filtering_skipped = self.get_hotspot_folders(hotspot_selected)
 
-        if not folders_to_archive:
-            log(
-                f'\nNo hotspots to archive found in {hotspot_selected}.')
-            return True
-
-        ret = TextualStringListSelector(
-            title="Select hotspot to archive ", items=folders_to_archive).run()
-        if not ret:
-            # No file selected
-            return False
+        # Determine the actual path to display in the table
+        if path_result:
+            path_to_display = path_result
+        elif filtering_skipped:
+            # Filtering skipped, use the original selected file
+            path_to_display = hotspot_selected
         else:
-            folders_to_archive = [ret[0]]
+            # Filtering attempted but failed or no writable folders found
+            log(f'\nNo writable hotspots found or accessible in {hotspot_selected}.\n')
+            return True # Indicate completion, even if nothing was archived
 
-        # Archive the selected folders
-        return self.archive(folders_to_archive)
+        # Use TableHotspots to display the filtered list and select the specific folder row
+        app = TableHotspots(path_to_display)
+        ret = app.run() # ret can be (row_data, action) or []
+
+        if not ret:
+            # No row selected in TableHotspots or user quit
+            return False
+        elif isinstance(ret, tuple):
+            row_data, action = ret
+            # Extract the folder path from the selected row
+            if len(row_data) < 6:
+                log('Error: Hotspots table did not return all expected columns.', file=sys.stderr)
+                return False
+            # Assuming the folder path is the 6th element (index 5)
+            folder_to_archive = row_data[5]
+
+            # Permission check if filtering was skipped
+            if filtering_skipped:
+                log(f"Checking write permission for selected folder: {folder_to_archive}")
+                has_permission = self._check_path_permissions(folder_to_archive, write_only=True)
+                if not has_permission:
+                    log(f'\nError: Write permission denied for selected folder: {folder_to_archive}\n')
+                    # Ideally, we'd go back to the table here, but for simplicity, we exit.
+                    return False # Indicate failure
+                else:
+                    log("  Permission granted.")
+
+            if action == "continue":
+                # Archive the selected folders
+                return self.archive([folder_to_archive])
+            elif action == "quit":
+                # Construct the command line string
+                # Add profile if it's not the default one implicitly used
+                profile_arg = f' --profile "{self.cfg.profile.replace("profile ", "")}"' if self.cfg.profile else ""
+                # Add recursive flag if it was set
+                recursive_arg = " --recursive" if self.args.recursive else ""
+                # Add notar flag if it was set
+                notar_arg = " --no-tar" if self.args.notar else ""
+                # Add nihref if it was set
+                nih_arg = f' --nih-ref "{self.args.nihref}"' if self.args.nihref else ""
+                # Add filtering flags if they were used
+                larger_arg = f' --larger {self.args.larger}' if self.args.larger > 0 else ""
+                older_arg = f' --older {self.args.older}' if self.args.older > 0 else ""
+                newer_arg = f' --newer {self.args.newer}' if self.args.newer > 0 else ""
+                mtime_arg = " --mtime" if self.args.agemtime else ""
+
+                cmd_str = f'froster archive{profile_arg}{recursive_arg}{notar_arg}{nih_arg}{larger_arg}{older_arg}{newer_arg}{mtime_arg} "{folder_to_archive}"'
+                log(f'\nTo archive this folder later, run:\n\n    {cmd_str}\n')
+                return True # Indicate successful completion without archiving
+            else:
+                 # Should not happen with current logic, but handle defensively
+                 log(f"Internal Error: Unknown action '{action}' received.", file=sys.stderr)
+                 return False
+        else:
+            # Handle unexpected return type from app.run()
+            log(f"Internal Error: Unexpected return type from TableHotspots: {type(ret)}", file=sys.stderr)
+            return False
 
     def _is_recursive_collision(self, folders):
         '''Check if there is a collision between folders and recursive flag'''
@@ -4314,81 +4412,174 @@ class Archiver:
             print_error()
             return False
 
+    def _filter_hotspots_by_write_access(self, hotspot_csv):
+        # Helper function to filter hotspots based on write access and return user-specific CSV path
+        try:
+            # Count lines in the original file first
+            line_count = 0
+            try:
+                with open(hotspot_csv, 'r') as f_count:
+                    # Simple line count, including header
+                    line_count = sum(1 for _ in f_count)
+            except Exception as e:
+                 log(f"Warning: Could not count lines in {hotspot_csv}: {e}", file=sys.stderr)
+                 # Proceed assuming fewer than 5000 lines
+
+            # If line count is too high, skip filtering
+            if line_count >= 5000:
+                log(f"Skipping proactive write permission check for large file ({line_count} lines): {hotspot_csv}")
+                return (None, True) # Return None path, indicate filtering skipped
+
+            hsdir, hsfile = os.path.split(hotspot_csv)
+            # Ensure user-specific directory exists within the main hotspots dir
+            hsdiruser = os.path.join(self.cfg.hotspots_dir, self.cfg.whoami)
+            os.makedirs(hsdiruser, exist_ok=True, mode=0o775)
+            user_csv = os.path.join(hsdiruser, hsfile)
+
+            # Check if user CSV exists and is newer than the original, unless --force is used
+            if os.path.exists(user_csv) and os.path.getmtime(user_csv) > os.path.getmtime(hotspot_csv):
+                if not self.args.force:
+                    # log(f"Using existing user hotspot file: {user_csv}") # Optional debug log
+                    return (user_csv, False) # Return path, indicate filtering NOT skipped
+                else:
+                    log(f"Re-filtering hotspots due to --force flag: {hotspot_csv}")
+
+            log('Filtering hotspots for folders with write permissions ...')
+            writable_folders_data = []
+            fieldnames = []
+            total_lines = 0 # For progress bar
+
+            try:
+                # First pass to get header and count lines for tqdm
+                with open(hotspot_csv, mode='r', newline='') as infile_count:
+                    reader_count = csv.reader(infile_count)
+                    header_list = next(reader_count, None)
+                    if not header_list:
+                         log(f"Error: Hotspot file is empty or has no header: {hotspot_csv}", file=sys.stderr)
+                         return (None, False)
+                    fieldnames = header_list
+                    try:
+                        # Count remaining lines
+                        total_lines = sum(1 for _ in reader_count)
+                    except Exception:
+                         total_lines = 0 # Fallback if counting fails
+
+                # Second pass to read data and check permissions
+                with open(hotspot_csv, mode='r', newline='') as infile:
+                    reader = csv.DictReader(infile)
+                    # Ensure fieldnames match if DictReader didn't get them correctly (e.g., empty file)
+                    if not reader.fieldnames:
+                         reader.fieldnames = fieldnames
+
+                    if 'Folder' not in fieldnames:
+                        log(f"Error: 'Folder' column not found in hotspot file: {hotspot_csv}", file=sys.stderr)
+                        return (None, False)
+
+                    # Use tqdm for progress indication
+                    for row in tqdm.tqdm(reader, total=total_lines, desc="Checking write access", unit="folder", disable=self.output_disable):
+                        folder_path = row.get('Folder')
+                        # Check if folder_path exists and has write permission
+                        if folder_path and self._check_path_permissions(folder_path, write_only=True):
+                            writable_folders_data.append(row)
+
+            except FileNotFoundError:
+                log(f"Error: Hotspot file not found: {hotspot_csv}", file=sys.stderr)
+                return (None, False)
+            except Exception as e:
+                print_error(f"Error reading hotspot file {hotspot_csv}: {e}")
+                return (None, False)
+
+            # Write the filtered data (or just header if no writable folders found)
+            try:
+                with open(user_csv, mode='w', newline='') as outfile:
+                    if not fieldnames: # Should have fieldnames if we got here
+                        log("Error: Missing fieldnames for writing user hotspot file.", file=sys.stderr)
+                        return (None, False)
+                    writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    if writable_folders_data:
+                        writer.writerows(writable_folders_data)
+                        log(f"Filtered hotspots written to: {user_csv}")
+                    else:
+                         log(f"No writable folders found. Empty file created: {user_csv}")
+
+                return (user_csv, False) # Return path even if only header was written
+
+            except Exception:
+                print_error(f"Error writing user hotspot file: {user_csv}")
+                return (None, False)
+
+        except Exception:
+            print_error("Error in _filter_hotspots_by_write_access")
+            return (None, False)
+
     def get_hotspot_folders(self, hotspot_file):
+        # This function now filters the hotspot file for writable folders
+        # and returns the path to the new user-specific CSV file and a flag
+        # indicating if filtering was skipped.
 
-        agefld = 'AccD'
+        # Check write permissions and create a user-specific CSV
+        path_result, filtering_skipped = self._filter_hotspots_by_write_access(hotspot_file)
 
-        if self.args.agemtime:
-            agefld = 'ModD'
+        if not path_result and not filtering_skipped:
+             # Filtering was attempted but failed or resulted in an empty file path
+             log(f"No writable hotspot folders found or error during filtering for: {hotspot_file}")
+             return (None, False) # Return None path, filtering not skipped (but failed)
+        elif not path_result and filtering_skipped:
+             # Filtering was skipped, return original path and flag
+             return (hotspot_file, True)
 
-        # Initialize a connection to an in-memory database
-        duckdb_connection = duckdb.connect(
-            database=':memory:', read_only=False)
+        # Check if the user-specific CSV has any data rows besides the header (only if filtering happened)
+        if not filtering_skipped:
+            try:
+                with open(path_result, 'r', newline='') as f:
+                    reader = csv.reader(f)
+                    header = next(reader, None) # Read header
+                    if not header:
+                        log(f"Warning: User hotspot file is empty or missing header: {path_result}")
+                        return (None, False) # Treat as failure
+                    first_row = next(reader, None) # Try to read the first data row
+                    if first_row is None:
+                        log(f"No writable hotspot folders found in: {hotspot_file}")
+                        return (None, False) # No data rows found
+            except FileNotFoundError:
+                 log(f"Error: Filtered hotspot file not found after creation: {path_result}", file=sys.stderr)
+                 return (None, False) # Treat as failure
+            except Exception:
+                print_error(f"Error checking user hotspot file content: {path_result}")
+                return (None, False) # Treat as failure
 
-        # Set the number of threads to use
-        duckdb_connection.execute(f'PRAGMA threads={self.args.cores};')
+        return (path_result, filtering_skipped) # Return the path and the flag
 
-        # Register CSV file as a virtual table
-        duckdb_connection.execute(
-            f"CREATE TABLE hs AS SELECT * FROM read_csv_auto('{hotspot_file}')")
-
-        query = "SELECT COUNT(*) FROM hs"
-        result = duckdb_connection.execute(query).fetchall()
-
-        if result[0][0] == 0:
-            return []
-
-        # Run SQL queries on this virtual table
-        # Filter by given age and size. The default value for all is 0
-        if self.args.older > 0:
-            rows = duckdb_connection.execute(
-                f"SELECT * FROM hs WHERE {agefld} >= {self.args.older} and GiB >= {self.args.larger} ").fetchall()
-
-        elif self.args.newer > 0:
-            rows = duckdb_connection.execute(
-                f"SELECT * FROM hs WHERE {agefld} <= {self.args.newer} and GiB >= {self.args.larger} ").fetchall()
-
-        else:
-            rows = duckdb_connection.execute(
-                f"SELECT * FROM hs WHERE GiB >= {self.args.larger} ").fetchall()
-
-        # Close the DuckDB connection
-        duckdb_connection.close()
-
-        folders_to_archive = [(item[5], item[3])
-                              for item in rows]  # Include size in the tuple
-
-        log(f'Hotspots file: {hotspot_file}')
-        log(f'\nFolders to archive:\n')
-        for folder, size in folders_to_archive:
-            log(f'  {folder} - Size: {size} GiB')
-
-        totalspace = sum(item[3] for item in rows)
-        log(
-            f'\nTotal space to archive: {format(round(totalspace, 3),",")} GiB\n')
-
-        # Return only the folders
-        return [folder for folder, size in folders_to_archive]
-
-    def _check_path_permissions(self, path):
+    def _check_path_permissions(self, path, write_only=False):
         '''Check if the user has read and write permissions to the given path'''
 
-        # If path is empty, return True
+        # If path is empty, return False (invalid path)
         if not path:
-            return True
+            printdbg(f"Invalid path provided (empty string)")
+            return False
+
+        # Check if path exists before checking permissions
+        if not os.path.exists(path):
+             printdbg(f"Path does not exist: {path}")
+             return False
 
         # Get path permissions
         can_read = os.access(path, os.R_OK)
         can_write = os.access(path, os.W_OK)
 
         # Print error messages if the user does not have read or write permissions
-        if not can_read:
-            log(f"Cannot read: {path}", file=sys.stderr)
+        # Only print if debug is enabled to avoid cluttering the output during filtering
+        if not can_read and not write_only:
+            printdbg(f"Cannot read: {path}")
         if not can_write:
-            log(f"Cannot write: {path}", file=sys.stderr)
+            printdbg(f"Cannot write: {path}")
 
-        # Return True if the user has read and write permissions, otherwise return False
-        return can_read and can_write
+        # Return True if the user has the required permissions, otherwise return False
+        if write_only:
+            return can_write
+        else:
+            return can_read and can_write
 
     def _is_correct_files_folders_permissions(self, folders, is_recursive=False):
         '''Check if the user has read and write permissions to the given folders'''
@@ -5577,10 +5768,10 @@ class TableHotspots(App[list]):
 
     BINDINGS = [("q", "request_quit", "Quit")]
 
-    def __init__(self, file):
+    def __init__(self, file): # Modified: Accept file path
         super().__init__()
         self.myrow = []
-        self.file = file
+        self.file = file # Added: Store file path
 
     def compose(self) -> ComposeResult:
         table = DataTable()
@@ -5593,25 +5784,48 @@ class TableHotspots(App[list]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        fh = open(self.file, 'r')
-        rows = csv.reader(fh)
-        table.add_columns(*next(rows))
-        table.add_rows(itertools.islice(rows, MAXHOTSPOTS))
+        try: # Added try-except block
+            with open(self.file, 'r', newline='') as fh: # Modified: Use self.file, add newline=''
+                rows = csv.reader(fh)
+                header = next(rows, None)
+                if header:
+                    table.add_columns(*header)
+                    # Read remaining rows, limiting to MAXHOTSPOTS
+                    data_rows = list(itertools.islice(rows, MAXHOTSPOTS))
+                    if data_rows:
+                         table.add_rows(data_rows)
+                    else:
+                         # Handle case where file only has a header
+                         log(f"Warning: Hotspot file contains no data rows: {self.file}")
+                         # Optionally add a message to the table or just leave it empty
+                else:
+                    log(f"Warning: Hotspot file is empty or has no header: {self.file}")
+                    self.exit([]) # Exit if file is empty or has no header
+        except FileNotFoundError:
+            log(f"Error: Hotspot file not found: {self.file}", file=sys.stderr)
+            self.exit([]) # Exit if file not found
+        except Exception as e:
+            print_error(f"Error reading hotspot file {self.file}: {e}")
+            self.exit([]) # Exit on other errors
 
     def accept_answer(self, answer: str) -> None:
         # adds yesno answer as last element in list
         if answer == 'continue':
-            self.exit(self.myrow+[True])
+            self.exit((self.myrow, "continue"))
         elif answer == 'quit':
-            self.exit(self.myrow+[False])
+            self.exit((self.myrow, "quit"))
+        # Added 'return' case to go back without exiting the app immediately if needed,
+        # although current logic exits on selection.
+        elif answer == 'return':
+             pass # Just closes the modal, stays in the table
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.myrow = self.query_one(DataTable).get_row(event.row_key)
-        # self.exit(self.myrow)
+        # self.exit(self.myrow) # Don't exit here, wait for modal confirmation
         self.push_screen(ScreenConfirm(), callback=self.accept_answer)
-
+        
     def action_request_quit(self) -> None:
-        self.app.exit()
+        self.app.exit([]) # Ensure exit returns an empty list if quitting
 
 
 class TextualStringListSelector(App[list]):
