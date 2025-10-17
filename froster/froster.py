@@ -1923,7 +1923,7 @@ class AWSBoto:
             # Validate that we're not moving FROM Glacier tiers
             glacier_tiers = ['GLACIER', 'DEEP_ARCHIVE']
             if current_storage_class in glacier_tiers:
-                log(f'\n[red]Error: Cannot change storage class from {current_storage_class}[/red]')
+                log(f'\nError: Cannot change storage class from {current_storage_class}')
                 log('Moving data FROM Glacier or Deep Archive is not allowed.')
                 log('Please restore the data first if you need to change its storage tier.\n')
                 return False, 0, 0, 0, 0
@@ -1931,7 +1931,7 @@ class AWSBoto:
             # Files that should remain in STANDARD tier
             standard_files = ['Froster.allfiles.csv', '.froster.md5sum', '.froster-restored.md5sum']
 
-            log(f'\n[bold]CHANGING STORAGE TIER[/bold]')
+            log(f'\nCHANGING STORAGE TIER')
             log(f'  Bucket: {bucket_name}')
             log(f'  Prefix: {prefix}')
             log(f'  From: {current_storage_class}')
@@ -1982,10 +1982,10 @@ class AWSBoto:
                             log(f'    Changed: {key}')
 
                     except Exception as e:
-                        log(f'    [yellow]Warning: Failed to change storage class for {key}: {e}[/yellow]')
+                        log(f'    Warning: Failed to change storage class for {key}: {e}')
                         skipped_objects += 1
 
-            log(f'\n  [green]Storage class change completed[/green]')
+            log(f'\n  Storage class change completed')
             log(f'    Total objects: {total_objects}')
             log(f'    Changed: {changed_objects}')
             log(f'    Skipped: {skipped_objects}')
@@ -6060,6 +6060,97 @@ class TableNIHGrants(App[list]):
         return
 
 
+class ScreenConfirmTierChange(ModalScreen[bool]):
+    """Modal confirmation dialog for storage tier changes"""
+
+    DEFAULT_CSS = """
+    ScreenConfirmTierChange {
+        align: center middle;
+    }
+
+    ScreenConfirmTierChange > Vertical {
+        background: $secondary;
+        width: auto;
+        height: auto;
+        border: thick $primary;
+        padding: 2 4;
+    }
+
+    ScreenConfirmTierChange > Vertical > * {
+        width: auto;
+        height: auto;
+    }
+
+    ScreenConfirmTierChange > Vertical > Label {
+        padding-bottom: 1;
+    }
+
+    ScreenConfirmTierChange > Vertical > Horizontal {
+        align: center middle;
+        padding-top: 2;
+    }
+
+    ScreenConfirmTierChange Button {
+        margin: 0 2;
+    }
+    """
+
+    def __init__(self, folder, current_tier, new_tier, object_count, total_size_gib):
+        super().__init__()
+        self.folder = folder
+        self.current_tier = current_tier
+        self.new_tier = new_tier
+        self.object_count = object_count
+        self.total_size_gib = total_size_gib
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label("[bold]Confirm Storage Tier Change[/bold]")
+            yield Label("")
+            yield Label(f"Folder: {self.folder}")
+            yield Label(f"Current tier: {self.current_tier}")
+            yield Label(f"New tier: {self.new_tier}")
+            yield Label(f"Objects to change: {self.object_count}")
+            yield Label(f"Total size: {self.total_size_gib:.2f} GiB")
+            yield Label("")
+            yield Label("[yellow]This operation will change the storage class of all objects[/yellow]")
+            yield Label("[yellow](except metadata files which remain in STANDARD)[/yellow]")
+
+            with Horizontal():
+                yield Button("Proceed", id="yes", variant="primary")
+                yield Button("Cancel", id="no", variant="default")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(result=event.button.id == "yes")
+
+
+class TableStorageTierConfirmApp(App[bool]):
+    """Wrapper app to show the confirmation modal"""
+
+    def __init__(self, folder, current_tier, new_tier, object_count, total_size_gib):
+        super().__init__()
+        self.folder = folder
+        self.current_tier = current_tier
+        self.new_tier = new_tier
+        self.object_count = object_count
+        self.total_size_gib = total_size_gib
+
+    def on_mount(self) -> None:
+        self.push_screen(
+            ScreenConfirmTierChange(
+                self.folder,
+                self.current_tier,
+                self.new_tier,
+                self.object_count,
+                self.total_size_gib
+            ),
+            self.handle_result
+        )
+
+    def handle_result(self, result: bool) -> None:
+        self.exit(result)
+
+
 class TableStorageTierSelector(App[str]):
     """Interactive TUI for selecting AWS S3 storage tier with cost information"""
 
@@ -7318,7 +7409,7 @@ class Commands:
                 archive_info = arch.froster_archives_get_entry(folder)
 
                 if not archive_info:
-                    log(f'\n[red]Error: Folder {folder} is not archived[/red]\n')
+                    log(f'\nError: Folder {folder} is not archived\n')
                     return False
 
                 current_tier = archive_info['s3_storage_class']
@@ -7327,7 +7418,7 @@ class Commands:
 
                 # Check if folder is in Glacier/Deep Archive
                 if current_tier in ['GLACIER', 'DEEP_ARCHIVE']:
-                    log(f'\n[red]Error: Cannot change storage tier from {current_tier}[/red]')
+                    log(f'\nError: Cannot change storage tier from {current_tier}')
                     log('Moving data FROM Glacier or Deep Archive is not allowed.')
                     log('Please restore the data first if you need to change its storage tier.\n')
                     return False
@@ -7368,20 +7459,22 @@ class Commands:
                 new_tier = app.run()
 
                 if not new_tier:
-                    log('\n[yellow]Storage tier change cancelled[/yellow]\n')
+                    log('\nStorage tier change cancelled\n')
                     return False
 
-                # Confirm the change
-                log(f'\n[bold]Confirm Storage Tier Change[/bold]')
-                log(f'  Folder: {folder}')
-                log(f'  Current tier: {current_tier}')
-                log(f'  New tier: {new_tier}')
-                log(f'  Objects to change: {object_count}')
-                log(f'  Total size: {total_size / (1024**3):.2f} GiB\n')
+                # Show confirmation modal
+                confirm_app = TableStorageTierConfirmApp(
+                    folder=folder,
+                    current_tier=current_tier,
+                    new_tier=new_tier,
+                    object_count=object_count,
+                    total_size_gib=total_size / (1024**3)
+                )
 
-                response = input('Proceed with storage tier change? (yes/no): ')
-                if response.lower() not in ['yes', 'y']:
-                    log('\n[yellow]Storage tier change cancelled[/yellow]\n')
+                confirmed = confirm_app.run()
+
+                if not confirmed:
+                    log('\nStorage tier change cancelled\n')
                     return False
 
                 # Perform the storage class change
@@ -7393,14 +7486,14 @@ class Commands:
                 )
 
                 if not success:
-                    log('\n[red]Storage tier change failed[/red]\n')
+                    log('\nStorage tier change failed\n')
                     return False
 
                 # Update the local database
                 archive_info['s3_storage_class'] = new_tier
                 arch._archive_json_add_entry(key=folder.rstrip(os.path.sep), value=archive_info)
 
-                log(f'\n[green]Successfully changed storage tier[/green]')
+                log(f'\nSuccessfully changed storage tier')
                 log(f'  Database updated: {arch.archive_json}\n')
 
             return True
