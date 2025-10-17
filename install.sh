@@ -56,17 +56,12 @@ catch() {
 
     if [ "$1" != "0" ]; then
         echo -e "\nError: $2: Installation failed!\n"
+        echo "Your config and data remain safe in:"
+        echo "  Config: ${froster_config_dir}"
+        echo "  Data: ${froster_data_dir}"
+        echo ""
 
-        # Restore (if any) backed up froster config files
-        if [[ -d ${froster_config_backup_dir} ]]; then
-            mv -f ${froster_config_backup_dir} ${froster_config_dir} >/dev/null 2>&1
-        fi
-
-        # Restore (if any) backed up froster data files
-        if [[ -d ${froster_data_backup_dir} ]]; then
-            mv -f ${froster_data_backup_dir} ${froster_data_dir} >/dev/null 2>&1
-        fi
-
+        # Clean up temporary installation files
         rm -rf ${pwalk_path} >/dev/null 2>&1
         rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
     fi
@@ -259,21 +254,158 @@ check_dependencies() {
 
 }
 
-# Backup older installations (if any) but keep the froster-archive.json and config.ini files
+# Get the actual location of froster-archives.json by reading config
+get_data_file_location() {
+    local config_file="$1"
+    local default_location="${XDG_DATA_HOME}/froster/froster-archives.json"
+
+    # If no config exists, return default location
+    if [[ ! -f "$config_file" ]]; then
+        echo "$default_location"
+        return
+    fi
+
+    # Try to read shared data directory from config
+    # Config format: [general] section with shared_data_dir key
+    local shared_dir=$(grep -A 10 "^\[general\]" "$config_file" 2>/dev/null | grep "^shared_data_dir" | cut -d'=' -f2 | tr -d ' ')
+
+    if [[ -n "$shared_dir" && -d "$shared_dir" ]]; then
+        echo "${shared_dir}/froster-archives.json"
+    else
+        echo "$default_location"
+    fi
+}
+
+# Check if we should restore from backup (for users affected by previous buggy installer)
+check_and_restore_from_backup() {
+    local config_file="${froster_config_dir}/config.ini"
+    local data_file_location
+
+    # Determine where froster-archives.json should be
+    data_file_location=$(get_data_file_location "$config_file")
+
+    # Check if BOTH main files are missing
+    local config_missing=false
+    local data_missing=false
+
+    if [[ ! -f "$config_file" ]]; then
+        config_missing=true
+    fi
+
+    if [[ ! -f "$data_file_location" ]]; then
+        data_missing=true
+    fi
+
+    # If at least one file exists, no restore needed
+    if [[ "$config_missing" == false || "$data_missing" == false ]]; then
+        return 0
+    fi
+
+    # Both files are missing, look for backups
+    echo -e "\nChecking for previous Froster backups..."
+
+    # Find the most recent backup directory that has BOTH files
+    local latest_backup=""
+    local backup_config_file=""
+    local backup_data_file=""
+
+    # Search for backups in reverse chronological order (newest first)
+    for backup_dir in $(find ${froster_all_config_backups} -maxdepth 1 -type d -name "froster_*.bak" 2>/dev/null | sort -r); do
+        local test_config="${backup_dir}/config.ini"
+
+        # Check if config exists in this backup
+        if [[ ! -f "$test_config" ]]; then
+            continue
+        fi
+
+        # Get data location from this backup's config
+        local test_data_location=$(get_data_file_location "$test_config")
+
+        # Check if we can find the data file in corresponding data backup
+        local backup_timestamp=$(basename "$backup_dir" | sed 's/froster_\(.*\)\.bak/\1/')
+        local corresponding_data_backup="${froster_all_data_backups}/froster_${backup_timestamp}.bak"
+
+        # Construct potential data file path in backup
+        local test_data="${corresponding_data_backup}/froster-archives.json"
+
+        # Also check if data was in a shared location mentioned in backup config
+        if [[ "$test_data_location" != "${XDG_DATA_HOME}/froster/froster-archives.json" ]]; then
+            # Data might be in shared location, but we can't restore shared data
+            # Only check local backup
+            test_data="${corresponding_data_backup}/froster-archives.json"
+        fi
+
+        if [[ -f "$test_data" ]]; then
+            # Found a backup with BOTH files
+            latest_backup="$backup_dir"
+            backup_config_file="$test_config"
+            backup_data_file="$test_data"
+            break
+        fi
+    done
+
+    # If we found a complete backup, ask user
+    if [[ -n "$latest_backup" ]]; then
+        local backup_date=$(basename "$latest_backup" | sed 's/froster_\([0-9]\{8\}\)\([0-9]\{6\}\)\.bak/\1 \2/' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
+
+        echo ""
+        echo "==========================================="
+        echo "  Froster Backup Found"
+        echo "==========================================="
+        echo ""
+        echo "Your config and data files are missing, but we found a backup from:"
+        echo "  Date: $backup_date"
+        echo ""
+        echo "Backup location:"
+        echo "  Config: $backup_config_file"
+        echo "  Data:   $backup_data_file"
+        echo ""
+        echo -n "Would you like to restore these files? (yes/no): "
+        read -r response
+        echo ""
+
+        if [[ "$response" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+            echo "Restoring from backup..."
+
+            # Create directories if needed
+            mkdir -p "${froster_config_dir}"
+            mkdir -p "$(dirname "$data_file_location")"
+
+            # Restore config
+            cp -f "$backup_config_file" "$config_file"
+            echo "  ✓ Config restored to: $config_file"
+
+            # Restore data
+            cp -f "$backup_data_file" "$data_file_location"
+            echo "  ✓ Data restored to: $data_file_location"
+
+            echo ""
+            echo "Backup restoration completed successfully!"
+            echo ""
+        else
+            echo "Skipping backup restoration. You can manually restore later from:"
+            echo "  $latest_backup"
+            echo ""
+        fi
+    fi
+}
+
+# Create backup directories for user reference (optional safety net)
+# NOTE: Config and data are NEVER deleted, so backups are just for user peace of mind
 backup_old_installation() {
 
     # Make sure we did not left any backup files from previous updates.
     # Move all backups to the data or config backup directories
     mkdir -p ${froster_all_data_backups}
     mkdir -p ${froster_all_config_backups}
-    find ${XDG_DATA_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 | xargs -0 -I {} mv {} $froster_all_data_backups
-    find ${XDG_CONFIG_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 | xargs -0 -I {} mv {} $froster_all_config_backups
+    find ${XDG_DATA_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 2>/dev/null | xargs -0 -I {} mv {} $froster_all_data_backups 2>/dev/null || true
+    find ${XDG_CONFIG_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 2>/dev/null | xargs -0 -I {} mv {} $froster_all_config_backups 2>/dev/null || true
 
 
-    # Back up (if any) older froster data files
+    # Create a reference backup of data (optional, for user peace of mind)
     if [[ -d ${froster_data_dir} ]]; then
 
-        echo -e "\nBacking Froster data folder ..."
+        echo -e "\nCreating reference backup of Froster data folder..."
 
         # Copy the froster directory to froster_YYYYMMDD.bak
         cp -rf ${froster_data_dir} ${froster_data_backup_dir}
@@ -281,21 +413,21 @@ backup_old_installation() {
         echo "    source: ${froster_data_dir}"
         echo "    destination: ${froster_data_backup_dir}"
 
-        echo "...data backed up"
+        echo "...reference backup created"
     fi
 
-    # Back up (if any) older froster configurations
+    # Create a reference backup of config (optional, for user peace of mind)
     if [[ -d ${froster_config_dir} ]]; then
 
-        echo -e "\nBacking Froster config folder ..."
+        echo -e "\nCreating reference backup of Froster config folder..."
 
         echo "    source: ${froster_config_dir}"
         echo "    destination: ${froster_config_backup_dir}"
 
-        # Move the froster config directory to froster.bak
+        # Copy the froster config directory to backup
         cp -rf ${froster_config_dir} ${froster_config_backup_dir}
 
-        echo "...config backed up"
+        echo "...reference backup created"
     fi
 }
 
@@ -334,13 +466,12 @@ install_pipx() {
 
 install_froster() {
 
-    echo -e "\nRemoving old froster files..."
-    rm -rf ${froster_data_dir}
-    rm -rf ${froster_config_dir}
+    echo -e "\nRemoving old froster binaries only (keeping config and data)..."
+    # ONLY remove executables, NEVER touch user config or data
     rm -f ${HOME}/.local/bin/froster
     rm -f ${HOME}/.local/bin/froster.py
     rm -f ${HOME}/.local/bin/s3-restore.py
-    echo "...old froster files removed"
+    echo "...old froster binaries removed"
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
 
@@ -372,23 +503,8 @@ install_froster() {
     done
     echo "    ...froster command verified."
 
-    # Keep the config.ini file (if any)
-    if [[ -f ${froster_config_backup_dir}/config.ini ]]; then
-        # Create the froster directory if it does not exist
-        mkdir -p ${froster_config_dir}
-
-        # Copy the config file to the data directory
-        cp -f ${froster_config_backup_dir}/config.ini ${froster_config_dir}
-    fi
-
-    # Keep the froster-archives.json file (if any)
-    if [[ -f ${froster_data_backup_dir}/froster-archives.json ]]; then
-        # Create the froster directory if it does not exist
-        mkdir -p ${froster_data_dir}
-
-        # Copy the froster-archives.json file to the data directory
-        cp -f ${froster_data_backup_dir}/froster-archives.json ${froster_data_dir}
-    fi
+    # Config and data directories are NEVER deleted, they persist across upgrades
+    # Users' settings and archive database remain intact
 }
 
 install_pwalk() {
@@ -515,6 +631,9 @@ check_dependencies
 
 # Set rw permissions on anyone in file's group
 umask 0002
+
+# Check if we need to restore from backup (for users hit by previous buggy installer)
+check_and_restore_from_backup
 
 # Backup old installation (if any)
 backup_old_installation
