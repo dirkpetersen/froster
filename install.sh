@@ -56,17 +56,12 @@ catch() {
 
     if [ "$1" != "0" ]; then
         echo -e "\nError: $2: Installation failed!\n"
+        echo "Your config and data remain safe in:"
+        echo "  Config: ${froster_config_dir}"
+        echo "  Data: ${froster_data_dir}"
+        echo ""
 
-        # Restore (if any) backed up froster config files
-        if [[ -d ${froster_config_backup_dir} ]]; then
-            mv -f ${froster_config_backup_dir} ${froster_config_dir} >/dev/null 2>&1
-        fi
-
-        # Restore (if any) backed up froster data files
-        if [[ -d ${froster_data_backup_dir} ]]; then
-            mv -f ${froster_data_backup_dir} ${froster_data_dir} >/dev/null 2>&1
-        fi
-
+        # Clean up temporary installation files
         rm -rf ${pwalk_path} >/dev/null 2>&1
         rm -rf rclone-current-linux-*.zip rclone-v*/ >/dev/null 2>&1
     fi
@@ -259,21 +254,22 @@ check_dependencies() {
 
 }
 
-# Backup older installations (if any) but keep the froster-archive.json and config.ini files
+# Create backup directories for user reference (optional safety net)
+# NOTE: Config and data are NEVER deleted, so backups are just for user peace of mind
 backup_old_installation() {
 
     # Make sure we did not left any backup files from previous updates.
     # Move all backups to the data or config backup directories
     mkdir -p ${froster_all_data_backups}
     mkdir -p ${froster_all_config_backups}
-    find ${XDG_DATA_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 | xargs -0 -I {} mv {} $froster_all_data_backups
-    find ${XDG_CONFIG_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 | xargs -0 -I {} mv {} $froster_all_config_backups
+    find ${XDG_DATA_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 2>/dev/null | xargs -0 -I {} mv {} $froster_all_data_backups 2>/dev/null || true
+    find ${XDG_CONFIG_HOME} -maxdepth 1 -type d -name "froster_*.bak" -print0 2>/dev/null | xargs -0 -I {} mv {} $froster_all_config_backups 2>/dev/null || true
 
 
-    # Back up (if any) older froster data files
+    # Create a reference backup of data (optional, for user peace of mind)
     if [[ -d ${froster_data_dir} ]]; then
 
-        echo -e "\nBacking Froster data folder ..."
+        echo -e "\nCreating reference backup of Froster data folder..."
 
         # Copy the froster directory to froster_YYYYMMDD.bak
         cp -rf ${froster_data_dir} ${froster_data_backup_dir}
@@ -281,21 +277,21 @@ backup_old_installation() {
         echo "    source: ${froster_data_dir}"
         echo "    destination: ${froster_data_backup_dir}"
 
-        echo "...data backed up"
+        echo "...reference backup created"
     fi
 
-    # Back up (if any) older froster configurations
+    # Create a reference backup of config (optional, for user peace of mind)
     if [[ -d ${froster_config_dir} ]]; then
 
-        echo -e "\nBacking Froster config folder ..."
+        echo -e "\nCreating reference backup of Froster config folder..."
 
         echo "    source: ${froster_config_dir}"
         echo "    destination: ${froster_config_backup_dir}"
 
-        # Move the froster config directory to froster.bak
+        # Copy the froster config directory to backup
         cp -rf ${froster_config_dir} ${froster_config_backup_dir}
 
-        echo "...config backed up"
+        echo "...reference backup created"
     fi
 }
 
@@ -334,13 +330,12 @@ install_pipx() {
 
 install_froster() {
 
-    echo -e "\nRemoving old froster files..."
-    rm -rf ${froster_data_dir}
-    rm -rf ${froster_config_dir}
+    echo -e "\nRemoving old froster binaries only (keeping config and data)..."
+    # ONLY remove executables, NEVER touch user config or data
     rm -f ${HOME}/.local/bin/froster
     rm -f ${HOME}/.local/bin/froster.py
     rm -f ${HOME}/.local/bin/s3-restore.py
-    echo "...old froster files removed"
+    echo "...old froster binaries removed"
 
     if [ "$LOCAL_INSTALL" = "true" ]; then
 
@@ -372,23 +367,8 @@ install_froster() {
     done
     echo "    ...froster command verified."
 
-    # Keep the config.ini file (if any)
-    if [[ -f ${froster_config_backup_dir}/config.ini ]]; then
-        # Create the froster directory if it does not exist
-        mkdir -p ${froster_config_dir}
-
-        # Copy the config file to the data directory
-        cp -f ${froster_config_backup_dir}/config.ini ${froster_config_dir}
-    fi
-
-    # Keep the froster-archives.json file (if any)
-    if [[ -f ${froster_data_backup_dir}/froster-archives.json ]]; then
-        # Create the froster directory if it does not exist
-        mkdir -p ${froster_data_dir}
-
-        # Copy the froster-archives.json file to the data directory
-        cp -f ${froster_data_backup_dir}/froster-archives.json ${froster_data_dir}
-    fi
+    # Config and data directories are NEVER deleted, they persist across upgrades
+    # Users' settings and archive database remain intact
 }
 
 install_pwalk() {
