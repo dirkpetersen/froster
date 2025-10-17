@@ -6124,33 +6124,6 @@ class ScreenConfirmTierChange(ModalScreen[bool]):
         self.dismiss(result=event.button.id == "yes")
 
 
-class TableStorageTierConfirmApp(App[bool]):
-    """Wrapper app to show the confirmation modal"""
-
-    def __init__(self, folder, current_tier, new_tier, object_count, total_size_gib):
-        super().__init__()
-        self.folder = folder
-        self.current_tier = current_tier
-        self.new_tier = new_tier
-        self.object_count = object_count
-        self.total_size_gib = total_size_gib
-
-    def on_mount(self) -> None:
-        self.push_screen(
-            ScreenConfirmTierChange(
-                self.folder,
-                self.current_tier,
-                self.new_tier,
-                self.object_count,
-                self.total_size_gib
-            ),
-            self.handle_result
-        )
-
-    def handle_result(self, result: bool) -> None:
-        self.exit(result)
-
-
 class TableStorageTierSelector(App[str]):
     """Interactive TUI for selecting AWS S3 storage tier with cost information"""
 
@@ -6252,6 +6225,10 @@ class TableStorageTierSelector(App[str]):
         table.add_columns("Tier", "Storage Cost", "Retrieval Time", "Retrieval Cost", "Description")
 
         for tier_key, tier_info in self.STORAGE_TIERS.items():
+            # Skip the current tier - no need to migrate to same tier
+            if tier_key == self.current_tier:
+                continue
+
             table.add_row(
                 tier_info['name'],
                 tier_info['storage_cost'],
@@ -6263,7 +6240,24 @@ class TableStorageTierSelector(App[str]):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.selected_tier = event.row_key.value
-        self.exit(self.selected_tier)
+        # Show confirmation modal
+        self.push_screen(
+            ScreenConfirmTierChange(
+                self.folder_path,
+                self.current_tier,
+                self.selected_tier,
+                self.object_count,
+                self.total_size_gib
+            ),
+            self.handle_confirmation
+        )
+
+    def handle_confirmation(self, confirmed: bool) -> None:
+        if confirmed:
+            self.exit(self.selected_tier)
+        else:
+            self.selected_tier = None
+            # User can continue selecting another tier
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel":
@@ -7459,21 +7453,6 @@ class Commands:
                 new_tier = app.run()
 
                 if not new_tier:
-                    log('\nStorage tier change cancelled\n')
-                    return False
-
-                # Show confirmation modal
-                confirm_app = TableStorageTierConfirmApp(
-                    folder=folder,
-                    current_tier=current_tier,
-                    new_tier=new_tier,
-                    object_count=object_count,
-                    total_size_gib=total_size / (1024**3)
-                )
-
-                confirmed = confirm_app.run()
-
-                if not confirmed:
                     log('\nStorage tier change cancelled\n')
                     return False
 
