@@ -254,6 +254,142 @@ check_dependencies() {
 
 }
 
+# Get the actual location of froster-archives.json by reading config
+get_data_file_location() {
+    local config_file="$1"
+    local default_location="${XDG_DATA_HOME}/froster/froster-archives.json"
+
+    # If no config exists, return default location
+    if [[ ! -f "$config_file" ]]; then
+        echo "$default_location"
+        return
+    fi
+
+    # Try to read shared data directory from config
+    # Config format: [general] section with shared_data_dir key
+    local shared_dir=$(grep -A 10 "^\[general\]" "$config_file" 2>/dev/null | grep "^shared_data_dir" | cut -d'=' -f2 | tr -d ' ')
+
+    if [[ -n "$shared_dir" && -d "$shared_dir" ]]; then
+        echo "${shared_dir}/froster-archives.json"
+    else
+        echo "$default_location"
+    fi
+}
+
+# Check if we should restore from backup (for users affected by previous buggy installer)
+check_and_restore_from_backup() {
+    local config_file="${froster_config_dir}/config.ini"
+    local data_file_location
+
+    # Determine where froster-archives.json should be
+    data_file_location=$(get_data_file_location "$config_file")
+
+    # Check if BOTH main files are missing
+    local config_missing=false
+    local data_missing=false
+
+    if [[ ! -f "$config_file" ]]; then
+        config_missing=true
+    fi
+
+    if [[ ! -f "$data_file_location" ]]; then
+        data_missing=true
+    fi
+
+    # If at least one file exists, no restore needed
+    if [[ "$config_missing" == false || "$data_missing" == false ]]; then
+        return 0
+    fi
+
+    # Both files are missing, look for backups
+    echo -e "\nChecking for previous Froster backups..."
+
+    # Find the most recent backup directory that has BOTH files
+    local latest_backup=""
+    local backup_config_file=""
+    local backup_data_file=""
+
+    # Search for backups in reverse chronological order (newest first)
+    for backup_dir in $(find ${froster_all_config_backups} -maxdepth 1 -type d -name "froster_*.bak" 2>/dev/null | sort -r); do
+        local test_config="${backup_dir}/config.ini"
+
+        # Check if config exists in this backup
+        if [[ ! -f "$test_config" ]]; then
+            continue
+        fi
+
+        # Get data location from this backup's config
+        local test_data_location=$(get_data_file_location "$test_config")
+
+        # Check if we can find the data file in corresponding data backup
+        local backup_timestamp=$(basename "$backup_dir" | sed 's/froster_\(.*\)\.bak/\1/')
+        local corresponding_data_backup="${froster_all_data_backups}/froster_${backup_timestamp}.bak"
+
+        # Construct potential data file path in backup
+        local test_data="${corresponding_data_backup}/froster-archives.json"
+
+        # Also check if data was in a shared location mentioned in backup config
+        if [[ "$test_data_location" != "${XDG_DATA_HOME}/froster/froster-archives.json" ]]; then
+            # Data might be in shared location, but we can't restore shared data
+            # Only check local backup
+            test_data="${corresponding_data_backup}/froster-archives.json"
+        fi
+
+        if [[ -f "$test_data" ]]; then
+            # Found a backup with BOTH files
+            latest_backup="$backup_dir"
+            backup_config_file="$test_config"
+            backup_data_file="$test_data"
+            break
+        fi
+    done
+
+    # If we found a complete backup, ask user
+    if [[ -n "$latest_backup" ]]; then
+        local backup_date=$(basename "$latest_backup" | sed 's/froster_\([0-9]\{8\}\)\([0-9]\{6\}\)\.bak/\1 \2/' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
+
+        echo ""
+        echo "==========================================="
+        echo "  Froster Backup Found"
+        echo "==========================================="
+        echo ""
+        echo "Your config and data files are missing, but we found a backup from:"
+        echo "  Date: $backup_date"
+        echo ""
+        echo "Backup location:"
+        echo "  Config: $backup_config_file"
+        echo "  Data:   $backup_data_file"
+        echo ""
+        echo -n "Would you like to restore these files? (yes/no): "
+        read -r response
+        echo ""
+
+        if [[ "$response" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+            echo "Restoring from backup..."
+
+            # Create directories if needed
+            mkdir -p "${froster_config_dir}"
+            mkdir -p "$(dirname "$data_file_location")"
+
+            # Restore config
+            cp -f "$backup_config_file" "$config_file"
+            echo "  ✓ Config restored to: $config_file"
+
+            # Restore data
+            cp -f "$backup_data_file" "$data_file_location"
+            echo "  ✓ Data restored to: $data_file_location"
+
+            echo ""
+            echo "Backup restoration completed successfully!"
+            echo ""
+        else
+            echo "Skipping backup restoration. You can manually restore later from:"
+            echo "  $latest_backup"
+            echo ""
+        fi
+    fi
+}
+
 # Create backup directories for user reference (optional safety net)
 # NOTE: Config and data are NEVER deleted, so backups are just for user peace of mind
 backup_old_installation() {
@@ -495,6 +631,9 @@ check_dependencies
 
 # Set rw permissions on anyone in file's group
 umask 0002
+
+# Check if we need to restore from backup (for users hit by previous buggy installer)
+check_and_restore_from_backup
 
 # Backup old installation (if any)
 backup_old_installation
