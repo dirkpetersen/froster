@@ -7817,9 +7817,28 @@ class Commands:
                 log(f'\nA froster update is available!')
                 log(f'  Current version: froster v{current}')
                 log(f'  Latest version: froster v{latest}')
-                log(f'\nYou can update froster using the command:')
-                log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n\nor in --verbose mode for troubleshooting:')
-                log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash -s -- --verbose\n')
+                log(f'\nWould you like to update now? (yes/no): ', end='', flush=True)
+
+                response = input()
+
+                if response.lower() in ['yes', 'y']:
+                    log('\nStarting update...\n')
+                    timestamp = int(datetime.datetime.now().timestamp())
+                    update_cmd = f'curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?{timestamp} | bash'
+
+                    result = subprocess.run(update_cmd, shell=True)
+
+                    if result.returncode == 0:
+                        log('\nUpdate completed successfully!')
+                    else:
+                        log('\nUpdate failed. You can try manually with:')
+                        log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash')
+                        log(f'\nOr in --verbose mode for troubleshooting:')
+                        log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash -s -- --verbose\n')
+                        return False
+                else:
+                    log('\nUpdate cancelled. You can update later using:')
+                    log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash\n')
             else:
                 if not mute_no_update:
                     log(f'\nFroster is up to date: froster v{current}\n')
