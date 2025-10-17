@@ -301,19 +301,35 @@ backup_old_installation() {
 
 install_pipx() {
 
+    # Skip pipx installation for LOCAL_INSTALL since we use pip directly
+    if [ "$LOCAL_INSTALL" = "true" ]; then
+        echo -e "\nSkipping pipx (using pip for local development install)..."
+        return 0
+    fi
+
     echo -e "\nInstalling pipx..."
 
-    python3 -m pip install --user pipx 2>&1 | redirect_output || python3 -m pip install --user --break-system-packages pipx 2>&1 | redirect_output
+    # Try installing pipx - handle both regular and virtual environments
+    if python3 -m pip install --user pipx 2>&1 | redirect_output; then
+        : # Success with --user flag
+    elif python3 -m pip install --user --break-system-packages pipx 2>&1 | redirect_output; then
+        : # Success with --break-system-packages flag
+    elif python3 -m pip install pipx 2>&1 | redirect_output; then
+        : # Success without --user flag (works in venv)
+    else
+        echo "...pipx installation failed"
+        return 1
+    fi
 
-    # ensure path for pipx 
+    # Verify pipx is working
     pipx_version=$(python3 -m pipx --version 2> /dev/null)
     if [[ $pipx_version =~ $version_regex ]]; then
         python3 -m pipx ensurepath 2>&1 | redirect_output
-        echo "...pipx installed"
+        echo "...pipx installed (version $pipx_version)"
     else
-        echo "...pipx ensurepath failed"
+        echo "...warning: could not verify pipx version, continuing anyway"
     fi
-        
+
 }
 
 install_froster() {

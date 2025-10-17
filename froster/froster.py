@@ -1906,6 +1906,97 @@ class AWSBoto:
             print_error()
             return []
 
+    def change_storage_class(self, bucket_name, prefix, new_storage_class, current_storage_class):
+        '''Change the storage class of all objects in a folder (prefix)
+
+        Args:
+            bucket_name: S3 bucket name
+            prefix: Folder prefix in S3
+            new_storage_class: Target storage class
+            current_storage_class: Current storage class (for validation)
+
+        Returns:
+            tuple: (success, total_objects, changed_objects, skipped_objects, total_size_bytes)
+        '''
+
+        try:
+            # Validate that we're not moving FROM Glacier tiers
+            glacier_tiers = ['GLACIER', 'DEEP_ARCHIVE']
+            if current_storage_class in glacier_tiers:
+                log(f'\nError: Cannot change storage class from {current_storage_class}')
+                log('Moving data FROM Glacier or Deep Archive is not allowed.')
+                log('Please restore the data first if you need to change its storage tier.\n')
+                return False, 0, 0, 0, 0
+
+            # Files that should remain in STANDARD tier
+            standard_files = ['Froster.allfiles.csv', '.froster.md5sum', '.froster-restored.md5sum']
+
+            log(f'\nCHANGING STORAGE TIER')
+            log(f'  Bucket: {bucket_name}')
+            log(f'  Prefix: {prefix}')
+            log(f'  From: {current_storage_class}')
+            log(f'  To: {new_storage_class}\n')
+
+            # List all objects with this prefix
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+
+            total_objects = 0
+            changed_objects = 0
+            skipped_objects = 0
+            total_size_bytes = 0
+
+            log('  Enumerating objects...')
+
+            # Process objects
+            for page in pages:
+                if 'Contents' not in page:
+                    continue
+
+                for obj in page['Contents']:
+                    key = obj['Key']
+                    size = obj.get('Size', 0)
+                    total_objects += 1
+                    total_size_bytes += size
+
+                    # Check if this file should stay in STANDARD
+                    filename = key.split('/')[-1]
+                    if filename in standard_files:
+                        log(f'    Skipping metadata file (keeping in STANDARD): {filename}')
+                        skipped_objects += 1
+                        continue
+
+                    # Copy object to itself with new storage class
+                    try:
+                        copy_source = {'Bucket': bucket_name, 'Key': key}
+                        self.s3_client.copy_object(
+                            CopySource=copy_source,
+                            Bucket=bucket_name,
+                            Key=key,
+                            StorageClass=new_storage_class,
+                            MetadataDirective='COPY'
+                        )
+                        changed_objects += 1
+
+                        if self.args.debug:
+                            log(f'    Changed: {key}')
+
+                    except Exception as e:
+                        log(f'    Warning: Failed to change storage class for {key}: {e}')
+                        skipped_objects += 1
+
+            log(f'\n  Storage class change completed')
+            log(f'    Total objects: {total_objects}')
+            log(f'    Changed: {changed_objects}')
+            log(f'    Skipped: {skipped_objects}')
+            log(f'    Total size: {total_size_bytes / (1024**3):.2f} GiB\n')
+
+            return True, total_objects, changed_objects, skipped_objects, total_size_bytes
+
+        except Exception as e:
+            print_error(f'Error changing storage class: {e}')
+            return False, 0, 0, 0, 0
+
     def set_session(self, credentials_profile, region, endopoint_url):
         ''' Set the AWS profile for the current session'''
 
@@ -5969,6 +6060,227 @@ class TableNIHGrants(App[list]):
         return
 
 
+class ScreenConfirmTierChange(ModalScreen[bool]):
+    """Modal confirmation dialog for storage tier changes"""
+
+    DEFAULT_CSS = """
+    ScreenConfirmTierChange {
+        align: center middle;
+    }
+
+    ScreenConfirmTierChange > Vertical {
+        background: $secondary;
+        width: auto;
+        height: auto;
+        border: thick $primary;
+        padding: 2 4;
+    }
+
+    ScreenConfirmTierChange > Vertical > * {
+        width: auto;
+        height: auto;
+    }
+
+    ScreenConfirmTierChange > Vertical > Label {
+        padding-bottom: 1;
+    }
+
+    ScreenConfirmTierChange > Vertical > Horizontal {
+        align: center middle;
+        padding-top: 2;
+    }
+
+    ScreenConfirmTierChange Button {
+        margin: 0 2;
+    }
+    """
+
+    def __init__(self, folder, current_tier, new_tier, object_count, total_size_gib):
+        super().__init__()
+        self.folder = folder
+        self.current_tier = current_tier
+        self.new_tier = new_tier
+        self.object_count = object_count
+        self.total_size_gib = total_size_gib
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label("[bold]Confirm Storage Tier Change[/bold]")
+            yield Label("")
+            yield Label(f"Folder: {self.folder}")
+            yield Label(f"Current tier: {self.current_tier}")
+            yield Label(f"New tier: {self.new_tier}")
+            yield Label(f"Objects to change: {self.object_count}")
+            yield Label(f"Total size: {self.total_size_gib:.2f} GiB")
+            yield Label("")
+            yield Label("[yellow]This operation will change the storage class of all objects[/yellow]")
+            yield Label("[yellow](except metadata files which remain in STANDARD)[/yellow]")
+
+            with Horizontal():
+                yield Button("Proceed", id="yes", variant="primary")
+                yield Button("Cancel", id="no", variant="default")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(result=event.button.id == "yes")
+
+
+class TableStorageTierSelector(App[str]):
+    """Interactive TUI for selecting AWS S3 storage tier with cost information"""
+
+    DEFAULT_CSS = """
+    TableStorageTierSelector {
+        align: center middle;
+    }
+
+    TableStorageTierSelector Vertical {
+        background: $surface;
+        width: 100;
+        height: auto;
+        border: thick $primary;
+        padding: 2 4;
+    }
+
+    TableStorageTierSelector Label {
+        width: 100%;
+        padding: 1 0;
+    }
+
+    TableStorageTierSelector DataTable {
+        width: 100%;
+        height: auto;
+        margin: 1 0;
+    }
+
+    TableStorageTierSelector Button {
+        margin: 1 2;
+    }
+    """
+
+    BINDINGS = [("q", "request_quit", "Quit"), ("escape", "request_quit", "Cancel")]
+
+    # Storage tier information with retrieval times and approximate costs
+    STORAGE_TIERS = {
+        'INTELLIGENT_TIERING': {
+            'name': 'Intelligent-Tiering',
+            'storage_cost': '$2.50-23/TiB/mo',
+            'retrieval_time': 'Automatic',
+            'retrieval_cost': '$0',
+            'description': 'Automatic cost optimization'
+        },
+        'STANDARD_IA': {
+            'name': 'Standard-IA',
+            'storage_cost': '$12.5/TiB/mo',
+            'retrieval_time': 'Milliseconds',
+            'retrieval_cost': '$10/TiB',
+            'description': 'Infrequent access, rapid retrieval'
+        },
+        'ONEZONE_IA': {
+            'name': 'One Zone-IA',
+            'storage_cost': '$10/TiB/mo',
+            'retrieval_time': 'Milliseconds',
+            'retrieval_cost': '$10/TiB',
+            'description': 'Single AZ, lower cost IA'
+        },
+        'GLACIER_IR': {
+            'name': 'Glacier Instant Retrieval',
+            'storage_cost': '$4/TiB/mo',
+            'retrieval_time': 'Milliseconds',
+            'retrieval_cost': '$10/TiB',
+            'description': 'Instant access to archives'
+        },
+        'GLACIER': {
+            'name': 'Glacier Flexible Retrieval',
+            'storage_cost': '$3.6/TiB/mo',
+            'retrieval_time': '3-5 hours',
+            'retrieval_cost': '$10/TiB',
+            'description': 'Low-cost archive, hours retrieval'
+        },
+        'DEEP_ARCHIVE': {
+            'name': 'Glacier Deep Archive',
+            'storage_cost': '$1/TiB/mo',
+            'retrieval_time': '12-48 hours',
+            'retrieval_cost': '$2.50/TiB',
+            'description': 'Lowest cost, long-term archive'
+        }
+    }
+
+    def __init__(self, current_tier, folder_path, total_size_bytes, object_count):
+        super().__init__()
+        self.current_tier = current_tier
+        self.folder_path = folder_path
+        self.total_size_gib = total_size_bytes / (1024**3) if total_size_bytes else 0
+        self.total_size_tib = self.total_size_gib / 1024
+        self.object_count = object_count
+        self.selected_tier = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(f"[bold]Change Storage Tier[/bold]")
+            yield Label(f"Folder: {self.folder_path}")
+            yield Label(f"Current tier: [cyan]{self.current_tier}[/cyan]")
+            yield Label(f"Total size: {self.total_size_gib:.2f} GiB ({self.total_size_tib:.3f} TiB)")
+            yield Label(f"Object count: {self.object_count}")
+            yield Label("\n[bold]Available Storage Tiers:[/bold]")
+
+            table = DataTable()
+            table.zebra_stripes = True
+            table.cursor_type = "row"
+            table.focus()
+            yield table
+
+            yield Label("\n[yellow]Note: Moving FROM Glacier/Deep Archive is not allowed[/yellow]")
+            yield Label("[dim]Press Enter to select, Q/Esc to cancel[/dim]")
+
+            with Horizontal():
+                yield Button("Cancel", id="cancel", variant="default")
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        table.add_columns("Tier", "Storage Cost", "Retrieval Time", "Retrieval Cost", "Description")
+
+        for tier_key, tier_info in self.STORAGE_TIERS.items():
+            # Skip the current tier - no need to migrate to same tier
+            if tier_key == self.current_tier:
+                continue
+
+            table.add_row(
+                tier_info['name'],
+                tier_info['storage_cost'],
+                tier_info['retrieval_time'],
+                tier_info['retrieval_cost'],
+                tier_info['description'],
+                key=tier_key
+            )
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.selected_tier = event.row_key.value
+        # Show confirmation modal
+        self.push_screen(
+            ScreenConfirmTierChange(
+                self.folder_path,
+                self.current_tier,
+                self.selected_tier,
+                self.object_count,
+                self.total_size_gib
+            ),
+            self.handle_confirmation
+        )
+
+    def handle_confirmation(self, confirmed: bool) -> None:
+        if confirmed:
+            self.exit(self.selected_tier)
+        else:
+            self.selected_tier = None
+            # User can continue selecting another tier
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel":
+            self.exit(None)
+
+    def action_request_quit(self) -> None:
+        self.exit(None)
+
+
 class Rclone:
     def __init__(self, args: argparse.Namespace, cfg: ConfigManager):
         '''Initialize Rclone object'''
@@ -7085,11 +7397,102 @@ class Commands:
                 # Append the folder for restoring to the arguments
                 sys.argv.append(self.args.folders[0])
 
+            # Handle --change-tier option
+            if self.args.changetier:
+                return self._change_storage_tier(arch, aws, self.args.folders)
+
             return arch.restore(self.args.folders, aws)
 
         except Exception:
             #print_error()
             traceback.print_exc()  # This will print the full stack trace
+            return False
+
+    def _change_storage_tier(self, arch: Archiver, aws: AWSBoto, folders):
+        '''Change storage tier for archived folders'''
+
+        try:
+            for folder in folders:
+                # Get archive information from database
+                archive_info = arch.froster_archives_get_entry(folder)
+
+                if not archive_info:
+                    log(f'\nError: Folder {folder} is not archived\n')
+                    return False
+
+                current_tier = archive_info['s3_storage_class']
+                archive_folder = archive_info['archive_folder']
+                profile = archive_info['profile']
+
+                # Check if folder is in Glacier/Deep Archive
+                if current_tier in ['GLACIER', 'DEEP_ARCHIVE']:
+                    log(f'\nError: Cannot change storage tier from {current_tier}')
+                    log('Moving data FROM Glacier or Deep Archive is not allowed.')
+                    log('Please restore the data first if you need to change its storage tier.\n')
+                    return False
+
+                # Get bucket and prefix from archive_folder
+                bucket, prefix = archive_folder.split('/', 1)
+                bucket = bucket.replace(':s3:', '')
+
+                # Count objects and calculate total size
+                log(f'\nAnalyzing archived folder: {folder}')
+                log(f'  Current tier: {current_tier}')
+                log(f'  Bucket: {bucket}')
+                log(f'  Prefix: {prefix}')
+                log('\n  Counting objects...')
+
+                paginator = aws.s3_client.get_paginator('list_objects_v2')
+                pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+
+                object_count = 0
+                total_size = 0
+
+                for page in pages:
+                    if 'Contents' in page:
+                        for obj in page['Contents']:
+                            object_count += 1
+                            total_size += obj.get('Size', 0)
+
+                log(f'    Found {object_count} objects, {total_size / (1024**3):.2f} GiB\n')
+
+                # Show tier selection TUI
+                app = TableStorageTierSelector(
+                    current_tier=current_tier,
+                    folder_path=folder,
+                    total_size_bytes=total_size,
+                    object_count=object_count
+                )
+
+                new_tier = app.run()
+
+                if not new_tier:
+                    log('\nStorage tier change cancelled\n')
+                    return False
+
+                # Perform the storage class change
+                success, total_objs, changed_objs, skipped_objs, size_bytes = aws.change_storage_class(
+                    bucket_name=bucket,
+                    prefix=prefix,
+                    new_storage_class=new_tier,
+                    current_storage_class=current_tier
+                )
+
+                if not success:
+                    log('\nStorage tier change failed\n')
+                    return False
+
+                # Update the local database
+                archive_info['s3_storage_class'] = new_tier
+                arch._archive_json_add_entry(key=folder.rstrip(os.path.sep), value=archive_info)
+
+                log(f'\nSuccessfully changed storage tier')
+                log(f'  Database updated: {arch.archive_json}\n')
+
+            return True
+
+        except Exception:
+            print_error()
             return False
 
     def subcmd_delete(self, arch: Archiver, aws: AWSBoto):
@@ -7686,6 +8089,9 @@ class Commands:
 
         parser_restore.add_argument('-r', '--recursive', dest='recursive', action='store_true',
                                     help="Restore the current archived folder and all archived sub-folders")
+
+        parser_restore.add_argument('-t', '--change-tier', dest='changetier', action='store_true',
+                                    help="Change the storage tier of archived data without restoring it. Interactive TUI will guide tier selection.")
 
         # ***
 
