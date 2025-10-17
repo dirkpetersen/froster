@@ -6187,6 +6187,20 @@ class TableStorageTierSelector(App[str]):
             'retrieval_time': 'Milliseconds',
             'retrieval_cost': '$10/TiB',
             'description': 'Instant access to archives'
+        },
+        'GLACIER': {
+            'name': 'Glacier Flexible Retrieval',
+            'storage_cost': '$3.6/TiB/mo',
+            'retrieval_time': '3-5 hours',
+            'retrieval_cost': '$10/TiB',
+            'description': 'Low-cost archive, hours retrieval'
+        },
+        'DEEP_ARCHIVE': {
+            'name': 'Glacier Deep Archive',
+            'storage_cost': '$1/TiB/mo',
+            'retrieval_time': '12-48 hours',
+            'retrieval_cost': '$2.50/TiB',
+            'description': 'Lowest cost, long-term archive'
         }
     }
 
