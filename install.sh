@@ -5,14 +5,24 @@ set -e
 
 # Parse command line arguments
 VERBOSE=false
+FROSTER_VERSION=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --verbose)
             VERBOSE=true
             shift
             ;;
+        --version)
+            FROSTER_VERSION="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
+            echo ""
+            echo "Usage: $0 [--verbose] [--version VERSION]"
+            echo "  --verbose           Show detailed installation output"
+            echo "  --version VERSION   Install specific version (e.g., 0.21.0)"
+            echo ""
             exit 1
             ;;
     esac
@@ -483,7 +493,6 @@ install_froster() {
     else
 
         echo "  Installing from PyPi package repository"
-        python3 -m pipx install froster 2>&1 | redirect_output &
 
         if pipx list | grep froster >/dev/null 2>&1; then
             echo -e "\nUninstalling old Froster..."
@@ -491,9 +500,16 @@ install_froster() {
             echo "...old Froster uninstalled"
         fi
 
-        echo -e "\nInstalling Froster from PyPi package repository..."
-        python3 -m pipx install froster >/dev/null 2>&1
-        echo "...Froster installed"
+        # Install specific version if provided, otherwise install latest
+        if [[ -n "$FROSTER_VERSION" ]]; then
+            echo -e "\nInstalling Froster version ${FROSTER_VERSION} from PyPi..."
+            python3 -m pipx install froster==${FROSTER_VERSION} 2>&1 | redirect_output
+            echo "...Froster ${FROSTER_VERSION} installed"
+        else
+            echo -e "\nInstalling latest Froster from PyPi package repository..."
+            python3 -m pipx install froster 2>&1 | redirect_output
+            echo "...Froster installed"
+        fi
     fi
 
     # Wait until 'froster' command is available in PATH
