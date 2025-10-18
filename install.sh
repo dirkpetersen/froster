@@ -70,32 +70,50 @@ if [ -z "$LOCAL_INSTALL" ]; then
         echo "  - Installing in editable mode with pip"
         echo ""
     elif [ -n "$VIRTUAL_ENV" ] && [ ! -f "pyproject.toml" ]; then
-        echo ""
-        echo "WARNING: You are installing froster inside a virtual environment."
-        echo ""
-        echo "  Virtual environment: $VIRTUAL_ENV"
-        echo ""
-        echo "  Froster is designed as a global CLI tool and is best installed"
-        echo "  system-wide using pipx (which creates an isolated environment)."
-        echo ""
-        echo "  Installing in a venv means froster will only be available when"
-        echo "  that specific virtual environment is activated."
-        echo ""
-        echo "  Recommended: Deactivate your venv and run this script again."
-        echo "    $ deactivate"
-        echo "    $ ./install.sh"
-        echo ""
-        read -p "Continue with venv installation anyway? [y/N] " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Installation cancelled."
-            exit 1
+        # Allow CI environments to skip the warning entirely
+        if [ "$FROSTER_SKIP_VENV_WARNING" = "1" ]; then
+            VENV_INSTALL=true
+            echo ""
+            echo "Installing froster into virtual environment (warning skipped)..."
+            echo ""
+        else
+            echo ""
+            echo "WARNING: You are installing froster inside a virtual environment."
+            echo ""
+            echo "  Virtual environment: $VIRTUAL_ENV"
+            echo ""
+            echo "  Froster is designed as a global CLI tool and is best installed"
+            echo "  system-wide using pipx (which creates an isolated environment)."
+            echo ""
+            echo "  Installing in a venv means froster will only be available when"
+            echo "  that specific virtual environment is activated."
+            echo ""
+            echo "  Recommended: Deactivate your venv and run this script again."
+            echo "    $ deactivate"
+            echo "    $ ./install.sh"
+            echo ""
+
+            # Detect CI/automated environments
+            if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ] || [ -n "$GITLAB_CI" ] || [ -n "$JENKINS_HOME" ] || [ -n "$CIRCLECI" ] || [ ! -t 0 ]; then
+                echo "CI/automated environment detected - auto-proceeding in 15 seconds..."
+                echo "  (Set FROSTER_SKIP_VENV_WARNING=1 to skip this warning in CI)"
+                sleep 15
+                VENV_INSTALL=true
+            else
+                # Interactive prompt for manual installations
+                read -p "Continue with venv installation anyway? [y/N] " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    echo "Installation cancelled."
+                    exit 1
+                fi
+                VENV_INSTALL=true
+            fi
+
+            echo ""
+            echo "Proceeding with pip installation from PyPI into venv..."
+            echo ""
         fi
-        # User chose to proceed in venv - mark as venv install (not development)
-        VENV_INSTALL=true
-        echo ""
-        echo "Proceeding with pip installation from PyPI into venv..."
-        echo ""
     fi
 fi
 
