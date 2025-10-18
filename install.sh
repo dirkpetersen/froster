@@ -69,6 +69,33 @@ if [ -z "$LOCAL_INSTALL" ]; then
         echo "  - Source directory: $(pwd)"
         echo "  - Installing in editable mode with pip"
         echo ""
+    elif [ -n "$VIRTUAL_ENV" ] && [ ! -f "pyproject.toml" ]; then
+        echo ""
+        echo "WARNING: You are installing froster inside a virtual environment."
+        echo ""
+        echo "  Virtual environment: $VIRTUAL_ENV"
+        echo ""
+        echo "  Froster is designed as a global CLI tool and is best installed"
+        echo "  system-wide using pipx (which creates an isolated environment)."
+        echo ""
+        echo "  Installing in a venv means froster will only be available when"
+        echo "  that specific virtual environment is activated."
+        echo ""
+        echo "  Recommended: Deactivate your venv and run this script again."
+        echo "    $ deactivate"
+        echo "    $ ./install.sh"
+        echo ""
+        read -p "Continue with venv installation anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Installation cancelled."
+            exit 1
+        fi
+        # User chose to proceed in venv - mark as venv install (not development)
+        VENV_INSTALL=true
+        echo ""
+        echo "Proceeding with pip installation from PyPI into venv..."
+        echo ""
     fi
 fi
 
@@ -466,6 +493,12 @@ install_pipx() {
         return 0
     fi
 
+    # Skip pipx installation for VENV_INSTALL since we use pip from PyPI
+    if [ "$VENV_INSTALL" = "true" ]; then
+        echo -e "\nSkipping pipx (using pip for venv install)..."
+        return 0
+    fi
+
     echo -e "\nInstalling pipx..."
 
     # Try installing pipx - handle both regular and virtual environments
@@ -506,6 +539,22 @@ install_froster() {
         echo -e "\nInstalling Froster from the current directory in --editable mode..."
         python3 -m pip install --force -e . >/dev/null 2>&1 &  #>/dev/null 2>&1
         spinner "froster"
+
+    elif [ "$VENV_INSTALL" = "true" ]; then
+
+        echo "  Installing from PyPI into virtual environment"
+        # Install specific version if provided, otherwise install latest
+        if [[ -n "$FROSTER_VERSION" ]]; then
+            echo -e "\nInstalling Froster version ${FROSTER_VERSION} from PyPI..."
+            python3 -m pip install froster==${FROSTER_VERSION} 2>&1 | redirect_output &
+            spinner $!
+            echo "...Froster ${FROSTER_VERSION} installed"
+        else
+            echo -e "\nInstalling latest Froster from PyPI..."
+            python3 -m pip install froster 2>&1 | redirect_output &
+            spinner $!
+            echo "...Froster installed"
+        fi
 
     else
 
