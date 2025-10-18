@@ -55,6 +55,23 @@ froster_all_config_backups=${XDG_CONFIG_HOME}/froster_backups
 froster_config_backup_dir=${froster_all_config_backups}/froster_${date_YYYYMMDDHHMMSS}.bak
 version_regex='^[0-9]+\.[0-9]+\.[0-9]+$'
 
+##################################
+### AUTO-DETECT LOCAL INSTALL  ###
+##################################
+
+# Auto-detect development environment if LOCAL_INSTALL not already set
+if [ -z "$LOCAL_INSTALL" ]; then
+    if [ -n "$VIRTUAL_ENV" ] && [ -f "pyproject.toml" ]; then
+        LOCAL_INSTALL=true
+        echo ""
+        echo "Auto-detected development environment:"
+        echo "  - Virtual environment: $VIRTUAL_ENV"
+        echo "  - Source directory: $(pwd)"
+        echo "  - Installing in editable mode with pip"
+        echo ""
+    fi
+fi
+
 #####################
 ### ERROR HANDLER ###
 #####################
