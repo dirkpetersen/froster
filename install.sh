@@ -348,7 +348,7 @@ get_data_file_location() {
     fi
 }
 
-# Check if we should restore from backup (for users affected by previous buggy installer)
+# Check if we should restore from backup (for users with missing/corrupted config)
 check_and_restore_from_backup() {
     local config_file="${froster_config_dir}/config.ini"
     local data_file_location
@@ -356,19 +356,22 @@ check_and_restore_from_backup() {
     # Determine where froster-archives.json should be
     data_file_location=$(get_data_file_location "$config_file")
 
-    # Check if BOTH main files are missing
+    # Check if BOTH main files are missing or corrupted
+    # Config is considered corrupted if it exists but is < 40 bytes (empty/truncated)
     local config_missing=false
     local data_missing=false
 
-    if [[ ! -f "$config_file" ]]; then
+    # Check config - missing or too small (less than 40 bytes indicates corruption/empty)
+    if [[ ! -f "$config_file" ]] || [[ $(stat -c%s "$config_file" 2>/dev/null || echo 0) -lt 40 ]]; then
         config_missing=true
     fi
 
+    # Check data - missing
     if [[ ! -f "$data_file_location" ]]; then
         data_missing=true
     fi
 
-    # If at least one file exists, no restore needed
+    # If at least one file exists and is valid, no restore needed
     if [[ "$config_missing" == false || "$data_missing" == false ]]; then
         return 0
     fi
@@ -425,7 +428,7 @@ check_and_restore_from_backup() {
         echo "  Froster Backup Found"
         echo "==========================================="
         echo ""
-        echo "Your config and data files are missing, but we found a backup from:"
+        echo "Your config and data files are missing or corrupted, but we found a backup from:"
         echo "  Date: $backup_date"
         echo ""
         echo "Backup location:"
