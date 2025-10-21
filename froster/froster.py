@@ -2014,7 +2014,7 @@ class AWSBoto:
                 return
 
             # Initialize a Boto3 session using the configured profile
-            session = boto3.session.Session()
+            session = boto3.session.Session(profile_name=credentials_profile)
 
             # Initialize the AWS clients
             self.ce_client = session.client(
