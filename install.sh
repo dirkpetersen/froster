@@ -5,14 +5,24 @@ set -e
 
 # Parse command line arguments
 VERBOSE=false
+FROSTER_VERSION=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --verbose)
             VERBOSE=true
             shift
             ;;
+        --version)
+            FROSTER_VERSION="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
+            echo ""
+            echo "Usage: $0 [--verbose] [--version VERSION]"
+            echo "  --verbose           Show detailed installation output"
+            echo "  --version VERSION   Install specific version (e.g., 0.21.0)"
+            echo ""
             exit 1
             ;;
     esac
@@ -44,6 +54,68 @@ froster_config_dir=${XDG_CONFIG_HOME}/froster
 froster_all_config_backups=${XDG_CONFIG_HOME}/froster_backups
 froster_config_backup_dir=${froster_all_config_backups}/froster_${date_YYYYMMDDHHMMSS}.bak
 version_regex='^[0-9]+\.[0-9]+\.[0-9]+$'
+
+##################################
+### AUTO-DETECT LOCAL INSTALL  ###
+##################################
+
+# Auto-detect development environment if LOCAL_INSTALL not already set
+if [ -z "$LOCAL_INSTALL" ]; then
+    if [ -n "$VIRTUAL_ENV" ] && [ -f "pyproject.toml" ]; then
+        LOCAL_INSTALL=true
+        echo ""
+        echo "Auto-detected development environment:"
+        echo "  - Virtual environment: $VIRTUAL_ENV"
+        echo "  - Source directory: $(pwd)"
+        echo "  - Installing in editable mode with pip"
+        echo ""
+    elif [ -n "$VIRTUAL_ENV" ] && [ ! -f "pyproject.toml" ]; then
+        # Allow CI environments to skip the warning entirely
+        if [ "$FROSTER_SKIP_VENV_WARNING" = "1" ]; then
+            VENV_INSTALL=true
+            echo ""
+            echo "Installing froster into virtual environment (warning skipped)..."
+            echo ""
+        else
+            echo ""
+            echo "WARNING: You are installing froster inside a virtual environment."
+            echo ""
+            echo "  Virtual environment: $VIRTUAL_ENV"
+            echo ""
+            echo "  Froster is designed as a global CLI tool and is best installed"
+            echo "  system-wide using pipx (which creates an isolated environment)."
+            echo ""
+            echo "  Installing in a venv means froster will only be available when"
+            echo "  that specific virtual environment is activated."
+            echo ""
+            echo "  Recommended: Deactivate your venv and run this script again."
+            echo "    $ deactivate"
+            echo "    $ ./install.sh"
+            echo ""
+
+            # Detect CI/automated environments
+            if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ] || [ -n "$GITLAB_CI" ] || [ -n "$JENKINS_HOME" ] || [ -n "$CIRCLECI" ] || [ ! -t 0 ]; then
+                echo "CI/automated environment detected - auto-proceeding in 15 seconds..."
+                echo "  (Set FROSTER_SKIP_VENV_WARNING=1 to skip this warning in CI)"
+                sleep 15
+                VENV_INSTALL=true
+            else
+                # Interactive prompt for manual installations
+                read -p "Continue with venv installation anyway? [y/N] " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    echo "Installation cancelled."
+                    exit 1
+                fi
+                VENV_INSTALL=true
+            fi
+
+            echo ""
+            echo "Proceeding with pip installation from PyPI into venv..."
+            echo ""
+        fi
+    fi
+fi
 
 #####################
 ### ERROR HANDLER ###
@@ -276,7 +348,7 @@ get_data_file_location() {
     fi
 }
 
-# Check if we should restore from backup (for users affected by previous buggy installer)
+# Check if we should restore from backup (for users with missing/corrupted config)
 check_and_restore_from_backup() {
     local config_file="${froster_config_dir}/config.ini"
     local data_file_location
@@ -284,19 +356,22 @@ check_and_restore_from_backup() {
     # Determine where froster-archives.json should be
     data_file_location=$(get_data_file_location "$config_file")
 
-    # Check if BOTH main files are missing
+    # Check if BOTH main files are missing or corrupted
+    # Config is considered corrupted if it exists but is < 40 bytes (empty/truncated)
     local config_missing=false
     local data_missing=false
 
-    if [[ ! -f "$config_file" ]]; then
+    # Check config - missing or too small (less than 40 bytes indicates corruption/empty)
+    if [[ ! -f "$config_file" ]] || [[ $(stat -c%s "$config_file" 2>/dev/null || echo 0) -lt 40 ]]; then
         config_missing=true
     fi
 
+    # Check data - missing
     if [[ ! -f "$data_file_location" ]]; then
         data_missing=true
     fi
 
-    # If at least one file exists, no restore needed
+    # If at least one file exists and is valid, no restore needed
     if [[ "$config_missing" == false || "$data_missing" == false ]]; then
         return 0
     fi
@@ -353,7 +428,7 @@ check_and_restore_from_backup() {
         echo "  Froster Backup Found"
         echo "==========================================="
         echo ""
-        echo "Your config and data files are missing, but we found a backup from:"
+        echo "Your config and data files are missing or corrupted, but we found a backup from:"
         echo "  Date: $backup_date"
         echo ""
         echo "Backup location:"
@@ -439,6 +514,12 @@ install_pipx() {
         return 0
     fi
 
+    # Skip pipx installation for VENV_INSTALL since we use pip from PyPI
+    if [ "$VENV_INSTALL" = "true" ]; then
+        echo -e "\nSkipping pipx (using pip for venv install)..."
+        return 0
+    fi
+
     echo -e "\nInstalling pipx..."
 
     # Try installing pipx - handle both regular and virtual environments
@@ -480,10 +561,25 @@ install_froster() {
         python3 -m pip install --force -e . >/dev/null 2>&1 &  #>/dev/null 2>&1
         spinner "froster"
 
+    elif [ "$VENV_INSTALL" = "true" ]; then
+
+        echo "  Installing from PyPI into virtual environment"
+        # Install specific version if provided, otherwise install latest
+        if [[ -n "$FROSTER_VERSION" ]]; then
+            echo -e "\nInstalling Froster version ${FROSTER_VERSION} from PyPI..."
+            python3 -m pip install froster==${FROSTER_VERSION} 2>&1 | redirect_output &
+            spinner $!
+            echo "...Froster ${FROSTER_VERSION} installed"
+        else
+            echo -e "\nInstalling latest Froster from PyPI..."
+            python3 -m pip install froster 2>&1 | redirect_output &
+            spinner $!
+            echo "...Froster installed"
+        fi
+
     else
 
         echo "  Installing from PyPi package repository"
-        python3 -m pipx install froster 2>&1 | redirect_output &
 
         if pipx list | grep froster >/dev/null 2>&1; then
             echo -e "\nUninstalling old Froster..."
@@ -491,9 +587,16 @@ install_froster() {
             echo "...old Froster uninstalled"
         fi
 
-        echo -e "\nInstalling Froster from PyPi package repository..."
-        python3 -m pipx install froster >/dev/null 2>&1
-        echo "...Froster installed"
+        # Install specific version if provided, otherwise install latest
+        if [[ -n "$FROSTER_VERSION" ]]; then
+            echo -e "\nInstalling Froster version ${FROSTER_VERSION} from PyPi..."
+            python3 -m pipx install froster==${FROSTER_VERSION} 2>&1 | redirect_output
+            echo "...Froster ${FROSTER_VERSION} installed"
+        else
+            echo -e "\nInstalling latest Froster from PyPi package repository..."
+            python3 -m pipx install froster 2>&1 | redirect_output
+            echo "...Froster installed"
+        fi
     fi
 
     # Wait until 'froster' command is available in PATH

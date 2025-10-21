@@ -24,15 +24,16 @@ cd froster
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install in editable mode
-export LOCAL_INSTALL=true
+# Install in editable mode (auto-detects venv + pyproject.toml)
 ./install.sh
 ```
 
-The `install.sh` script installs:
+The `install.sh` script automatically detects development environments (when inside a virtual environment with `pyproject.toml` present) and installs:
 - Froster Python package (via pip in editable mode)
 - pwalk (C-based parallel file system crawler, compiled from source)
 - rclone (S3 transfer tool, downloaded binary)
+
+**Note:** You can still manually override by setting `export LOCAL_INSTALL=true` if needed.
 
 ### Test commands
 

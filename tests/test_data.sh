@@ -42,7 +42,7 @@ create_files_in_dir() {
     local days_ago=100 # Approx 3 months
 
     # Create some files with different sizes and ages
-    create_sparse_file "${prefix}_$(random_string)_large_$(random_string).bin" 1500 "$dir_path" # 1.5 GB -> Use MB for size
+    create_sparse_file "${prefix}_$(random_string)_large_$(random_string).bin" 150 "$dir_path" # 1.5 GB -> Use MB for size
     create_sparse_file "${prefix}_$(random_string)_medium_$(random_string).out" 50 "$dir_path"  # 50 MB
     create_sparse_file "${prefix}_$(random_string)_small_$(random_string).txt" 1 "$dir_path"    # 1 MB
     echo "This is a script file" > "$dir_path/${prefix}_$(random_string)_script.sh"

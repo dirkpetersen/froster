@@ -2014,7 +2014,7 @@ class AWSBoto:
                 return
 
             # Initialize a Boto3 session using the configured profile
-            session = boto3.session.Session()
+            session = boto3.session.Session(profile_name=credentials_profile)
 
             # Initialize the AWS clients
             self.ce_client = session.client(
@@ -6386,25 +6386,38 @@ class Rclone:
                     log(
                         f'\n        Error: Rclone {command[1]} command failed', file=sys.stderr)
                     log(
-                        f'        Command: {" ".join(command)}', file=sys.stderr)
-                    log(
                         f'        Return code: {ret.returncode}', file=sys.stderr)
                     log(
                         f'        Return code meaning: {exit_codes[ret.returncode]}\n', file=sys.stderr)
 
-                    if self.args.debug:
-                        log(ret.stderr)
+                    # Extract and display the actual error from rclone's JSON log
+                    out, err = ret.stdout.strip(), ret.stderr.strip()
 
-                    # TODO: Review if this is really necessary for Minio
-                    if self.cfg.provider == 'Minio':
-                        out, err = ret.stdout.strip(), ret.stderr.strip()
-                        log(err)
-                    else:
-                        out, err = ret.stdout.strip(), ret.stderr.strip()
-                        stats, ops = self._parse_log(err)
-                        ret = stats[-1]  # return the stats
-                        log(
-                            f"        Error message: {ret['stats']['lastError']}\n", file=sys.stderr)
+                    # Try to extract lastError from JSON log
+                    error_message = None
+                    if err:
+                        try:
+                            lines = err.split('\n')
+                            # Look for the stats line with lastError
+                            for line in lines:
+                                if line and line[0] == "{":
+                                    try:
+                                        obj = json.loads(line.rstrip())
+                                        if 'stats' in obj and 'lastError' in obj['stats']:
+                                            error_message = obj['stats']['lastError']
+                                            break
+                                    except (json.JSONDecodeError, KeyError):
+                                        continue
+                        except Exception:
+                            pass
+
+                    # Display the error message if found
+                    if error_message:
+                        log(f'        Error: {error_message}\n', file=sys.stderr)
+                    elif self.args.debug:
+                        # Only show full stderr in debug mode if no structured error found
+                        log(f'        Rclone stderr:', file=sys.stderr)
+                        log(err, file=sys.stderr)
 
                     return False
 
@@ -7817,15 +7830,18 @@ class Commands:
                 log(f'\nA froster update is available!')
                 log(f'  Current version: froster v{current}')
                 log(f'  Latest version: froster v{latest}')
-                log(f'\nYou can update froster using the command:')
+                log(f'\nUpdate command that will be executed:')
                 log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash')
                 log(f'\nOr in --verbose mode for troubleshooting:')
                 log(f'    curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?$(date +%s) | bash -s -- --verbose')
-                log(f'\nWould you like to update now? (yes/no): ', end='', flush=True)
+                log(f'\nProceed with update? [Y/n]: ', end='', flush=True)
 
-                response = input()
+                response = input().strip()
 
-                if response.lower() in ['yes', 'y']:
+                # Default to yes if empty or yes/y, only cancel on explicit no/n
+                if response.lower() in ['n', 'no']:
+                    log('\nUpdate cancelled.\n')
+                else:
                     log('\nExecuting update command...\n')
                     timestamp = int(datetime.datetime.now().timestamp())
                     update_cmd = f'curl -s https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh?{timestamp} | bash'
@@ -7837,8 +7853,6 @@ class Commands:
                     else:
                         log('\nUpdate failed. You can retry the command above manually.\n')
                         return False
-                else:
-                    log('\nUpdate cancelled.\n')
             else:
                 if not mute_no_update:
                     log(f'\nFroster is up to date: froster v{current}\n')

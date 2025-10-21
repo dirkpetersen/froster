@@ -1074,23 +1074,22 @@ python3 -m venv .venv
 ```
 
 1. Activate virtual environment
-``` 
+```
 source .venv/bin/activate
 ```
 
-1. Set LOCAL_INSTALL environment variable to true
+1. Execute the install.sh script (auto-detects development environment)
 ```
-export LOCAL_INSTALL=true
-``` 
-
-1. execute the install.sh script
-``` 
 ./install.sh
-``` 
+```
+
+The install script automatically detects when you're in a virtual environment with `pyproject.toml` present and installs in editable mode.
 
 Now Froster is installed in --editable mode inside the virtual environment.
 Any changes to the source code will be immediately reflected without needing to reinstall froster.
 Beware that ```froster --version``` takes the version from the package metadata (pyproject.toml). Therefore Froster's version will only be updated if reinstalled. This only affects to version printing value.
+
+**Note:** You can still manually set `export LOCAL_INSTALL=true` if needed, but it's no longer required.
 
 > **Note**: If you want to develop and debug Froster using [VS Code](https://code.visualstudio.com/), you should create the virtual environment via VS Code following these instructions: [Python environments in VS Code](https://code.visualstudio.com/docs/python/environments). Delete any previous virtual enviroments and let VS Code create the environment, otherwise you will experiencie some inconsistencies while debugging. Follow the rest installation instructions. Now you can debug froster by pressing `F5` or via the command palette. You can also debug by giving CLI command parameters.
 
