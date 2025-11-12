@@ -28,6 +28,7 @@ import inquirer
 import tqdm 
 
 logger = ""
+current_aws_profile = None
 
 PROVIDERS_LIST = [
     'AWS',
@@ -8237,6 +8238,38 @@ def get_caller_function():
     caller_name = caller_frame.f_code.co_name
     return caller_name
 
+
+def get_current_aws_profile():
+    """Get the current AWS credentials profile being used.
+
+    Returns the AWS profile name from either:
+    1. The global current_aws_profile (set via --profile option)
+    2. The default profile from config.ini
+
+    Returns None if profile cannot be determined.
+    """
+    global current_aws_profile
+
+    # First check if profile was set via --profile command line option
+    if current_aws_profile:
+        return current_aws_profile
+
+    # Otherwise, try to read from config file
+    try:
+        config_dir = os.path.join(os.path.expanduser('~'), '.config', 'froster')
+        config_file = os.path.join(config_dir, 'config.ini')
+        if os.path.exists(config_file):
+            config = configparser.ConfigParser()
+            config.read(config_file)
+            default_profile = config.get('DEFAULT_PROFILE', 'profile', fallback=None)
+            if default_profile:
+                return config.get(default_profile, 'credentials', fallback=None)
+    except Exception:
+        pass  # Silently fail if we can't read the config
+
+    return None
+
+
 def print_error(msg: str = None):
     exc_type, exc_value, exc_tb = sys.exc_info()
 
@@ -8291,7 +8324,9 @@ def print_error(msg: str = None):
         log(f'\nYou can check the permissions of the files and folders using the command:')
         log(f'    froster index --permissions "/your/folder"')
 
-    log('\nIf you think this is a bug, please use the output of "froster --debug <subcommand>" to report ')
+    aws_profile = get_current_aws_profile()
+    profile_info = f' (AWS profile: {aws_profile})' if aws_profile else ''
+    log(f'\nIf you think this is a bug{profile_info}, please use the output of "froster --debug <subcommand>" to report ')
     log('this to the froster developers at: https://github.com/dirkpetersen/froster/issues \n')
 
 def get_class_name(frame):
@@ -8367,6 +8402,10 @@ def main():
             cfg = ConfigManager(args.profile)
         else:
             cfg = ConfigManager()
+
+        # Set global AWS profile for error reporting
+        global current_aws_profile
+        current_aws_profile = cfg.credentials
 
         # Init Archiver class
         arch = Archiver(args, cfg)
