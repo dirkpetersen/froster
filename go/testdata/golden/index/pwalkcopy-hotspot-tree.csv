@@ -1,0 +1,6 @@
+inode,parent-inode,directory-depth,"filename","fileExtension",UID,GID,st_size,st_dev,st_blocks,st_nlink,"st_mode",st_atime,st_mtime,st_ctime,pw_fcount,pw_dirsum
+2237132,2237121,0,"/tmp/froster-golden/data/hotspot-tree/sparse_b.dat","dat",1000,1000,524288000,2096,0,1,"0100644",1783752020,1767261845,1783752020,-1,0
+2237125,2237121,0,"/tmp/froster-golden/data/hotspot-tree/sparse_a.dat","dat",1000,1000,838860800,2096,0,1,"0100644",1783752020,1767261845,1783752020,-1,0
+2237121,0,-1,"/tmp/froster-golden/data/hotspot-tree","",1000,1000,4096,2096,8,3,"0040755",1783752020,1767261845,1783752020,3,1363152896
+2237176,2237133,1,"/tmp/froster-golden/data/hotspot-tree/subhot/sparse_c.dat","dat",1000,1000,1258291200,2096,0,1,"0100644",1783752020,1767261845,1783752020,-1,0
+2237133,2237121,0,"/tmp/froster-golden/data/hotspot-tree/subhot","",1000,1000,4096,2096,8,2,"0040755",1783752020,1767261845,1783752020,1,1258291200

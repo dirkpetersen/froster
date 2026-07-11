@@ -1,0 +1,11 @@
+1.0MiB STANDARD froster/tmp/froster-golden/data/golden-tree/Froster.smallfiles.tar
+1.0MiB STANDARD froster/tmp/froster-golden/data/golden-tree/exactly_1mib.dat
+1.5MiB STANDARD froster/tmp/froster-golden/data/golden-tree/sub_data/big_gamma.dat
+10KiB STANDARD froster/tmp/froster-golden/data/golden-tree/sub_data/deeper/Froster.smallfiles.tar
+2.0MiB STANDARD froster/tmp/froster-golden/data/golden-tree/big_alpha.dat
+2.0MiB STANDARD froster/tmp/froster-golden/data/golden-tree/sub_data/deeper/mid_size.dat
+20KiB STANDARD froster/tmp/froster-golden/data/golden-tree/sub_data/Froster.smallfiles.tar
+230B STANDARD froster/tmp/froster-golden/data/golden-tree/sub_data/deeper/Froster.allfiles.csv
+238B STANDARD froster/tmp/froster-golden/data/golden-tree/sub_data/Froster.allfiles.csv
+3.5MiB STANDARD froster/tmp/froster-golden/data/golden-tree/big_beta.dat
+746B STANDARD froster/tmp/froster-golden/data/golden-tree/Froster.allfiles.csv

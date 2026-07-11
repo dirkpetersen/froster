@@ -1,0 +1,25 @@
+golden-tree
+golden-tree/.froster-restored.md5sum
+golden-tree/.froster.md5sum
+golden-tree/Froster.allfiles.csv
+golden-tree/big_alpha.dat
+golden-tree/big_beta.dat
+golden-tree/empty-dir
+golden-tree/exactly_1mib.dat
+golden-tree/file with spaces.txt
+golden-tree/just_under_1mib.dat
+golden-tree/quote"file.txt
+golden-tree/small_report.txt
+golden-tree/sub_data
+golden-tree/sub_data/.froster-restored.md5sum
+golden-tree/sub_data/.froster.md5sum
+golden-tree/sub_data/Froster.allfiles.csv
+golden-tree/sub_data/big_gamma.dat
+golden-tree/sub_data/deeper
+golden-tree/sub_data/deeper/.froster-restored.md5sum
+golden-tree/sub_data/deeper/.froster.md5sum
+golden-tree/sub_data/deeper/Froster.allfiles.csv
+golden-tree/sub_data/deeper/mid_size.dat
+golden-tree/sub_data/deeper/tiny.bin
+golden-tree/sub_data/small_notes.md
+golden-tree/values,comma.csv

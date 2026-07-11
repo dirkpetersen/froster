@@ -1,0 +1,9 @@
+File,Size(bytes),Date-Modified,Date-Accessed,Owner,Group,Permissions,Tarred
+"quote""file.txt",3072,2026-01-01 02:04:05,2026-07-10 23:40:23,dp,dp,0o100644,Yes
+big_beta.dat,3670016,2026-01-01 02:04:05,2026-07-10 23:40:20,dp,dp,0o100644,No
+just_under_1mib.dat,1048575,2026-01-01 02:04:05,2026-07-10 23:40:23,dp,dp,0o100644,Yes
+"values,comma.csv",4096,2026-01-01 02:04:05,2026-07-10 23:40:23,dp,dp,0o100644,Yes
+file with spaces.txt,5120,2026-01-01 02:04:05,2026-07-10 23:40:23,dp,dp,0o100644,Yes
+big_alpha.dat,2097152,2026-01-01 02:04:05,2026-07-10 23:40:20,dp,dp,0o100644,No
+exactly_1mib.dat,1048576,2026-01-01 02:04:05,2026-07-10 23:40:20,dp,dp,0o100644,No
+small_report.txt,10240,2026-01-01 02:04:05,2026-07-10 23:40:20,dp,dp,0o100644,Yes
