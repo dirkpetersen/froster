@@ -13,8 +13,11 @@ import (
 )
 
 func main() {
-	if err := cli.Execute(); err != nil {
+	// NotImplementedApp is the placeholder until the workflow packages are
+	// wired in; the full CLI surface (flags, help, aliases) already works.
+	err := cli.Execute(cli.NotImplementedApp{})
+	if err != nil && !cli.Silent(err) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
 	}
+	os.Exit(cli.ExitCode(err))
 }
