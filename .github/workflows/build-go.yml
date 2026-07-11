@@ -1,0 +1,64 @@
+name: Build go-froster
+
+on:
+  push:
+    branches: [go-froster-dev]
+    paths: ['go/**', '.github/workflows/build-go.yml']
+  pull_request:
+    paths: ['go/**', '.github/workflows/build-go.yml']
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native builds on each OS, plus the second architecture
+          # cross-compiled (CGO_ENABLED=0, so cross-compiling is safe).
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          VERSION="0.0.0-ci.$(git rev-parse --short HEAD)"
+          go build -trimpath \
+            -ldflags "-s -w \
+              -X github.com/dirkpetersen/froster/go/internal/version.Version=${VERSION} \
+              -X github.com/dirkpetersen/froster/go/internal/version.Commit=$(git rev-parse --short HEAD)" \
+            -o froster-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/froster
+
+      - name: Smoke test (native arch only)
+        if: matrix.goarch == 'amd64' && matrix.goos == 'linux' || matrix.goarch == 'arm64' && matrix.goos == 'darwin'
+        run: ./froster-${{ matrix.goos }}-${{ matrix.goarch }} --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: froster-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: go/froster-${{ matrix.goos }}-${{ matrix.goarch }}
+          if-no-files-found: error

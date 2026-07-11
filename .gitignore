@@ -138,6 +138,7 @@ dmypy.json
 # go-froster build artifacts
 go/froster
 go/cmd/froster/froster
+go/froster-*
 go/dist/
 
 # Claude Code agent worktrees
