@@ -1,0 +1,16 @@
+[default]
+region = us-east-1
+output = json
+
+[profile froster-example]
+region = us-west-2
+s3 = 
+	endpoint_url = https://s3.us-west-2.amazonaws.com
+output = json
+
+[profile lab-ceph]
+region = default
+s3 = 
+	endpoint_url = https://ceph.example.edu:7480
+output = json
+
