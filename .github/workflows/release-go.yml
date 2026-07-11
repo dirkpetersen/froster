@@ -1,0 +1,52 @@
+name: Release go-froster
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+
+      - name: Build all targets
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          COMMIT="$(git rev-parse --short HEAD)"
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" \
+            go build -trimpath \
+              -ldflags "-s -w \
+                -X github.com/dirkpetersen/froster/go/internal/version.Version=${VERSION} \
+                -X github.com/dirkpetersen/froster/go/internal/version.Commit=${COMMIT}" \
+              -o "dist/froster-${VERSION}-${target%/*}-${target#*/}" ./cmd/froster
+          done
+          (cd dist && sha256sum froster-* > "froster-${VERSION}-checksums.txt" && cat "froster-${VERSION}-checksums.txt")
+
+      - name: Smoke test native binary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          "./dist/froster-${VERSION}-linux-amd64" --version
+
+      - name: Create release with binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          files: go/dist/froster-*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
