@@ -407,8 +407,20 @@ func TestZstdRoundTrip(t *testing.T) {
 		t.Fatalf("decompressing: %v", err)
 	}
 
+	// The two walks read the same live tree back to back, so directory
+	// st_atime can legitimately differ between them (relatime updates on
+	// the first walk's readdir). Blank the st_atime column (index 12; the
+	// filenames in this fixture contain no commas) — atime fidelity is
+	// covered by the golden comparison against C pwalk.
 	sortLines := func(b []byte) []string {
 		l := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+		for i, ln := range l {
+			f := strings.Split(ln, ",")
+			if len(f) == 17 {
+				f[12] = "-"
+				l[i] = strings.Join(f, ",")
+			}
+		}
 		sort.Strings(l)
 		return l
 	}
