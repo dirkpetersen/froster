@@ -1,0 +1,4 @@
+inode,parent-inode,directory-depth,"filename","fileExtension",UID,GID,st_size,st_dev,st_blocks,st_nlink,"st_mode",st_atime,st_mtime,st_ctime,pw_fcount,pw_dirsum
+201,1,1,"/nonexistent/froster-golden/ok-first","",0,0,4096,64,8,2,"0040755",1763769600,1763769600,1763769600,10,21474836480
+202,1,1,"/nonexistent/froster-golden/zerofiles-big","",0,0,4096,64,8,2,"0040755",1766361600,1766361600,1766361600,0,2147483648
+203,1,1,"/nonexistent/froster-golden/ok-after","",0,0,4096,64,8,2,"0040755",1766793600,1766793600,1766793600,5,1073741824

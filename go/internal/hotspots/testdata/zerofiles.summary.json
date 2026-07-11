@@ -1,0 +1,27 @@
+{
+  "numhotspots": 1,
+  "totalbytes": 21474836480,
+  "totalfolders": 3,
+  "agedbytes": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    21474836480
+  ],
+  "daysaged": [
+    5475,
+    3650,
+    1825,
+    1095,
+    730,
+    365,
+    90,
+    30
+  ],
+  "error": "OverflowError: cannot convert float infinity to integer",
+  "now_epoch": 1767225600
+}
