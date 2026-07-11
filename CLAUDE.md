@@ -18,13 +18,13 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 
 **This branch (`main`) contains only the Go implementation (`go/`).** The
 original Python implementation is **frozen** (bugfixes only) and lives
-entirely on the **`froster-python`** branch, including its installer,
+entirely on the **`python-froster`** branch, including its installer,
 tests, workflows, and full user README. Both implementations are drop-in
 compatible (same config.ini, froster-archives.json, artifact files, S3
 layout, CLI surface), proven by cross-implementation round-trip tests.
 
 New feature work goes to Go. Apply a Python change only if it is a bugfix
-(on `froster-python`), and consider whether it needs a Go counterpart.
+(on `python-froster`), and consider whether it needs a Go counterpart.
 
 ## Go Implementation (`go/`)
 
@@ -32,7 +32,7 @@ Key documents (read before making changes):
 - `GO-ARCHITECTURE.md` (repo root): design decisions and implementation status
 - `go/README.md`: build, test matrix, package map, configuration example, documented deviations
 - `go/docs/python-behavior-spec.md`: the behavioral contract extracted from Python — the source of truth for workflow parity (workflow code cites its sections)
-- `go/testdata/cli-contract.json`: the CLI surface, enforced by `internal/cli/contract_test.go` (regeneration requires a `froster-python` worktree; recipe in go/README.md)
+- `go/testdata/cli-contract.json`: the CLI surface, enforced by `internal/cli/contract_test.go` (regeneration requires a `python-froster` worktree; recipe in go/README.md)
 - `go/testdata/golden/`: fixtures captured from real Python froster runs; `MANIFEST.md` documents known Python quirks/bugs (Q1–Q12)
 
 ### Common commands
@@ -101,10 +101,10 @@ selector; EC2/SES/Cost-Explorer extras stubbed per GO-ARCHITECTURE.md §9.
 
 **Never manually delete archived folders; `froster delete` verifies remote checksums first.**
 
-## Python froster (frozen, branch `froster-python`)
+## Python froster (frozen, branch `python-froster`)
 
 For anything Python: check out that branch (or a worktree). Its own
 CLAUDE.md, README, tests (`python3 -m unittest discover tests/`), installer
 (`install.sh`) and PyPI release process live there. The root `install.sh`
 on main is only a URL-compatibility shim that fetches the real installer
-from `froster-python`.
+from `python-froster`.

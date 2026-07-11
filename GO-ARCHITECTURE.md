@@ -4,6 +4,11 @@ Status: **Core implementation complete** (was: proposal). Branch: `go-froster-de
 
 ## Implementation status (2026-07-11)
 
+**Naming note:** this document uses the development codename "go-froster"
+throughout. Since the branch switch, the Go implementation is simply
+**froster** (this repo's `main`, released as v0.23.0+), and the legacy
+Python implementation is **python-froster** (branch `python-froster`).
+
 The Go module lives in `go/` (see `go/README.md` for build/test instructions).
 Phases 0–4 of §11 are done; both Phase-0 bets validated:
 

@@ -1,4 +1,4 @@
-name: Build go-froster
+name: Build froster
 
 on:
   push:

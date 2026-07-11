@@ -1,8 +1,8 @@
 ![image](https://user-images.githubusercontent.com/1427719/235330281-bd876f06-2b2a-46fc-8505-c065bb508973.png)
 
 
-[![Test go-froster](https://github.com/dirkpetersen/froster/actions/workflows/test-go.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/test-go.yml)
-[![Build go-froster](https://github.com/dirkpetersen/froster/actions/workflows/build-go.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/build-go.yml)
+[![Test froster](https://github.com/dirkpetersen/froster/actions/workflows/test-go.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/test-go.yml)
+[![Build froster](https://github.com/dirkpetersen/froster/actions/workflows/build-go.yml/badge.svg)](https://github.com/dirkpetersen/froster/actions/workflows/build-go.yml)
 [![License](https://img.shields.io/github/license/dirkpetersen/froster)](https://raw.githubusercontent.com/dirkpetersen/froster/main/LICENSE)
 [![PyPI (Python froster)](https://img.shields.io/pypi/v/froster.svg?label=pypi%20%28python%20froster%29)](https://pypi.org/project/froster/)
 
@@ -14,8 +14,8 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 
 | | Where | Status |
 |---|---|---|
-| **go-froster** (this branch, [`go/`](go/)) | single static binary; rclone embedded as a library, native parallel crawler, no Python/pip/compiler needed | active development; core workflows implemented and tested |
-| **Python froster** ([`froster-python`](../../tree/froster-python) branch) | the original implementation, installed via pip/pipx | stable; frozen (bugfixes only); releases continue on PyPI |
+| **froster** (this branch, [`go/`](go/)) | single static binary; rclone embedded as a library, native parallel crawler, no Python/pip/compiler needed | active development; core workflows implemented and tested |
+| **Python froster** ([`python-froster`](../../tree/python-froster) branch) | the original implementation, installed via pip/pipx | stable; frozen (bugfixes only); releases continue on PyPI |
 
 They are **drop-in compatible**: same `~/.config/froster/config.ini`, same
 `froster-archives.json` database, same artifact files
@@ -28,7 +28,7 @@ Design rationale and decisions for the rewrite: [`GO-ARCHITECTURE.md`](GO-ARCHIT
 
 </br>
 
-## Installing go-froster
+## Installing froster
 
 Build from source (any recent Go; the pinned toolchain downloads
 automatically — no other dependencies):
@@ -43,7 +43,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o froster ./cmd/froster
 Copy the resulting single `froster` binary anywhere on your PATH (it is
 fully static on Linux). Pre-built binaries for linux/amd64, linux/arm64,
 darwin/arm64 and darwin/amd64 are produced by CI for every change (see the
-[Build go-froster](../../actions/workflows/build-go.yml) workflow
+[Build froster](../../actions/workflows/build-go.yml) workflow
 artifacts); tagged binary releases will follow.
 
 Runtime prerequisites: none for archiving/restoring. `froster mount` needs
@@ -51,7 +51,7 @@ the `fuse3` OS package (as before). Slurm is auto-detected when present.
 
 ### Configuration
 
-go-froster reads the same configuration the Python version writes. The
+froster reads the same configuration the Python version writes. The
 interactive `froster config` wizard is **not implemented yet**, so either
 run the Python `froster config` once, or hand-write a minimal
 `~/.config/froster/config.ini` — see the
@@ -80,7 +80,7 @@ artifacts, documented deviations): [`go/README.md`](go/README.md).
 
 The Python implementation, its installer, tests, and full user
 documentation live on the
-[`froster-python`](../../tree/froster-python) branch. The published
+[`python-froster`](../../tree/python-froster) branch. The published
 installation command keeps working unchanged (it now transparently fetches
 the installer from that branch):
 
@@ -109,8 +109,8 @@ froster credentials                   # check the active profile/credentials
 For the full user guide — hotspot workflows on HPC/Slurm, shared team
 configuration, AWS setup for teams, NIH grant metadata, recursive
 operations, and command-by-command walkthroughs — see the
-[froster-python README](../../blob/froster-python/README.md); everything
-there applies to go-froster except the installation and `froster config`
+[python-froster README](../../blob/python-froster/README.md); everything
+there applies to froster except the installation and `froster config`
 sections.
 
 </br>
