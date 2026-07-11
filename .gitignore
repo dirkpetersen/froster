@@ -134,3 +134,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .aider*
+
+# go-froster build artifacts
+go/froster
+go/dist/
