@@ -1,0 +1,73 @@
+{
+    "/home/dp/temp/froster.data.RCv": {
+        "local_folder": "/home/dp/temp/froster.data.RCv",
+        "archive_folder": ":s3:froster-dipeit/froster/home/dp/temp/froster.data.RCv",
+        "s3_storage_class": "DEEP_ARCHIVE",
+        "profile": "froster2",
+        "provider": "AWS",
+        "endpoint": "https://s3.us-west-2.amazonaws.com",
+        "archive_mode": "Single",
+        "timestamp": "2025-10-16T19:51:57.936903",
+        "timestamp_archive": "2025-10-16T19:51:57.936903",
+        "user": "dp"
+    },
+    "/data/proj/alpha": {
+        "local_folder": "/data/proj/alpha",
+        "archive_folder": ":s3:froster-dipeit/froster/data/proj/alpha",
+        "s3_storage_class": "GLACIER",
+        "profile": "froster2",
+        "provider": "AWS",
+        "endpoint": "https://s3.us-west-2.amazonaws.com",
+        "archive_mode": "Recursive",
+        "timestamp": "2025-11-01T08:00:00",
+        "timestamp_archive": "2025-11-01T08:00:00",
+        "user": "dp",
+        "nih_project": "R41HL129728"
+    },
+    "/archive/old/stuff": {
+        "local_folder": "/archive/old/stuff",
+        "archive_folder": ":s3:old-bucket/froster/archive/old/stuff",
+        "s3_storage_class": "DEEP_ARCHIVE",
+        "profile": "aws",
+        "archive_mode": "Single",
+        "timestamp": "2023-06-05T10:20:30.000060",
+        "timestamp_archive": "2023-06-05T10:20:30.000060",
+        "user": "olduser",
+        "nih_project": "R41HL129728",
+        "nih_project_url": "https://reporter.nih.gov/project-details/9331239",
+        "nih_project_pi": "MOLLER, DAVID ROBERT"
+    },
+    "/home/dp/unicode-\u00e9\u00e8/d\u00e4ta \ud83d\ude00": {
+        "local_folder": "/home/dp/unicode-\u00e9\u00e8/d\u00e4ta \ud83d\ude00",
+        "archive_folder": ":s3:froster-dipeit/froster/home/dp/unicode-\u00e9\u00e8/d\u00e4ta \ud83d\ude00",
+        "s3_storage_class": "INTELLIGENT_TIERING",
+        "profile": "froster2",
+        "provider": "AWS",
+        "endpoint": "https://s3.us-west-2.amazonaws.com",
+        "archive_mode": "Single",
+        "timestamp": "2026-01-02T03:04:05.000001",
+        "timestamp_archive": "2026-01-02T03:04:05.000001",
+        "user": "dp",
+        "future_flag": true,
+        "future_count": 42,
+        "future_ratio": 2.5,
+        "future_none": null,
+        "future_list": [
+            1,
+            "two",
+            {
+                "three": 3
+            },
+            []
+        ],
+        "future_meta": {
+            "nested": {
+                "deep": [
+                    "a",
+                    "b"
+                ]
+            },
+            "empty": {}
+        }
+    }
+}
