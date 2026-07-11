@@ -1,0 +1,12 @@
+51ee06a02b016468bb0b27b96345d60e  golden-tree/big_alpha.dat
+06faa8d12a8f2c073e58c8f0c8dbc453  golden-tree/big_beta.dat
+d958d32d7dfe5f432fd75c4fca7e57d6  golden-tree/exactly_1mib.dat
+5a10484d561c4238f58c494d69b0dcfa  golden-tree/file with spaces.txt
+5af681cef902d1208ad6ffa5bb921049  golden-tree/just_under_1mib.dat
+292488253620aee2820284ea22a6b7fa  golden-tree/quote"file.txt
+e0ff997b956d2dfd0027e190e776f9ef  golden-tree/small_report.txt
+c8172bb4358a66fb685a51866cd30cd7  golden-tree/sub_data/big_gamma.dat
+92b344cd7cf7990713da9a479e3acebc  golden-tree/sub_data/deeper/mid_size.dat
+55153b4dc69b1d0c65ba99c0dcdd9e39  golden-tree/sub_data/deeper/tiny.bin
+778a0e39f6fedb90149e536ee5fa525c  golden-tree/sub_data/small_notes.md
+4e4a9400ff82f5f0149be39fffdbc825  golden-tree/values,comma.csv

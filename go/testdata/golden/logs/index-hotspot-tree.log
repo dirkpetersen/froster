@@ -1,0 +1,19 @@
+  Running pwalk filesystem scan on "/tmp/froster-golden/data/hotspot-tree"...
+    ...pwalk scan complete.
+  Filtering pwalk output (removing directories)...
+    ...filtering complete.
+  Converting character encoding...
+    ...conversion complete.
+  Analyzing folder data with DuckDB...
+    ...analysis complete.
+  Processing and writing hotspots CSV (/tmp/froster-golden/home/.local/share/froster/hotspots/+tmp+froster-golden+data+hotspot-tree.csv)...
+    ...hotspots CSV written.
+
+Hotspots file: /tmp/froster-golden/home/.local/share/froster/hotspots/+tmp+froster-golden+data+hotspot-tree.csv
+    with 2 hotspots >= 1 GiB
+    with a total disk use of 0.002 TiB
+
+Total folders processed: 2
+
+INDEXING SUCCESSFULLY COMPLETED
+

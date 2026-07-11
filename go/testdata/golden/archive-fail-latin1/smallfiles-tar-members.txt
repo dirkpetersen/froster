@@ -1,0 +1,6 @@
+-rw-r--r-- dp/dp          3072 2026-01-01 02:04 quote"file.txt
+-rw-r--r-- dp/dp       1048575 2026-01-01 02:04 just_under_1mib.dat
+-rw-r--r-- dp/dp          4096 2026-01-01 02:04 values,comma.csv
+-rw-r--r-- dp/dp          5120 2026-01-01 02:04 file with spaces.txt
+tar: Ignoring unknown extended header keyword 'hdrcharset'
+-rw-r--r-- dp/dp          2048 2026-01-01 02:04 caf\351.dat

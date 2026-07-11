@@ -1,0 +1,14 @@
+{
+    "/tmp/froster-golden/data/golden-tree": {
+        "local_folder": "/tmp/froster-golden/data/golden-tree",
+        "archive_folder": ":s3:froster-golden/froster/tmp/froster-golden/data/golden-tree",
+        "s3_storage_class": "STANDARD",
+        "profile": "minio",
+        "provider": "Minio",
+        "endpoint": "http://localhost:9201",
+        "archive_mode": "Recursive",
+        "timestamp": "2026-07-10T23:40:24.832029",
+        "timestamp_archive": "2026-07-10T23:40:24.832029",
+        "user": "dp"
+    }
+}

@@ -1,0 +1,81 @@
+
+ARCHIVING /tmp/froster-golden/data/golden-tree
+
+    Generating Froster.allfiles.csv and tar small files...
+        ...done
+
+    Generating checksums...
+
+        ...done
+
+    Uploading Froster.allfiles.csv file...
+        ...done
+
+    Uploading files...
+        ...done
+
+    Verifying checksums...
+        ...done
+
+ARCHIVING SUCCESSFULLY COMPLETED
+
+    PROVIDER:           "Minio"
+    PROFILE:            "profile minio"
+    ENDPOINT:           "http://localhost:9201"
+    LOCAL SOURCE:       "/tmp/froster-golden/data/golden-tree"
+    S3 DESTINATION:     ":s3:froster-golden/froster/tmp/froster-golden/data/golden-tree"
+
+
+ARCHIVING /tmp/froster-golden/data/golden-tree/sub_data
+
+    Generating Froster.allfiles.csv and tar small files...
+        ...done
+
+    Generating checksums...
+
+        ...done
+
+    Uploading Froster.allfiles.csv file...
+        ...done
+
+    Uploading files...
+        ...done
+
+    Verifying checksums...
+        ...done
+
+ARCHIVING SUCCESSFULLY COMPLETED
+
+    PROVIDER:           "Minio"
+    PROFILE:            "profile minio"
+    ENDPOINT:           "http://localhost:9201"
+    LOCAL SOURCE:       "/tmp/froster-golden/data/golden-tree/sub_data"
+    S3 DESTINATION:     ":s3:froster-golden/froster/tmp/froster-golden/data/golden-tree/sub_data"
+
+
+ARCHIVING /tmp/froster-golden/data/golden-tree/sub_data/deeper
+
+    Generating Froster.allfiles.csv and tar small files...
+        ...done
+
+    Generating checksums...
+
+        ...done
+
+    Uploading Froster.allfiles.csv file...
+        ...done
+
+    Uploading files...
+        ...done
+
+    Verifying checksums...
+        ...done
+
+ARCHIVING SUCCESSFULLY COMPLETED
+
+    PROVIDER:           "Minio"
+    PROFILE:            "profile minio"
+    ENDPOINT:           "http://localhost:9201"
+    LOCAL SOURCE:       "/tmp/froster-golden/data/golden-tree/sub_data/deeper"
+    S3 DESTINATION:     ":s3:froster-golden/froster/tmp/froster-golden/data/golden-tree/sub_data/deeper"
+

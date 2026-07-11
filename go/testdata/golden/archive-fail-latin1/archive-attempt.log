@@ -1,0 +1,22 @@
+
+ARCHIVING /tmp/froster-golden/data/golden-tree
+
+    Generating Froster.allfiles.csv and tar small files...
+
+Error
+  File: froster.py
+  Class: Archiver
+  Function: _gen_allfiles_and_tar
+  Line number: 4902
+  Line: writer.writerow(
+  Error code: 
+  Exception type: <class 'UnicodeEncodeError'>
+  Exception value: 'utf-8' codec can't encode character '\udce9' in position 3: surrogates not allowed
+
+If you think this is a bug (AWS profile: minio), please use the output of "froster --debug <subcommand>" to report 
+this to the froster developers at: https://github.com/dirkpetersen/froster/issues 
+
+
+Error occurred during archive of /tmp/froster-golden/data/golden-tree. Skipping remaining subfolders for /tmp/froster-golden/data/golden-tree.
+
+exit=1 (expected 1: UnicodeEncodeError on surrogate from Latin-1 filename)

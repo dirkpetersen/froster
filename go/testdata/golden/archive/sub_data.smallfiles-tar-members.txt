@@ -1,0 +1,1 @@
+-rw-r--r-- dp/dp          8192 2026-01-01 02:04 small_notes.md

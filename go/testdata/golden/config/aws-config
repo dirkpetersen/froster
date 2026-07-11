@@ -1,0 +1,4 @@
+[profile minio]
+region = us-east-1
+s3 =
+    endpoint_url = http://localhost:9201

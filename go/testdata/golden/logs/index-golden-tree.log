@@ -1,0 +1,29 @@
+  Running pwalk filesystem scan on "/tmp/froster-golden/data/golden-tree"...
+    ...pwalk scan complete.
+  Filtering pwalk output (removing directories)...
+    ...filtering complete.
+  Converting character encoding...
+    ...conversion complete.
+  Analyzing folder data with DuckDB...
+
+Error
+  File: froster.py
+  Class: Archiver
+  Function: _index_locally
+  Line number: 3809
+  Line: rows = duckdb_connection.execute(sql_query).fetchall()
+  Error code: 
+  Exception type: <class '_duckdb.BinderException'>
+  Exception value: Binder Error: Referenced column "pw_fcount" not found in FROM clause!
+Candidate bindings: "Binary file /tmp/tmpbe_kzlqx matches"
+
+LINE 10:                                     WHERE pw_fcount > -1 AND pw_dirsum > 0
+                                                   ^
+
+If you think this is a bug (AWS profile: minio), please use the output of "froster --debug <subcommand>" to report 
+this to the froster developers at: https://github.com/dirkpetersen/froster/issues 
+
+
+WARNING: Some folders may have permission issues or are locked. Check the output above.
+
+exit=1 (expected 1: Latin-1 filename breaks grep/DuckDB)
