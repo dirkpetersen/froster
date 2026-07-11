@@ -14,6 +14,32 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 - Mount S3/Glacier storage via FUSE
 - Slurm batch job integration for long-running operations
 
+## Two Implementations — Where to Work
+
+**Froster is being rewritten in Go; the Go implementation in `go/` is the
+primary development line.** The Python implementation (`froster/froster.py`)
+is **frozen** — bugfixes only — and its maintenance branch is
+`froster-python`. Both implementations are drop-in compatible (same
+config.ini, froster-archives.json, artifact files, S3 layout, CLI surface),
+proven by cross-implementation round-trip tests.
+
+Key Go-side documents (read before touching `go/`):
+- `GO-ARCHITECTURE.md` (repo root): design decisions and implementation status
+- `go/README.md`: build, test matrix, package map, documented deviations
+- `go/docs/python-behavior-spec.md`: the behavioral contract extracted from
+  Python — the source of truth for workflow parity
+- `go/testdata/cli-contract.json`: the CLI surface, enforced by a test
+  (regenerate with `go/testdata/dump_cli_contract.py`)
+- `go/testdata/golden/`: fixtures captured from real Python froster runs
+  (MANIFEST.md documents known Python quirks/bugs)
+
+Go rules: `cd go && go build ./... && go vet ./... && go test ./...` must
+stay green (Docker-guarded Minio tests skip without Docker). Do NOT bump
+aws-sdk-go-v2 versions independently — they must track rclone's pins (see
+the NOTE in `go/go.mod`). New feature work goes to Go; only apply a Python
+change if it is a bugfix, and consider whether the fix needs a Go
+counterpart (or is already handled there).
+
 ## Installation and Setup
 
 ### Install for development

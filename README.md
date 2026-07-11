@@ -13,6 +13,44 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 
 </br>
 
+## Froster is being rewritten in Go
+
+Froster is transitioning from Python to Go (**go-froster**): one static
+binary that embeds rclone as a library, replaces the C pwalk crawler with a
+native parallel walker, and needs no Python, pip, or compiler on the target
+machine. It is a **drop-in replacement**: same `config.ini`, same
+`froster-archives.json`, same artifact files and S3 layout, same CLI —
+archives written by one implementation restore bit-for-bit with the other.
+
+- **This branch (`main`)** hosts the Go implementation (in [`go/`](go/))
+  alongside the frozen Python code. New development happens here.
+- **The Python implementation is frozen** (bugfixes only) and is maintained
+  on the [`froster-python`](../../tree/froster-python) branch. PyPI releases
+  and the installation instructions below continue to work unchanged.
+- go-froster status, build and test instructions: [`go/README.md`](go/README.md).
+  Architecture and design decisions: [`GO-ARCHITECTURE.md`](GO-ARCHITECTURE.md).
+
+**Trying go-froster today** (requires only a Go toolchain; the pinned Go
+version downloads automatically):
+
+```bash
+git clone https://github.com/dirkpetersen/froster.git
+cd froster/go
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o froster ./cmd/froster
+./froster --version
+```
+
+Note: go-froster does not yet include the interactive `froster config`
+wizard — it reads the same `~/.config/froster/config.ini` the Python
+version writes, so either run the Python `froster config` once, or copy a
+config from a teammate (see `go/README.md` for a minimal example). Also not
+yet implemented: `update`, `test`, the NIH grant search TUI, and the
+EC2/SES/Cost-Explorer extras (their CLI flags print a clear message).
+
+The instructions below cover the **stable Python release**.
+
+</br>
+
 ## Installation pre-requisite: packages
 
 ### On Debian / Ubuntu

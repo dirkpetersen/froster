@@ -57,6 +57,48 @@ Note: `froster mount` re-executes this same binary as a detached FUSE
 daemon (see `cmd/froster/main.go` and `workflow.IsMountDaemon`), like
 Python's background rclone process.
 
+## Configuration
+
+go-froster reads the exact files Python froster writes; the interactive
+`froster config` wizard is not implemented yet. Either run the Python
+`froster config` once, or create the files by hand:
+
+`~/.config/froster/config.ini`:
+
+```ini
+[USER]
+name = Your Name
+email = you@example.org
+
+[DEFAULT_PROFILE]
+profile = profile aws
+
+[profile aws]
+provider = AWS
+credentials = aws
+bucket_name = your-froster-bucket
+archive_dir = froster
+storage_class = DEEP_ARCHIVE
+```
+
+`~/.aws/credentials` (the `credentials` key above names this section):
+
+```ini
+[aws]
+aws_access_key_id = ...
+aws_secret_access_key = ...
+```
+
+`~/.aws/config` (region; add the nested `s3 =` block only for non-AWS
+endpoints such as Ceph/Minio):
+
+```ini
+[profile aws]
+region = us-west-2
+```
+
+Verify with `./froster credentials`.
+
 ## Dependency pinning: aws-sdk-go-v2 must track rclone
 
 From the NOTE in [`go.mod`](go.mod), and worth repeating prominently:
