@@ -1,6 +1,34 @@
 # go-froster: Architecture for a Go Rewrite of Froster
 
-Status: **Proposal / design document** — no Go code exists yet. Branch: `go-froster-dev` Author: generated with Claude Code, reviewed by Dirk Petersen Date: 2026-07-10
+Status: **Core implementation complete** (was: proposal). Branch: `go-froster-dev` Author: generated with Claude Code, reviewed by Dirk Petersen Date: 2026-07-10 (implementation status updated 2026-07-11)
+
+## Implementation status (2026-07-11)
+
+The Go module lives in `go/` (see `go/README.md` for build/test instructions).
+Phases 0–4 of §11 are done; both Phase-0 bets validated:
+
+- **Walker**: byte-identical (sorted) to C pwalk on a 204k-row tree, **4.8×
+  faster** (0.38s vs 1.83s, 200k files).
+- **rclone as library**: direct fs-API (pinned v1.74.4), live Minio e2e +
+  real FUSE mount tests pass; librclone rejected (verdict in §6.2 terms:
+  same linked size, worse API). Binary: 39.6 MB (28.4 MB with `-s -w`).
+- **Cross-implementation round-trip proven live (§10.2)**: Go restored
+  Python-archived data bit-for-bit and Python restored Go-archived data
+  bit-for-bit, sharing one `froster-archives.json`, `config.ini`, and Minio
+  bucket.
+
+Working end-to-end: `index`, `archive`, `delete`, `restore` (incl. Glacier
+trigger/status paths, unit-tested), `mount`/`umount` (FUSE daemon),
+`credentials`, `restore --change-tier`, Slurm submission, all TUIs except NIH
+grants. Not yet implemented: `config` wizard, `update`, `test` subcommand,
+NIH grant TUI. Stubbed per §9: EC2 restore, SES, Cost Explorer.
+
+Key artifacts: `go/testdata/cli-contract.json` (CLI surface, enforced by
+test), `go/docs/python-behavior-spec.md` (behavioral contract),
+`go/testdata/golden/` (fixtures from real Python 0.22 runs; MANIFEST.md
+documents 12 Python quirks/bugs found, three of them serious). Dependency
+constraint: aws-sdk-go-v2 versions must track rclone's pins (NOTE in
+`go/go.mod`).
 
 ***
 
