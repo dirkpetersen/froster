@@ -1,0 +1,75 @@
+
+RESTORING "/tmp/froster-golden/data/golden-tree"
+
+...no glacier restore needed
+
+Downloading files...
+    ...done
+
+
+    Generating checksums...
+
+    ...done
+
+Verifying checksums...
+    ...done
+
+Untarring Froster.smallfiles.tar... 
+    ...done
+
+RESTORATION OF /tmp/froster-golden/data/golden-tree COMPLETED SUCCESSFULLY
+
+
+RESTORING "/tmp/froster-golden/data/golden-tree/sub_data"
+
+...no glacier restore needed
+
+Downloading files...
+    ...done
+
+
+    Generating checksums...
+
+    ...done
+
+Verifying checksums...
+    ...done
+
+Untarring Froster.smallfiles.tar... 
+    ...done
+
+RESTORATION OF /tmp/froster-golden/data/golden-tree/sub_data COMPLETED SUCCESSFULLY
+
+
+RESTORING "/tmp/froster-golden/data/golden-tree/sub_data/deeper"
+
+...no glacier restore needed
+
+Downloading files...
+    ...done
+
+
+    Generating checksums...
+
+    ...done
+
+Verifying checksums...
+    ...done
+
+Untarring Froster.smallfiles.tar... 
+    ...done
+
+RESTORATION OF /tmp/froster-golden/data/golden-tree/sub_data/deeper COMPLETED SUCCESSFULLY
+
+
+RESTORING "/tmp/froster-golden/data/golden-tree/empty-dir"
+
+...no glacier restore needed
+
+Downloading files...
+    ...done
+
+
+    Generating checksums...
+
+exit=0

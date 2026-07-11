@@ -1,0 +1,12 @@
+golden-tree/big_alpha.dat: OK
+golden-tree/big_beta.dat: OK
+golden-tree/exactly_1mib.dat: OK
+golden-tree/file with spaces.txt: OK
+golden-tree/just_under_1mib.dat: OK
+golden-tree/quote"file.txt: OK
+golden-tree/small_report.txt: OK
+golden-tree/sub_data/big_gamma.dat: OK
+golden-tree/sub_data/deeper/mid_size.dat: OK
+golden-tree/sub_data/deeper/tiny.bin: OK
+golden-tree/sub_data/small_notes.md: OK
+golden-tree/values,comma.csv: OK

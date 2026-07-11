@@ -1,0 +1,57 @@
+
+DELETING /tmp/froster-golden/data/golden-tree
+
+    Verifying checksums...
+        ...done
+
+    Deleting files...
+        ...done
+
+DELETING SUCCESSFULLY COMPLETED
+
+    LOCAL DELETED FOLDER:   /tmp/froster-golden/data/golden-tree
+    AWS S3 DESTINATION:     :s3:froster-golden/froster/tmp/froster-golden/data/golden-tree
+
+    Total files deleted:    4
+
+    Manifest:               /tmp/froster-golden/data/golden-tree/Where-did-the-files-go.txt
+
+
+DELETING /tmp/froster-golden/data/golden-tree/sub_data
+
+    Verifying checksums...
+        ...done
+
+    Deleting files...
+        ...done
+
+DELETING SUCCESSFULLY COMPLETED
+
+    LOCAL DELETED FOLDER:   /tmp/froster-golden/data/golden-tree/sub_data
+    AWS S3 DESTINATION:     :s3:froster-golden/froster/tmp/froster-golden/data/golden-tree/sub_data
+
+    Total files deleted:    2
+
+    Manifest:               /tmp/froster-golden/data/golden-tree/sub_data/Where-did-the-files-go.txt
+
+
+DELETING /tmp/froster-golden/data/golden-tree/sub_data/deeper
+
+    Verifying checksums...
+        ...done
+
+    Deleting files...
+        ...done
+
+DELETING SUCCESSFULLY COMPLETED
+
+    LOCAL DELETED FOLDER:   /tmp/froster-golden/data/golden-tree/sub_data/deeper
+    AWS S3 DESTINATION:     :s3:froster-golden/froster/tmp/froster-golden/data/golden-tree/sub_data/deeper
+
+    Total files deleted:    2
+
+    Manifest:               /tmp/froster-golden/data/golden-tree/sub_data/deeper/Where-did-the-files-go.txt
+
+
+DELETING /tmp/froster-golden/data/golden-tree/empty-dir
+There is no hashfile therefore cannot delete files in /tmp/froster-golden/data/golden-tree/empty-dir

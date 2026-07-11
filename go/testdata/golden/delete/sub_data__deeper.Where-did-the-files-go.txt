@@ -1,0 +1,23 @@
+The files in this folder have been moved to an AWS S3 archive!
+Archive location: :s3:froster-golden/froster/tmp/froster-golden/data/golden-tree/sub_data/deeper
+
+Local folder : /tmp/froster-golden/data/golden-tree
+Provider: Minio
+Endpoint: http://localhost:9201
+S3 storage class: STANDARD
+Archive mode: Recursive
+Archive aws profile: minio
+Archiver user: dp
+Archiver email: golden@example.com
+froster-archives.json: /tmp/froster-golden/home/.local/share/froster/froster-archives.json
+Archive tool: https://github.com/dirkpetersen/froster
+Restore command: froster restore "/tmp/froster-golden/data/golden-tree/sub_data/deeper"
+Deletion date: 2026-07-10 23:40:25.860995
+
+
+First 10 files deleted this time:
+Froster.smallfiles.tar, mid_size.dat
+
+Please see more metadata in Froster.allfiles.csv file
+
+You can use "visidata" or "vd" tool to help you visualize Froster.allfiles.csv file

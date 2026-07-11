@@ -1,0 +1,13 @@
+golden-tree
+golden-tree/.froster.md5sum
+golden-tree/Froster.allfiles.csv
+golden-tree/Where-did-the-files-go.txt
+golden-tree/empty-dir
+golden-tree/sub_data
+golden-tree/sub_data/.froster.md5sum
+golden-tree/sub_data/Froster.allfiles.csv
+golden-tree/sub_data/Where-did-the-files-go.txt
+golden-tree/sub_data/deeper
+golden-tree/sub_data/deeper/.froster.md5sum
+golden-tree/sub_data/deeper/Froster.allfiles.csv
+golden-tree/sub_data/deeper/Where-did-the-files-go.txt

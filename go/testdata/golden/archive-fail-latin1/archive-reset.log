@@ -1,0 +1,9 @@
+
+Resetting folder "/tmp/froster-golden/data/golden-tree"...
+    Untarring Froster.smallfiles.tar... done.
+    Removing Froster.allfiles.csv... done
+    Removing .froster.md5sum... nothing to remove
+    Removing .froster-restored.md5sum... nothing to remove
+    Removing Where-did-the-files-go.txt... nothing to remove
+...folder /tmp/froster-golden/data/golden-tree reset successfully
+

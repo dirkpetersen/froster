@@ -1,0 +1,2 @@
+# Golden fixtures include froster run logs; un-ignore them here.
+!*.log

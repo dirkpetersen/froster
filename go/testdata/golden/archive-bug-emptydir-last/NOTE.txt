@@ -1,0 +1,15 @@
+Bug demonstration: froster v0.22.0 `archive --recursive` only writes the
+froster-archives.json entry when the LAST folder visited by os.walk archived
+successfully (Archiver.archive: `if success:` after the walker loop, where
+`success` holds only the final iteration's result).
+
+In this captured run the ext4 directory-hash order made os.walk visit
+`empty-dir` last. Archiving an empty dir returns None ("contains no files or
+symlinks to archive ... skipping" -- see log), so despite all three data
+folders uploading and verifying successfully, NO entry was written to
+froster-archives.json, and subsequent `froster delete` / `froster restore`
+would report "not archived".
+
+os.walk order depends on on-disk directory entry order (ext4 htree hash), so
+this is machine-dependent; generate.sh avoids the bug deterministically by
+removing empty-dir for the duration of the clean archive run.

@@ -1,0 +1,34 @@
+
+FILES
+
+    Configuration: /tmp/froster-golden/home/.config/froster/config.ini
+    DataBase: /tmp/froster-golden/home/.local/share/froster/froster-archives.json
+
+TOOLS
+
+  froster
+    version: 0.21.2
+    path: /tmp/froster-golden/bin/froster
+
+  python
+    version: v3.12.3
+    path: /home/dp/gh/froster/.venv/bin/python3
+
+  pwalk
+    version: v3.0.0
+    path: /tmp/froster-golden/bin/pwalk
+
+  rclone
+    version: v1.71.2
+    path: /tmp/froster-golden/bin/rclone
+
+
+AUTHORS
+
+  Written by Dirk Petersen and Hpc Now Consulting SL
+
+REPOSITORY:
+
+  https://github.com/dirkpetersen/froster
+
+
