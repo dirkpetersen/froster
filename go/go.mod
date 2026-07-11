@@ -9,6 +9,7 @@ toolchain go1.25.12
 // past rclone's tested versions breaks its middleware registration, e.g.
 // 'not found: S3100Continue'). When bumping rclone, re-align the aws-sdk
 // versions to rclone's go.mod.
+
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
