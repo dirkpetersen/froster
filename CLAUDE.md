@@ -141,7 +141,17 @@ and `gh release view vX.Y.Z`.
 ## Python froster (frozen, branch `python-froster`)
 
 For anything Python: check out that branch (or a worktree). Its own
-CLAUDE.md, README, tests (`python3 -m unittest discover tests/`), installer
-(`install.sh`) and PyPI release process live there. The root `install.sh`
-on main is only a URL-compatibility shim that fetches the real installer
-from `python-froster`.
+CLAUDE.md, README, tests (`python3 -m unittest discover tests/`), its own
+`install.sh`, and PyPI release process live there — entirely separate from
+the root `install.sh` on `main`, which installs the Go binary (see below).
+
+## `install.sh` (root, `main` branch)
+
+Installs the Go binary directly: detects OS/arch, resolves the latest (or
+`--version`-pinned) release via GitHub's `/releases/latest` redirect (no
+API/JSON parsing), downloads the matching `froster-<ver>-<os>-<arch>` asset,
+verifies it against the release's sha256 checksums file, and installs to
+`~/.local/bin` (if on PATH) / `~/bin` / `/usr/local/bin` (if root) /
+`--dir` override. Test changes to it against a real release before pushing —
+see the manual test recipe used during development (HOME/PATH overrides,
+`fakeroot` for the root branch) rather than assuming syntax correctness.

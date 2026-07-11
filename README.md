@@ -13,21 +13,28 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 ## Installation
 
 Froster is a single self-contained binary — no interpreter, package manager,
-or compiler is needed on the target machine. Download the latest release for
-your platform ([release page](https://github.com/dirkpetersen/froster/releases/latest)):
+or compiler is needed on the target machine. To install it, run:
 
 ```
-VER=0.23.0   # see the releases page for the latest version
-curl -fsSL "https://github.com/dirkpetersen/froster/releases/download/v${VER}/froster-${VER}-linux-amd64" -o froster
-chmod +x froster
-./froster --version
+curl -fsSL https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash
+```
+
+This detects your OS and CPU architecture, downloads the latest release,
+verifies its checksum, and installs it — to `~/.local/bin` if that's already
+on your `PATH`, otherwise `~/bin` (created if needed), or `/usr/local/bin` by
+default when run as root. On an HPC system, your home directory is all you
+need — no root, no packages.
+
+To install a specific version, or to a specific directory:
+
+```
+curl -fsSL https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- --version 0.23.0
+curl -fsSL https://raw.githubusercontent.com/dirkpetersen/froster/main/install.sh | bash -s -- --dir /opt/froster/bin
 ```
 
 Binaries are published for `linux-amd64`, `linux-arm64`, `darwin-arm64`
-(Apple Silicon) and `darwin-amd64`; sha256 checksums are attached to each
-release. Put the binary anywhere on your PATH (e.g. `~/.local/bin` or
-`/usr/local/bin`). On an HPC system, your home directory is all you need —
-no root, no packages.
+(Apple Silicon) and `darwin-amd64` on the [release page](https://github.com/dirkpetersen/froster/releases/latest);
+grab one directly if you'd rather skip the script.
 
 Alternatively, build from source (any recent Go; the pinned toolchain
 downloads automatically):
