@@ -143,3 +143,6 @@ go/dist/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Office/editor lock files
+~$*

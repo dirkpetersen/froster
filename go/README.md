@@ -200,12 +200,17 @@ behavior change:
 - **CLI contract** — [`testdata/cli-contract.json`](testdata/cli-contract.json):
   a JSON dump of Python froster's argparse tree (subcommands, aliases,
   flags, defaults). `internal/cli/contract_test.go` asserts the cobra tree
-  matches. Regenerate (needs the Python dev venv, see `install.sh`):
+  matches. Regenerating requires the Python source, which lives on the
+  `froster-python` branch — use a worktree:
 
   ```bash
   # from the repo root
+  git worktree add /tmp/froster-python froster-python
+  (cd /tmp/froster-python && python3 -m venv .venv && ./install.sh)  # dev install
   unset SLURM_CPUS_ON_NODE SLURM_MEM_PER_NODE
-  .venv/bin/python3 go/testdata/dump_cli_contract.py > go/testdata/cli-contract.json
+  PYTHONPATH=/tmp/froster-python /tmp/froster-python/.venv/bin/python3 \
+    go/testdata/dump_cli_contract.py > go/testdata/cli-contract.json
+  git worktree remove /tmp/froster-python
   ```
 
 - **Behavior spec** — [`docs/python-behavior-spec.md`](docs/python-behavior-spec.md):
@@ -218,10 +223,11 @@ behavior change:
   restore cycle against Minio. [`MANIFEST.md`](testdata/golden/MANIFEST.md)
   describes every file, the normalization rules (what is non-deterministic),
   and the Python quirks/bugs discovered (Q1–Q12). Regenerate (needs docker
-  + the dev venv):
+  + a dev venv of the Python implementation from the `froster-python`
+  branch, e.g. in a worktree as shown above):
 
   ```bash
-  FROSTER_VENV=/path/to/froster/.venv go/testdata/golden/generate.sh
+  FROSTER_VENV=/tmp/froster-python/.venv go/testdata/golden/generate.sh
   ```
 
 ### Deliberate deviations from Python froster

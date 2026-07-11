@@ -4,9 +4,11 @@
 This is the compatibility contract for the Go rewrite: the cobra command
 tree in go/internal/cli is tested against the output of this script.
 
-Regenerate with:
+The Python implementation lives on the `froster-python` branch. Regenerate
+with (see go/README.md "Compatibility corner" for the worktree recipe):
     unset SLURM_CPUS_ON_NODE SLURM_MEM_PER_NODE
-    .venv/bin/python3 go/testdata/dump_cli_contract.py > go/testdata/cli-contract.json
+    PYTHONPATH=/path/to/froster-python-checkout \
+      python3 go/testdata/dump_cli_contract.py > go/testdata/cli-contract.json
 
 Note: --cores and --mem defaults are environment-dependent (Slurm env vars);
 they are recorded here with a clean environment (4 cores, 16 GB) and marked
