@@ -191,17 +191,21 @@ func (a *App) ChangeTier(ctx context.Context, args cli.RestoreArgs) error {
 		}
 
 		if _, err := aws.ChangeStorageClass(ctx, remote.Bucket, remote.Prefix, newTier, currentTier); err != nil {
-			s.log.Logf("Error: %v", err)
 			s.log.Logf("%s", "\nStorage tier change failed\n")
 			return exit1()
 		}
 
-		// Update the database. DOCUMENTED DEVIATION: for a subfolder of a
-		// recursive archive Python re-keys the parent entry under the
-		// subfolder path (duplicating it); Go updates the parent entry in
-		// place (keyed by its own local_folder).
-		entry.S3StorageClass = newTier
-		if err := db.Upsert(entry); err != nil {
+		// Update the database exactly like Python's _change_storage_tier
+		// (~7500): mutate the tier on a copy of the (possibly parent)
+		// entry and store it under the REQUESTED folder path, leaving the
+		// parent entry untouched. For a subfolder of a recursive archive
+		// this duplicates the entry under the subfolder key with
+		// local_folder still pointing at the parent — quirky, but it is
+		// what Python readers expect (only the requested subfolder
+		// resolves to the new tier; siblings keep the parent's).
+		updated := *entry
+		updated.S3StorageClass = newTier
+		if err := db.UpsertAt(folder, &updated); err != nil {
 			s.log.Logf("Error: %v", err)
 			return exit1()
 		}

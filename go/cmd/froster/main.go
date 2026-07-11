@@ -8,6 +8,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/dirkpetersen/froster/go/internal/app"
 	"github.com/dirkpetersen/froster/go/internal/cli"
@@ -25,6 +27,17 @@ func main() {
 		}
 		return
 	}
+
+	// Python parity (spec §0.7): KeyboardInterrupt prints a notice and
+	// exits 1. The abrupt exit also matches Python, where SIGINT reached
+	// the rclone subprocess in the same process group.
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigc
+		fmt.Println("\nOperation cancelled by user. Exiting...")
+		os.Exit(1)
+	}()
 
 	err := cli.Execute(app.New())
 	if err != nil && !cli.Silent(err) {

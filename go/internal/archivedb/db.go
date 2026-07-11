@@ -236,6 +236,28 @@ func (db *DB) Upsert(e *Entry) error {
 	})
 }
 
+// UpsertAt stores e under an explicit key instead of e.LocalFolder. Python
+// needs this in exactly one place: a tier change on a subfolder of a
+// recursive archive re-keys a copy of the parent entry under the requested
+// subfolder path while keeping the copy's local_folder pointing at the
+// parent (froster.py _change_storage_tier ~7500).
+func (db *DB) UpsertAt(folder string, e *Entry) error {
+	if e == nil {
+		return errors.New("archivedb: nil entry")
+	}
+	key := NormalizeKey(folder)
+	if key == "" {
+		return fmt.Errorf("archivedb: empty key (%q)", folder)
+	}
+	return db.mutate(func() error {
+		if _, exists := db.entries[key]; !exists {
+			db.order = append(db.order, key)
+		}
+		db.entries[key] = e
+		return nil
+	})
+}
+
 // MarkDeleted stamps the entry for folder with timestamp_deleted at time
 // t. The key is written in Python datetime.isoformat() format. Note: the
 // Python implementation never writes this key; it exists per

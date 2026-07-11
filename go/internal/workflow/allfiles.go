@@ -232,6 +232,13 @@ func untar(tarPath, dir string) error {
 			if err := out.Close(); err != nil {
 				return err
 			}
+			// OpenFile's mode is masked by the umask and strips
+			// setuid/setgid/sticky; Python's tarfile.extractall chmods
+			// each member to the stored mode. Restore it exactly.
+			mode := hdr.FileInfo().Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+			if err := os.Chmod(target, mode); err != nil {
+				return err
+			}
 			_ = os.Chtimes(target, time.Time{}, hdr.ModTime)
 		default:
 			// FIFOs etc.: skip silently (Python extractall would recreate

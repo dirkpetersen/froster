@@ -157,9 +157,18 @@ func (w *Workflow) archiveLocally(ctx context.Context, folder, s3Dest string, is
 		}
 		return archiveFailed
 	}
+	// Python's predicate (froster.py:4152-4156) is
+	// entry.is_file(follow_symlinks=False) or entry.is_symlink(): only
+	// regular files and symlinks count. Special files (sockets, FIFOs,
+	// devices) must NOT count — otherwise a folder containing only a live
+	// socket would be "archived" (header-only CSV), registered in the DB,
+	// and a later froster delete would remove the socket.
 	hasContent := false
 	for _, e := range entries {
-		if !e.IsDir() && !isMetaFile(e.Name()) {
+		if e.IsDir() || isMetaFile(e.Name()) {
+			continue
+		}
+		if e.Type().IsRegular() || e.Type()&os.ModeSymlink != 0 {
 			hasContent = true
 			break
 		}
