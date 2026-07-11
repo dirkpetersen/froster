@@ -9,13 +9,24 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dirkpetersen/froster/go/internal/app"
 	"github.com/dirkpetersen/froster/go/internal/cli"
+	"github.com/dirkpetersen/froster/go/internal/workflow"
 )
 
 func main() {
-	// NotImplementedApp is the placeholder until the workflow packages are
-	// wired in; the full CLI surface (flags, help, aliases) already works.
-	err := cli.Execute(cli.NotImplementedApp{})
+	// `froster mount` leaves a detached copy of this binary behind to
+	// serve the FUSE mount (like Python's background rclone process);
+	// that copy is diverted here before any CLI parsing.
+	if workflow.IsMountDaemon() {
+		if err := workflow.RunMountDaemon(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	err := cli.Execute(app.New())
 	if err != nil && !cli.Silent(err) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	}
