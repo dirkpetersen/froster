@@ -255,14 +255,14 @@ func formatStatTime(t time.Time) string {
 
 func statAtime(info os.FileInfo, st *syscall.Stat_t) time.Time {
 	if st != nil {
-		return time.Unix(st.Atim.Sec, st.Atim.Nsec)
+		return sysAtime(st) // platform-specific field names (allfiles_*.go)
 	}
 	return info.ModTime()
 }
 
 func statMtime(info os.FileInfo, st *syscall.Stat_t) time.Time {
 	if st != nil {
-		return time.Unix(st.Mtim.Sec, st.Mtim.Nsec)
+		return sysMtime(st)
 	}
 	return info.ModTime()
 }
@@ -271,7 +271,7 @@ func statMtime(info os.FileInfo, st *syscall.Stat_t) time.Time {
 // kernel reports it, which Python renders with oct() (e.g. 0o100644).
 func statRawMode(info os.FileInfo, st *syscall.Stat_t) uint32 {
 	if st != nil {
-		return st.Mode
+		return sysMode(st)
 	}
 	return uint32(info.Mode().Perm())
 }

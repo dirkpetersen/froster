@@ -57,9 +57,9 @@ func appendRow(buf []byte, r rowData) ([]byte, int) {
 	buf = append(buf, ',')
 	buf = strconv.AppendInt(buf, r.stat.Blocks, 10)
 	buf = append(buf, ',')
-	buf = strconv.AppendUint(buf, r.stat.Nlink, 10)
+	buf = strconv.AppendUint(buf, uint64(r.stat.Nlink), 10) //nolint:unconvert // uint16 on darwin
 	buf = append(buf, ',', '"')
-	buf = appendOctal7(buf, r.stat.Mode)
+	buf = appendOctal7(buf, uint32(r.stat.Mode)) //nolint:unconvert // uint16 on darwin
 	buf = append(buf, '"', ',')
 	buf = strconv.AppendInt(buf, r.stat.Atim.Sec, 10)
 	buf = append(buf, ',')

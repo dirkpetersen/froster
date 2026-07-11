@@ -196,11 +196,11 @@ func Walk(root string, out io.Writer, opts Options) (Summary, error) {
 
 	w := &walkState{
 		opts:    opts,
-		rootDev: rootStat.Dev,
+		rootDev: uint64(rootStat.Dev), //nolint:unconvert // int32 on darwin
 		queue:   newTaskQueue(),
 		chunks:  make(chan []byte, workers*2),
 	}
-	w.sum.RootDev = rootStat.Dev
+	w.sum.RootDev = uint64(rootStat.Dev) //nolint:unconvert
 
 	// Single writer goroutine: workers hand over whole per-directory
 	// buffers, so there is no per-row locking anywhere.
@@ -348,7 +348,7 @@ func (w *walkState) processDir(task dirTask) {
 			}
 			continue
 		}
-		if w.opts.OneFS && st.Dev != w.rootDev {
+		if w.opts.OneFS && uint64(st.Dev) != w.rootDev { //nolint:unconvert
 			otherFS++
 			continue
 		}
