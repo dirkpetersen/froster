@@ -182,11 +182,18 @@ func TestUmountNoMounts(t *testing.T) {
 	}
 }
 
-func TestLogPrintWithoutDebugIsSilent(t *testing.T) {
+func TestLogPrintWithoutDebugEnvStillPrints(t *testing.T) {
 	a := isolatedApp(t)
 	t.Setenv("DEBUG", "")
-	if err := a.LogPrint(context.Background(), cli.GlobalArgs{}); err != nil {
-		t.Errorf("LogPrint: %v", err)
+	out := captureStdout(t, func() {
+		if err := a.LogPrint(context.Background(), cli.GlobalArgs{}); err != nil {
+			t.Errorf("LogPrint: %v", err)
+		}
+	})
+	// No log file exists in the isolated app; the flag alone must still
+	// activate printing (Python sets DEBUG=1 from the flag itself).
+	if !strings.Contains(out, "No log file found") {
+		t.Errorf("LogPrint silent without DEBUG env; want notice, got:\n%s", out)
 	}
 }
 

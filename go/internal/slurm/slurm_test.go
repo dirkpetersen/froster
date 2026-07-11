@@ -177,12 +177,12 @@ esac
 		}
 	}
 
-	// Payload order: scratch setup, TMPDIR export, self-reexec with
-	// --no-slurm, scratch teardown last.
+	// Payload order: scratch setup, TMPDIR export, verbatim self-reexec,
+	// scratch teardown last.
 	wantPayload := []string{
 		"mkdir-scratch.sh",
 		"export TMPDIR=/mnt/scratch/${SLURM_JOB_ID}",
-		"/opt/froster/bin/froster archive '/home/user/proj 1' --no-slurm",
+		"/opt/froster/bin/froster archive '/home/user/proj 1'",
 		"rmdir-scratch.sh",
 	}
 	payload := lines[len(lines)-len(wantPayload):]
@@ -227,7 +227,7 @@ func TestSubmitMinimalConfig(t *testing.T) {
 		"#SBATCH --time=7-0",
 		"#SBATCH --mem=65536",
 		"#SBATCH --job-name=froster:index:set1",
-		"/usr/bin/froster index /data/set1 --no-slurm",
+		"/usr/bin/froster index /data/set1",
 	} {
 		if !strings.Contains(script, want+"\n") {
 			t.Errorf("script missing %q\nscript:\n%s", want, script)
@@ -252,17 +252,23 @@ func TestSubmitBegin(t *testing.T) {
 	}
 }
 
-func TestSubmitNoSlurmNotDuplicated(t *testing.T) {
+func TestSubmitArgsReplayedVerbatim(t *testing.T) {
 	dir := shimDir(t)
 	captureFile := installFakeSbatch(t, dir)
 
 	opts := fullOptions(t)
 	opts.Config.Partition = ""
-	opts.Args = []string{"archive", "/data/x", "--no-slurm"}
+	opts.Args = []string{"--no-slurm", "archive", "/data/x"}
 	if _, err := Submit(context.Background(), opts); err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 	script := string(mustRead(t, captureFile))
+	// Args are replayed verbatim: an explicit --no-slurm stays exactly
+	// where the caller put it (before the subcommand) and is not
+	// duplicated or moved.
+	if !strings.Contains(script, "froster --no-slurm archive /data/x\n") {
+		t.Errorf("verbatim replay missing\nscript:\n%s", script)
+	}
 	if got := strings.Count(script, "--no-slurm"); got != 1 {
 		t.Errorf("--no-slurm appears %d times, want 1\nscript:\n%s", got, script)
 	}

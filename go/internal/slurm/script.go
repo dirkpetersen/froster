@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 )
 
@@ -27,11 +26,18 @@ type SubmitOptions struct {
 	// Cores maps to --cpus-per-task (froster's global --cores flag).
 	Cores int
 	// MemGB is the requested memory in GiB (froster's global --mem flag);
-	// it is emitted as --mem=<MemGB*1024> (megabytes), matching Python.
+	// it is emitted as --mem=<MemGB*1024> (megabytes). DOCUMENTED DEVIATION:
+	// Python only multiplies by 1024 when slurm_partition is configured and
+	// otherwise emits --mem=<GiB> (interpreted by Slurm as megabytes — a
+	// latent under-allocation bug); Go always converts.
 	MemGB int
 	// Args are the froster CLI arguments (without the program name) to
-	// re-run inside the job. --no-slurm is appended automatically unless
-	// already present, so the job executes in the foreground.
+	// re-run inside the job, replayed verbatim like Python's sys.argv.
+	// Re-submission inside the job is prevented by the SLURM_JOB_ID check
+	// in ShouldUse, not by injecting --no-slurm: the global flag is only
+	// valid before the subcommand (argparse/TraverseChildren semantics),
+	// and verbatim replay preserves Python's restore-retry re-scheduling
+	// behavior inside jobs (behavior spec §6.1).
 	Args []string
 	// OutputDir is the directory for job output files, normally
 	// ~/.local/share/froster/slurm (ConfigManager.slurm_dir in Python).
@@ -143,13 +149,9 @@ func buildScript(o *SubmitOptions, cores, memMB int) (string, error) {
 		payload = append(payload, fmt.Sprintf("export TMPDIR=%s/${SLURM_JOB_ID}", cfg.LscratchRoot))
 	}
 
-	args := o.Args
-	if !slices.Contains(args, "--no-slurm") {
-		args = append(slices.Clone(args), "--no-slurm")
-	}
-	cmd := make([]string, 0, len(args)+1)
+	cmd := make([]string, 0, len(o.Args)+1)
 	cmd = append(cmd, shellQuote(exe))
-	for _, a := range args {
+	for _, a := range o.Args {
 		cmd = append(cmd, shellQuote(a))
 	}
 	payload = append(payload, strings.Join(cmd, " "))

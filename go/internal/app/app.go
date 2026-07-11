@@ -62,11 +62,17 @@ func wrapWorkflowErr(err error) error {
 }
 
 // cleanPaths applies Python's clean_path to every folder argument
-// (spec §0.6: realpath + expanduser + strip trailing slash).
+// (spec §0.6: realpath + expanduser + strip trailing slash). Like Python's
+// clean_path_list, empty arguments are dropped, so e.g. `froster archive ""`
+// falls through to the no-folders interactive path instead of trying to
+// archive "".
 func cleanPaths(folders []string) []string {
-	out := make([]string, len(folders))
-	for i, f := range folders {
-		out[i] = workflow.CleanPath(f)
+	out := make([]string, 0, len(folders))
+	for _, f := range folders {
+		if f == "" {
+			continue
+		}
+		out = append(out, workflow.CleanPath(f))
 	}
 	return out
 }
@@ -129,13 +135,13 @@ func (a *App) Test(ctx context.Context, args cli.TestArgs) error {
 	return cli.NotImplementedApp{}.Test(ctx, args)
 }
 
-// LogPrint implements the global --log-print flag (Python print_log): the
-// log file is only ever written — and therefore only ever printed — when
-// the DEBUG=1 environment variable is set.
+// LogPrint implements the global --log-print flag (Python print_log).
+// The flag itself authorizes printing: Python's main() sets DEBUG=1 when
+// -l/--log-print is passed (froster.py:7178), so print_log's DEBUG gate is
+// always satisfied. Gating on a pre-existing DEBUG env var here would make
+// `froster --log-print` silently print nothing (and the Go log file is
+// written whenever --debug is passed, independent of the env).
 func (a *App) LogPrint(ctx context.Context, args cli.GlobalArgs) error {
-	if os.Getenv("DEBUG") != "1" {
-		return nil
-	}
 	s, err := a.newSession(args)
 	if err != nil {
 		return err

@@ -8,11 +8,10 @@
 // the froster data dir's slurm/ subdirectory) so users' expectations and
 // documentation continue to hold.
 //
-// The one mechanical difference from Python: the job payload is the froster
-// binary re-invoking itself with --no-slurm appended, instead of replaying
-// sys.argv and relying solely on SLURM_JOB_ID detection to prevent
-// re-submission. Both guards are in effect (ShouldUse also checks
-// SLURM_JOB_ID inside the job).
+// Like Python, the job payload replays the original CLI arguments verbatim;
+// re-submission inside the job is prevented by SLURM_JOB_ID detection in
+// ShouldUse. (--no-slurm cannot be appended after the subcommand: global
+// flags are root-local, matching argparse.)
 //
 // Resubmit-on-failure: like Python, the script carries "#SBATCH --requeue",
 // which marks the job eligible for automatic requeueing by Slurm after node

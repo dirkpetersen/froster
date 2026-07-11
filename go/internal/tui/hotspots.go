@@ -81,6 +81,12 @@ const hotspotFolderColumn = 5
 // FilterHotspots applies the --older/--newer/--larger flag semantics to
 // rows and returns the matching subset. Exported so headless code paths can
 // share the exact filter the TUI uses.
+//
+// DOCUMENTED DEVIATION: Python v0.22.0 never filters the displayed table by
+// these flags — it only echoes them into the "Quit to CLI" command string
+// (froster.py ~4046) — but the flags' help text promises filtering and
+// GO-ARCHITECTURE.md describes them as filters, so go-froster applies them
+// for real.
 func FilterHotspots(rows []HotspotRow, opts HotspotOptions) []HotspotRow {
 	out := make([]HotspotRow, 0, len(rows))
 	for _, r := range rows {
