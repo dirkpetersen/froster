@@ -2,7 +2,7 @@ name: Build go-froster
 
 on:
   push:
-    branches: [go-froster-dev]
+    branches: [main, go-froster-dev]
     paths: ['go/**', '.github/workflows/build-go.yml']
   pull_request:
     paths: ['go/**', '.github/workflows/build-go.yml']
