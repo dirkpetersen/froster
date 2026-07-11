@@ -10,6 +10,7 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 - Crawl file systems to identify archiving candidates ("hotspots")
 - Archive folders to S3/Glacier with checksum verification
 - Restore data from Glacier with retrieval status tracking
+- Change storage tier of archived data without restoring it
 - Mount S3/Glacier storage via FUSE
 - Slurm batch job integration for long-running operations
 
@@ -46,63 +47,74 @@ python3 tests/test_credentials.py
 
 # Run all tests with unittest
 python3 -m unittest discover tests/
+
+# Tests require AWS credentials as environment variables (see tests/config.py)
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET="..."
 ```
+
+CI runs these same tests via GitHub Actions (`.github/workflows/test-basic-features.yml`, `test-credentials.yml`) on Python 3.10–3.13, plus install-script workflows.
 
 ## Architecture
 
 ### Single-File Monolithic Design
 
-Froster is implemented as a **single 8000+ line Python file** (`froster/froster.py`). This design is intentional for:
+Froster is implemented as a **single 8500+ line Python file** (`froster/froster.py`). This design is intentional for:
 - Simplified deployment on HPC systems
 - Easy review by system administrators
 - Reduced dependency complexity
 
 ### Core Classes
 
-**ConfigManager** (line 127): Manages configuration using XDG Base Directory conventions
+Line numbers below drift as the file changes; use them as starting points and confirm with a search for `class <Name>` or `def <name>`.
+
+**ConfigManager** (line ~128): Manages configuration using XDG Base Directory conventions
 - Config location: `~/.config/froster/config.ini`
 - Data location: `~/.local/share/froster/`
 - AWS credentials: `~/.aws/credentials` and `~/.aws/config`
 - Archive database: `~/.local/share/froster/froster-archives.json`
 
-**AWSBoto** (line 1619): Direct AWS S3/Glacier operations using boto3
-- Glacier retrieval triggering and status checking
-- S3 bucket operations
-- Storage class management (DEEP_ARCHIVE, GLACIER, etc.)
+**AWSBoto** (line ~1620): Direct AWS S3/Glacier operations using boto3
+- `glacier_restore()`: triggers Glacier retrieval and checks restore status via the `ongoing-request` header
+- `change_storage_class()`: storage tier migration for archived objects
+- S3 bucket operations, EC2 instance management for `restore --aws`
 
-**Archiver** (line 3485): Main workflow orchestration
-- File system indexing with pwalk
-- Folder hotspot generation using DuckDB for CSV processing
-- Small file tarring (<1 MiB files → `Froster.smallfiles.tar`)
-- MD5 checksum generation and verification
-- Archive metadata tracking in JSON database
+**Archiver** (line ~3577): Main workflow orchestration
+- `index()` / `_index_locally()`: file system indexing with pwalk, hotspot generation using DuckDB for CSV processing
+- `archive()` / `_archive_locally()`: small file tarring (<1 MiB files → `Froster.smallfiles.tar`), MD5 checksum generation, rclone upload, verification
+- `delete()`, `restore()` / `_restore_locally()`: post-archive workflows
+- Archive metadata tracking in `froster-archives.json`
 
-**Rclone** (line 5972): S3 transfer operations wrapper
-- Multi-threaded upload/download via rclone
+**Rclone** (line ~6285): S3 transfer operations wrapper
+- `_run_rclone_command()`: multi-threaded upload/download via rclone
 - Progress tracking and logging
 - Environment-based credential passing
 
-**Slurm** (line 6263): Batch job submission for HPC environments
+**Slurm** (line ~6589): Batch job submission for HPC environments
 - Auto-submits long-running operations as Slurm jobs
 - Job monitoring and output file generation
 - Automatic re-execution on job failure
 
-**Commands** (line 6843): CLI argument parsing and subcommand dispatch
-- Routes subcommands: config, index, archive, delete, restore, mount, umount
+**NIHReporter** (line ~6982): Queries the NIH RePORTER API for grant metadata
+
+**Commands** (line ~7169): CLI argument parsing and subcommand dispatch
+- Routes subcommands: credentials, config, index, archive, delete, mount, umount, restore, update, test (each has a 3-letter alias, e.g. `arc`, `rst`)
 - Handles global flags: --cores, --mem, --no-slurm, --profile, --debug
 
 ### Textual TUI Applications
 
 Froster uses Textual for interactive selection interfaces:
 
-**TableHotspots** (line 5767): Interactive folder selection from indexed hotspots
+**TableHotspots** (line ~5859): Interactive folder selection from indexed hotspots
 - Displays folders with size, avg file size, access/modify age
 - Supports filtering by --older, --newer, --larger flags
 - "Quit to CLI" generates archive command for batch operations
 
-**TableArchive** (line 5862): Select previously archived folders for delete/restore
+**TableArchive** (line ~5954): Select previously archived folders for delete/restore
 
-**TableNIHGrants** (line 5893): Search and link NIH research grants for FAIR metadata
+**TableNIHGrants** (line ~5985): Search and link NIH research grants for FAIR metadata
+
+**TableStorageTierSelector** (line ~6128): Pick a new S3 storage tier (with cost info) for `froster restore --change-tier`, confirmed via a modal dialog
 
 ### Key Data Flow
 
@@ -110,6 +122,7 @@ Froster uses Textual for interactive selection interfaces:
 2. **Archive**: Source folder → tar small files → MD5 checksums → rclone upload → checksum verify → update JSON database
 3. **Delete**: Verify checksums → delete local files → leave `Where-did-the-files-go.txt` manifest
 4. **Restore**: Check Glacier status → trigger retrieval if needed → wait → download with rclone → verify checksums → untar
+5. **Tier change**: `restore --change-tier` → TUI tier selection → `AWSBoto.change_storage_class()` (data in GLACIER/DEEP_ARCHIVE must be restored first)
 
 ## Common Development Tasks
 
@@ -126,20 +139,6 @@ dd if=/dev/zero of=/tmp/test_archive/file1.dat bs=1M count=10
 froster archive /tmp/test_archive
 ```
 
-### Running tests
-
-```bash
-# Single test file
-python3 tests/test_basic_features.py
-
-# All tests
-python3 -m unittest discover tests/
-
-# Tests require AWS credentials as environment variables
-export AWS_ACCESS_KEY_ID="..."
-export AWS_SECRET="..."
-```
-
 ### Debugging
 
 Use the `--debug` flag for verbose logging:
@@ -151,16 +150,6 @@ Logs are written to `~/.local/share/froster/froster.log`. View with:
 ```bash
 froster --log-print
 ```
-
-### Code navigation helpers
-
-Key functions for understanding the codebase:
-- `main()` (line 7907): Entry point
-- `Commands.parse_arguments()`: CLI argument structure
-- `Archiver._index_locally()` (line 3525): pwalk → hotspots generation
-- `Archiver.do_archive()`: Main archive workflow
-- `Rclone._run_rclone_command()` (line 6014): S3 transfers
-- `AWSBoto.glacier_restore_status()`: Glacier retrieval checking
 
 ### Important file artifacts
 
@@ -176,7 +165,7 @@ Key functions for understanding the codebase:
 
 ## Release Process
 
-Releases are automated via GitHub Actions:
+Releases are automated via GitHub Actions (`.github/workflows/pypi-release-publish.yml`):
 
 1. Update version in `pyproject.toml`
 2. Push to `main` branch
@@ -187,6 +176,8 @@ Versioning:
 - Major: Breaking changes or major features
 - Minor: Backward-compatible new functionality
 - Subminor: Bug fixes or small improvements
+
+Development happens on the `dev` branch; PRs merge `dev` → `main`.
 
 ## Important Considerations
 
@@ -207,7 +198,7 @@ Versioning:
 **Storage class selection:**
 - Default: AWS `DEEP_ARCHIVE` (most cost-effective, 48-72hr retrieval)
 - Other classes: GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING
-- Set during `froster config` or in config.ini
+- Set during `froster config` or in config.ini; change later with `froster restore --change-tier`
 
 **Multiple users / shared configuration:**
 - Set shared config directory during `froster config`
