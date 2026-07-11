@@ -2,12 +2,23 @@
 
 Status: **Core implementation complete** (was: proposal). Branch: `go-froster-dev` Author: generated with Claude Code, reviewed by Dirk Petersen Date: 2026-07-10 (implementation status updated 2026-07-11)
 
-## Implementation status (2026-07-11)
+## Implementation status (2026-07-11, updated same day)
 
 **Naming note:** this document uses the development codename "go-froster"
-throughout. Since the branch switch, the Go implementation is simply
-**froster** (this repo's `main`, released as v0.23.0+), and the legacy
-Python implementation is **python-froster** (branch `python-froster`).
+throughout, and refers to the original implementation as "Python froster" —
+both reflect the state of the world *while this document was written*, not
+the current repo. As of the branch switch:
+
+- The Go implementation is simply **froster** — this repo's `main` branch,
+  with no Python code anywhere in the tree. Released starting **v0.23.0**
+  (tag-triggered `release-go.yml`: builds linux/{amd64,arm64} and
+  darwin/{amd64,arm64}, static, stripped, with sha256 checksums, attached to
+  a GitHub release).
+- The original implementation is **python-froster**, entirely on the
+  `python-froster` branch (source, tests, installer, PyPI workflows) — frozen,
+  bugfixes only. It is not visible from `main` except as fixture-generation
+  tooling (see below) and is not mentioned in user-facing docs; see
+  CLAUDE.md's "Documentation policy" section before editing `README.md`.
 
 The Go module lives in `go/` (see `go/README.md` for build/test instructions).
 Phases 0–4 of §11 are done; both Phase-0 bets validated:
@@ -26,14 +37,17 @@ Working end-to-end: `index`, `archive`, `delete`, `restore` (incl. Glacier
 trigger/status paths, unit-tested), `mount`/`umount` (FUSE daemon),
 `credentials`, `restore --change-tier`, Slurm submission, all TUIs except NIH
 grants. Not yet implemented: `config` wizard, `update`, `test` subcommand,
-NIH grant TUI. Stubbed per §9: EC2 restore, SES, Cost Explorer.
+NIH grant TUI. Stubbed per §9: EC2 restore, SES, Cost Explorer. These are
+listed for users in `README.md`'s "Deferred features" section.
 
 Key artifacts: `go/testdata/cli-contract.json` (CLI surface, enforced by
 test), `go/docs/python-behavior-spec.md` (behavioral contract),
 `go/testdata/golden/` (fixtures from real Python 0.22 runs; MANIFEST.md
-documents 12 Python quirks/bugs found, three of them serious). Dependency
-constraint: aws-sdk-go-v2 versions must track rclone's pins (NOTE in
-`go/go.mod`).
+documents 12 Python quirks/bugs found, three of them serious). Regenerating
+either requires a `git worktree add <dir> python-froster` checkout, since the
+Python source no longer exists on `main` (recipes in `go/README.md`).
+Dependency constraint: aws-sdk-go-v2 versions must track rclone's pins (NOTE
+in `go/go.mod`).
 
 ***
 

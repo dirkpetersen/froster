@@ -16,15 +16,35 @@ Froster is a user-friendly archiving tool for teams that move data between high-
 
 ## Repository Layout — Two Implementations
 
-**This branch (`main`) contains only the Go implementation (`go/`).** The
-original Python implementation is **frozen** (bugfixes only) and lives
-entirely on the **`python-froster`** branch, including its installer,
-tests, workflows, and full user README. Both implementations are drop-in
-compatible (same config.ini, froster-archives.json, artifact files, S3
-layout, CLI surface), proven by cross-implementation round-trip tests.
+**This branch (`main`) contains only the Go implementation (`go/`); there is
+no Python code anywhere in this tree.** The original Python implementation
+is **frozen** (bugfixes only) and lives entirely on the **`python-froster`**
+branch, including its installer, tests, workflows, and full user README.
+Both implementations are drop-in compatible (same config.ini,
+froster-archives.json, artifact files, S3 layout, CLI surface), proven by
+cross-implementation round-trip tests.
 
 New feature work goes to Go. Apply a Python change only if it is a bugfix
 (on `python-froster`), and consider whether it needs a Go counterpart.
+
+### Documentation policy
+
+`README.md` on `main` is the **user-facing product doc** and must read as
+if froster has always been this single Go binary — no "two
+implementations" framing, no mention that it was ever written in Python, no
+links to the `python-froster` branch. The **only** place the Go rewrite is
+acknowledged is the "Deferred features" section, which lists what earlier
+(pre-v0.23) releases had that this one doesn't yet (`config` wizard,
+`update`, `test`, NIH grant search TUI, EC2/SES/Cost-Explorer restore) and
+notes that archives from any earlier version restore unchanged. When
+correcting facts in `README.md`, adjust wording for the single-binary
+reality (binary download, manual `config.ini`, built-in crawler/rclone)
+rather than adding implementation-history commentary.
+
+This restriction is specific to `README.md`. Engineering docs — this file,
+`go/README.md`, `GO-ARCHITECTURE.md`, `go/docs/python-behavior-spec.md` —
+are expected to reference `python-froster` freely; the facts there (fixture
+regeneration, behavioral parity, the rewrite rationale) require it.
 
 ## Go Implementation (`go/`)
 
@@ -85,6 +105,23 @@ CGO_ENABLED=0 go build -trimpath -ldflags "-s -w \
 
 `config` wizard, `update`, `test`, NIH grant TUI, `--default-profile`
 selector; EC2/SES/Cost-Explorer extras stubbed per GO-ARCHITECTURE.md §9.
+These are the same items listed in `README.md`'s "Deferred features"
+section — keep both in sync when one changes.
+
+### Release process
+
+Tag-triggered via `.github/workflows/release-go.yml`:
+
+```bash
+git tag -a vX.Y.Z -m "froster X.Y.Z"
+git push origin vX.Y.Z
+```
+
+Builds all four `GOOS`/`GOARCH` targets (static, `-trimpath -ldflags "-s -w"`,
+version/commit injected from the tag), generates a sha256 checksum file, and
+publishes a GitHub release with the binaries attached and notes
+auto-generated from commits. Verify with `gh run list --workflow=release-go.yml`
+and `gh release view vX.Y.Z`.
 
 ## Important file artifacts (shared with Python froster)
 
