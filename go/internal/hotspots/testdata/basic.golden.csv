@@ -1,0 +1,8 @@
+User,AccD,ModD,GiB,MiBAvg,Folder,Group,TiB,FileCount,DirSize
+root,10,20,50,512,/nonexistent/froster-golden/proj1,root,0,100,53687091200
+root,6000,6001,10,10,/nonexistent/froster-golden/mib-exact,4200002,0,1024,10737418240
+root,0,50,8,1024,/nonexistent/froster-golden/atime-zero,root,0,8,8589934592
+root,30,30,4,1024,/nonexistent/froster-golden/naÃ¯ve,root,0,4,4294967296
+root,100,100,3,1024,"/nonexistent/froster-golden/we""ird,name",root,0,3,3221225472
+root,31,31,2,1024,/nonexistent/froster-golden/café,root,0,2,2147483648
+4200001,400,500,1,10,/nonexistent/froster-golden/edge-exact,4200002,0,100,1073741824
