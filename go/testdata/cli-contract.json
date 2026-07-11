@@ -1,0 +1,552 @@
+{
+ "_meta": {
+  "generator": "go/testdata/dump_cli_contract.py",
+  "source": "froster/froster.py"
+ },
+ "options": [
+  {
+   "default": null,
+   "dest": "cores",
+   "env_dependent": true,
+   "flags": [
+    "-c",
+    "--cores"
+   ],
+   "help": "Number of cores to be allocated for the machine. (default=4)",
+   "type": "int"
+  },
+  {
+   "default": false,
+   "dest": "debug",
+   "flags": [
+    "-d",
+    "--debug"
+   ],
+   "help": "verbose output for all commands",
+   "type": "bool"
+  },
+  {
+   "default": false,
+   "dest": "default_profile",
+   "flags": [
+    "-D",
+    "--default-profile"
+   ],
+   "help": "Select default profile",
+   "type": "bool"
+  },
+  {
+   "default": false,
+   "dest": "info",
+   "flags": [
+    "-i",
+    "--info"
+   ],
+   "help": "print froster and packages info",
+   "type": "bool"
+  },
+  {
+   "default": false,
+   "dest": "log_print",
+   "flags": [
+    "-l",
+    "--log-print"
+   ],
+   "help": "Print the log file to the screen",
+   "type": "bool"
+  },
+  {
+   "default": null,
+   "dest": "memory",
+   "env_dependent": true,
+   "flags": [
+    "-m",
+    "--mem"
+   ],
+   "help": "Amount of memory to be allocated for the machine in GB. (default=16)",
+   "type": "int"
+  },
+  {
+   "default": false,
+   "dest": "noslurm",
+   "flags": [
+    "-n",
+    "--no-slurm"
+   ],
+   "help": "do not submit a Slurm job, execute in the foreground.",
+   "type": "bool"
+  },
+  {
+   "default": "",
+   "dest": "profile",
+   "flags": [
+    "-p",
+    "--profile"
+   ],
+   "help": "User this profile for the current session",
+   "type": "string"
+  },
+  {
+   "default": false,
+   "dest": "version",
+   "flags": [
+    "-v",
+    "--version"
+   ],
+   "help": "print froster version",
+   "type": "bool"
+  }
+ ],
+ "positionals": [],
+ "subcommands": {
+  "archive": {
+   "aliases": [
+    "arc"
+   ],
+   "options": [
+    {
+     "default": false,
+     "dest": "force",
+     "flags": [
+      "-f",
+      "--force"
+     ],
+     "help": "Force archiving of a folder that contains the .froster.md5sum file",
+     "type": "bool"
+    },
+    {
+     "default": 0,
+     "dest": "larger",
+     "flags": [
+      "-l",
+      "--larger"
+     ],
+     "help": "Archive folders larger than <GiB>. This option\nworks in conjunction with --older <days>. If both\noptions are set froster will print a command that\nallows you to archive all matching folders at once.",
+     "type": "int"
+    },
+    {
+     "default": 0,
+     "dest": "older",
+     "flags": [
+      "-o",
+      "--older"
+     ],
+     "help": "Archive folders that have not been accessed more than\n<days>. (optionally set --mtime to select folders that\nhave not been modified more than <days>). This option\nworks in conjunction with --larger <GiB>. If both\noptions are set froster will print a command that\nallows you to archive all matching folders at once.",
+     "type": "int"
+    },
+    {
+     "default": 0,
+     "dest": "newer",
+     "flags": [
+      "--newer",
+      "-w"
+     ],
+     "help": "Archive folders that have been accessed within the last \n<days>. (optionally set --mtime to select folders that\nhave not been modified more than <days>). This option\nworks in conjunction with --larger <GiB>. If both \noptions are set froster will print a command that \nallows you to archive all matching folders at once.",
+     "type": "int"
+    },
+    {
+     "default": false,
+     "dest": "nih",
+     "flags": [
+      "-n",
+      "--nih"
+     ],
+     "help": "Search and Link Metadata from NIH Reporter",
+     "type": "bool"
+    },
+    {
+     "default": "",
+     "dest": "nihref",
+     "flags": [
+      "-i",
+      "--nih-ref"
+     ],
+     "help": "Use NIH Reporter reference for the current archive",
+     "type": "string"
+    },
+    {
+     "default": false,
+     "dest": "agemtime",
+     "flags": [
+      "-m",
+      "--mtime"
+     ],
+     "help": "Use modified file time (mtime) instead of accessed time (atime)",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "recursive",
+     "flags": [
+      "-r",
+      "--recursive"
+     ],
+     "help": "Archive the current folder and all sub-folders",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "reset",
+     "flags": [
+      "-s",
+      "--reset"
+     ],
+     "help": "This will not download any data, but recusively reset a folder\nfrom previous (e.g. failed) archiving attempt.\nIt will delete .froster.md5sum and extract Froster.smallfiles.tar",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "notar",
+     "flags": [
+      "-t",
+      "--no-tar"
+     ],
+     "help": "Do not move small files to tar file before archiving",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "dryrun",
+     "flags": [
+      "-d",
+      "--dry-run"
+     ],
+     "help": "Execute a test archive without actually copying the data",
+     "type": "bool"
+    }
+   ],
+   "positionals": [
+    {
+     "default": [],
+     "dest": "folders",
+     "flags": [],
+     "help": "folders you would like to archive (separated by space), the last folder in this list is the target",
+     "nargs": "*",
+     "positional": true,
+     "type": "string"
+    }
+   ],
+   "subcommands": {}
+  },
+  "config": {
+   "aliases": [
+    "cnf"
+   ],
+   "options": [
+    {
+     "default": false,
+     "dest": "print",
+     "flags": [
+      "-p",
+      "--print"
+     ],
+     "help": "Print the current configuration",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "reset",
+     "flags": [
+      "-r",
+      "--reset"
+     ],
+     "help": "Delete the current configuration and start over",
+     "type": "bool"
+    },
+    {
+     "default": "",
+     "dest": "import_config",
+     "flags": [
+      "-i",
+      "--import"
+     ],
+     "help": "Import a given configuration file",
+     "type": "string"
+    },
+    {
+     "default": "",
+     "dest": "export_config",
+     "flags": [
+      "-e",
+      "--export"
+     ],
+     "help": "Export the current configuration to the given directory",
+     "type": "string"
+    }
+   ],
+   "positionals": [],
+   "subcommands": {}
+  },
+  "credentials": {
+   "aliases": [
+    "crd"
+   ],
+   "options": [],
+   "positionals": [],
+   "subcommands": {}
+  },
+  "delete": {
+   "aliases": [
+    "del"
+   ],
+   "options": [
+    {
+     "default": "",
+     "dest": "bucket",
+     "flags": [
+      "-b",
+      "--bucket"
+     ],
+     "help": "==SUPPRESS==",
+     "type": "string"
+    },
+    {
+     "default": false,
+     "dest": "recursive",
+     "flags": [
+      "-r",
+      "--recursive"
+     ],
+     "help": "Delete the current archived folder and all archived sub-folders",
+     "type": "bool"
+    }
+   ],
+   "positionals": [
+    {
+     "default": [],
+     "dest": "folders",
+     "flags": [],
+     "help": "folders (separated by space) from which you would like to delete files, you can only delete files that have been archived",
+     "nargs": "*",
+     "positional": true,
+     "type": "string"
+    }
+   ],
+   "subcommands": {}
+  },
+  "index": {
+   "aliases": [
+    "idx"
+   ],
+   "options": [
+    {
+     "default": false,
+     "dest": "force",
+     "flags": [
+      "-f",
+      "--force"
+     ],
+     "help": "Force indexing",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "permissions",
+     "flags": [
+      "-p",
+      "--permissions"
+     ],
+     "help": "Print read and write permissions for the provided folder(s)",
+     "type": "bool"
+    },
+    {
+     "default": "",
+     "dest": "pwalkcopy",
+     "flags": [
+      "-y",
+      "--pwalk-copy"
+     ],
+     "help": "Directory where the pwalk CSV file should be copied to.",
+     "type": "string"
+    }
+   ],
+   "positionals": [
+    {
+     "default": [],
+     "dest": "folders",
+     "flags": [],
+     "help": "Folders you would like to index (separated by space), using the pwalk file system crawler",
+     "nargs": "*",
+     "positional": true,
+     "type": "string"
+    }
+   ],
+   "subcommands": {}
+  },
+  "mount": {
+   "aliases": [
+    "umount"
+   ],
+   "options": [
+    {
+     "default": false,
+     "dest": "aws",
+     "flags": [
+      "-a",
+      "--aws"
+     ],
+     "help": "Mount folder on new EC2 instance instead of local machine",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "list",
+     "flags": [
+      "-l",
+      "--list"
+     ],
+     "help": "List all mounted folders",
+     "type": "bool"
+    },
+    {
+     "default": "",
+     "dest": "mountpoint",
+     "flags": [
+      "-m",
+      "--mount-point"
+     ],
+     "help": "pick a custom mount point, this only works if you select a single folder.",
+     "type": "string"
+    }
+   ],
+   "positionals": [
+    {
+     "default": [],
+     "dest": "folders",
+     "flags": [],
+     "help": "archived folders (separated by space) which you would like to mount.",
+     "nargs": "*",
+     "positional": true,
+     "type": "string"
+    }
+   ],
+   "subcommands": {}
+  },
+  "restore": {
+   "aliases": [
+    "rst"
+   ],
+   "options": [
+    {
+     "default": false,
+     "dest": "aws",
+     "flags": [
+      "-a",
+      "--aws"
+     ],
+     "help": "Restore folder on new AWS EC2 instance instead of local machine",
+     "type": "bool"
+    },
+    {
+     "default": 30,
+     "dest": "days",
+     "flags": [
+      "-d",
+      "--days"
+     ],
+     "help": "Number of days to keep data in S3 One Zone-IA storage at $10/TiB/month (default: 30)",
+     "type": "string"
+    },
+    {
+     "default": "",
+     "dest": "instancetype",
+     "flags": [
+      "-i",
+      "--instance-type"
+     ],
+     "help": "The EC2 instance type is auto-selected, but you can pick any other type here",
+     "type": "string"
+    },
+    {
+     "default": false,
+     "dest": "nodownload",
+     "flags": [
+      "-l",
+      "--no-download"
+     ],
+     "help": "skip download to local storage after retrieval from Glacier",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "monitor",
+     "flags": [
+      "-m",
+      "--monitor"
+     ],
+     "help": "Monitor EC2 server for cost and idle time.",
+     "type": "bool"
+    },
+    {
+     "default": "Bulk",
+     "dest": "retrieveopt",
+     "flags": [
+      "-o",
+      "--retrieve-opt"
+     ],
+     "help": "More information at:\n    https://docs.aws.amazon.com/AmazonS3/latest/userguide/restoring-objects-retrieval-options.html\n    https://aws.amazon.com/s3/pricing/\n\nS3 GLACIER DEEP ARCHIVE or S3 INTELLIGENT-TIERING DEEP ARCHIVE ACCESS\n    Bulk:\n        - Within 48 hours retrieval            <-- default\n        - costs of $2.50 per TiB\n    Standard:\n        - Within 12 hours retrieval\n        - costs of $10 per TiB\n    Expedited:\n        - not supported \n\nS3 GLACIER FLEXIBLE RETRIEVAL or S3 INTELLIGENT-TIERING ARCHIVE ACCESS\n    Bulk:\n        - 5-12 hours retrieval\n        - costs of $2.50 per TiB\n    Standard:\n        - 3-5 hours retrieval\n        - costs of $10 per TiB\n    Expedited:\n        - 1-5 minutes retrieval\n        - costs of $30 per TiB\n\n\n    In addition to the retrieval cost, AWS will charge you about\n    $10/TiB/month for the duration you keep the data in S3.\n    (Costs in Summer 2024)",
+     "type": "string"
+    },
+    {
+     "default": false,
+     "dest": "recursive",
+     "flags": [
+      "-r",
+      "--recursive"
+     ],
+     "help": "Restore the current archived folder and all archived sub-folders",
+     "type": "bool"
+    },
+    {
+     "default": false,
+     "dest": "changetier",
+     "flags": [
+      "-t",
+      "--change-tier"
+     ],
+     "help": "Change the storage tier of archived data without restoring it. Interactive TUI will guide tier selection.",
+     "type": "bool"
+    }
+   ],
+   "positionals": [
+    {
+     "default": [],
+     "dest": "folders",
+     "flags": [],
+     "help": "folders you would like to to restore (separated by space)",
+     "nargs": "*",
+     "positional": true,
+     "type": "string"
+    }
+   ],
+   "subcommands": {}
+  },
+  "test": {
+   "aliases": [
+    "tst"
+   ],
+   "options": [],
+   "positionals": [],
+   "subcommands": {}
+  },
+  "update": {
+   "aliases": [
+    "upd"
+   ],
+   "options": [
+    {
+     "default": false,
+     "dest": "rclone",
+     "flags": [
+      "--rclone",
+      "-r"
+     ],
+     "help": "Update rclone to latests version",
+     "type": "bool"
+    }
+   ],
+   "positionals": [],
+   "subcommands": {}
+  }
+ }
+}
